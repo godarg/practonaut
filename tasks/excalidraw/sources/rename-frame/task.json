@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "rename-frame",
+  "difficulty": 1,
+  "title": {
+    "en": "Name the frame",
+    "de": "Den Rahmen benennen"
+  },
+  "prompt": {
+    "en": "The frame around the process is still called “Frame 1”. Rename it to “Checkout”.",
+    "de": "Der Rahmen um den Ablauf heißt noch „Frame 1“. Benenne ihn in „Checkout“ um."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Checkout": "Onboarding",
+        "Cart": "Sign up",
+        "Pay": "Verify"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Checkout": "Returns",
+        "Cart": "Request",
+        "Pay": "Refund"
+      }
+    }
+  ]
+}

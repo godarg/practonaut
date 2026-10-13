@@ -1,0 +1,35 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "align",
+  "difficulty": 2,
+  "title": {
+    "en": "Align a row",
+    "de": "Eine Zeile ausrichten"
+  },
+  "prompt": {
+    "en": "Move the steps so that “Start”, “Middle” and “End” sit on one row (their top edges at most 8 px apart from their neighbours).",
+    "de": "Verschiebe die Schritte so, dass „Start“, „Middle“ und „End“ in einer Zeile stehen (Oberkanten höchstens 8 px von den Nachbarn entfernt)."
+  },
+  "options": {
+    "align": true,
+    "tolerance": 8
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Start": "Open",
+        "Middle": "Edit",
+        "End": "Save"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Start": "Arrive",
+        "Middle": "Stay",
+        "End": "Leave"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+Practonaut
+Copyright 2026 Gottlieb Dargel (Dargel Solutions) and Practonaut contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components are distributed under their own licenses; see the
+dependency list in package-lock.json. Example worlds and their assets declare
+their own content licenses next to their sources.
+
+The bundled Excalidraw engine and its dependencies retain their original notices.
+Full, version-labelled dependency notices ship in dist/adapters/excalidraw/engine/licenses/.
+The shipped bundle-sbom.json binds actual output bytes and lock-resolved package instances
+to full notices. LICENSES.json also records SHA-bound upstream embedded components,
+including Excalidraw's fonteditor-core and harfbuzzjs WASM notices and pica's Browserify
+dependencies. Embedded entry-source matches establish attribution; they do not reconstruct
+the historical dependency resolution or certify all compiled subroutines. The bounded
+source/banner/map sweep and its limits are recorded explicitly. npm audit only covers
+lock-resolved installed instances and cannot clear components inside upstream prebundles.
+Reviewed deviations in the emitted engine are recorded in its SBOM. Installed upstream
+files and full license bodies remain unchanged.
+Font license texts and source/hash metadata ship with the engine; source metadata is
+src/adapters/excalidraw/assets/LICENSES.json. Cascadia and Assistant use SIL OFL 1.1.

@@ -1,0 +1,143 @@
+{
+  "seed": 17,
+  "actions": [
+    {
+      "name": "add_step",
+      "params": {
+        "fontFamily": 1,
+        "frameId": "f",
+        "height": 60,
+        "label": "D",
+        "width": 120,
+        "x": 600,
+        "y": 0
+      }
+    },
+    {
+      "name": "rename_step",
+      "params": {
+        "id": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8",
+        "label": "D-final"
+      }
+    },
+    {
+      "name": "move_step",
+      "params": {
+        "id": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8",
+        "x": 300,
+        "y": 100
+      }
+    },
+    {
+      "name": "connect",
+      "params": {
+        "frameId": "f",
+        "from": "a",
+        "to": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8"
+      }
+    },
+    {
+      "name": "reconnect_end",
+      "params": {
+        "end": "end",
+        "id": "ab",
+        "target": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8"
+      }
+    },
+    {
+      "name": "disconnect",
+      "params": {
+        "id": "bc"
+      }
+    },
+    {
+      "name": "delete_step",
+      "params": {
+        "id": "b"
+      }
+    }
+  ],
+  "state": {
+    "objects": {
+      "f": {
+        "id": "f",
+        "type": "frame",
+        "deleted": false,
+        "name": "Process"
+      },
+      "a": {
+        "id": "a",
+        "type": "step",
+        "deleted": false,
+        "frameId": "f",
+        "label": "A",
+        "x": 0,
+        "y": 0,
+        "width": 120,
+        "height": 60,
+        "fontFamily": 1
+      },
+      "b": {
+        "id": "b",
+        "type": "step",
+        "deleted": true,
+        "frameId": "f",
+        "label": "B",
+        "x": 200,
+        "y": 0,
+        "width": 120,
+        "height": 60,
+        "fontFamily": 1
+      },
+      "c": {
+        "id": "c",
+        "type": "step",
+        "deleted": false,
+        "frameId": "f",
+        "label": "C",
+        "x": 400,
+        "y": 0,
+        "width": 120,
+        "height": 60,
+        "fontFamily": 1
+      },
+      "ab": {
+        "id": "ab",
+        "type": "arrow",
+        "deleted": false,
+        "frameId": "f",
+        "from": "a",
+        "to": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8"
+      },
+      "bc": {
+        "id": "bc",
+        "type": "arrow",
+        "deleted": true,
+        "frameId": "f",
+        "from": null,
+        "to": null
+      },
+      "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8": {
+        "id": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8",
+        "type": "step",
+        "deleted": false,
+        "frameId": "f",
+        "label": "D-final",
+        "x": 300,
+        "y": 100,
+        "width": 120,
+        "height": 60,
+        "fontFamily": 1
+      },
+      "a-7b980f4f38a6ce0dfecdf5b22dac7312803e0b504d080edcc92f0af81ba7": {
+        "id": "a-7b980f4f38a6ce0dfecdf5b22dac7312803e0b504d080edcc92f0af81ba7",
+        "type": "arrow",
+        "deleted": false,
+        "frameId": "f",
+        "from": "a",
+        "to": "s-6b193477a68a8dc37fb8958839af276c4a072475869aaf561c527a62b5e8"
+      }
+    }
+  },
+  "hash": "bfebf3023c1a6f0b46efbbde941b14be3dc70dadb0ea023ef7cfdecd913ce883"
+}

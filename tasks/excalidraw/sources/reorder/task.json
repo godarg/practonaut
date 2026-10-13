@@ -1,0 +1,36 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "reorder",
+  "difficulty": 2,
+  "title": {
+    "en": "Put the steps in order",
+    "de": "Die Schritte ordnen"
+  },
+  "prompt": {
+    "en": "Arrange the steps from left to right as “Wash”, “Cut”, “Cook”, “Serve”. Exact positions do not matter, only the order.",
+    "de": "Ordne die Schritte von links nach rechts: „Wash“, „Cut“, „Cook“, „Serve“. Genaue Positionen sind egal, nur die Reihenfolge zählt."
+  },
+  "options": {
+    "layout": "relative"
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Wash": "Unpack",
+        "Cut": "Sort",
+        "Cook": "Store",
+        "Serve": "Report"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Wash": "Boot",
+        "Cut": "Login",
+        "Cook": "Work",
+        "Serve": "Logout"
+      }
+    }
+  ]
+}

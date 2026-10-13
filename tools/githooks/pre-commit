@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Practonaut pre-commit: secret scan of the staged content with gitleaks, when installed.
+# Enabled by `npm run bootstrap` (git config core.hooksPath tools/githooks). CI runs gitleaks too.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not installed; secret scan skipped (CI still scans)." >&2
+  exit 0
+fi
+gitleaks protect --staged --config .gitleaks.toml --redact --no-banner --no-color

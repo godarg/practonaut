@@ -1,0 +1,16 @@
+title = "Practonaut secret-scanning contract"
+
+[extend]
+useDefault = true
+
+# Absolute home paths leak a local account name. They never belong in the repository.
+[[rules]]
+id = "absolute-home-path"
+description = "Absolute macOS, Linux or Windows home path"
+regex = '''(?i)(?:/(?:Users|home)/|[A-Z]:\\Users\\)([a-z0-9][a-z0-9._-]{1,63})(?:[/\\]|\b)'''
+secretGroup = 1
+keywords = ["/users/", "/home/", "\\users\\"]
+
+[[allowlists]]
+description = "Untracked dependency and generated output trees"
+paths = ['''^\.git/''', '''^node_modules/''', '''^dist/''', '''^\.local/''']

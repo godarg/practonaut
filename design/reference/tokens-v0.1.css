@@ -1,0 +1,280 @@
+/* ARCHIVE: tokens of design language v0.1, kept only so the frozen v0.1 reference pages still render. Not used by the product.
+
+ * Practonaut design tokens, v0.1 (2026-10-03)
+ *
+ * Spec and rationale: docs/design/design-language.md
+ * Contrast targets are listed there (section 7). Measured ratios are recorded by the
+ * review run, never in this file.
+ *
+ * Rules
+ * - Components use semantic tokens only. Colour values live in this file and nowhere else.
+ * - No webfonts, no network. Font stacks resolve to fonts already on the device.
+ * - Light is the default. Dark applies by system preference or by [data-theme="dark"];
+ *   [data-theme="light"] forces light. Keep both dark blocks identical (see end of file).
+ */
+
+/* ------------------------------------------------------------------ */
+/* Theme-independent tokens                                            */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Type: three voices with fixed jobs (spec section 5) */
+  --pn-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Liberation Sans", Arial, sans-serif;
+  --pn-font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, serif;
+  --pn-font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Segoe UI Mono", "Liberation Mono", Menlo, Consolas, monospace;
+
+  --pn-text-xs: 0.8125rem;  /* meta lines and labels only, never running text */
+  --pn-text-sm: 0.875rem;
+  --pn-text-md: 1rem;       /* minimum for running text */
+  --pn-text-lg: 1.25rem;
+  --pn-text-xl: 1.625rem;
+  --pn-text-2xl: 2.125rem;
+
+  --pn-leading-tight: 1.15;
+  --pn-leading-snug: 1.35;
+  --pn-leading-body: 1.55;
+
+  --pn-weight-regular: 400;
+  --pn-weight-medium: 500;
+  --pn-weight-bold: 600;
+
+  --pn-tracking-caps: 0.06em;
+  --pn-measure: 66ch;
+
+  /* Space: 4 px base, in rem so it follows the user's font size */
+  --pn-space-1: 0.25rem;
+  --pn-space-2: 0.5rem;
+  --pn-space-3: 0.75rem;
+  --pn-space-4: 1rem;
+  --pn-space-5: 1.5rem;
+  --pn-space-6: 2rem;
+  --pn-space-7: 3rem;
+  --pn-space-8: 4rem;
+
+  /* Layout */
+  --pn-layout-gutter: var(--pn-space-5);
+  --pn-layout-panel-min: 16rem;
+  --pn-layout-panel-max: 22rem;
+  --pn-layout-page-max: 26rem;
+  --pn-target-min: 2.5rem;  /* interactive controls; board objects follow the grid (spec 10.4) */
+
+  /* Shape: mixed on purpose. Work objects are square; controls barely round; panels a little. */
+  --pn-radius-none: 0;
+  --pn-radius-control: 2px;
+  --pn-radius-panel: 6px;
+
+  --pn-border-hairline: 1px;
+  --pn-border-strong: 2px;
+
+  /* Focus */
+  --pn-focus-width: 3px;
+  --pn-focus-offset: 2px;
+
+  /* Elevation: one shadow in the whole system, for an object that is picked up */
+  --pn-shadow-lifted: 0 3px 0 0 var(--pn-color-shadow);
+
+  /* "Not yet modeled" hatch. Decorative carrier only, never behind text. */
+  --pn-hatch-line: 1.5px;
+  --pn-hatch-gap: 6px;
+  --pn-pattern-unmodeled: repeating-linear-gradient(
+    135deg,
+    var(--pn-color-hatch) 0 var(--pn-hatch-line),
+    transparent var(--pn-hatch-line) var(--pn-hatch-gap)
+  );
+
+  /* Motion */
+  --pn-motion-short: 120ms;   /* state changes: hover, pressed */
+  --pn-motion-move: 160ms;    /* an object settling into a grid cell */
+  --pn-motion-panel: 220ms;   /* a panel appearing */
+  --pn-motion-pulse: 1600ms;  /* loading skeleton, only without reduced motion */
+  --pn-motion-ease: cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+@media (max-width: 29.99em) {
+  :root {
+    --pn-layout-gutter: var(--pn-space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pn-motion-short: 0ms;
+    --pn-motion-move: 0ms;
+    --pn-motion-panel: 0ms;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: light (default)                                             */
+/* ------------------------------------------------------------------ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --pn-color-canvas: #EEF0EA;          /* app background, chart paper */
+  --pn-color-surface: #F8F9F5;         /* panels, bars */
+  --pn-color-surface-sunken: #E2E6DE;  /* the bench around the work object */
+  --pn-color-page: #FFFFFF;            /* the work object itself (a document page) */
+
+  /* Text */
+  --pn-color-text: #161B1F;            /* ink */
+  --pn-color-text-muted: #4A545C;
+  --pn-color-text-inverse: #F8F9F5;
+
+  /* Lines */
+  --pn-color-rule: #C9CFC4;            /* decorative dividers, no contrast duty */
+  --pn-color-grid: #D9DED5;            /* board grid, decorative (positions are also given as text) */
+  --pn-color-border: #6B756D;          /* boundaries of controls, 3:1 duty */
+  --pn-color-border-strong: #161B1F;
+  --pn-color-guide: #6B756D;           /* safe area and other guides on the page, 3:1 duty */
+
+  /* Board objects */
+  --pn-color-object-bg: #F1F3EE;
+  --pn-color-object-fg: #161B1F;
+  --pn-color-object-border: #4A545C;
+  --pn-color-object-cross: #B9C0B5;    /* image-frame cross, decorative */
+
+  /* Action and the learner's hand */
+  --pn-color-action-bg: #161B1F;
+  --pn-color-action-bg-hover: #2E363C;
+  --pn-color-action-fg: #F8F9F5;
+  --pn-color-marker: #F2C94C;          /* what the learner currently holds; fill only, never text */
+  --pn-color-marker-fg: #161B1F;
+  --pn-color-danger-bg: #A3262A;
+  --pn-color-danger-fg: #F8F9F5;
+
+  /* Focus and elevation */
+  --pn-color-focus: #161B1F;
+  --pn-color-shadow: #161B1F59;
+  --pn-color-hatch: #8A938B;
+
+  /* Status: colour is the third carrier after shape and words */
+  --pn-color-success-fg: #1D6B3A;
+  --pn-color-success-bg: #E3F0E5;
+  --pn-color-success-border: #1D6B3A;
+  --pn-color-error-fg: #A3262A;
+  --pn-color-error-bg: #F7E4E2;
+  --pn-color-error-border: #A3262A;
+  --pn-color-warning-fg: #7A5000;
+  --pn-color-warning-bg: #F5ECD6;
+  --pn-color-warning-border: #7A5000;
+  --pn-color-info-fg: #1F4F7A;
+  --pn-color-info-bg: #E3EBF3;
+  --pn-color-info-border: #1F4F7A;
+  /* Unknown carries no hue on purpose: no verdict, no colour. Shape: dashed outline. */
+  --pn-color-unknown-fg: #4A545C;
+  --pn-color-unknown-bg: #F8F9F5;
+  --pn-color-unknown-border: #6B756D;
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark by system preference (unless light is forced)          */
+/* ------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --pn-color-canvas: #14181B;
+    --pn-color-surface: #1B2024;
+    --pn-color-surface-sunken: #0E1113;
+    --pn-color-page: #262C30;
+
+    --pn-color-text: #E8EBE4;
+    --pn-color-text-muted: #A9B2AA;
+    --pn-color-text-inverse: #14181B;
+
+    --pn-color-rule: #343B40;
+    --pn-color-grid: #30373C;
+    --pn-color-border: #7C867E;
+    --pn-color-border-strong: #E8EBE4;
+    --pn-color-guide: #8F998F;
+
+    --pn-color-object-bg: #30373C;
+    --pn-color-object-fg: #E8EBE4;
+    --pn-color-object-border: #A9B2AA;
+    --pn-color-object-cross: #4A535A;
+
+    --pn-color-action-bg: #E8EBE4;
+    --pn-color-action-bg-hover: #C9CEC6;
+    --pn-color-action-fg: #14181B;
+    --pn-color-marker: #E8C04A;
+    --pn-color-marker-fg: #14181B;
+    --pn-color-danger-bg: #FF8F85;
+    --pn-color-danger-fg: #14181B;
+
+    --pn-color-focus: #E8EBE4;
+    --pn-color-shadow: #00000099;
+    --pn-color-hatch: #6B746D;
+
+    --pn-color-success-fg: #74C98C;
+    --pn-color-success-bg: #15261B;
+    --pn-color-success-border: #74C98C;
+    --pn-color-error-fg: #FF8F85;
+    --pn-color-error-bg: #2E1B1A;
+    --pn-color-error-border: #FF8F85;
+    --pn-color-warning-fg: #E6B04E;
+    --pn-color-warning-bg: #2A2215;
+    --pn-color-warning-border: #E6B04E;
+    --pn-color-info-fg: #8DB9E6;
+    --pn-color-info-bg: #16222E;
+    --pn-color-info-border: #8DB9E6;
+    --pn-color-unknown-fg: #A9B2AA;
+    --pn-color-unknown-bg: #1B2024;
+    --pn-color-unknown-border: #7C867E;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark, explicit. Must stay identical to the block above.     */
+/* ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pn-color-canvas: #14181B;
+  --pn-color-surface: #1B2024;
+  --pn-color-surface-sunken: #0E1113;
+  --pn-color-page: #262C30;
+
+  --pn-color-text: #E8EBE4;
+  --pn-color-text-muted: #A9B2AA;
+  --pn-color-text-inverse: #14181B;
+
+  --pn-color-rule: #343B40;
+  --pn-color-grid: #30373C;
+  --pn-color-border: #7C867E;
+  --pn-color-border-strong: #E8EBE4;
+  --pn-color-guide: #8F998F;
+
+  --pn-color-object-bg: #30373C;
+  --pn-color-object-fg: #E8EBE4;
+  --pn-color-object-border: #A9B2AA;
+  --pn-color-object-cross: #4A535A;
+
+  --pn-color-action-bg: #E8EBE4;
+  --pn-color-action-bg-hover: #C9CEC6;
+  --pn-color-action-fg: #14181B;
+  --pn-color-marker: #E8C04A;
+  --pn-color-marker-fg: #14181B;
+  --pn-color-danger-bg: #FF8F85;
+  --pn-color-danger-fg: #14181B;
+
+  --pn-color-focus: #E8EBE4;
+  --pn-color-shadow: #00000099;
+  --pn-color-hatch: #6B746D;
+
+  --pn-color-success-fg: #74C98C;
+  --pn-color-success-bg: #15261B;
+  --pn-color-success-border: #74C98C;
+  --pn-color-error-fg: #FF8F85;
+  --pn-color-error-bg: #2E1B1A;
+  --pn-color-error-border: #FF8F85;
+  --pn-color-warning-fg: #E6B04E;
+  --pn-color-warning-bg: #2A2215;
+  --pn-color-warning-border: #E6B04E;
+  --pn-color-info-fg: #8DB9E6;
+  --pn-color-info-bg: #16222E;
+  --pn-color-info-border: #8DB9E6;
+  --pn-color-unknown-fg: #A9B2AA;
+  --pn-color-unknown-bg: #1B2024;
+  --pn-color-unknown-border: #7C867E;
+}

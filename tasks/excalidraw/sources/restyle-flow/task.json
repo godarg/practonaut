@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "restyle-flow",
+  "difficulty": 3,
+  "title": {
+    "en": "Turn a list into a styled flow",
+    "de": "Aus einer Liste einen gestalteten Ablauf machen"
+  },
+  "prompt": {
+    "en": "Connect “Start” → “Work” → “Done”, make “Start” and “Done” ellipses, give “Done” a green fill, and enlarge “Work” to 260 × 120.",
+    "de": "Verbinde „Start“ → „Work“ → „Done“, mache „Start“ und „Done“ zu Ellipsen, gib „Done“ eine grüne Füllung und vergrößere „Work“ auf 260 × 120."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Start": "Begin",
+        "Work": "Process",
+        "Done": "Finish"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Start": "Open",
+        "Work": "Handle",
+        "Done": "Close"
+      }
+    }
+  ]
+}

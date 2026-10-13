@@ -1,0 +1,898 @@
+{
+  "schema": "practonaut.checker/1",
+  "world": {
+    "id": "flow-diagram",
+    "version": "1.0.0"
+  },
+  "fixtures": [
+    {
+      "taskId": "T1",
+      "kind": "reference",
+      "state": {
+        "objects": {
+          "c1": {
+            "id": "c1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c2": {
+            "id": "c2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{middle}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c3": {
+            "id": "c3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 480,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "cr0": {
+            "id": "cr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c1",
+            "to": "c2"
+          },
+          "cr1": {
+            "id": "cr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c2",
+            "to": "c3"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T1",
+      "kind": "alternative",
+      "state": {
+        "objects": {
+          "alt1": {
+            "id": "alt1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 650,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt2": {
+            "id": "alt2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{middle}}",
+            "x": 430,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt3": {
+            "id": "alt3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 210,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "altr0": {
+            "id": "altr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt1",
+            "to": "alt2"
+          },
+          "altr1": {
+            "id": "altr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt2",
+            "to": "alt3"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T1",
+      "kind": "near-miss",
+      "state": {
+        "objects": {
+          "miss1": {
+            "id": "miss1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss2": {
+            "id": "miss2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{middle}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss3": {
+            "id": "miss3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 480,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "missr0": {
+            "id": "missr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss1",
+            "to": "miss2"
+          },
+          "missr1": {
+            "id": "missr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss2",
+            "to": null
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "taskId": "T2",
+      "kind": "reference",
+      "state": {
+        "objects": {
+          "c1": {
+            "id": "c1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order0}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c2": {
+            "id": "c2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order1}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c3": {
+            "id": "c3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order2}}",
+            "x": 480,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c4": {
+            "id": "c4",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order3}}",
+            "x": 720,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "cr0": {
+            "id": "cr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c1",
+            "to": "c2"
+          },
+          "cr1": {
+            "id": "cr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c2",
+            "to": "c3"
+          },
+          "cr2": {
+            "id": "cr2",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c3",
+            "to": "c4"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T2",
+      "kind": "alternative",
+      "state": {
+        "objects": {
+          "alt1": {
+            "id": "alt1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order0}}",
+            "x": 650,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt2": {
+            "id": "alt2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order1}}",
+            "x": 430,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt3": {
+            "id": "alt3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order2}}",
+            "x": 210,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt4": {
+            "id": "alt4",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order3}}",
+            "x": -10,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "altr0": {
+            "id": "altr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt1",
+            "to": "alt2"
+          },
+          "altr1": {
+            "id": "altr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt2",
+            "to": "alt3"
+          },
+          "altr2": {
+            "id": "altr2",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt3",
+            "to": "alt4"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T2",
+      "kind": "near-miss",
+      "state": {
+        "objects": {
+          "miss1": {
+            "id": "miss1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order0}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss2": {
+            "id": "miss2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order1}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss3": {
+            "id": "miss3",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order2}}",
+            "x": 480,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss4": {
+            "id": "miss4",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{order3}}",
+            "x": 720,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "missr0": {
+            "id": "missr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss1",
+            "to": "miss2"
+          },
+          "missr1": {
+            "id": "missr1",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss2",
+            "to": "miss3"
+          },
+          "missr2": {
+            "id": "missr2",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss3",
+            "to": null
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "taskId": "T3",
+      "kind": "reference",
+      "state": {
+        "objects": {
+          "c1": {
+            "id": "c1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c2": {
+            "id": "c2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "cr0": {
+            "id": "cr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c1",
+            "to": "c2"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T3",
+      "kind": "alternative",
+      "state": {
+        "objects": {
+          "alt1": {
+            "id": "alt1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 650,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt2": {
+            "id": "alt2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 430,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "altr0": {
+            "id": "altr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt1",
+            "to": "alt2"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "T3",
+      "kind": "near-miss",
+      "state": {
+        "objects": {
+          "miss1": {
+            "id": "miss1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{first}}",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss2": {
+            "id": "miss2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "{{last}}",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "missr0": {
+            "id": "missr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss1",
+            "to": null
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "taskId": "H1",
+      "kind": "reference",
+      "state": {
+        "objects": {
+          "c1": {
+            "id": "c1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Review",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c2": {
+            "id": "c2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Archive",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "cr0": {
+            "id": "cr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "c1",
+            "to": "c2"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "H1",
+      "kind": "alternative",
+      "state": {
+        "objects": {
+          "alt1": {
+            "id": "alt1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Review",
+            "x": 650,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "alt2": {
+            "id": "alt2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Archive",
+            "x": 430,
+            "y": -250,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "altr0": {
+            "id": "altr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "alt1",
+            "to": "alt2"
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "taskId": "H1",
+      "kind": "near-miss",
+      "state": {
+        "objects": {
+          "miss1": {
+            "id": "miss1",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Review",
+            "x": 0,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "miss2": {
+            "id": "miss2",
+            "type": "step",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "label": "Archive",
+            "x": 240,
+            "y": 100,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "missr0": {
+            "id": "missr0",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "flow-frame",
+            "from": "miss1",
+            "to": null
+          },
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "expected": false
+    }
+  ],
+  "heldOutTasks": [
+    {
+      "id": "H1",
+      "title": {
+        "en": "Close a review process",
+        "de": "Einen Prüfprozess verbinden"
+      },
+      "prompt": {
+        "en": "Build an editable Review to Archive process.",
+        "de": "Baue einen editierbaren Ablauf von Review zu Archive."
+      },
+      "initialState": {
+        "objects": {
+          "flow-frame": {
+            "id": "flow-frame",
+            "type": "frame",
+            "name": "{{process}}",
+            "deleted": false
+          }
+        }
+      },
+      "goal": {
+        "op": "all",
+        "args": [
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "step",
+              "as": "o",
+              "where": {
+                "op": "true"
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "arrow",
+              "as": "o",
+              "where": {
+                "op": "true"
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "op": "exists",
+            "type": "step",
+            "as": "a",
+            "where": {
+              "op": "all",
+              "args": [
+                {
+                  "op": "eq",
+                  "left": {
+                    "kind": "field",
+                    "variable": "a",
+                    "field": "label"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": "Review"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "type": "step",
+                  "as": "b",
+                  "where": {
+                    "op": "all",
+                    "args": [
+                      {
+                        "op": "eq",
+                        "left": {
+                          "kind": "field",
+                          "variable": "b",
+                          "field": "label"
+                        },
+                        "right": {
+                          "kind": "literal",
+                          "value": "Archive"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "type": "arrow",
+                        "as": "r",
+                        "where": {
+                          "op": "all",
+                          "args": [
+                            {
+                              "op": "eq",
+                              "left": {
+                                "kind": "field",
+                                "variable": "r",
+                                "field": "from"
+                              },
+                              "right": {
+                                "kind": "field",
+                                "variable": "a",
+                                "field": "id"
+                              }
+                            },
+                            {
+                              "op": "eq",
+                              "left": {
+                                "kind": "field",
+                                "variable": "r",
+                                "field": "to"
+                              },
+                              "right": {
+                                "kind": "field",
+                                "variable": "b",
+                                "field": "id"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "hints": [
+        {
+          "en": "Connect the two live steps.",
+          "de": "Verbinde die beiden vorhandenen Schritte."
+        }
+      ],
+      "errorClasses": []
+    }
+  ]
+}

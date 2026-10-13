@@ -1,0 +1,41 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "reconnect",
+  "difficulty": 2,
+  "title": {
+    "en": "Rewire an arrow",
+    "de": "Einen Pfeil umhängen"
+  },
+  "prompt": {
+    "en": "The second arrow starts at “Collect” but should start at “Sort”, so that the flow reads “Collect” → “Sort” → “Recycle”.",
+    "de": "Der zweite Pfeil beginnt bei „Collect“, soll aber bei „Sort“ beginnen, damit der Ablauf „Collect“ → „Sort“ → „Recycle“ lautet."
+  },
+  "hints": [
+    {
+      "en": "Move the start of the second arrow, not its end: it keeps pointing to “Recycle” and starts at “Sort” instead of “Collect”.",
+      "de": "Hänge den Anfang des zweiten Pfeils um, nicht sein Ende: Er zeigt weiter auf „Recycle“ und beginnt bei „Sort“ statt bei „Collect“."
+    },
+    {
+      "en": "The goal has 3 steps and 2 arrows: “Collect” → “Sort” → “Recycle”.",
+      "de": "Das Ziel hat 3 Schritte und 2 Pfeile: „Collect“ → „Sort“ → „Recycle“."
+    }
+  ],
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Collect": "Gather",
+        "Sort": "Rank",
+        "Recycle": "Reuse"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Collect": "Fetch",
+        "Sort": "Filter",
+        "Recycle": "Store"
+      }
+    }
+  ]
+}

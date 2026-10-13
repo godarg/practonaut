@@ -1,0 +1,386 @@
+/*
+ * Practonaut design tokens, v1.0 (2026-10-07)
+ *
+ * Spec, rationale and the decision protocol: docs/design/design-language.md
+ * Contrast pairs are listed in its section 7.2 and measured by `npm run design:contrast`.
+ * Measured ratios are recorded by the run, never in this file.
+ *
+ * Rules
+ * - Components use semantic tokens only. Raw colour, size, radius, shadow and duration values
+ *   live in this file and nowhere else (`npm run design:lint` enforces this).
+ * - No webfonts, no network. The font stack resolves to fonts already on the device
+ *   (SF Pro on Apple systems).
+ * - Light is the default. Dark applies by system preference or by [data-theme="dark"];
+ *   [data-theme="light"] forces light. The two dark blocks must stay identical (checked).
+ */
+
+/* ------------------------------------------------------------------ */
+/* Theme-independent tokens                                            */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Type */
+  --pn-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --pn-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --pn-text-caption: 0.75rem;     /* 12: eyebrow labels, chips, key caps */
+  --pn-text-footnote: 0.8125rem;  /* 13: secondary lines, hints, meta */
+  --pn-text-subhead: 0.9375rem;   /* 15: controls, list rows, dense text */
+  --pn-text-body: 1.0625rem;      /* 17: reading text, prompts, explanations */
+  --pn-text-title3: 1.25rem;      /* 20 */
+  --pn-text-title2: 1.5rem;       /* 24 */
+  --pn-text-title1: 1.75rem;      /* 28 */
+  --pn-text-large: 2.125rem;      /* 34 */
+  --pn-text-display: 2.75rem;     /* 44: hero and empty states only */
+
+  --pn-leading-caption: 1rem;
+  --pn-leading-footnote: 1.125rem;
+  --pn-leading-subhead: 1.25rem;
+  --pn-leading-body: 1.5rem;
+  --pn-leading-title3: 1.625rem;
+  --pn-leading-title2: 1.875rem;
+  --pn-leading-title1: 2.125rem;
+  --pn-leading-large: 2.5rem;
+  --pn-leading-display: 3rem;
+  --pn-leading-none: 1;           /* glyph box only: key caps whose height is set by the box */
+
+  --pn-tracking-caption: 0.01em;
+  --pn-tracking-footnote: -0.003em;
+  --pn-tracking-subhead: -0.008em;
+  --pn-tracking-body: -0.014em;
+  --pn-tracking-title3: -0.017em;
+  --pn-tracking-title2: -0.02em;
+  --pn-tracking-title1: -0.024em;
+  --pn-tracking-large: -0.028em;
+  --pn-tracking-display: -0.032em;
+  --pn-tracking-eyebrow: 0.06em;
+
+  --pn-weight-regular: 400;
+  --pn-weight-medium: 500;
+  --pn-weight-semibold: 600;
+  --pn-weight-bold: 700;
+
+  --pn-measure: 62ch;
+
+  /* Space: 4 px base */
+  --pn-space-1: 0.25rem;
+  --pn-space-2: 0.5rem;
+  --pn-space-3: 0.75rem;
+  --pn-space-4: 1rem;
+  --pn-space-5: 1.25rem;
+  --pn-space-6: 1.5rem;
+  --pn-space-8: 2rem;
+  --pn-space-10: 2.5rem;
+  --pn-space-12: 3rem;
+  --pn-space-16: 4rem;
+  --pn-nudge: 0.0625rem;          /* 1 px optical nudge: an icon or mark to the first text line; never spacing */
+
+  /* Shape: nested radii are concentric (inner = outer - padding); pills only for capsules */
+  --pn-radius-xs: 0.375rem;
+  --pn-radius-sm: 0.625rem;
+  --pn-radius-md: 0.875rem;
+  --pn-radius-lg: 1.25rem;
+  --pn-radius-xl: 1.75rem;
+  --pn-radius-full: 62.4375rem;
+
+  /* Controls */
+  --pn-control-sm: 2rem;
+  --pn-control-md: 2.5rem;
+  --pn-control-lg: 3rem;
+  --pn-target-coarse: 2.75rem;
+  --pn-icon-sm: 1rem;
+  --pn-icon-md: 1.25rem;
+  --pn-icon-lg: 1.5rem;
+  --pn-stroke-hairline: 1px;
+  --pn-stroke-control: 1.5px;
+  --pn-stroke-content: 2px;
+  --pn-stroke-strong: 2px;
+  --pn-stroke-icon: 1.75;
+
+  /* Layout */
+  --pn-appbar-height: 3.5rem;
+  --pn-inspector-width: 24rem;
+  /* As wide as the inspector: one side column in every workspace. At 1280 px the real editor beside
+     it gets 800 px, enough for Excalidraw's desktop top bar (it needs 766 px in German; ER-05). */
+  --pn-guide-width: 24rem;
+  --pn-page-max: 96rem;
+  --pn-gutter: var(--pn-space-8);
+
+  /* Elevation: one light source, above. Two layers per level. */
+  --pn-shadow-raised: 0 0 0 1px var(--pn-color-shadow-ambient), 0 1px 2px var(--pn-color-shadow-ambient), 0 4px 16px var(--pn-color-shadow-ambient);
+  --pn-shadow-floating: 0 0 0 0.5px var(--pn-color-glass-edge), 0 2px 6px var(--pn-color-shadow-ambient), 0 12px 32px var(--pn-color-shadow-key);
+  --pn-shadow-sheet: 0 0 0 0.5px var(--pn-color-glass-edge), 0 8px 24px var(--pn-color-shadow-key), 0 32px 96px var(--pn-color-shadow-deep);
+
+  --pn-shadow-bar: 0 0.5px 0 var(--pn-color-glass-edge);
+  --pn-shadow-thumb: 0 0 0 0.5px var(--pn-color-glass-edge), 0 1px 3px var(--pn-color-shadow-key);
+  --pn-shadow-keycap: 0 0 0 1px var(--pn-color-separator-strong), 0 1px 0 var(--pn-color-separator-strong);
+  --pn-shadow-glass: inset 0 0 0 0.5px var(--pn-color-glass-border), var(--pn-shadow-floating);
+
+  /* Material (translucent chrome only: app bar, floating palette, sheets) */
+  --pn-blur: 1.5rem;
+  --pn-saturate: 1.8;
+
+  /* Layering */
+  --pn-z-sticky: 10;
+  --pn-z-floating: 20;
+  --pn-z-dialog: 40;
+
+  /* Focus */
+  --pn-focus-width: 3px;
+  --pn-focus-offset: 2px;
+
+  /* Motion: instant feedback, fast state change, base entrance, slow emphasis */
+  --pn-duration-instant: 80ms;
+  --pn-duration-fast: 140ms;
+  --pn-duration-base: 240ms;
+  --pn-duration-slow: 400ms;
+  --pn-duration-pulse: 1600ms;
+  --pn-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --pn-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --pn-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --pn-ease-settle: linear(0, 0.42 14%, 0.9 30%, 1.06 42%, 1.02 56%, 1 72%, 1);
+  --pn-ease-pulse: ease-in-out;   /* breathing loops: recording dot, loading shimmer */
+
+  /* Hatch for "not yet modelled": decorative carrier next to words, never behind text */
+  --pn-pattern-dots: radial-gradient(circle, var(--pn-color-canvas-dot) 1.1px, transparent 1.6px);
+  --pn-pattern-dots-size: 1.25rem;
+  --pn-pattern-unmodeled: repeating-linear-gradient(135deg, var(--pn-color-hatch) 0 1.5px, transparent 1.5px 6px);
+}
+
+@media (max-width: 47.99em) {
+  :root {
+    --pn-gutter: var(--pn-space-4);
+    --pn-appbar-height: 3.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pn-duration-instant: 0.01ms;
+    --pn-duration-fast: 0.01ms;
+    --pn-duration-base: 0.01ms;
+    --pn-duration-slow: 0.01ms;
+    --pn-duration-pulse: 0.01ms;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: light (default)                                             */
+/* ------------------------------------------------------------------ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --pn-color-bg: #F5F5F7;
+  --pn-color-surface: #FFFFFF;
+  --pn-color-surface-raised: #FFFFFF;
+  --pn-color-fill: #F0F0F3;
+  --pn-color-fill-hover: #E8E8ED;
+  --pn-color-fill-pressed: #DEDEE4;
+  --pn-color-thumb: #FFFFFF;
+  --pn-color-canvas: #FAFAFC;
+  --pn-color-canvas-dot: #D6D6DC;
+  --pn-color-object-bg: #FFFFFF;
+  --pn-color-frame-bg: #F4F4F7;
+  --pn-color-text: #1D1D1F;
+  --pn-color-text-secondary: #5E5E63;
+  --pn-color-text-tertiary: #8E8E93;
+  --pn-color-text-on-accent: #FFFFFF;
+  --pn-color-separator: #E3E3E8;
+  --pn-color-separator-strong: #D2D2D7;
+  --pn-color-border: #86868D;
+  --pn-color-object-border: #8A8A90;
+  --pn-color-line: #6E6E73;
+  --pn-color-accent: #0071E3;
+  --pn-color-accent-hover: #0066CC;
+  --pn-color-accent-pressed: #005BB8;
+  --pn-color-accent-text: #0066CC;
+  --pn-color-accent-tint: #E6F1FD;
+  --pn-color-focus: #0071E3;
+  --pn-color-success-fg: #17642F;
+  --pn-color-success-bg: #E6F4EA;
+  --pn-color-success-icon: #248A3D;
+  --pn-color-danger-fg: #A8201A;
+  --pn-color-danger-bg: #FDECEA;
+  --pn-color-danger-icon: #D70015;
+  --pn-color-danger-border: #D70015;
+  --pn-color-warning-fg: #7A4A00;
+  --pn-color-warning-bg: #FFF3D6;
+  --pn-color-warning-icon: #B26A00;
+  --pn-color-info-fg: #00478F;
+  --pn-color-info-bg: #E6F1FD;
+  --pn-color-info-icon: #0071E3;
+  --pn-color-unknown-fg: #55555A;
+  --pn-color-unknown-bg: #F0F0F3;
+  --pn-color-unknown-icon: #6E6E73;
+  --pn-color-unknown-border: #8E8E93;
+  --pn-color-record: #E5251B;
+  --pn-color-danger-solid: #C5161E;
+  --pn-color-danger-solid-hover: #A8121A;
+  --pn-color-scrim: rgba(0, 0, 0, 0.32);
+  --pn-color-glass: rgba(255, 255, 255, 0.72);
+  --pn-color-glass-border: rgba(255, 255, 255, 0.6);
+  --pn-color-glass-edge: rgba(0, 0, 0, 0.08);
+  --pn-color-shadow-ambient: rgba(0, 0, 0, 0.06);
+  --pn-color-shadow-key: rgba(0, 0, 0, 0.10);
+  --pn-color-shadow-deep: rgba(0, 0, 0, 0.22);
+  --pn-color-hatch: #B9B9C0;
+  /* Drawing content: the world/2 palette in Excalidraw 0.18.1's own picker values (never UI status colours). */
+  --pn-color-content-line-black: #1E1E1E;
+  --pn-color-content-line-red: #E03131;
+  --pn-color-content-line-green: #2F9E44;
+  --pn-color-content-line-blue: #1971C2;
+  --pn-color-content-line-orange: #F08C00;
+  --pn-color-content-fill-red: #FFC9C9;
+  --pn-color-content-fill-green: #B2F2BB;
+  --pn-color-content-fill-blue: #A5D8FF;
+  --pn-color-content-fill-yellow: #FFEC99;
+  --pn-color-content-text: #1E1E1E;
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark by system preference (unless light is forced)          */
+/* ------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --pn-color-bg: #0A0A0B;
+    --pn-color-surface: #1C1C1E;
+    --pn-color-surface-raised: #2C2C2E;
+    --pn-color-fill: #2C2C2E;
+    --pn-color-fill-hover: #38383B;
+    --pn-color-fill-pressed: #444448;
+    --pn-color-thumb: #636366;
+    --pn-color-canvas: #1C1C1E;
+    --pn-color-canvas-dot: #38383A;
+    --pn-color-object-bg: #2C2C2E;
+    --pn-color-frame-bg: #161618;
+    --pn-color-text: #F5F5F7;
+    --pn-color-text-secondary: #A1A1A6;
+    --pn-color-text-tertiary: #6E6E73;
+    --pn-color-text-on-accent: #FFFFFF;
+    --pn-color-separator: #38383A;
+    --pn-color-separator-strong: #48484A;
+    --pn-color-border: #7A7A80;
+    --pn-color-object-border: #86868C;
+    --pn-color-line: #A1A1A6;
+    --pn-color-accent: #0071E3;
+    --pn-color-accent-hover: #0066CC;
+    --pn-color-accent-pressed: #005BB8;
+    --pn-color-accent-text: #4DA3FF;
+    --pn-color-accent-tint: #0E2A47;
+    --pn-color-focus: #4DA3FF;
+    --pn-color-success-fg: #62D78B;
+    --pn-color-success-bg: #12261A;
+    --pn-color-success-icon: #32D74B;
+    --pn-color-danger-fg: #FF8A80;
+    --pn-color-danger-bg: #2E1816;
+    --pn-color-danger-icon: #FF6961;
+    --pn-color-danger-border: #FF6961;
+    --pn-color-warning-fg: #FFD060;
+    --pn-color-warning-bg: #2B2210;
+    --pn-color-warning-icon: #FFB340;
+    --pn-color-info-fg: #6CB6FF;
+    --pn-color-info-bg: #0F2438;
+    --pn-color-info-icon: #4DA3FF;
+    --pn-color-unknown-fg: #A1A1A6;
+    --pn-color-unknown-bg: #242426;
+    --pn-color-unknown-icon: #A1A1A6;
+    --pn-color-unknown-border: #7A7A80;
+    --pn-color-record: #FF453A;
+    --pn-color-danger-solid: #D92D20;
+    --pn-color-danger-solid-hover: #BF241A;
+    --pn-color-scrim: rgba(0, 0, 0, 0.55);
+    --pn-color-glass: rgba(44, 44, 46, 0.72);
+    --pn-color-glass-border: rgba(255, 255, 255, 0.14);
+    --pn-color-glass-edge: rgba(0, 0, 0, 0.5);
+    --pn-color-shadow-ambient: rgba(0, 0, 0, 0.30);
+    --pn-color-shadow-key: rgba(0, 0, 0, 0.40);
+    --pn-color-shadow-deep: rgba(0, 0, 0, 0.60);
+    --pn-color-hatch: #4A4A50;
+    /* Drawing content as Excalidraw shows it in dark mode (its invert(93%) hue-rotate(180deg), measured in Chromium). */
+    --pn-color-content-line-black: #D3D3D3;
+    --pn-color-content-line-red: #FF8383;
+    --pn-color-content-line-green: #3A994C;
+    --pn-color-content-line-blue: #56A2E8;
+    --pn-color-content-line-orange: #B76100;
+    --pn-color-content-fill-red: #5B2D2D;
+    --pn-color-content-fill-green: #043B0C;
+    --pn-color-content-fill-blue: #154163;
+    --pn-color-content-fill-yellow: #362600;
+    --pn-color-content-text: #D3D3D3;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark, explicit. Must stay identical to the block above.     */
+/* ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pn-color-bg: #0A0A0B;
+  --pn-color-surface: #1C1C1E;
+  --pn-color-surface-raised: #2C2C2E;
+  --pn-color-fill: #2C2C2E;
+  --pn-color-fill-hover: #38383B;
+  --pn-color-fill-pressed: #444448;
+  --pn-color-thumb: #636366;
+  --pn-color-canvas: #1C1C1E;
+  --pn-color-canvas-dot: #38383A;
+  --pn-color-object-bg: #2C2C2E;
+  --pn-color-frame-bg: #161618;
+  --pn-color-text: #F5F5F7;
+  --pn-color-text-secondary: #A1A1A6;
+  --pn-color-text-tertiary: #6E6E73;
+  --pn-color-text-on-accent: #FFFFFF;
+  --pn-color-separator: #38383A;
+  --pn-color-separator-strong: #48484A;
+  --pn-color-border: #7A7A80;
+  --pn-color-object-border: #86868C;
+  --pn-color-line: #A1A1A6;
+  --pn-color-accent: #0071E3;
+  --pn-color-accent-hover: #0066CC;
+  --pn-color-accent-pressed: #005BB8;
+  --pn-color-accent-text: #4DA3FF;
+  --pn-color-accent-tint: #0E2A47;
+  --pn-color-focus: #4DA3FF;
+  --pn-color-success-fg: #62D78B;
+  --pn-color-success-bg: #12261A;
+  --pn-color-success-icon: #32D74B;
+  --pn-color-danger-fg: #FF8A80;
+  --pn-color-danger-bg: #2E1816;
+  --pn-color-danger-icon: #FF6961;
+  --pn-color-danger-border: #FF6961;
+  --pn-color-warning-fg: #FFD060;
+  --pn-color-warning-bg: #2B2210;
+  --pn-color-warning-icon: #FFB340;
+  --pn-color-info-fg: #6CB6FF;
+  --pn-color-info-bg: #0F2438;
+  --pn-color-info-icon: #4DA3FF;
+  --pn-color-unknown-fg: #A1A1A6;
+  --pn-color-unknown-bg: #242426;
+  --pn-color-unknown-icon: #A1A1A6;
+  --pn-color-unknown-border: #7A7A80;
+  --pn-color-record: #FF453A;
+  --pn-color-danger-solid: #D92D20;
+  --pn-color-danger-solid-hover: #BF241A;
+  --pn-color-scrim: rgba(0, 0, 0, 0.55);
+  --pn-color-glass: rgba(44, 44, 46, 0.72);
+  --pn-color-glass-border: rgba(255, 255, 255, 0.14);
+  --pn-color-glass-edge: rgba(0, 0, 0, 0.5);
+  --pn-color-shadow-ambient: rgba(0, 0, 0, 0.30);
+  --pn-color-shadow-key: rgba(0, 0, 0, 0.40);
+  --pn-color-shadow-deep: rgba(0, 0, 0, 0.60);
+  --pn-color-hatch: #4A4A50;
+  /* Drawing content as Excalidraw shows it in dark mode (its invert(93%) hue-rotate(180deg), measured in Chromium). */
+  --pn-color-content-line-black: #D3D3D3;
+  --pn-color-content-line-red: #FF8383;
+  --pn-color-content-line-green: #3A994C;
+  --pn-color-content-line-blue: #56A2E8;
+  --pn-color-content-line-orange: #B76100;
+  --pn-color-content-fill-red: #5B2D2D;
+  --pn-color-content-fill-green: #043B0C;
+  --pn-color-content-fill-blue: #154163;
+  --pn-color-content-fill-yellow: #362600;
+  --pn-color-content-text: #D3D3D3;
+}

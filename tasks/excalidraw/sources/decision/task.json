@@ -1,0 +1,33 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "decision",
+  "difficulty": 3,
+  "title": {
+    "en": "Build a decision with two exits",
+    "de": "Eine Entscheidung mit zwei Ausgängen bauen"
+  },
+  "prompt": {
+    "en": "After “Check stock”, add a diamond “In stock?”. From the diamond, one arrow leads to a new step “Ship” and one to a new step “Reorder”.",
+    "de": "Füge nach „Check stock“ eine Raute „In stock?“ hinzu. Von der Raute führt ein Pfeil zu einem neuen Schritt „Ship“ und einer zu einem neuen Schritt „Reorder“."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Check stock": "Run tests",
+        "In stock?": "Tests green?",
+        "Ship": "Deploy",
+        "Reorder": "Fix bug"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Check stock": "Read form",
+        "In stock?": "Complete?",
+        "Ship": "Accept",
+        "Reorder": "Ask back"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+[
+  {"name":"add_step","params":{"frameId":"f","label":"D","x":600,"y":0,"width":120,"height":60,"fontFamily":1}},
+  {"name":"rename_step","params":{"id":"@step","label":"D-final"}},
+  {"name":"move_step","params":{"id":"@step","x":300,"y":100}},
+  {"name":"connect","params":{"frameId":"f","from":"a","to":"@step"}},
+  {"name":"reconnect_end","params":{"id":"ab","end":"end","target":"@step"}},
+  {"name":"disconnect","params":{"id":"bc"}},
+  {"name":"delete_step","params":{"id":"b"}}
+]

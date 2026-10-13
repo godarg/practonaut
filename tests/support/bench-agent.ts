@@ -1,0 +1,47 @@
+// A scripted external agent for bench tests, started from a command template like a real one.
+//   node tests/support/bench-agent.ts <mode> <mcp-config>
+// solve   : read the generated MCP config, start the server it names, draw the connect arrow.
+// claim   : act on nothing and print a forged success line (output must never be scored).
+// sleep   : never finish (timeout path).
+// plant   : leave files named like the judged artifacts in PRACTONAUT_HOME and its parent, then solve.
+// plant-dir: put a folder where the run's checker.json goes (PRACTONAUT_HOME/..), then solve.
+// stubborn: ignore SIGTERM and never finish; its pid goes to <state>/pids.json (forced-stop path).
+// family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
+//           and both sleep; their pids go to <state>/pids.json (interrupt path).
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { StdioMcpClient } from '../../src/bench/mcp-client.ts';
+import type { HostView } from '../../src/host/protocol.ts';
+
+const [mode, configPath] = process.argv.slice(2);
+const text = readFileSync(configPath!, 'utf8');
+// The configuration names a token file; a session token value must never appear in it.
+if (/[0-9a-f]{64}/.test(text)) { process.stderr.write('token value in MCP config\n'); process.exit(9); }
+const server = (JSON.parse(text) as { mcpServers: { practonaut: { command: string; args: string[]; env?: Record<string, string> } } }).mcpServers.practonaut;
+if (mode === 'claim') { process.stdout.write('{"pass":true,"verdict":"passed","steps":1}\n'); process.exit(0); }
+if (mode === 'family') {
+  const state = process.env.PN_TEST_AGENT_STATE!, first = join(state, 'first');
+  if (!existsSync(first)) { writeFileSync(first, ''); process.exit(0); }
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  writeFileSync(join(state, 'pids.json'), JSON.stringify({ agent: process.pid, child: child.pid }));
+  setInterval(() => {}, 1000);
+}
+else if (mode === 'sleep') { setInterval(() => {}, 1000); }
+else if (mode === 'stubborn') {
+  process.on('SIGTERM', () => {});
+  writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'pids.json'), JSON.stringify({ agent: process.pid }));
+  setInterval(() => {}, 1000);
+}
+else {
+  const home = process.env.PRACTONAUT_HOME!;
+  if (mode === 'plant') for (const directory of [home, join(home, '..')]) for (const name of ['session.json', 'checker.json', 'native.excalidraw']) writeFileSync(join(directory, name), '{"forged":true}');
+  if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
+  const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
+  const observed = await client.call<HostView>('observe', {});
+  if (!observed.ok) process.exit(3);
+  const view = observed.value;
+  const reply = await client.call('act', { name: 'connect', params: { from: 'a', to: 'b' }, baseStep: view.step, expectedRevision: view.revision });
+  await client.close();
+  process.exit(reply.ok ? 0 : 4);
+}

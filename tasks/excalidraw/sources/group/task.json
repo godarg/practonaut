@@ -1,0 +1,33 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "group",
+  "difficulty": 2,
+  "title": {
+    "en": "Group a sub-process",
+    "de": "Einen Teilprozess gruppieren"
+  },
+  "prompt": {
+    "en": "Group “Pick”, “Pack” and “Label” into one group. “Ship” stays outside the group.",
+    "de": "Fasse „Pick“, „Pack“ und „Label“ zu einer Gruppe zusammen. „Ship“ bleibt außerhalb."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Pick": "Mix",
+        "Pack": "Bake",
+        "Label": "Cool",
+        "Ship": "Sell"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Pick": "Scan",
+        "Pack": "Crop",
+        "Label": "Tag",
+        "Ship": "Share"
+      }
+    }
+  ]
+}

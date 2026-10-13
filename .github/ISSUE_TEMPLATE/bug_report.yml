@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not attach private recordings, credentials or personal data.
+        Suspected security vulnerabilities go through the Security tab (private reporting), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Practonaut version
+      description: Output of `npx practonaut --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node.js version, and whether Chromium is installed (`npx practonaut doctor`).
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands, the task or world, and what you did. A small example you are allowed to share helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed result
+      description: Error code and output (add `--json` for structured errors). Remove anything private.
+      render: text
+    validations:
+      required: true

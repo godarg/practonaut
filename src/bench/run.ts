@@ -1,0 +1,265 @@
+/**
+ * `practonaut bench`: every run gets its own host, its own private run directory and a fresh agent
+ * process. The agent's PRACTONAUT_HOME and working directory are the run's `agent/` subdirectory;
+ * the judged artifacts are written next to it, into the run directory, after the agent has ended,
+ * and replace whatever is there (a file the agent left under an artifact's name cannot block
+ * judging). The agent reaches the session only through `practonaut mcp` (attach mode, session token
+ * in a private file). Its output is opaque: the score comes from the host's history and from the
+ * independent checker, started as a separate process after the agent ends.
+ */
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { open, rename, rm, writeFile } from 'node:fs/promises';
+import { arch, homedir, release } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { packWorld, readWorldPackage } from '../package/index.ts';
+import { loadWorldPackage } from '../world/index.ts';
+import { loadLibrary, LIBRARY_WORLD_DIR, type LibraryEntry } from '../library/index.ts';
+import { startHost } from '../host/server.ts';
+import { createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
+import type { ControllerFactory, HostReply, MirrorMode, PracticeController, RunningHost } from '../host/protocol.ts';
+import { ensurePrivateDirectory } from '../platform/private-fs.ts';
+import { resolvedDataPaths } from '../platform/paths.ts';
+import { checkInProcess } from '../cli/runtime.ts';
+import { PACKAGE_VERSION } from '../version.ts';
+import { canonicalJson, sha256Hex } from '../canonical/index.ts';
+import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
+import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
+import { StdioMcpClient, type McpServerEntry } from './mcp-client.ts';
+import { runOracle, runRandom } from './baselines.ts';
+import { agentArguments, BENCH_PROMPT, clientAttestedModel, displayCommand, type AgentSpec } from './agents.ts';
+import { spawnable } from '../platform/spawnable.ts';
+import { BENCH_SCHEMA, derivedPass, summarize, validateBenchReport, type BenchReport, type BenchRun } from './report.ts';
+
+export interface BenchOptions {
+  agent: AgentSpec; tasks: string[]; seeds: number[]; repeats: number;
+  timeoutSeconds: number; maxActions: number; mirrorRequested: 'auto' | 'required' | 'off'; mirror: MirrorMode;
+  /** Progress lines (stderr in the CLI). */
+  progress?: (line: string) => void;
+  /** Aborted on Ctrl+C, SIGTERM or SIGHUP: the running agent is stopped, its session closed, and the
+   * report holds the runs that finished. */
+  signal?: AbortSignal;
+}
+export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
+
+/** Counts every host operation and refuses mutations beyond the action budget with a named error.
+ * The wrapped controller is the host's only session; this changes nothing it decides. */
+export function countingController(inner: PracticeController, counters: RunCounters, maxActions: number): PracticeController {
+  const exhausted = <T>(): HostReply<T> => ({ ok: false, error: { code: 'action_budget_exhausted', message: `This run's action budget (${maxActions} act, undo or reset calls) is used up` } });
+  const controller: PracticeController = {
+    view: () => { counters.observe++; return inner.view(); },
+    act: async (request, context) => {
+      counters.act++;
+      if (counters.mutations >= maxActions) { counters.rejected++; return exhausted(); }
+      counters.mutations++;
+      const reply = await inner.act(request, context);
+      if (reply.ok) counters.accepted++; else counters.rejected++;
+      return reply;
+    },
+    undo: async (request, context) => {
+      counters.undoCalls++;
+      if (counters.mutations >= maxActions) return exhausted();
+      counters.mutations++;
+      const reply = await inner.undo(request, context); if (reply.ok) counters.undos++; return reply;
+    },
+    reset: async (request, context) => {
+      counters.resetCalls++;
+      if (counters.mutations >= maxActions) return exhausted();
+      counters.mutations++;
+      const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; return reply;
+    },
+    check: async (request, context) => { counters.check++; return inner.check(request, context); },
+    variant: (request, context) => inner.variant(request, context),
+    hint: (request, context) => inner.hint(request, context),
+    png: context => inner.png(context),
+    export: (request, context) => inner.export(request, context),
+    subscribe: listener => inner.subscribe(listener),
+    close: () => inner.close(),
+  };
+  return controller;
+}
+
+const CLI_ENTRY = fileURLToPath(new URL(`../cli/main.${import.meta.url.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url));
+export function benchId(now = new Date()): string { return now.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z') + '-' + randomBytes(2).toString('hex'); }
+
+/** The bench's world: the bundled library, loaded through the same package path as play and mcp.
+ * `contentHash` is the SHA-256 of the world's canonical JSON: a report names the exact world its
+ * runs used, and `report --verify` refuses a report made with different content under the same version. */
+export async function libraryWorld(): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
+  const world = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
+  return { world, entries: new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
+}
+export function worldContentHash(world: World): string { return sha256Hex(canonicalJson(world)); }
+
+/** File names of a run's judged artifacts inside its run directory (`<bench>/<run-id>/`). */
+export const RUN_ARTIFACTS = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
+/** Writes a judged artifact through a fresh temporary file and a rename, so it replaces whatever the
+ * agent may have left under that name; anything that is not a replaceable file fails the write. */
+async function writeRunArtifact(directory: string, name: string, text: string): Promise<void> {
+  const temporary = join(directory, `.${name}.${randomBytes(6).toString('hex')}.tmp`);
+  try { await writeFile(temporary, text, { mode: 0o600, flag: 'wx' }); await rename(temporary, join(directory, name)); }
+  catch (error) { await rm(temporary, { force: true }); throw error; }
+}
+
+/** A run note never spells out a local path: every absolute path is cut to its last component. */
+export function scrubPaths(text: string): string {
+  return text.replace(/(?:[A-Za-z]:)?[\\/](?:[^\s'"`\\/]+[\\/])+/g, '…/');
+}
+/** The note of a run that could not be judged: the error class and a path-free message. */
+export function infraNote(error: unknown): string {
+  if (!(error instanceof Error)) return 'infrastructure failure';
+  return scrubPaths(`${(error as Error & { code?: string }).code ?? 'error'}: ${error.message}`).slice(0, 256);
+}
+
+/** Agent processes that are running now; a forced stop (second Ctrl+C) ends their groups at once. */
+const runningAgents = new Set<number>();
+export function killRunningAgents(): void { for (const pid of runningAgents) killProcessTree(pid, 'SIGKILL'); }
+
+export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: boolean; errorClasses: string[] } {
+  const task = verdict.tasks.find(value => value.taskId === taskId);
+  return { passed: verdict.passed && task?.passed === true, errorClasses: (task?.errors ?? []).map(error => error.id).slice(0, 64) };
+}
+
+interface AgentOutcome { status: BenchRun['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
+
+/**
+ * Ends an agent and everything it started. POSIX: the agent leads its own process group (spawned
+ * detached), so the signal goes to the group. Windows has no process groups; `taskkill /T /F` ends
+ * the process tree (a plain kill would leave a `cmd.exe` child or the agent's own children running).
+ */
+export function killProcessTree(pid: number | undefined, signal: NodeJS.Signals, platform: NodeJS.Platform = process.platform,
+  run: (command: string, args: string[]) => void = (command, args) => { spawn(command, args, { stdio: 'ignore', windowsHide: true }).once('error', () => {}); },
+  kill: (pid: number, signal: NodeJS.Signals) => void = process.kill): void {
+  if (pid === undefined) return;
+  try {
+    if (platform === 'win32') run('taskkill', ['/pid', String(pid), '/T', '/F']);
+    else kill(-pid, signal);
+  } catch { /* already gone */ }
+}
+
+async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, logs: string, deadlineMs: number, signal?: AbortSignal): Promise<AgentOutcome> {
+  const stdout = await open(join(logs, 'agent.stdout'), 'w', 0o600), stderr = await open(join(logs, 'agent.stderr'), 'w', 0o600);
+  try {
+    return await new Promise<AgentOutcome>(resolve => {
+      if (signal?.aborted) { resolve({ status: 'interrupted', exitCode: null }); return; }
+      const posix = process.platform !== 'win32';
+      const { command, args, windowsVerbatimArguments } = spawnable(argv);
+      const child = spawn(command, args, { cwd, env, stdio: ['pipe', stdout.fd, stderr.fd], detached: posix, windowsHide: true, ...(windowsVerbatimArguments ? { windowsVerbatimArguments } : {}) });
+      if (child.pid !== undefined) runningAgents.add(child.pid);
+      let timedOut = false, interrupted = false, settled = false, hardKill: ReturnType<typeof setTimeout> | undefined;
+      const stop = (): void => { killProcessTree(child.pid, 'SIGTERM'); hardKill = setTimeout(() => killProcessTree(child.pid, 'SIGKILL'), 3_000); hardKill.unref(); };
+      const timer = setTimeout(() => { timedOut = true; stop(); }, deadlineMs);
+      const onAbort = (): void => { if (settled) return; interrupted = true; stop(); };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const finish = (outcome: AgentOutcome): void => { if (settled) return; settled = true; if (child.pid !== undefined) runningAgents.delete(child.pid); clearTimeout(timer); clearTimeout(hardKill); signal?.removeEventListener('abort', onAbort); resolve(outcome); };
+      child.once('error', () => finish({ status: 'agent_failed', exitCode: null, note: `agent command could not start: ${argv[0]}` }));
+      // The agent's exit does not end what it started: the rest of its group (or tree) goes too.
+      child.once('exit', code => { killProcessTree(child.pid, 'SIGKILL'); finish(interrupted ? { status: 'interrupted', exitCode: code } : timedOut ? { status: 'timeout', exitCode: code } : { status: code === 0 ? 'completed' : 'agent_failed', exitCode: code }); });
+      child.stdin!.on('error', () => { /* the agent may not read stdin */ });
+      child.stdin!.end(BENCH_PROMPT + '\n');
+    });
+  } finally { await stdout.close(); await stderr.close(); }
+}
+
+async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; library: LibraryEntry; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
+  let client: StdioMcpClient | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    client = await StdioMcpClient.start(entry, { cwd: context.cwd, env: context.env });
+    const baseline = { client, world: context.world, seed: context.seed, oracle: context.library.oracle, maxActions: context.maxActions, randomSeed: context.randomSeed, deadline: Date.now() + context.deadlineMs };
+    const work = spec.name === 'oracle' ? runOracle(baseline) : runRandom(baseline);
+    const timeout = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), context.deadlineMs); });
+    const interrupted = new Promise<'interrupted'>(resolve => { if (context.signal?.aborted) resolve('interrupted'); context.signal?.addEventListener('abort', () => resolve('interrupted'), { once: true }); });
+    const result = await Promise.race([work, timeout, interrupted]);
+    if (result === 'timeout') return { status: 'timeout', exitCode: null };
+    if (result === 'interrupted') return { status: 'interrupted', exitCode: null };
+    return { status: 'completed', exitCode: 0, ...(result.note ? { note: result.note } : {}) };
+  } catch (error) {
+    return { status: 'agent_failed', exitCode: null, note: (error instanceof Error ? error.message : 'baseline failed').slice(0, 200) };
+  } finally { clearTimeout(timer); await client?.close().catch(() => {}); }
+}
+
+/** Runs the planned task × seed × repeat grid and returns a validated report (`null` when it was
+ * interrupted before the first run finished). */
+export async function runBench(options: BenchOptions): Promise<{ report: BenchReport | null; directory: string; interrupted: boolean; planned: number }> {
+  const { world, entries, contentHash } = await libraryWorld();
+  for (const task of options.tasks) if (!entries.has(task)) throw new Error(`unknown library task ${task}`);
+  const paths = await resolvedDataPaths(), id = benchId(), directory = join(paths.home, 'bench', id);
+  await ensurePrivateDirectory(directory);
+  const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
+  const runs: BenchRun[] = []; let model: string | null = null; let interrupted = false;
+  for (const [index, item] of plan.entries()) {
+    if (interrupted || options.signal?.aborted) { interrupted = true; break; }
+    const library = entries.get(item.taskId)!, runId = `${item.taskId}-s${item.seed}-r${item.repeat}`;
+    const home = join(directory, runId), agentDirectory = join(home, 'agent');
+    await ensurePrivateDirectory(agentDirectory);
+    const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
+    let inner: PracticeController | undefined; let host: RunningHost | undefined;
+    const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions); };
+    let outcome: AgentOutcome; let checker: BenchRun['checker'] = null; let artifacts: BenchRun['artifacts']; let wallMs = 0; let finalActions = 0;
+    try {
+      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory });
+      // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
+      const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile], env: { PRACTONAUT_HOME: agentDirectory } };
+      const configPath = join(agentDirectory, 'mcp.json');
+      await writeFile(configPath, JSON.stringify({ mcpServers: { practonaut: { type: 'stdio', ...entry } } }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+      // The agent's data folder is its own subdirectory, not the run directory the artifacts go to.
+      const env: NodeJS.ProcessEnv = { ...process.env, PRACTONAUT_HOME: agentDirectory };
+      for (const name of ['PRACTONAUT_HOST', 'PRACTONAUT_TOKEN_FILE', 'PRACTONAUT_SESSION_TOKEN']) delete env[name];
+      const started = performance.now(), deadlineMs = options.timeoutSeconds * 1000;
+      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, library, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
+      else {
+        outcome = await runExternal(agentArguments(options.agent.command, { mcpConfig: configPath, prompt: BENCH_PROMPT }), agentDirectory, env, home, deadlineMs, options.signal);
+        if (options.agent.name === 'claude-code' && model === null) {
+          const stdout = await open(join(home, 'agent.stdout'), 'r').then(async handle => { try { const read = await handle.read(Buffer.alloc(64 * 1024), 0, 64 * 1024, 0); return read.buffer.subarray(0, read.bytesRead).toString('utf8'); } finally { await handle.close(); } }).catch(() => '');
+          model = clientAttestedModel(stdout);
+        }
+      }
+      wallMs = Math.round(performance.now() - started);
+      if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
+      // Judge the host's committed session, independently, in separate checker processes.
+      const view = inner!.view(); finalActions = view.log.length;
+      const session: SessionData = { schema: 'practonaut.session/1', world: view.world, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
+      const sessionText = JSON.stringify(session);
+      const sessionRaw = await checkInProcess(world, sessionText, { seed: item.seed, taskId: item.taskId });
+      let nativeText: string | null = null, nativeRaw: CheckerVerdict | null = null;
+      if (options.mirror === 'required') {
+        const exported = await inner!.export({ expectedRevision: view.revision });
+        if (!exported.ok) throw new Error(`native export failed: ${exported.error.code}`);
+        nativeText = exported.value.native.utf8;
+        nativeRaw = await checkInProcess(world, nativeText, { seed: item.seed, taskId: item.taskId });
+      }
+      // The judged artifacts stay in the run directory and the report binds their hashes, so
+      // `practonaut report --verify` can re-run the checker on them later.
+      const checkerText = JSON.stringify({ session: sessionRaw, native: nativeRaw }) + '\n';
+      await writeRunArtifact(home, RUN_ARTIFACTS.session, sessionText);
+      if (nativeText !== null) await writeRunArtifact(home, RUN_ARTIFACTS.native, nativeText);
+      await writeRunArtifact(home, RUN_ARTIFACTS.checker, checkerText);
+      artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText) };
+      checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
+    } catch (error) {
+      if (options.signal?.aborted) { interrupted = true; continue; }
+      outcome = { status: 'infra_error', exitCode: null, note: infraNote(error) };
+      checker = null; artifacts = undefined;
+    } finally { await host?.close().catch(() => {}); }
+    if (interrupted) break;
+    const run: BenchRun = {
+      id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRun['status'], pass: false,
+      actions: finalActions, acceptedActions: counters.accepted, rejectedActions: counters.rejected, undos: counters.undos, resets: counters.resets,
+      toolCalls: { observe: counters.observe, act: counters.act, undo: counters.undoCalls, reset: counters.resetCalls, check: counters.check, total: counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check },
+      wallMs, referenceActions: library.actions, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
+    };
+    run.pass = derivedPass(run, options.mirror);
+    runs.push(run);
+    options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
+  }
+  if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
+  const report: BenchReport = {
+    schema: BENCH_SCHEMA, createdAt: new Date().toISOString(),
+    environment: { practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: options.mirror, library: { worldId: world.id, version: world.version, contentHash } },
+    agent: { kind: options.agent.kind, name: options.agent.name, command: displayCommand(options.agent.command), model, modelSource: model === null ? 'none' : 'client-attested' },
+    settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT },
+    runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length } } : {}), summary: summarize(runs, options.repeats),
+  };
+  return { report: validateBenchReport(report), directory, interrupted, planned: plan.length };
+}

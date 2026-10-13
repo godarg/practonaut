@@ -1,0 +1,60 @@
+{
+  "measuredAt": "2026-10-03T20:57:55.214533+00:00",
+  "command": "npm run test:adapter",
+  "exitCode": 0,
+  "scope": "Excalidraw0.18.1 actual engine, Chromium cached1.63.0, React18.3.1; no recorder",
+  "run": {
+    "path": "tests/adapter/evidence/conformance.json",
+    "sha256": "efede45569f95c249b0f78dd399e8d031e90fd6a51e53c0f89afa0c2bcfd39ed"
+  },
+  "sourceFiles": [
+    {
+      "path": "src/adapters/excalidraw/render-check.ts",
+      "sha256": "e690d09069b3a788db04050d43783732a52b5a2d7e53df2392dcf38d9a973184"
+    },
+    {
+      "path": "src/adapters/excalidraw/raw.ts",
+      "sha256": "13a9d6cae5ef834aea07629ed6c8aed8a81a3b05792af793fd7e553058e18fd5"
+    },
+    {
+      "path": "src/adapters/excalidraw/index.ts",
+      "sha256": "4656adc0c7b05428e08515148c2ec647788d6b2c608b724f02185ff4add1d593"
+    },
+    {
+      "path": "src/adapters/excalidraw/engine-browser.jsx",
+      "sha256": "d265e7448cf53a27b902cac74c4b7eb2effdc78888beeff170416e3a5ac2cf73"
+    },
+    {
+      "path": "tools/build-engine.ts",
+      "sha256": "2e128609570d1ce0337b5564e9088550239539cfa6b961fe0c0e81a35199b9c5"
+    },
+    {
+      "path": "tests/adapter/conformance.test.ts",
+      "sha256": "06bbc28fc3b9e837dc0eecbc4cac8273f532f1335b774d41e7705cdcb25eb66e"
+    },
+    {
+      "path": "src/adapters/excalidraw/asset-integrity.ts",
+      "sha256": "ec27026070935675349bd222bccb31409d8c85bd03f339cd47719f4ee10bd3a6"
+    },
+    {
+      "path": "src/adapters/excalidraw/assets/LICENSES.json",
+      "sha256": "099296aaefbd28cb7ae3b4a63fda904e23eebbf5031e28bdf82d1d8bc994b081"
+    },
+    {
+      "path": "tests/unit/adapter-assets.test.ts",
+      "sha256": "3ecf3eafe3c0b0d26f12a37e6866c34bcc6d2b941289e534eb7eb5939384ea4b"
+    }
+  ],
+  "negativeControl": "tests/adapter/evidence/negative-control.json",
+  "outputSha256": "132df940dd841a03123bead171a3a9bf7401b287c33e085a56335ef851425a76",
+  "assetIntegrityRun": {
+    "command": "node --test tests/unit/adapter-assets.test.ts tests/unit/adapter-integrity.test.ts",
+    "exitCode": 0,
+    "outputSha256": "d7cb796b707e85a223bc220003e487a3a20da1e44add5f955cbe73e479ad40b6"
+  },
+  "checkRun": {
+    "command": "npm run check",
+    "exitCode": 0,
+    "outputSha256": "88dbc1fdd4ee3091dee0af36ab292e7f0e13bb867ba7c8587e867fdd6bd073a4"
+  }
+}

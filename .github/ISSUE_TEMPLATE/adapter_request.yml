@@ -1,0 +1,41 @@
+name: Adapter request
+description: Propose connecting a second application.
+labels: [adapter]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read docs/adapter-guide.md first. An adapter talks to the app through an official,
+        scriptable interface, runs locally at a pinned version and reads back every write.
+  - type: input
+    id: app
+    attributes:
+      label: Application and version
+      placeholder: e.g. <app> 1.2.3, license
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Which tasks would people or agents practise?
+    validations:
+      required: true
+  - type: textarea
+    id: interface
+    attributes:
+      label: Interface and runtime
+      description: Official API, plugin or file format used to read and write state; can it run offline without accounts or containers?
+    validations:
+      required: true
+  - type: textarea
+    id: spike
+    attributes:
+      label: Spike answers
+      description: Semantic vs. volatile attributes, read-back after writes, stable native export, licenses of the app and bundled assets (adapter guide §4).
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you work on it?
+      options: ["Yes, I can build it", "I can help test", "No, just proposing"]
+    validations:
+      required: true

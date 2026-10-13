@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "insert-between",
+  "difficulty": 2,
+  "title": {
+    "en": "Insert a step between two others",
+    "de": "Einen Schritt dazwischen einfügen"
+  },
+  "prompt": {
+    "en": "Insert “Check payment” between “Receive order” and “Ship order”: the arrows must run “Receive order” → “Check payment” → “Ship order”, with no direct arrow left.",
+    "de": "Füge „Check payment“ zwischen „Receive order“ und „Ship order“ ein: Die Pfeile laufen „Receive order“ → „Check payment“ → „Ship order“, ein direkter Pfeil bleibt nicht."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Receive order": "Book room",
+        "Check payment": "Confirm date",
+        "Ship order": "Send invite"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Receive order": "Take sample",
+        "Check payment": "Label sample",
+        "Ship order": "Analyse"
+      }
+    }
+  ]
+}

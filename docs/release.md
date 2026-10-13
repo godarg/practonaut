@@ -1,0 +1,72 @@
+# Releasing Practonaut
+
+For maintainers. Decision record: [PADR-0031](adr/0031-public-release-and-trusted-publishing.md).
+A release publishes the npm package `practonaut` and a GitHub release. Only a person with
+maintainer rights can start it; the publish step waits for a manual approval.
+
+## 1. What is published
+
+- The npm package: CLI, library entry, JSON schemas, built offline engine and Player, the bundled
+  example world and the Excalidraw task library. `package.json` `files` is the allowlist;
+  `npm run test:pack` fails when the tarball contains anything else or misses a required file.
+  No install hook; Chromium is only downloaded by `practonaut setup`.
+- npm provenance, created by GitHub Actions through trusted publishing (OIDC). No npm token is
+  stored anywhere.
+- A GitHub release for the tag, with the matching `CHANGELOG.md` section as its notes.
+
+## 2. One-time setup
+
+Replace `OWNER` with the GitHub account or organisation that hosts the repository. The release
+workflow checks this first: its prepare job fails while `package.json`, an issue template or a root
+document still contains `OWNER` (`node tools/check-release-placeholders.ts` shows every line).
+
+| Where | What |
+|---|---|
+| `package.json` | `repository.url`, `homepage`, `bugs.url` point to `https://github.com/OWNER/practonaut` |
+| `.github/ISSUE_TEMPLATE/config.yml` | the security-advisory and discussion links use `OWNER` |
+| `CONTRIBUTING.md` | the clone URL uses `OWNER` |
+| GitHub repository | protect `main` (pull requests, required checks from `ci.yml`, no force pushes); enable private vulnerability reporting, secret scanning, Discussions (linked from the issue chooser) and content reports to maintainers (referenced by `CODE_OF_CONDUCT.md`) |
+| Actions secrets | none needed. Only if the repository belongs to an organisation: `GITLEAKS_LICENSE` for the secret-scan job |
+| GitHub environment `release` | required reviewer: a maintainer; deployment branches and tags: `v*` tags only |
+| GitHub tag ruleset | only maintainers may create, update or delete `v*` tags |
+| npm | create or claim the package `practonaut`, account with 2FA; add a **trusted publisher**: GitHub Actions, owner `OWNER`, repository `practonaut`, workflow `release.yml`, environment `release` |
+
+Trusted publishing needs npm CLI 11.5.1 or newer and a GitHub-hosted runner; `release.yml` pins a
+Node version that ships a recent npm. See npm's
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) and
+[provenance](https://docs.npmjs.com/generating-provenance-statements) documentation.
+
+## 3. Cutting a release
+
+1. On a branch: set `version` in `package.json` (and `npm install --package-lock-only` to update the
+   lockfile), move the `Unreleased` entries in `CHANGELOG.md` into a `## [X.Y.Z] - YYYY-MM-DD`
+   section, open a pull request and merge it when CI is green. `release.yml` finds the section by
+   its version alone (`## [X.Y.Z]`), whatever follows it.
+
+   **0.1.0, the first release:** its section is `## [0.1.0] - unreleased` and there is no separate
+   `Unreleased` list (0.1.0 itself has not been published, so changes go straight into its
+   entry). The maintainer replaces `unreleased` with the tag date (`YYYY-MM-DD`) in the commit that
+   is tagged, and starts a new `## [Unreleased]` section above it after the release.
+2. Run the full local chain on the merged commit (it needs Chromium):
+
+   ```bash
+   npm run check && npm test && npm run build && npm run demo && npm run test:adapter \
+     && npm run test:integration && npm run test:e2e && npm run test:mcp && npm run test:a11y \
+     && npm run test:pack
+   ```
+
+3. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+4. `release.yml` checks that the tag equals `v` + the package version, runs the checks, packs the
+   tarball once and smoke-tests that exact file. Approve the `release` environment when asked; the
+   publish job then publishes that tarball with `--provenance` and creates the GitHub release.
+5. Check the result: `npm view practonaut version`, the provenance badge on npmjs.com, and
+   `npx -y practonaut@X.Y.Z --help` in an empty directory.
+
+If a step fails before the publish job, fix it on `main`, delete the tag and tag again. A published
+version cannot be replaced; publish a new patch version instead.
+
+## 4. Versioning
+
+Semantic versioning. Before 1.0, a minor version may change APIs and the world format; a new world
+schema major comes with a migration note. The changelog follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).

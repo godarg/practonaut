@@ -1,0 +1,40 @@
+{
+  "schema": "practonaut.world/1", "id": "core-fixture", "version": "1.0.0",
+  "app": { "adapterId": "excalidraw", "versionRange": "0.18.1", "fontFamilies": [1], "excludedAttributes": {"updated":"volatile"} },
+  "units": {"x":"px", "y":"px", "width":"px", "height":"px"},
+  "objectTypes": [
+    {"type":"frame", "attributes":{"id":"id","deleted":"boolean","name":"string"}},
+    {"type":"step", "attributes":{"id":"id","deleted":"boolean","frameId":"id","label":"string","x":"integer","y":"integer","width":"integer","height":"integer","fontFamily":"integer"}},
+    {"type":"arrow", "attributes":{"id":"id","deleted":"boolean","frameId":"id","from":"nullable-id","to":"nullable-id"}}
+  ],
+  "initialState": {"objects":{
+    "f":{"id":"f","type":"frame","deleted":false,"name":"{{process}}"},
+    "a":{"id":"a","type":"step","deleted":false,"frameId":"f","label":"A","x":0,"y":0,"width":120,"height":60,"fontFamily":1},
+    "b":{"id":"b","type":"step","deleted":false,"frameId":"f","label":"B","x":200,"y":0,"width":120,"height":60,"fontFamily":1},
+    "c":{"id":"c","type":"step","deleted":false,"frameId":"f","label":"C","x":400,"y":0,"width":120,"height":60,"fontFamily":1},
+    "ab":{"id":"ab","type":"arrow","deleted":false,"frameId":"f","from":"a","to":"b"},
+    "bc":{"id":"bc","type":"arrow","deleted":false,"frameId":"f","from":"b","to":"c"}
+  }},
+  "actions":[
+    {"name":"add_step","parameters":{"frameId":{"type":"id"},"label":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer","min":1},"height":{"type":"integer","min":1},"fontFamily":{"type":"integer"}},"preconditions":[]},
+    {"name":"rename_step","parameters":{"id":{"type":"id"},"label":{"type":"string"}},"preconditions":[]},
+    {"name":"move_step","parameters":{"id":{"type":"id"},"x":{"type":"integer"},"y":{"type":"integer"}},"preconditions":[]},
+    {"name":"connect","parameters":{"frameId":{"type":"id"},"from":{"type":"id"},"to":{"type":"id"}},"preconditions":[]},
+    {"name":"reconnect_end","parameters":{"id":{"type":"id"},"end":{"type":"end"},"target":{"type":"id"}},"preconditions":[]},
+    {"name":"disconnect","parameters":{"id":{"type":"id"}},"preconditions":[]},
+    {"name":"delete_step","parameters":{"id":{"type":"id"}},"preconditions":[]}
+  ],
+  "rules":[
+    {"id":"create","action":"add_step","status":"confirmed","preconditions":[],"effects":["create_step"],"evidence":[{"run":"unit-fixture-not-conformance","case":"add","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"rename","action":"rename_step","status":"confirmed","preconditions":[],"effects":["set_label"],"evidence":[{"run":"unit-fixture-not-conformance","case":"rename","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"move","action":"move_step","status":"confirmed","preconditions":[],"effects":["set_position"],"evidence":[{"run":"unit-fixture-not-conformance","case":"move","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"connect","action":"connect","status":"confirmed","preconditions":[],"effects":["create_arrow"],"evidence":[{"run":"unit-fixture-not-conformance","case":"connect","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"reconnect","action":"reconnect_end","status":"confirmed","preconditions":[],"effects":["set_endpoint"],"evidence":[{"run":"unit-fixture-not-conformance","case":"reconnect","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"disconnect","action":"disconnect","status":"confirmed","preconditions":[],"effects":["disconnect_arrow"],"evidence":[{"run":"unit-fixture-not-conformance","case":"disconnect","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+    {"id":"delete","action":"delete_step","status":"confirmed","preconditions":[],"effects":["tombstone_step","detach_incident_arrows"],"evidence":[{"run":"unit-fixture-not-conformance","case":"delete","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}
+  ],
+  "tasks":[{"id":"T1","title":{"en":"Build {{process}}","de":"{{process}} aufbauen"},"prompt":{"en":"Insert at {{insertPosition}}","de":"Einfügen bei {{insertPosition}}"},"goal":{"op":"exists","type":"step","as":"s","where":{"op":"eq","left":{"kind":"field","variable":"s","field":"label"},"right":{"kind":"literal","value":"D-final"}}},"hints":[{"en":"Keep each label readable.","de":"Jede Beschriftung lesbar halten."}],"errorClasses":[]}],
+  "variants":{"generator":"finite-seeded-v1","cases":[{"id":"v1","labels":{"process":"Process"},"insertPosition":1,"layoutOffset":{"x":0,"y":0}}]},
+  "provenance":{"authors":["Practonaut test authors"],"adapterVersion":"0.0.0","appVersion":"0.18.1","compileToolVersion":"0.0.0","recordings":[]},
+  "rights":{"license":"CC0-1.0","assets":[],"recordings":[]}
+}

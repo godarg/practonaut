@@ -1,0 +1,610 @@
+import { invocationName } from './invocation.ts';
+/** User-authored CLI copy. Machine fields/codes and upstream diagnostic details are data. */
+export const CLI_CATALOG = {
+  "sceneTooLarge": {
+    "en": "scene {path} exceeds 10 MiB",
+    "de": "Szene {path} ist größer als 10 MiB"
+  },
+  "tasksOutputLink": {
+    "en": "{path} is a symbolic link or junction; from-scenes does not write through links. Choose another --out folder",
+    "de": "{path} ist ein symbolischer Link oder eine Junction; from-scenes schreibt nicht durch Links. Anderen --out-Ordner wählen"
+  },
+  "tasksOutputNotFolder": {
+    "en": "--out {path} is a file, not a folder; from-scenes writes a folder with world/ and oracle.json. Choose a new or existing folder",
+    "de": "--out {path} ist eine Datei, kein Ordner; from-scenes schreibt einen Ordner mit world/ und oracle.json. Einen neuen oder vorhandenen Ordner wählen"
+  },
+  "tasksOutputExists": {
+    "en": "{path} already exists; add --force to replace it",
+    "de": "{path} existiert bereits; --force ersetzt die Datei"
+  },
+  "tasksListHead": {
+    "en": "Excalidraw task library: {count} {count:task|tasks} (world {world} {version})\n",
+    "de": "Excalidraw-Aufgabenbibliothek: {count} {count:Aufgabe|Aufgaben} (Welt {world} {version})\n"
+  },
+  "tasksAction": {
+    "en": "action ",
+    "de": "Aktion "
+  },
+  "tasksActions": {
+    "en": "actions",
+    "de": "Aktionen"
+  },
+  "tasksListFoot": {
+    "en": "Difficulty ●○○ to ●●●; actions = length of the reference solution.\nOpen one: {cli} play <task-id>   Details: {cli} tasks show <task-id>\n",
+    "de": "Schwierigkeit ●○○ bis ●●●; Aktionen = Länge der Referenzlösung.\nÖffnen: {cli} play <Aufgaben-ID>   Details: {cli} tasks show <Aufgaben-ID>\n"
+  },
+  "tasksUnknown": {
+    "en": "unknown library task: {id} (see {cli} tasks list)",
+    "de": "unbekannte Bibliotheksaufgabe: {id} (siehe {cli} tasks list)"
+  },
+  "tasksShowHead": {
+    "en": "{id} — {title} (difficulty {difficulty}/3)\n\n",
+    "de": "{id} — {title} (Schwierigkeit {difficulty}/3)\n\n"
+  },
+  "tasksShowGoal": {
+    "en": "Goal conditions:",
+    "de": "Zielbedingungen:"
+  },
+  "tasksShowFacts": {
+    "en": "\nHints: {hints} · error classes: {errors} · variants: {variants} · reference solution: {actions} {actions:action|actions} · near misses: {near}\n",
+    "de": "\nHinweise: {hints} · Fehlerklassen: {errors} · Varianten: {variants} · Referenzlösung: {actions} {actions:Aktion|Aktionen} · Beinahe-Treffer: {near}\n"
+  },
+  "tasksShowPlay": {
+    "en": "Open it: {cli} play {id}\n",
+    "de": "Öffnen: {cli} play {id}\n"
+  },
+  "tasksUsage": {
+    "en": "usage: {cli} tasks list | show <task-id> [--oracle] | from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>",
+    "de": "Verwendung: {cli} tasks list | show <Aufgaben-ID> [--oracle] | from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>"
+  },
+  "tasksScenesUsage": {
+    "en": "usage: {cli} tasks from-scenes <start.excalidraw> <goal.excalidraw> --out <dir> [--task <id>] [--layout relative] [--align] [--tolerance <px>] [--force] [--json]",
+    "de": "Verwendung: {cli} tasks from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis> [--task <id>] [--layout relative] [--align] [--tolerance <px>] [--force] [--json]"
+  },
+  "tasksScenesDone": {
+    "en": "Task written: {steps} {steps:step|steps}, {arrows} {arrows:arrow|arrows}, {frames} {frames:frame|frames} in the goal; {clauses} goal {clauses:condition|conditions}, {errorClasses} error {errorClasses:class|classes}.\nChecked: the goal scene passes, the start scene fails; the reference solution ({actions} {actions:action|actions}) passes; {near} near {near:miss fails|misses fail}.\n",
+    "de": "Aufgabe geschrieben: {steps} {steps:Schritt|Schritte}, {arrows} {arrows:Pfeil|Pfeile}, {frames} Rahmen im Ziel; {clauses} {clauses:Zielbedingung|Zielbedingungen}, {errorClasses} {errorClasses:Fehlerklasse|Fehlerklassen}.\nGeprüft: Die Zielszene besteht, die Startszene nicht; die Referenzlösung mit {actions} {actions:Aktion|Aktionen} besteht; {near} Beinahe-Treffer {near:fällt|fallen} durch.\n"
+  },
+  "tasksScenesIgnored": {
+    "en": "Not modelled and ignored: {n} {n:element|elements} ({kinds}).\n",
+    "de": "Nicht modelliert und ignoriert: {n} {n:Element|Elemente} ({kinds}).\n"
+  },
+  "tasksScenesPlay": {
+    "en": "Practise it: {cli} play {path}\n",
+    "de": "Üben: {cli} play {path}\n"
+  },
+  "playTaskConflict": {
+    "en": "a library task id already names the task; drop --task",
+    "de": "eine Bibliotheksaufgabe legt die Aufgabe schon fest; --task weglassen"
+  },
+  "recordingMissing": {
+    "en": "Recording does not exist in the local store",
+    "de": "Aufnahme ist im lokalen Speicher nicht vorhanden"
+  },
+  "recordingInUse": {
+    "en": "Recording retained. First explicitly delete the saved projects that reference it, or the damaged entries whose references cannot be read: {ids}.",
+    "de": "Aufnahme erhalten. Zuerst die referenzierenden gespeicherten Projekte oder beschädigten Einträge mit unlesbaren Verweisen ausdrücklich löschen: {ids}."
+  },
+  "projectStoreFailure": {
+    "en": "The managed project store could not be accessed safely; recording retained.",
+    "de": "Auf den verwalteten Projektspeicher konnte nicht sicher zugegriffen werden; Aufnahme erhalten."
+  },
+
+  "pairStateMismatch": {"en": "Native artifact does not encode the bound Session state", "de": "Nativer Export bildet den gebundenen Sitzungszustand nicht ab"},
+  "pairNativeRequired": {"en": "--pair requires an unannotated native Excalidraw artifact", "de": "--pair benötigt einen nativen Excalidraw-Export ohne nachträgliche Metadaten"},
+  "pairInvalid": {"en": "Export pair manifest or artifact binding is invalid", "de": "Exportpaar-Manifest oder Artefaktbindung ist ungültig"},
+  "nativeRoutingRequired": {"en": "Unbound native checks require explicit --seed and --task, or use --pair with the export manifest", "de": "Ungebundene native Prüfung benötigt --seed und --task; alternativ --pair mit dem Exportmanifest verwenden"},
+  "languageInvalid": {
+    "en": "--lang requires en or de before the command",
+    "de": "--lang verlangt en oder de vor dem Befehl"
+  },
+  "optionValue": {
+    "en": "option {option} needs a value",
+    "de": "Option {option} benötigt einen Wert"
+  },
+  "optionUnknown": {
+    "en": "unknown option {option}",
+    "de": "Unbekannte Option {option}"
+  },
+  "validateUsage": {
+    "en": "validate needs exactly one <package> argument",
+    "de": "validate benötigt genau ein <package>-Argument"
+  },
+  "readFailed": {
+    "en": "cannot read {path} ({code})",
+    "de": "{path} kann nicht gelesen werden ({code})"
+  },
+  "regularFile": {
+    "en": "{path} is not a regular file",
+    "de": "{path} ist keine reguläre Datei"
+  },
+  "packUsage": {
+    "en": "pack needs exactly one <source-dir> argument",
+    "de": "pack benötigt genau ein <source-dir>-Argument"
+  },
+  "packOutput": {
+    "en": "pack needs --out <file>",
+    "de": "pack benötigt --out <file>"
+  },
+  "sourceFailed": {
+    "en": "cannot read source {path} ({code})",
+    "de": "Quelle {path} kann nicht gelesen werden ({code})"
+  },
+  "writeFailed": {
+    "en": "cannot write {path} ({code})",
+    "de": "{path} kann nicht geschrieben werden ({code})"
+  },
+  "doctorUsage": {
+    "en": "doctor takes no arguments",
+    "de": "doctor nimmt keine Argumente an"
+  },
+  "versionUsage": {
+    "en": "--version takes no arguments",
+    "de": "--version nimmt keine Argumente an"
+  },
+  "commandUnknown": {
+    "en": "unknown command {command}",
+    "de": "Unbekannter Befehl {command}"
+  },
+  "helpHint": {
+    "en": "Run 'practonaut --help' for usage.",
+    "de": "Hinweise: practonaut --lang de --help."
+  },
+  "optionDuplicate": {
+    "en": "duplicate option {option}",
+    "de": "Doppelte Option {option}"
+  },
+  "inputUsage": {
+    "en": "exactly one input path is required",
+    "de": "Genau ein Eingabepfad ist erforderlich"
+  },
+  "seedUsage": {
+    "en": "seed must be a safe integer",
+    "de": "Seed muss eine sichere Ganzzahl sein"
+  },
+  "checkerTimeout": {
+    "en": "checker exceeded 10 s wall limit",
+    "de": "Checker hat die Grenze von 10 Sekunden überschritten"
+  },
+  "checkerOutput": {
+    "en": "checker output exceeds limit",
+    "de": "Checker-Ausgabe überschreitet die Grenze"
+  },
+  "checkerProcess": {
+    "en": "checker process failed",
+    "de": "Checker-Prozess fehlgeschlagen"
+  },
+  "checkerFailed": {
+    "en": "checker failed: {detail}",
+    "de": "Checker fehlgeschlagen: {detail}"
+  },
+  "runUsage": {
+    "en": "run requires --seed and --actions",
+    "de": "run benötigt --seed und --actions"
+  },
+  "actionsSize": {
+    "en": "action file too large",
+    "de": "Aktionsdatei ist zu groß"
+  },
+  "actionsArray": {
+    "en": "actions must be an array of at most 10000 actions",
+    "de": "Aktionsdatei muss ein Array mit höchstens 10000 Aktionen sein"
+  },
+  "mirrorUsage": {
+    "en": "--mirror must be auto, required or off",
+    "de": "--mirror muss auto, required oder off sein"
+  },
+  "nativeExport": {
+    "en": "native export requires the real engine",
+    "de": "Nativer Export benötigt die echte Engine"
+  },
+  "checkerRejected": {"en":"Checker rejected the bounded input ({code})", "de":"Checker hat die begrenzte Eingabe verweigert ({code})"},
+  "checkUsage": {
+    "en": "check requires --world <world.pnworld>",
+    "de": "check benötigt --world <world.pnworld>"
+  },
+  "exportContext": {
+    "en": "export evaluation context does not match world",
+    "de": "Evaluationskontext des Exports passt nicht zur Welt"
+  },
+  "exportContradiction": {
+    "en": "explicit context contradicts export evaluation context",
+    "de": "Expliziter Kontext widerspricht dem Evaluationskontext des Exports"
+  },
+  "serveUsage": {
+    "en": "serve takes at most one world (source directory or .pnworld)",
+    "de": "serve nimmt höchstens eine Welt (Quellverzeichnis oder .pnworld)"
+  },
+  "projectFile": {
+    "en": "Author project must be a bounded regular JSON file",
+    "de": "Autorenprojekt muss eine begrenzte reguläre JSON-Datei sein"
+  },
+  "projectChanged": {
+    "en": "Author project changed during read",
+    "de": "Autorenprojekt wurde während des Lesens geändert"
+  },
+  "recordUsage": {
+    "en": "record list | review <id> | delete <id>",
+    "de": "record list | review <id> | delete <id>"
+  },
+  "compileDuplicate": {
+    "en": "Duplicate compile option",
+    "de": "Doppelte compile-Option"
+  },
+  "compileValue": {
+    "en": "Compile option needs a value",
+    "de": "compile-Option benötigt einen Wert"
+  },
+  "compileUsage": {
+    "en": "compile <project.json> --out <world.pnworld> [--checker <bundle.pncheck>]",
+    "de": "compile <project.json> --out <world.pnworld> [--checker <bundle.pncheck>]"
+  },
+  "compilePaths": {
+    "en": "World and checker outputs must be different files",
+    "de": "Welt und Checker müssen in unterschiedliche Dateien geschrieben werden"
+  },
+  "fixtureDuplicate": {
+    "en": "Duplicate --fixture-client",
+    "de": "Doppeltes --fixture-client"
+  },
+  "unsealedDuplicate": {
+    "en": "Duplicate --unsealed",
+    "de": "Doppeltes --unsealed"
+  },
+  "evalOption": {
+    "en": "Unknown or duplicate evaluation option",
+    "de": "Unbekannte oder doppelte Evaluationsoption"
+  },
+  "evalValue": {
+    "en": "Evaluation option requires a value",
+    "de": "Evaluationsoption benötigt einen Wert"
+  },
+  "evalUsage": {
+    "en": "eval requires one world, --bundle, --task, --seed, --out and an explicit absolute --client",
+    "de": "eval benötigt eine Welt, --bundle, --task, --seed, --out und einen ausdrücklichen absoluten --client"
+  },
+  "evalInteger": {
+    "en": "Evaluation integer is invalid",
+    "de": "Evaluations-Ganzzahl ist ungültig"
+  },
+  "evalPosix": {
+    "en": "POSIX identity is required",
+    "de": "Eine POSIX-Identität ist erforderlich"
+  },
+  "evalClient": {
+    "en": "--client requires an absolute path",
+    "de": "--client benötigt einen absoluten Pfad"
+  },
+  "setupHelp": {
+    "en": "Usage: {cli} setup\nExplicitly download the pinned Playwright Chromium runtime, or reuse its existing cache.\n",
+    "de": "Verwendung: {cli} setup\nGepinntes Playwright-Chromium ausdrücklich herunterladen oder vorhandenen Cache verwenden.\n"
+  },
+  "setupUsage": {
+    "en": "{cli} setup takes no arguments.\n",
+    "de": "{cli} setup nimmt keine Argumente an.\n"
+  },
+  "setupMissing": {
+    "en": "setup: the pinned Playwright runtime is unavailable. Reinstall locked dependencies.\n",
+    "de": "setup: Gepinnte Playwright-Laufzeit fehlt. Gelockte Abhängigkeiten erneut installieren.\n"
+  },
+  "setupStart": {
+    "en": "setup: explicit Chromium provisioning; download sources and cache locations follow.\n",
+    "de": "setup: Chromium ausdrücklich bereitstellen; Downloadquellen und Cache-Pfade folgen.\n"
+  },
+  "setupDoneAt": {
+    "en": "setup: Chromium is ready in {path} ({size} MB for the browser and its headless shell). Practice can now run offline with the real Excalidraw mirror.\n",
+    "de": "setup: Chromium liegt bereit in {path} ({size} MB für Browser und Headless-Shell). Üben läuft nun offline mit echter Excalidraw-Spiegelung.\n"
+  },
+  "setupDone": {
+    "en": "setup: Chromium provisioning completed. Runtime may now operate offline.\n",
+    "de": "setup: Chromium bereitgestellt. Die Laufzeit kann nun offline arbeiten.\n"
+  },
+  "mcpInput": {
+    "en": "Practonaut MCP: protocol input rejected\n",
+    "de": "Practonaut MCP: Protokolleingabe verweigert\n"
+  },
+  "mcpRefused": {
+    "en": "Practonaut MCP refused: {code}\n",
+    "de": "Practonaut MCP verweigert: {code}\n"
+  },
+  "benchUsage": {
+    "en": "bench needs --agent <oracle|random|claude-code|\"command … {mcp_config} …\">; see {cli} bench --help",
+    "de": "bench braucht --agent <oracle|random|claude-code|\"Befehl … {mcp_config} …\">; siehe {cli} bench --help"
+  },
+  "benchNumber": {
+    "en": "{option} must be a whole number from 1 to {max}",
+    "de": "{option} muss eine ganze Zahl von 1 bis {max} sein"
+  },
+  "benchTasks": {
+    "en": "--tasks needs all or a comma-separated list of distinct library task ids",
+    "de": "--tasks braucht all oder eine durch Kommas getrennte Liste verschiedener Bibliotheksaufgaben"
+  },
+  "benchStart": {
+    "en": "practonaut bench: {runs} {runs:run|runs} with agent {agent}, {mode}\n",
+    "de": "practonaut bench: {runs} {runs:Lauf|Läufe} mit Agent {agent}, {mode}\n"
+  },
+  "benchWritten": {
+    "en": "\nReport: {path}\nRun logs and artifacts: {logs}\nRender it: {cli} report <report.json> --html <out.html>   Re-judge it: {cli} report <report.json> --verify --runs {logs}\n",
+    "de": "\nBericht: {path}\nLaufprotokolle und Artefakte: {logs}\nDarstellen: {cli} report <bericht.json> --html <out.html>   Nachrechnen: {cli} report <bericht.json> --verify --runs {logs}\n"
+  },
+  "reportUsage": {
+    "en": "report needs one bench report: {cli} report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]",
+    "de": "report braucht einen Bench-Bericht: {cli} report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]"
+  },
+  "benchInterrupting": {
+    "en": "\npractonaut bench: stopping — ending the agent, closing its session, writing a partial report … (press Ctrl+C again to stop at once)\n",
+    "de": "\npractonaut bench: wird beendet — Agent wird gestoppt, Sitzung geschlossen, Teilbericht geschrieben … (erneut Strg+C beendet sofort)\n"
+  },
+  "benchForcedStop": {
+    "en": "practonaut bench: stopped at once (second interrupt); the agent was killed and no report was written. The run directory may hold an unfinished run.\n",
+    "de": "practonaut bench: sofort beendet (zweiter Abbruch); der Agent wurde beendet, kein Bericht geschrieben. Das Laufverzeichnis kann einen unfertigen Lauf enthalten.\n"
+  },
+  "benchInterrupted": {
+    "en": "\nInterrupted: this partial report holds {runs} of {planned} planned runs; the run in progress was not scored.\n",
+    "de": "\nAbgebrochen: Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf wurde nicht bewertet.\n"
+  },
+  "benchInterruptedEmpty": {
+    "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
+    "de": "practonaut bench: abgebrochen, bevor der erste Lauf endete; kein Bericht geschrieben (Laufprotokolle: {logs}).\n"
+  },
+  "reportRunsNeedsVerify": {
+    "en": "--runs names the run directory for --verify; add --verify",
+    "de": "--runs nennt das Laufverzeichnis für --verify; --verify ergänzen"
+  },
+  "reportTooLarge": {
+    "en": "the bench report is larger than {size} MiB",
+    "de": "der Bench-Bericht ist größer als {size} MiB"
+  },
+  "reportConsistencyOnly": {
+    "en": "\nConsistency-checked, not re-verified: every pass and aggregate follows from the verdicts in the file. Re-judge the run artifacts with --verify.\n",
+    "de": "\nAuf Stimmigkeit geprüft, nicht nachgerechnet: Jedes Bestehen und jede Kennzahl folgt aus den Urteilen in der Datei. --verify beurteilt die Laufartefakte neu.\n"
+  },
+  "reportReverified": {
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts; every verdict matches ({unjudged} not judged).\n",
+    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt; jedes Urteil stimmt ({unjudged} nicht bewertet).\n"
+  },
+  "reportJson": {
+    "en": "the bench report is not bounded valid JSON",
+    "de": "der Bench-Bericht ist kein begrenztes gültiges JSON"
+  },
+  "reportHtml": {
+    "en": "HTML: {path}\n",
+    "de": "HTML: {path}\n"
+  },
+  "evalRemoved": {
+    "en": "eval was replaced by {cli} bench (independent scoring of any MCP agent on the task library); see {cli} bench --help",
+    "de": "eval wurde durch {cli} bench ersetzt (unabhängige Bewertung beliebiger MCP-Agenten an der Aufgabenbibliothek); siehe {cli} bench --help"
+  },
+  "mcpUsage": {
+    "en": "mcp needs --task <library-task|world> (starts its own session) or --host <http://127.0.0.1:port> --token-file <path> (attaches to a running one)",
+    "de": "mcp braucht --task <Bibliotheksaufgabe|Welt> (startet eine eigene Sitzung) oder --host <http://127.0.0.1:port> --token-file <Pfad> (bindet an eine laufende an)"
+  },
+  "mcpReady": {
+    "en": "Practonaut MCP: task {task} (world {world}), seed {seed}, {mode}\n",
+    "de": "Practonaut MCP: Aufgabe {task} (Welt {world}), Seed {seed}, {mode}\n"
+  },
+  "mcpWatch": {
+    "en": "Watch in your browser (one-use link, valid 5 minutes, keep it private): {url}\n",
+    "de": "Im Browser mitsehen (Link gilt einmal und 5 Minuten, nicht weitergeben): {url}\n"
+  },
+  "taskUnknown": {
+    "en": "unknown task {id} in this world",
+    "de": "unbekannte Aufgabe {id} in dieser Welt"
+  },
+  "mcpStart": {
+    "en": "Practonaut MCP could not start\n",
+    "de": "Practonaut MCP konnte nicht starten\n"
+  },
+  "packageOk": {
+    "en": "OK  world package  {id} {version}",
+    "de": "OK  Weltpaket  {id} {version}"
+  },
+  "packageArchive": {
+    "en": "archive  {path}  {size} bytes  sha256 {hash}",
+    "de": "Archiv  {path}  {size} Bytes  sha256 {hash}"
+  },
+  "packageDeclaredRights": {
+    "en": "Declared world rights: {license}; no redistribution grant verified.",
+    "de": "Deklarierte Weltrechte: {license}; keine Weitergabeerlaubnis geprüft."
+  },
+  "packageManifest": {
+    "en": "manifest schema {schema}, entry {entry}",
+    "de": "Manifest-Schema {schema}, Eintrag {entry}"
+  },
+  "packageSkipped": {
+    "en": "not packed (source documentation): {files}",
+    "de": "Nicht gepackt (Quelldokumentation): {files}"
+  },
+  "source": {
+    "en": "source",
+    "de": "Quelle"
+  },
+  "package": {
+    "en": "package",
+    "de": "Paket"
+  },
+  "packageRejected": {
+    "en": "REJECTED  {what} {path}: {code}: {detail}{entry}",
+    "de": "VERWEIGERT  {what} {path}: {code}: {detail}{entry}"
+  },
+  "packageEntry": {
+    "en": " (entry: {entry})",
+    "de": " (Eintrag: {entry})"
+  },
+  "hostOrigin": {
+    "en": "Host origin: {origin}\n",
+    "de": "Host-Origin: {origin}\n"
+  },
+  "hostToken": {
+    "en": "Token file: {path}\n",
+    "de": "Token-Datei: {path}\n"
+  },
+  "hostMode": {
+    "en": "Mode: {mode}\n",
+    "de": "Modus: {mode}\n"
+  },
+  "hostWorld": {
+    "en": "Practonaut is running: “{title}” (world {world}, task {task})\n",
+    "de": "Practonaut läuft: „{title}“ (Welt {world}, Aufgabe {task})\n"
+  },
+  "hostLink": {
+    "en": "Open: {url}\n",
+    "de": "Öffnen: {url}\n"
+  },
+  "hostOpen": {
+    "en": "The link works once and expires after 5 minutes. Type o and Enter for a new link; Ctrl+C stops the session.\nConnect an agent: {cli} mcp --host {origin} --token-file {path}\n",
+    "de": "Der Link gilt einmal und läuft nach 5 Minuten ab. o und Enter erzeugt einen neuen Link; Ctrl+C beendet die Sitzung.\nAgent anbinden: {cli} mcp --host {origin} --token-file {path}\n"
+  },
+  "mirrorFallback": {
+    "en": "practonaut: Chromium is not installed, so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence. Run {cli} setup once to enable the mirror.\n",
+    "de": "practonaut: Chromium ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup ausführen, um die Spiegelung einzuschalten.\n"
+  },
+  "openFailed": {
+    "en": "practonaut: could not open a browser; open this link yourself: {url}\n",
+    "de": "practonaut: Browser konnte nicht geöffnet werden; diesen Link selbst öffnen: {url}\n"
+  },
+  "openStarted": {
+    "en": "practonaut: asked your browser to open the session. If no Practonaut page appears (some sandboxed browsers cannot read local files), open this link yourself: {url}\n",
+    "de": "practonaut: Der Browser soll die Sitzung öffnen. Erscheint keine Practonaut-Seite (manche abgeschotteten Browser lesen keine lokalen Dateien), diesen Link selbst öffnen: {url}\n"
+  },
+  "linkBudget": {
+    "en": "practonaut: no more links can be issued for this session; restart it.\n",
+    "de": "practonaut: für diese Sitzung können keine weiteren Links erzeugt werden; neu starten.\n"
+  },
+  "closeFailed": {
+    "en": "practonaut: the session could not be closed completely within its deadline.\n",
+    "de": "practonaut: die Sitzung konnte innerhalb der Frist nicht vollständig beendet werden.\n"
+  },
+  "worldMissing": {
+    "en": "world not found: {path}",
+    "de": "Welt nicht gefunden: {path}"
+  },
+  "mirrorStartFallback": {
+    "en": "practonaut: Chromium is installed but did not start ({detail}), so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence.\n{advice}",
+    "de": "practonaut: Chromium ist installiert, startet aber nicht ({detail}), daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege.\n{advice}"
+  },
+  "browserStartFailed": {
+    "en": "Chromium is installed but did not start ({detail}), and this command needs the real Excalidraw mirror.\n{advice}Or use --mirror off for a model-only session.",
+    "de": "Chromium ist installiert, startet aber nicht ({detail}), und dieser Befehl braucht die echte Excalidraw-Spiegelung.\n{advice}Oder --mirror off für eine reine Modellsitzung."
+  },
+  "browserAdviceLinux": {
+    "en": "On Linux this is usually one of two causes. Missing system libraries: run npx playwright install --with-deps chromium (needs sudo). The Chromium sandbox: Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor; see docs/getting-started.md, section \"Chromium does not start\". Check again with {cli} doctor --adapter.\n",
+    "de": "Unter Linux liegt das meist an einer von zwei Ursachen. Fehlende Systembibliotheken: npx playwright install --with-deps chromium ausführen (braucht sudo). Die Chromium-Sandbox: Ubuntu ab 23.10 beschränkt unprivilegierte User-Namespaces mit AppArmor; siehe docs/getting-started.md, Abschnitt \"Chromium does not start\". Erneut prüfen mit {cli} doctor --adapter.\n"
+  },
+  "browserAdviceOther": {
+    "en": "Run {cli} setup again to repair the download, then check with {cli} doctor --adapter.\n",
+    "de": "{cli} setup erneut ausführen, um den Download zu reparieren, dann mit {cli} doctor --adapter prüfen.\n"
+  },
+  "chromiumStartName": {
+    "en": "chromium start",
+    "de": "Chromium-Start"
+  },
+  "chromiumStarts": {
+    "en": "starts (headless, sandbox on)",
+    "de": "Startet (headless, Sandbox an)"
+  },
+  "chromiumStartFails": {
+    "en": "installed but does not start: {detail}",
+    "de": "Installiert, startet aber nicht: {detail}"
+  },
+  "unexpectedFailure": {
+    "en": "unexpected failure: {detail}",
+    "de": "unerwarteter Fehler: {detail}"
+  },
+  "modelOnly": {
+    "en": "model-only (never practice evidence)",
+    "de": "model-only (kein Übungsbeleg)"
+  },
+  "exit": {
+    "en": "exit {status}",
+    "de": "Exit {status}"
+  },
+  "chromiumPresent": {
+    "en": "present (real Excalidraw mirror available)",
+    "de": "Vorhanden (echte Excalidraw-Spiegelung verfügbar)"
+  },
+  "chromiumAbsent": {
+    "en": "not installed: practice runs model-only (run {cli} setup; explicit download)",
+    "de": "Nicht installiert: Übung läuft nur im Modell ({cli} setup ausführen; ausdrücklicher Download)"
+  },
+  "browserRuntimeMissing": {
+    "en": "Chromium is not installed, but this command needs the real Excalidraw mirror. Run {cli} setup once (an explicit download), then retry, or use --mirror off for a model-only session.",
+    "de": "Chromium ist nicht installiert, dieser Befehl braucht aber die echte Excalidraw-Spiegelung. Einmal {cli} setup ausführen (ausdrücklicher Download) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
+  },
+  "playwrightAbsent": {
+    "en": "playwright-core not installed",
+    "de": "playwright-core nicht installiert"
+  },
+  "nodeRequired": {
+    "en": "{version} (need >= {minimum})",
+    "de": "{version} (benötigt >= {minimum})"
+  },
+  "notFound": {
+    "en": "not found ({detail})",
+    "de": "Nicht gefunden ({detail})"
+  },
+  "gitleaksAbsent": {
+    "en": "not found ({detail}); optional, the pre-commit hook then skips the secret scan",
+    "de": "Nicht gefunden ({detail}); optional, der Pre-Commit-Hook überspringt dann den Secret-Scan"
+  },
+  "dockerServer": {
+    "en": "server {version}",
+    "de": "Server {version}"
+  },
+  "dockerOptional": {
+    "en": "not available (optional; current tests do not use Docker)",
+    "de": "Nicht verfügbar (optional; aktuelle Tests verwenden Docker nicht)"
+  },
+  "doctorPassed": {
+    "en": "doctor: all required checks passed",
+    "de": "doctor: Alle Pflichtprüfungen bestanden"
+  },
+  "doctorFailed": {
+    "en": "doctor: {count} required {count:check|checks} failed",
+    "de": "doctor: {count} {count:Pflichtprüfung|Pflichtprüfungen} fehlgeschlagen"
+  },
+  "chromiumName": {
+    "en": "playwright chromium (cache)",
+    "de": "Playwright-Chromium (Cache)"
+  },
+  "dockerName": {
+    "en": "docker (optional)",
+    "de": "Docker (optional)"
+  },
+  "gitleaksName": {
+    "en": "gitleaks (optional)",
+    "de": "gitleaks (optional)"
+  },
+  "checkFail": {
+    "en": "FAIL",
+    "de": "FEHLER"
+  },
+  "checkWarn": {
+    "en": "warn",
+    "de": "WARNUNG"
+  },
+  "checkOk": {
+    "en": "ok",
+    "de": "ok"
+  }
+} as const;
+export type CliLanguage = 'en' | 'de';
+let language: CliLanguage = 'en';
+export function setCliLanguage(value: CliLanguage): void { language = value; }
+export function getCliLanguage(): CliLanguage { return language; }
+/** Plural form for a count in the CLI language (`one` or `other`, Intl.PluralRules). */
+export function pluralForm(count: number, one: string, other: string, lang: CliLanguage = language): string {
+  return new Intl.PluralRules(lang).select(count) === 'one' ? one : other;
+}
+/** `{name}` inserts a value; `{name:one|other}` inserts the word form for the count in `name`. */
+export function cliText(key: keyof typeof CLI_CATALOG, values: Record<string, string | number> = {}): string {
+  // `{cli}` is how the user started the CLI (`practonaut` or `npx practonaut`), so suggestions can be pasted back.
+  values = Object.hasOwn(values, 'cli') ? values : { ...values, cli: invocationName() };
+  return CLI_CATALOG[key][language].replace(/\{([A-Za-z]+)(?::([^{}|]*)\|([^{}]*))?\}/g, (_match, name: string, one: string | undefined, other: string | undefined) => {
+    if (!Object.hasOwn(values, name)) throw new Error(`Missing CLI catalog parameter: ${key}.${name}`);
+    if (one === undefined) return String(values[name]);
+    const count = Number(values[name]);
+    if (!Number.isFinite(count)) throw new Error(`Plural parameter is not a number: ${key}.${name}`);
+    return pluralForm(count, one, other!);
+  });
+}

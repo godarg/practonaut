@@ -1,0 +1,179 @@
+{
+  "actions": [
+    {
+      "name": "rename_step",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "label": {
+          "max": 4096,
+          "type": "string"
+        }
+      },
+      "preconditions": []
+    }
+  ],
+  "app": {
+    "adapterId": "excalidraw",
+    "excludedAttributes": {
+      "arrowGeometry": "Derived from bindings; checked independently on export",
+      "boundElements": "Reverse binding cache; checked for integrity",
+      "frameGeometry": "Outside the declared semantic set",
+      "index": "App order key",
+      "seed": "App randomness",
+      "textGeometry": "Font metrics; checked independently on export",
+      "updated": "App timestamp",
+      "version": "App revision counter",
+      "versionNonce": "App randomness"
+    },
+    "fontFamilies": [
+      3
+    ],
+    "versionRange": "0.18.1"
+  },
+  "id": "minimal",
+  "initialState": {
+    "objects": {
+      "flow-frame": {
+        "deleted": false,
+        "id": "flow-frame",
+        "name": "Minimal example",
+        "type": "frame"
+      },
+      "draft": {
+        "id": "draft",
+        "type": "step",
+        "deleted": false,
+        "frameId": "flow-frame",
+        "label": "Draft",
+        "x": 120,
+        "y": 120,
+        "width": 160,
+        "height": 60,
+        "fontFamily": 3
+      }
+    }
+  },
+  "objectTypes": [
+    {
+      "attributes": {
+        "deleted": "boolean",
+        "id": "id",
+        "name": "string"
+      },
+      "type": "frame"
+    },
+    {
+      "attributes": {
+        "deleted": "boolean",
+        "fontFamily": "integer",
+        "frameId": "id",
+        "height": "integer",
+        "id": "id",
+        "label": "string",
+        "width": "integer",
+        "x": "integer",
+        "y": "integer"
+      },
+      "type": "step"
+    }
+  ],
+  "provenance": {
+    "adapterVersion": "1.0.0",
+    "appVersion": "0.18.1",
+    "authors": [
+      "Practonaut contributors"
+    ],
+    "compileToolVersion": "0.0.0",
+    "recordings": []
+  },
+  "rights": {
+    "assets": [
+      {
+        "path": "assets/marker.png",
+        "source": "Self-made 16 x 16 px example marker; examples/worlds/minimal/README.md",
+        "license": "CC0-1.0"
+      }
+    ],
+    "license": "CC0-1.0",
+    "recordings": []
+  },
+  "rules": [
+    {
+      "action": "rename_step",
+      "effects": [
+        "set_label"
+      ],
+      "evidence": [
+        {
+          "case": "rename_step",
+          "run": "tests/adapter/evidence/conformance.json",
+          "sha256": "efede45569f95c249b0f78dd399e8d031e90fd6a51e53c0f89afa0c2bcfd39ed"
+        }
+      ],
+      "id": "rename_step",
+      "preconditions": [],
+      "status": "confirmed"
+    }
+  ],
+  "schema": "practonaut.world/1",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": {
+        "en": "Rename the step",
+        "de": "Schritt umbenennen"
+      },
+      "prompt": {
+        "en": "Rename Draft to Done.",
+        "de": "Benenne Draft in Done um."
+      },
+      "goal": {
+        "op": "exists",
+        "type": "step",
+        "as": "s",
+        "where": {
+          "op": "eq",
+          "left": {
+            "kind": "field",
+            "variable": "s",
+            "field": "label"
+          },
+          "right": {
+            "kind": "literal",
+            "value": "Done"
+          }
+        }
+      },
+      "hints": [
+        {
+          "en": "Choose the step and use Rename.",
+          "de": "Wähle den Schritt und dann Umbenennen."
+        }
+      ],
+      "errorClasses": []
+    }
+  ],
+  "units": {
+    "height": "pixel × 1",
+    "width": "pixel × 1",
+    "x": "pixel × 1",
+    "y": "pixel × 1"
+  },
+  "variants": {
+    "generator": "finite-seeded-v1",
+    "cases": [
+      {
+        "id": "minimal",
+        "labels": {},
+        "insertPosition": 0,
+        "layoutOffset": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    ]
+  },
+  "version": "0.0.0"
+}

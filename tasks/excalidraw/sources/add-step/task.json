@@ -1,0 +1,34 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "add-step",
+  "difficulty": 1,
+  "title": {
+    "en": "Add a step",
+    "de": "Einen Schritt hinzufügen"
+  },
+  "prompt": {
+    "en": "Add a step “Archive” to the right of “Ship”. It needs no arrow.",
+    "de": "Füge rechts von „Ship“ einen Schritt „Archive“ hinzu. Er braucht keinen Pfeil."
+  },
+  "options": {
+    "layout": "relative"
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Pack": "Prepare",
+        "Ship": "Send",
+        "Archive": "Store"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Pack": "Draft",
+        "Ship": "Publish",
+        "Archive": "Backup"
+      }
+    }
+  ]
+}

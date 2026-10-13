@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "disconnect",
+  "difficulty": 1,
+  "title": {
+    "en": "Remove a shortcut arrow",
+    "de": "Einen Abkürzungspfeil entfernen"
+  },
+  "prompt": {
+    "en": "The arrow from “Plan” directly to “Release” skips “Test”. Remove that arrow and keep the other two.",
+    "de": "Der Pfeil von „Plan“ direkt nach „Release“ überspringt „Test“. Entferne diesen Pfeil und behalte die anderen beiden."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Plan": "Write",
+        "Test": "Edit",
+        "Release": "Print"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Plan": "Order",
+        "Test": "Check",
+        "Release": "Pay"
+      }
+    }
+  ]
+}

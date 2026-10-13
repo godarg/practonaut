@@ -1,0 +1,43 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "close-chain",
+  "difficulty": 2,
+  "title": {
+    "en": "Close the gap in a chain",
+    "de": "Eine Lücke in der Kette schließen"
+  },
+  "prompt": {
+    "en": "The process breaks after “Draft”. Connect “Draft” to “Review” so that all four steps form one chain.",
+    "de": "Der Ablauf reißt nach „Draft“ ab. Verbinde „Draft“ mit „Review“, damit alle vier Schritte eine Kette bilden."
+  },
+  "hints": [
+    {
+      "en": "The new arrow starts at “Draft” and points to “Review”, in the same direction as the other two arrows.",
+      "de": "Der neue Pfeil beginnt bei „Draft“ und zeigt auf „Review“, in dieselbe Richtung wie die beiden anderen Pfeile."
+    },
+    {
+      "en": "The goal has 4 steps and 3 arrows: “Idea” → “Draft” → “Review” → “Publish”.",
+      "de": "Das Ziel hat 4 Schritte und 3 Pfeile: „Idea“ → „Draft“ → „Review“ → „Publish“."
+    }
+  ],
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Idea": "Sketch",
+        "Draft": "Model",
+        "Review": "Test",
+        "Publish": "Launch"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Idea": "Brief",
+        "Draft": "Layout",
+        "Review": "Proof",
+        "Publish": "Print"
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+/*
+ * App shell: bar, stage grid, workspace layouts, loading and failure screens.
+ * The stage is one grid. Persistent nodes (the real editor) and re-rendered nodes are siblings
+ * placed by named areas, so the editor iframe never moves in the DOM and never reloads.
+ */
+.shell-bar {
+  position: sticky; top: 0; z-index: var(--pn-z-sticky);
+  display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: var(--pn-space-3) var(--pn-space-4);
+  min-height: var(--pn-appbar-height); padding: var(--pn-space-2) var(--pn-gutter);
+  background: var(--pn-color-glass);
+  -webkit-backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate)); backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate));
+  box-shadow: var(--pn-shadow-bar);
+}
+@supports not (backdrop-filter: blur(1px)) { .shell-bar { background: var(--pn-color-surface); } }
+.shell-brand { font-size: var(--pn-text-body); line-height: var(--pn-leading-body); letter-spacing: var(--pn-tracking-title3); font-weight: var(--pn-weight-bold); justify-self: start; }
+.shell-modes { justify-self: center; }
+.shell-controls { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: var(--pn-space-2); }
+@media (max-width: 47.99em) {
+  .shell-bar { grid-template-columns: 1fr auto; grid-template-areas: "brand controls" "modes modes"; padding-bottom: var(--pn-space-3); }
+  .shell-brand { grid-area: brand; }
+  .shell-controls { grid-area: controls; grid-column: auto; }
+  .shell-modes { grid-area: modes; justify-self: stretch; }
+  .shell-modes .pn-segmented { display: grid; width: 100%; }
+  .shell-modes .pn-segmented__item { padding: 0 var(--pn-space-2); }
+  .shell-controls .pn-select--capsule select { padding-left: var(--pn-space-3); padding-right: var(--pn-space-8); }
+  .shell-controls .pn-select > .pn-icon { right: var(--pn-space-2); }
+}
+
+#practice-mount, #workbench { display: contents; }
+
+.shell-stage {
+  display: grid; max-width: var(--pn-page-max); margin: 0 auto;
+  padding: var(--pn-space-8) var(--pn-gutter) var(--pn-space-16);
+  column-gap: var(--pn-space-8); row-gap: 0; align-items: start;
+  grid-template-columns: minmax(0, 1fr) var(--pn-inspector-width);
+  grid-template-areas: "status status" "head inspector" "notice inspector" "canvas inspector" "tray inspector" "foot inspector";
+  grid-template-rows: auto auto auto auto auto 1fr;
+}
+.practice-head, .practice-board, .practice-tray, .practice-inspector, .engine-panel, .create-guide, .create-advanced, .phase3-status { min-width: 0; }
+.practice-head, .practice-board, .practice-tray, .engine-panel, .create-guide, .create-advanced { margin-bottom: var(--pn-space-6); }
+
+/* Practice workspaces: model board and real editor share the head, the tray and the inspector. */
+.practice-head { grid-area: head; }
+.practice-board { grid-area: canvas; }
+.practice-tray { grid-area: tray; }
+.practice-inspector { grid-area: inspector; }
+.engine-panel { grid-area: canvas; }
+.engine-slot { grid-area: canvas; min-width: 0; align-self: stretch; }
+.engine-slot:has(> .engine-panel[hidden]) { display: none; }
+
+/* Create workspace: guide on the left, the drawing surface sticks on the right. */
+body[data-workspace="author"] .practice-head,
+body[data-workspace="author"] .practice-board,
+body[data-workspace="author"] .practice-tray,
+body[data-workspace="author"] .practice-inspector { display: none; }
+body[data-workspace="editor"] .practice-board { display: none; }
+body[data-workspace="author"] .shell-stage {
+  grid-template-columns: minmax(0, var(--pn-guide-width)) minmax(0, 1fr);
+  grid-template-areas: "status status" "ways ways" "guide notice" "guide engine" "advanced advanced"; grid-template-rows: auto auto auto 1fr auto;
+}
+body[data-workspace="author"] .engine-panel { grid-area: engine; position: sticky; top: calc(var(--pn-appbar-height) + var(--pn-space-4)); }
+body[data-workspace="author"] .engine-slot { grid-area: engine; }
+.create-guide { grid-area: guide; }
+.create-two-scenes-slot { grid-area: guide; align-self: start; }
+.create-advanced { grid-area: advanced; }
+body:not([data-workspace="author"]) .create-guide,
+body:not([data-workspace="author"]) .create-two-scenes-slot,
+body:not([data-workspace="author"]) .create-advanced { display: none; }
+
+@media (max-width: 71.99em) {
+  .shell-stage { grid-template-columns: minmax(0, 1fr); grid-template-areas: "status" "notice" "head" "canvas" "tray" "inspector" "foot"; grid-template-rows: none; }
+  body[data-workspace="author"] .shell-stage { grid-template-columns: minmax(0, 1fr); grid-template-areas: "status" "ways" "guide" "notice" "engine" "advanced"; }
+  body[data-workspace="author"] .engine-panel { position: static; }
+}
+
+/* Loading and failure: the app has a state for the moment before and after a session. */
+.shell-center { grid-area: 1 / 1 / -1 / -1; display: grid; place-items: center; min-height: calc(100dvh - var(--pn-appbar-height)); padding: var(--pn-space-8) var(--pn-gutter); }
+.shell-message { display: grid; justify-items: center; gap: var(--pn-space-3); max-width: 28rem; text-align: center; }
+.shell-message__glyph { display: grid; place-content: center; width: 4rem; height: 4rem; border-radius: var(--pn-radius-full); background: var(--pn-color-fill); color: var(--pn-color-text-secondary); margin-bottom: var(--pn-space-2); }
+.shell-message__glyph .pn-icon { width: var(--pn-icon-lg); height: var(--pn-icon-lg); }
+.shell-message--danger .shell-message__glyph { background: var(--pn-color-danger-bg); color: var(--pn-color-danger-icon); }
+.shell-message__text { color: var(--pn-color-text-secondary); font-size: var(--pn-text-body); line-height: var(--pn-leading-body); }
+.shell-skeleton { display: grid; gap: var(--pn-space-3); width: min(100%, 36rem); margin-top: var(--pn-space-4); }
+.shell-skeleton .pn-skeleton { height: var(--pn-space-4); }
+.shell-skeleton .pn-skeleton:nth-child(2) { width: 78%; }
+.shell-skeleton .pn-skeleton:nth-child(3) { width: 52%; }
+
+/* Engine status line: quiet while all is well, a banner when something needs attention. */
+.shell-stage .phase3-status { grid-area: foot; display: flex; align-items: center; gap: var(--pn-space-2); padding: 0 var(--pn-space-2); background: none; color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+.shell-stage .phase3-status::before { content: ""; width: 0.5rem; height: 0.5rem; flex: none; border-radius: var(--pn-radius-full); background: var(--pn-color-text-tertiary); }
+.shell-stage .phase3-status.is-ready::before { background: var(--pn-color-success-icon); }
+/* A problem with the drawing surface is shown at the work area it concerns, never pushed in above the page. */
+.shell-stage .phase3-status.error, .shell-stage .phase3-status.unmodeled { grid-area: notice; margin-bottom: var(--pn-space-4); padding: var(--pn-space-3) var(--pn-space-4); border-radius: var(--pn-radius-md); color: var(--pn-color-text); font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); }
+.shell-stage .phase3-status.error { background: var(--pn-color-danger-bg); }
+.shell-stage .phase3-status.error::before { background: var(--pn-color-danger-icon); }
+.shell-stage .phase3-status.unmodeled { background: var(--pn-color-unknown-bg); }
+.shell-stage .phase3-status.unmodeled::before { background: var(--pn-color-unknown-icon); }
+
+/* In the practice workspace the engine status is for assistive technology only; it surfaces when something needs attention. */
+body[data-workspace="board"] .shell-stage .phase3-status:not(.error):not(.unmodeled) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

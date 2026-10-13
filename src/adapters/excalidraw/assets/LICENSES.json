@@ -1,0 +1,178 @@
+{
+  "retrieved": "2026-10-03",
+  "fontFamilies": [
+    3
+  ],
+  "fonts": [
+    {
+      "file": "fonts/Cascadia/CascadiaCode-Regular.woff2",
+      "source": "@excalidraw/excalidraw@0.18.1/dist/prod/fonts/Cascadia/CascadiaCode-Regular.woff2",
+      "upstream": "https://github.com/microsoft/cascadia-code",
+      "licenseSource": "https://raw.githubusercontent.com/microsoft/cascadia-code/main/LICENSE",
+      "primaryConfirmation": "https://learn.microsoft.com/en-us/windows/terminal/cascadia-code",
+      "license": "OFL-1.1",
+      "licenseText": "fonts/Cascadia/LICENSE"
+    },
+    {
+      "source": "@excalidraw/excalidraw@0.18.1 bundled UI CSS",
+      "upstream": "https://github.com/google/fonts/tree/main/ofl/assistant",
+      "licenseSource": "https://raw.githubusercontent.com/google/fonts/main/ofl/assistant/OFL.txt",
+      "license": "OFL-1.1",
+      "licenseText": "fonts/Assistant/LICENSE",
+      "scope": "Engine UI font only, not a supported world font family",
+      "files": [
+        "Assistant-Bold-ZDZZ6JHA.woff2",
+        "Assistant-Medium-DZ25RZU3.woff2",
+        "Assistant-Regular-PLF2XOGW.woff2",
+        "Assistant-SemiBold-CZ5MX6FK.woff2"
+      ]
+    }
+  ],
+  "omitted": "All other world font families excluded; Cascadia alone supported for world text. Assistant UI CSS assets licensed separately.",
+  "licenseSources": {
+    "_excalidraw_excalidraw.txt": "https://raw.githubusercontent.com/excalidraw/excalidraw/v0.18.1/LICENSE",
+    "radix.txt": "https://raw.githubusercontent.com/radix-ui/primitives/main/LICENSE",
+    "react-remove-scroll-bar.txt": "https://raw.githubusercontent.com/theKashey/react-remove-scroll-bar/master/LICENSE",
+    "fuzzy.txt": "https://raw.githubusercontent.com/mattyork/fuzzy/master/LICENSE-MIT",
+    "fastdom.txt": "node_modules/fastdom/README.md, full license section from locked package",
+    "pako.txt": "pako@2.0.3 locked LICENSE (MIT) plus lib/zlib/inflate.js copyright and Zlib notice; https://github.com/nodeca/pako/tree/2.0.3",
+    "embedded-fonteditor-core.txt": "Complete notice from SHA-bound Excalidraw chunk-EIO257PC.js",
+    "embedded-harfbuzzjs.txt": "Complete notice from SHA-bound Excalidraw chunk-EIO257PC.js; harfbuzzjs v0.3.6 upstream LICENSE confirms MIT/Apache declaration; standard Apache-2.0 full terms appended",
+    "embedded-glur.txt": "Complete node_modules/glur/LICENSE from byte-matched installed source; embedded pica Browserify provenance recorded separately",
+    "embedded-inherits.txt": "Complete node_modules/inherits/LICENSE from byte-matched installed source; embedded pica Browserify provenance recorded separately",
+    "embedded-multimath.txt": "Complete node_modules/multimath/LICENSE from byte-matched installed source; embedded pica Browserify provenance recorded separately",
+    "embedded-object-assign.txt": "Complete node_modules/object-assign/license from byte-matched installed source; embedded pica Browserify provenance recorded separately",
+    "embedded-webworkify.txt": "Complete node_modules/webworkify/LICENSE from byte-matched installed source; embedded pica Browserify provenance recorded separately"
+  },
+  "embeddedComponents": [
+    {
+      "name": "fonteditor-core",
+      "version": "2.4.0",
+      "versionProvenance": "Version explicitly declared in pinned upstream WASM source banner",
+      "containerSource": "node_modules/@excalidraw/excalidraw/dist/prod/chunk-EIO257PC.js",
+      "license": "MIT",
+      "licenseText": "licenses/embedded-fonteditor-core.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Upstream WASM banner identifies component; compiled subroutine provenance is not reconstructed or security certified"
+    },
+    {
+      "name": "harfbuzzjs",
+      "version": "0.3.6",
+      "versionProvenance": "Version explicitly declared in pinned upstream WASM source banner",
+      "containerSource": "node_modules/@excalidraw/excalidraw/dist/prod/chunk-EIO257PC.js",
+      "license": "MIT AND Apache-2.0",
+      "licenseText": "licenses/embedded-harfbuzzjs.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Upstream WASM banner identifies component; compiled subroutine provenance is not reconstructed or security certified"
+    },
+    {
+      "name": "glur",
+      "version": "1.1.2",
+      "versionProvenance": "Embedded entry source matches this installed version; no declaration that historical upstream npm resolution used this version",
+      "containerSource": "node_modules/pica/dist/pica.js",
+      "browserifyModule": 18,
+      "matchingInstalledSource": "node_modules/glur/mono16.js",
+      "license": "MIT",
+      "licenseText": "licenses/embedded-glur.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Entry source equality establishes source attribution; associated historical resolution and all compiled subroutines are not independently version certified"
+    },
+    {
+      "name": "inherits",
+      "version": "2.0.4",
+      "versionProvenance": "Embedded entry source matches this installed version; no declaration that historical upstream npm resolution used this version",
+      "containerSource": "node_modules/pica/dist/pica.js",
+      "browserifyModule": 19,
+      "matchingInstalledSource": "node_modules/inherits/inherits_browser.js",
+      "license": "ISC",
+      "licenseText": "licenses/embedded-inherits.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Entry source equality establishes source attribution; associated historical resolution and all compiled subroutines are not independently version certified"
+    },
+    {
+      "name": "multimath",
+      "version": "2.0.0",
+      "versionProvenance": "Embedded entry source matches this installed version; no declaration that historical upstream npm resolution used this version",
+      "containerSource": "node_modules/pica/dist/pica.js",
+      "browserifyModule": 20,
+      "matchingInstalledSource": "node_modules/multimath/index.js",
+      "license": "MIT",
+      "licenseText": "licenses/embedded-multimath.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Entry source equality establishes source attribution; associated historical resolution and all compiled subroutines are not independently version certified"
+    },
+    {
+      "name": "object-assign",
+      "version": "4.1.1",
+      "versionProvenance": "Embedded entry source matches this installed version; no declaration that historical upstream npm resolution used this version",
+      "containerSource": "node_modules/pica/dist/pica.js",
+      "browserifyModule": 23,
+      "matchingInstalledSource": "node_modules/object-assign/index.js",
+      "license": "MIT",
+      "licenseText": "licenses/embedded-object-assign.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Entry source equality establishes source attribution; associated historical resolution and all compiled subroutines are not independently version certified"
+    },
+    {
+      "name": "webworkify",
+      "version": "1.5.0",
+      "versionProvenance": "Embedded entry source matches this installed version; no declaration that historical upstream npm resolution used this version",
+      "containerSource": "node_modules/pica/dist/pica.js",
+      "browserifyModule": 24,
+      "matchingInstalledSource": "node_modules/webworkify/index.js",
+      "license": "MIT",
+      "licenseText": "licenses/embedded-webworkify.txt",
+      "delivery": "Attribute only if this container contributes positive output bytes; parsed-only remains inventoried",
+      "reachabilityLimit": "Entry source equality establishes source attribution; associated historical resolution and all compiled subroutines are not independently version certified"
+    }
+  ],
+  "embeddedNoticeMeasurementDate": "2026-10-09",
+  "embeddedNoticeLimits": "Bounded sweep of every retained input, adjacent source maps, license/copyright banners and Browserify imports. Missing source maps cannot prove absence of further prebundles; compiled WASM provenance comes from pinned upstream banners. No blanket completeness or advisory clearance.",
+  "nativePreviewFonts": {
+    "schema": "practonaut.native-preview-fonts/1",
+    "origin": "installed locked @excalidraw/excalidraw@0.18.1",
+    "engineFamily": 5,
+    "worldAdmissionFamily": 3,
+    "fonts": [
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-349fac6ca4700ffec595a7150a0d1e1d.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-349fac6ca4700ffec595a7150a0d1e1d.woff2",
+        "unicodeRange": "U+462-463,U+472-475,U+4d8-4d9,U+4e2-4e3,U+4e6-4e9,U+4ee-4ef"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-3f2c5db56cc93c5a6873b1361d730c16.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-3f2c5db56cc93c5a6873b1361d730c16.woff2",
+        "unicodeRange": "U+2c7,U+2d8-2d9,U+2db,U+2dd,U+302,U+306-307,U+30a-30c,U+326-328,U+212e,U+2211,U+fb01-fb02"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-41b173a47b57366892116a575a43e2b6.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-41b173a47b57366892116a575a43e2b6.woff2",
+        "unicodeRange": "U+37e,U+384-38a,U+38c,U+38e-393,U+395-3a1,U+3a3-3a8,U+3aa-3cf,U+3d7"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-623ccf21b21ef6b3a0d87738f77eb071.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-623ccf21b21ef6b3a0d87738f77eb071.woff2",
+        "unicodeRange": "U+300-301,U+303"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+        "unicodeRange": "U+20-7e,U+a0-a3,U+a5-a6,U+a8-ab,U+ad-b1,U+b4,U+b6-b8,U+ba-ff,U+131,U+152-153,U+2bc,U+2c6,U+2da,U+2dc,U+304,U+308,U+2013-2014,U+2018-201a,U+201c-201e,U+2020,U+2022,U+2024-2026,U+2030,U+2039-203a,U+20ac,U+2122,U+2212"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-b9dcf9d2e50a1eaf42fc664b50a3fd0d.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-b9dcf9d2e50a1eaf42fc664b50a3fd0d.woff2",
+        "unicodeRange": "U+400-45f,U+490-491,U+2116"
+      },
+      {
+        "path": "fonts/Excalifont/Excalifont-Regular-be310b9bcd4f1a43f571c46df7809174.woff2",
+        "sourcePath": "node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-be310b9bcd4f1a43f571c46df7809174.woff2",
+        "unicodeRange": "U+100-130,U+132-137,U+139-149,U+14c-151,U+154-17e,U+192,U+1fc-1ff,U+218-21b,U+237,U+1e80-1e85,U+1ef2-1ef3,U+2113"
+      }
+    ],
+    "notice": {
+      "path": "fonts/Excalifont/LICENSE"
+    },
+    "disclosure": "Delivered solely for native Excalidraw family-5 rendering; not a supported Practonaut world font."
+  }
+}

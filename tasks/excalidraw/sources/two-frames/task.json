@@ -1,0 +1,37 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "two-frames",
+  "difficulty": 3,
+  "title": {
+    "en": "Sort two sub-processes into frames",
+    "de": "Zwei Teilprozesse in Rahmen ordnen"
+  },
+  "prompt": {
+    "en": "Put “Quote” and “Order” into the frame “Sales”, and “Pack” and “Deliver” into the frame “Delivery”. Keep all arrows.",
+    "de": "Lege „Quote“ und „Order“ in den Rahmen „Sales“ und „Pack“ und „Deliver“ in den Rahmen „Delivery“. Alle Pfeile bleiben."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Quote": "Apply",
+        "Order": "Interview",
+        "Pack": "Contract",
+        "Deliver": "Onboard",
+        "Sales": "Hiring",
+        "Delivery": "Start"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Quote": "Pitch",
+        "Order": "Sign",
+        "Pack": "Build",
+        "Deliver": "Hand over",
+        "Sales": "Win",
+        "Delivery": "Do"
+      }
+    }
+  ]
+}

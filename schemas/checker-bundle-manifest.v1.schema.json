@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:practonaut:schema:checker-bundle-manifest.v1.schema.json",
+  "title": "Practonaut checker bundle manifest v1",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "practonaut.checker-bundle"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "Manifest schema version; this schema accepts major 1 only."
+    },
+    "world": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$",
+          "description": "World id: lowercase ASCII letters, digits and hyphens, at most 64 characters."
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+          "description": "World version (semantic versioning 2.0.0)."
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "description": "The world this bundle checks."
+    },
+    "files": {
+      "minItems": 1,
+      "maxItems": 255,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9._-]*\\/){0,7}[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "description": "Archive-relative path: ASCII segments, '/' separated, no '..', no leading or trailing slash."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Lowercase hex SHA-256 of the uncompressed bytes."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4194304,
+            "description": "Uncompressed size in bytes."
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": [
+              "application/json",
+              "text/plain",
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "description": "Must match the file extension and the content."
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size",
+          "mediaType"
+        ],
+        "additionalProperties": false,
+        "description": "One file in the archive. manifest.json itself is not listed."
+      }
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "world",
+    "files"
+  ],
+  "additionalProperties": false,
+  "description": "Practonaut checker bundle manifest, schema version 1. Holds held-out checker data; never shipped to learners or agents."
+}

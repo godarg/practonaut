@@ -1,0 +1,10 @@
+@import "./css/base.css";
+@import "./css/ui.css";
+@import "./css/shell.css";
+@import "./css/practice.css";
+@import "./css/create.css";
+
+/* Last in the cascade: selected controls retain the system contrast colours. */
+@media (forced-colors: active) {
+  .pn-btn[aria-pressed="true"], .pn-segmented__item[aria-pressed="true"], .tray-chip[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; box-shadow: none; border-color: HighlightText; }
+}

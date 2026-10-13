@@ -1,0 +1,39 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "connect",
+  "difficulty": 1,
+  "title": {
+    "en": "Connect two steps",
+    "de": "Zwei Schritte verbinden"
+  },
+  "prompt": {
+    "en": "Draw an arrow from “Request” to “Approve”.",
+    "de": "Zeichne einen Pfeil von „Request“ nach „Approve“."
+  },
+  "hints": [
+    {
+      "en": "An arrow has a direction. Start it at “Request” and end it at “Approve”; an arrow from “Approve” to “Request” does not meet the goal.",
+      "de": "Ein Pfeil hat eine Richtung. Beginne ihn bei „Request“ und lass ihn bei „Approve“ enden; ein Pfeil von „Approve“ nach „Request“ erfüllt das Ziel nicht."
+    },
+    {
+      "en": "The goal has 2 steps and 1 arrow.",
+      "de": "Das Ziel hat 2 Schritte und 1 Pfeil."
+    }
+  ],
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Request": "Apply",
+        "Approve": "Decide"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Request": "Submit",
+        "Approve": "Review"
+      }
+    }
+  ]
+}

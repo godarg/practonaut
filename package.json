@@ -1,0 +1,106 @@
+{
+  "name": "practonaut",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Local practice gym for AI agents on real apps: demonstrate a task once, let any MCP agent practice it, get an independent reproducible score.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/godarg/practonaut#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/godarg/practonaut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/godarg/practonaut/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "practonaut": "dist/cli/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "schemas/",
+    "examples/worlds/flow-diagram/",
+    "tasks/excalidraw/",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "bootstrap": "bash tools/bootstrap.sh",
+    "doctor": "node tools/doctor.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "schema:write": "node tools/schemas.ts --write",
+    "schema:check": "node tools/schemas.ts --check",
+    "library:write": "node tools/build-library.ts --write",
+    "library:check": "node tools/build-library.ts --check",
+    "docs:check": "node tools/check-docs.ts",
+    "design:contrast": "node tools/check-contrast.ts",
+    "design:lint": "node tools/design-lint.ts",
+    "design:gallery": "node tools/build-gallery.ts",
+    "check": "npm run typecheck && npm run schema:check && npm run docs:check && npm run design:contrast && npm run design:lint && npm run library:check",
+    "test": "node --import ./tests/support/test-home.ts --test --test-reporter=spec \"tests/unit/*.test.ts\"",
+    "test:a11y": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts tools/test-player-a11y.ts --gate-create",
+    "test:pack": "bash tools/test-pack.sh",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node tools/build-engine.ts --dist && node tools/build-player.ts --dist",
+    "clean": "node tools/clean.ts",
+    "demo": "node tools/demo.ts",
+    "engine:build": "node tools/build-engine.ts",
+    "test:adapter": "npm run engine:build && node --import ./tests/support/test-home.ts --test --test-timeout=180000 --test-reporter=spec \"tests/adapter/*.test.ts\"",
+    "test:integration": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts --test --test-concurrency=4 --test-timeout=180000 --test-reporter=spec \"tests/integration/*.test.ts\"",
+    "world:freeze": "node tools/freeze-world.ts",
+    "player:build": "node tools/build-player.ts",
+    "test:e2e": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts --test --test-concurrency=4 --test-timeout=300000 --test-reporter=spec \"tests/e2e/*.test.ts\" && node --import ./tests/support/test-home.ts --test --test-concurrency=1 --test-timeout=600000 --test-reporter=spec \"tests/e2e/timing/*.test.ts\"",
+    "test:mcp": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts --test --test-timeout=180000 --test-reporter=spec \"tests/mcp/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "playwright-core": "1.63.0",
+    "yauzl": "3.4.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@excalidraw/excalidraw": "0.18.1",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/node": "22.20.5",
+    "@types/react": "18.3.27",
+    "@types/react-dom": "18.3.7",
+    "@types/yauzl": "3.4.0",
+    "esbuild": "0.25.12",
+    "playwright": "1.63.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.18",
+      "sass": "1.97.3"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "5.1.16"
+    },
+    "lodash-es": "4.18.1",
+    "katex": "0.18.2"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "agent-evaluation",
+    "benchmark",
+    "practice",
+    "excalidraw"
+  ]
+}

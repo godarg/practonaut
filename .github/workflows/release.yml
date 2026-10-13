@@ -1,0 +1,115 @@
+# Publishes a version to npm when a maintainer pushes a tag vX.Y.Z (docs/release.md, PADR-0031).
+# - prepare: read-only; checks, builds, packs the tarball once and smoke-tests that exact file.
+# - publish: waits for approval in the `release` environment, publishes the same tarball through
+#   npm trusted publishing (OIDC, no stored token) with provenance, then creates the GitHub release.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Tag must equal the package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p 'require("./package.json").version')
+          test "$GITHUB_REF_NAME" = "v$VERSION" || { echo "tag $GITHUB_REF_NAME does not match package version $VERSION" >&2; exit 1; }
+          grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for $VERSION" >&2; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: No OWNER placeholder left (package.json, issue templates, root documents)
+        run: node tools/check-release-placeholders.ts
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Checks and test layers
+        run: |
+          npm run check
+          npm test
+          npm run build
+          npm run demo
+          npm run test:adapter
+          npm run test:integration
+          npm run test:e2e
+          npm run test:mcp
+          npm run test:a11y
+      - name: Pack once
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/release" > "$RUNNER_TEMP/release/name.txt"
+          mv "$RUNNER_TEMP/release/$(tail -n 1 "$RUNNER_TEMP/release/name.txt")" "$RUNNER_TEMP/release/practonaut.tgz"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/release/practonaut.tgz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Smoke-test the exact tarball
+        run: bash tools/test-pack.sh --tarball "$RUNNER_TEMP/release/practonaut.tgz"
+      - name: Release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk -v v="${{ steps.version.outputs.version }}" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on {print}' CHANGELOG.md > "$RUNNER_TEMP/release/notes.md"
+          test -s "$RUNNER_TEMP/release/notes.md"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release
+          path: |
+            ${{ runner.temp }}/release/practonaut.tgz
+            ${{ runner.temp }}/release/notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 15
+    permissions:
+      contents: write   # create the GitHub release
+      id-token: write   # npm trusted publishing and provenance
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'   # trusted publishing needs npm >= 11.5.1
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: release
+          path: release
+      - name: Same tarball as prepared, npm new enough
+        shell: bash
+        env:
+          EXPECTED: ${{ needs.prepare.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum release/practonaut.tgz | cut -d' ' -f1)" = "$EXPECTED"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error("npm "+process.argv[1]+" is older than 11.5.1"); process.exit(1) }' "$(npm --version)"
+      - name: Publish to npm with provenance (OIDC, no token)
+        run: npm publish ./release/practonaut.tgz --provenance --access public --ignore-scripts
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file release/notes.md --verify-tag

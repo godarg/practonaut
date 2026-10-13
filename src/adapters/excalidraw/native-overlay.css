@@ -1,0 +1,16 @@
+/* Presentation adjustments to the native Excalidraw UI, bundled into engine.css.
+   Values are bound to design/tokens.css by token name at build time (tools/build-engine.ts). */
+/* @pn-native-theme-bindings */
+
+/* PADR-0025: the Mermaid converter is not shipped. Hide its More-tools entry (the one after
+   the laser pointer; upstream reuses the embeddable test id) and the "Generate" heading above it. */
+.excalidraw .dropdown-menu [data-testid="toolbar-laser"] ~ [data-testid="toolbar-embeddable"],
+.excalidraw .dropdown-menu [data-testid="toolbar-laser"] ~ div:not([class]) { display: none !important; }
+
+/* Spreadsheet paste dialog: fit the visible editor area and keep chart previews on paper. */
+.excalidraw .Modal.Dialog.PasteChartDialog { position: fixed; inset: auto; left: var(--_pn-native-visible-x, 0px); top: var(--_pn-native-visible-y, 0px); width: var(--_pn-native-visible-width, 100vw); height: var(--_pn-native-visible-height, 100vh); box-sizing: border-box; }
+.excalidraw .Modal.Dialog.PasteChartDialog .Modal__content { width: 100%; max-width: 100%; max-height: 100%; scroll-padding-block: var(--_pn-native-space); }
+.excalidraw .Modal.Dialog.PasteChartDialog .Dialog__content { min-height: 0; overflow-y: auto; }
+.excalidraw .Modal.Dialog.PasteChartDialog .container { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.excalidraw .Modal.Dialog.PasteChartDialog .ChartPreview { max-width: calc(100% - 16px); box-sizing: border-box; background-color: var(--_pn-native-chart-paper); scroll-margin-block: var(--_pn-native-space); }
+.excalidraw .Modal.Dialog.PasteChartDialog .ChartPreview svg { max-width: 100%; }

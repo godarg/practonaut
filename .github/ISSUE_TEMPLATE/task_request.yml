@@ -1,0 +1,43 @@
+name: Task request
+description: Propose a task for the Excalidraw task library.
+labels: [task]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Library tasks are built from two drawings (start and goal) with `practonaut tasks from-scenes`.
+        If you can, attach both `.excalidraw` files and say whether `from-scenes` accepted them.
+        Contributed drawings are published under CC0-1.0.
+  - type: input
+    id: title
+    attributes:
+      label: Task title
+      placeholder: e.g. Merge two parallel branches
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What should the learner or agent achieve?
+      description: Start state, goal state, and why this edit is common or error-prone.
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      options: ["●○○ one action", "●●○ a few actions", "●●● many actions or a judgement call"]
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Drawings and from-scenes result
+      description: Attach start.excalidraw and goal.excalidraw, and paste the output of `npx practonaut tasks from-scenes start.excalidraw goal.excalidraw --out my-task`.
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Rights
+      options:
+        - label: The drawings are my own work and I agree to publish them under CC0-1.0.
+          required: true

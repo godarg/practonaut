@@ -1,0 +1,10 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createServer} from 'node:http';import {readFile} from 'node:fs/promises';import {randomBytes} from 'node:crypto';
+import {createBridge} from '../../src/mcp/bridge.ts';import {HOST_LIMITS} from '../../src/host/limits.ts';import {createPracticeSession} from '../../src/host/session.ts';import {validateWorld} from '../../src/world/index.ts';
+test('real bridge response timeout reports outcome unknown and performs bounded re-observation',{timeout:40000},async()=>{
+ const world=validateWorld(JSON.parse(await readFile('tests/fixtures/core/world.json','utf8'))),controller=await createPracticeSession(world,{mirror:'off'});let observes=0;
+ const server=createServer((request,response)=>{if(request.url==='/api/act'){const pending=setTimeout(()=>response.end('{}'),HOST_LIMITS.requestTimeoutMs+2000);response.once('close',()=>clearTimeout(pending));request.resume();return;}if(request.url==='/api/observe'){observes++;response.setHeader('Content-Type','application/json');response.end(JSON.stringify({ok:true,value:controller.view()}));return;}response.writeHead(404).end();});
+ await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));const address=server.address();assert.ok(address&&typeof address==='object');
+ try{const token=randomBytes(32).toString('hex'),bridge=await createBridge({host:'http://127.0.0.1:'+address.port,token}),start=performance.now();const result=await bridge.call('act',{name:'rename_step',params:{id:'a',label:'Timeout control'},baseStep:0,expectedRevision:0});const elapsed=performance.now()-start;
+  assert.equal(result.ok,false);if(!result.ok){assert.equal(result.error.code,'outcome_unknown');assert.deepEqual(result.error.details,{observedRevision:0,observedHash:controller.view().hash});assert.match(result.error.message,/unknown/);assert.equal(JSON.stringify(result).includes(token),false);}assert.equal(observes,1);assert.ok(elapsed>=HOST_LIMITS.requestTimeoutMs-50);assert.ok(elapsed<HOST_LIMITS.requestTimeoutMs+3500);
+ }finally{await new Promise<void>(done=>{server.close(()=>done());server.closeAllConnections();});await controller.close();}
+});

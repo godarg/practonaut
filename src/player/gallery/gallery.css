@@ -1,0 +1,21 @@
+/* Gallery-only layout. Shares tokens and kit with the product; never shipped. */
+.gallery-bar { position: sticky; top: 0; z-index: var(--pn-z-sticky); display: flex; align-items: center; justify-content: space-between; gap: var(--pn-space-4); padding: var(--pn-space-3) var(--pn-gutter); background: var(--pn-color-glass); -webkit-backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate)); backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate)); box-shadow: var(--pn-shadow-bar); }
+.gallery-main { max-width: 64rem; margin: 0 auto; padding: var(--pn-space-8) var(--pn-gutter) var(--pn-space-16); display: grid; gap: var(--pn-space-12); }
+.gallery-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-6); }
+.gallery-row { display: flex; flex-wrap: wrap; gap: var(--pn-space-3); align-items: center; }
+.gallery-stack { display: grid; gap: var(--pn-space-3); }
+.gallery-form { display: grid; gap: var(--pn-space-4); max-width: 26rem; }
+.gallery-type { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: var(--pn-space-4); align-items: baseline; }
+.gallery-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: var(--pn-space-3); }
+.gallery-swatch { display: grid; gap: var(--pn-space-1); }
+.gallery-swatch__chip { height: 2.5rem; border-radius: var(--pn-radius-sm); background: var(--_c); box-shadow: inset 0 0 0 var(--pn-stroke-hairline) var(--pn-color-shadow-ambient); }
+.gallery-radius { display: grid; place-content: center; width: 5rem; height: 5rem; border-radius: var(--_r); background: var(--pn-color-fill); }
+.gallery-shadow { display: grid; place-content: center; width: 9rem; height: 5rem; border-radius: var(--pn-radius-lg); background: var(--pn-color-surface); box-shadow: var(--_s); }
+.gallery-skeleton { height: 1.25rem; } .gallery-skeleton--short { width: 40%; }
+.gallery-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); gap: var(--pn-space-3); }
+.gallery-icon { display: grid; justify-items: center; gap: var(--pn-space-2); padding: var(--pn-space-3); border-radius: var(--pn-radius-md); background: var(--pn-color-surface); box-shadow: var(--pn-shadow-raised); color: var(--pn-color-text); }
+.gallery-canvas { max-width: 56rem; }
+.gallery-canvas .canvas__scroll { padding: var(--pn-space-16) var(--pn-space-4) var(--pn-space-8); }
+.gallery-palette { position: static; translate: none; justify-self: start; }
+.gallery-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: var(--pn-space-4); align-items: start; max-width: 56rem; }
+.gallery-main > *, .gallery-stack > * { min-width: 0; }

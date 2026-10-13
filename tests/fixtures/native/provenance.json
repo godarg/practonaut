@@ -1,0 +1,34 @@
+{
+  "license": "CC0-1.0",
+  "author": "Practonaut scripted native probes",
+  "sourceCommit": "8213669d86cbb31afc3fa5b2e18fa83b035798a2",
+  "kind": "real pinned Excalidraw 0.18.1 native export; no metadata added after export",
+  "created": "2026-10-09T11:53:12.814939+00:00",
+  "files": [
+    {
+      "file": "native-arrow-deleted.excalidraw",
+      "source": "scripted native probe: arrow deletion and repair",
+      "sha256": "f05c9fa25937095c07a59dbe00b40ba2c071f2f3c501ddf01495e9bb24d8ce0f"
+    },
+    {
+      "file": "native-repair.excalidraw",
+      "source": "scripted native probe: arrow deletion and repair",
+      "sha256": "7600c7eda96dd0689b647bf90d9b5818575f207286388bc88c4e808f939c2f5d"
+    },
+    {
+      "file": "h1-visible.excalidraw",
+      "source": "scripted native export probe: arrow visibility",
+      "sha256": "5d4162e2857fffd8ec0bc592abd680225aa6a1e96e6a9fd59551206c70c64ff0"
+    },
+    {
+      "file": "h1-invisible.excalidraw",
+      "source": "scripted native export probe: arrow visibility",
+      "sha256": "1a00b6a34f90ae3dbf8d434147c7ff7f2cd3627a149dd0e60b0eb6bea7c137d6"
+    },
+    {
+      "file": "h1-reversed-arrowheads.excalidraw",
+      "source": "scripted native export probe: arrow visibility",
+      "sha256": "1681f539daab6570706a8b926476aedcf38888781b39e0748e0c7cb81876dce0"
+    }
+  ]
+}

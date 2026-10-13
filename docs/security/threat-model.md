@@ -1,0 +1,113 @@
+# Threat model
+
+What Practonaut protects, against whom, how, and what it does not promise. Report vulnerabilities
+as described in [SECURITY.md](../../SECURITY.md). Host protocol details:
+[session host](../session-host.md).
+
+## 1. Scope
+
+Practonaut runs on one machine for one OS user. It loads a **world** (data only), runs a
+deterministic core inside a **session host** on `127.0.0.1`, and exposes the same session to a
+**browser Player** (HTTP + server-sent events) and to **agents** (MCP over stdio through a
+stateless bridge). A separate **checker process** judges results. The **Excalidraw adapter** runs
+a pinned engine in a host-owned headless Chromium (the mirror). The **recorder** captures author
+demonstrations only after an explicit start. `practonaut bench` starts agent processes from a
+user-given command template.
+
+### Assets
+
+| Asset | Why it matters |
+|---|---|
+| The user's machine (files, processes, network) | A world or an agent must not get code execution or file access through Practonaut. |
+| Session integrity (state, action log, hashes) | Practice feedback and bench scores depend on it. |
+| Hidden task data (reference solutions, near misses, held-out tasks and checker bundles) | If an agent can read them, its score means nothing. The goal conditions are deliberately public: Player and agent see the same condition sentences and the same formal form of each goal clause. |
+| Session credentials (one-use link code, session token, token file) | Whoever holds them can act in the session. |
+| Recordings | May contain personal or proprietary content. |
+| Release artifacts (npm package, provenance) | One compromised publish reaches every user. |
+
+### Actors
+
+| Actor | Trust | Capability |
+|---|---|---|
+| Learner / author | trusted for their own session | runs the CLI, may open a world from someone else |
+| Agent client and its model | semi-trusted: may act through MCP, may be prompt-injected or reward-seeking | MCP tools; often also shell and file access as the **same OS user** |
+| Malicious world author | untrusted | controls every byte of a world package |
+| Other web page in the same browser | untrusted | runs script in another origin, DNS rebinding, cross-origin requests |
+| Other OS user | untrusted | reads world-readable files, sees process lists |
+| Other process of the same user | trusted (see §3) | reads everything the user can |
+| Compromised dependency | untrusted | runs code at install or run time |
+
+## 2. Boundaries, threats and controls
+
+| Boundary | Main threats | Controls (code) |
+|---|---|---|
+| **World package → validator** | path escape, links, zip bombs, parser differentials, executable content, oversized JSON | one zip reader that validates the whole central directory before inflating; size, entry, depth and ratio limits; no links or absolute paths; media allowlist without markup, scripts, SVG or binaries; manifest hashes; named rejection codes (`src/package/`, [world format](../world-format.md) §1.4). World text is rendered as text, never as markup. |
+| **Browser → host** | cross-origin requests, DNS rebinding, CSRF, XSS, token theft | bind `127.0.0.1` only; one-use link code in the URL fragment (5 min); session token only in a header; exact `Host`, same or absent `Origin`; JSON-only writes; strict CSP, no CORS headers; the embedded editor in a separate sandboxed origin without API access (`src/host/server.ts`). |
+| **Agent → MCP bridge → host** | stronger-than-human oracle, hidden-data leaks, action floods, stale writes | seven fixed tools with strict input schemas; output field allowlist; the same host operations and views as the Player (goal conditions included, as text and formal form, exactly as the Player shows them); no route exposes reference solutions, near misses or checker bundles; rate and size limits; revision checks (`src/mcp/`). Tool descriptions are fixed project text, never world text. |
+| **Agent shell → filesystem** | reading the task library, reference solutions or the token file | not controlled by Practonaut (see §3); the `claude-code` bench preset allows only Practonaut tools. |
+| **Host → checker** | crafted exports, reward hacking (writing the result file directly, editing the log, weak predicates) | separate process with deadline and heap cap; own export parser and history interpreter, no import of core or adapter; counter-probes (empty, unchanged start, wrong artifact) before any verdict; bounded predicate language with fuel (`src/checker/`, `src/predicate/`). |
+| **Adapter ↔ real app** | the app silently changes or rejects a write | official interface only; read-back and integrity check after every write; mirror deadline; engine bundled offline with no CDN URLs (`src/adapters/excalidraw/`). |
+| **Recorder → disk** | personal data at rest | explicit start; files in a private 0700 directory; review and delete before compile. |
+| **Bench → agent process** | command injection through the template, runaway agents, an agent blocking its own judging | template split into words and started without a shell; per-run host and data folder, the agent's `PRACTONAUT_HOME` apart from the judged artifacts, which are written after it ends by temp file + rename (an unjudged run counts as not passed); wall-time limit stops the process group, a second Ctrl+C kills it at once; host-enforced action budget (`src/bench/`). |
+| **Supply chain and release** | compromised dependency, install scripts, stolen publish token | locked `npm ci --ignore-scripts`; no Practonaut install hook; Chromium only through the explicit `setup`; Actions pinned to SHAs; npm trusted publishing (OIDC) with provenance and manual approval, no stored token ([PADR-0031](../adr/0031-public-release-and-trusted-publishing.md)). |
+| **Network** | telemetry, egress during practice | no telemetry; the Player loads only local assets; `--require-offline` refuses to start if an outbound probe succeeds. |
+
+## 3. What Practonaut does not promise
+
+1. **Same-user processes are trusted.** The token file (0600 on POSIX) and the loopback binding
+   protect against other OS users and other web origins, not against malware, browser extensions
+   or any other process running as you.
+2. **Hidden task data is hidden only from the MCP and HTTP surface.** An agent with shell or file
+   tools as the same OS user can read the task library on disk, including reference solutions.
+   A bench score of such an agent is not a sealed result.
+3. **World package integrity is not authenticity.** Manifest hashes detect damage, not a
+   malicious author. There are no signed worlds; open worlds from people you trust.
+4. **Prompt injection is not solved.** World text reaches agents only in data fields, but an
+   agent that obeys text in a task is the agent's problem to contain.
+5. **Recordings may contain personal data.** There is no in-product redaction; deletion is file
+   deletion, not forensic erasure.
+6. **The real applications are out of scope.** Vulnerabilities in Excalidraw, Chromium or agent
+   clients belong upstream.
+7. **Single user, loopback only.** Binding to another interface, tunnels, hosted or multi-user
+   use are unsupported.
+8. **Windows** has no POSIX owner/mode bits; private files rely on the user-profile location of
+   `~/.practonaut`. A `PRACTONAUT_HOME` outside the profile is the user's responsibility.
+9. **`--require-offline` is a startup probe, not a sandbox.**
+
+## 4. Limits
+
+Limits are code constants with named errors. A caller may lower them; raising one is a code
+change with a test and an update of this table. No environment variable disables a protection.
+
+| Limit | Value | Error | Constant |
+|---|---|---|---|
+| Archive size / total uncompressed | 16 MiB / 16 MiB | `E_ARCHIVE_TOO_LARGE` / `E_TOTAL_TOO_LARGE` | `src/package/limits.ts` |
+| Entries; single entry | 256; 4 MiB | `E_TOO_MANY_ENTRIES`; `E_ENTRY_TOO_LARGE` | same |
+| Path length / depth | 200 characters / 8 segments | `E_INVALID_PATH` | same |
+| Compression ratio | ≤ 100 for entries ≥ 64 KiB | `E_COMPRESSION_RATIO` | same |
+| JSON nesting | 64 levels; 250,000 nodes | `E_JSON_TOO_DEEP` | `src/package/limits.ts`, `src/world/limits.ts` |
+| Ids / names / text | 64 / 256 / 4,096 characters | `invalid_argument` | `src/world/limits.ts` |
+| Objects in state; actions per session | 10,000; 10,000 | `limit_exceeded` | same |
+| Undo snapshots | 1,000 or 64 MiB, then replay | — | same |
+| Predicates | depth 32, 4,096 nodes, 10⁶ evaluation steps | `checker_fuel_exhausted` | same |
+| Checker process | 10 s wall, 256 MiB V8 heap | `checker_timeout` | same |
+| HTTP request body / headers | 64 KiB / 16 KiB; header deadline 10 s, request 30 s | `body_too_large` / 431 | `src/host/limits.ts` |
+| Request rate | burst 200, refill 50/s per host | `rate_limited` | same |
+| Reply size | 4 MiB | `result_too_large` | same |
+| Event streams | 8 clients, 4 MiB queued each, heartbeat 15 s | stream closed | same |
+| Link code | one use, 5 min, one outstanding, 1,000 per session | `bootstrap_used` / `bootstrap_expired` | same |
+| Mirror operation | 5 s | `mirror_timeout` | `src/host/mirror.ts` |
+| MCP inbound message | 1 MiB | `invalid_request` | `src/mcp/server.ts` |
+| Recordings | 30 min, 1,000 gestures, 3 MiB each; 100 recordings / 64 MiB in total | `recording_limit` | `src/host/author-controller.ts` |
+| Bench run | `--timeout` (default 300 s), `--max-actions` (default 50) | `action_budget_exhausted` | `src/bench/` |
+
+## 5. Where the controls are tested
+
+- Hostile packages: `tests/unit/` with fixtures from the independent writer in
+  `tests/support/zipwriter.ts` (the reader never produces its own attack input); `npm run demo`
+  shows every rejection.
+- HTTP guard, limits, CSRF and foreign-page probes: `tests/integration/host-*.test.ts`,
+  `tests/integration/security-*.test.ts`, `tests/e2e/`.
+- MCP surface (allowlist, limits, hidden-data canaries, errors): `tests/mcp/`.
+- Checker counter-probes and forged bench reports: `tests/unit/`, `tests/integration/`.
+- Engine bundle without CDN URLs: `tests/unit/engine-build.test.ts`.

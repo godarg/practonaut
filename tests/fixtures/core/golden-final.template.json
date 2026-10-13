@@ -1,0 +1,12 @@
+{
+  "objects": {
+    "f": {"id":"f","type":"frame","deleted":false,"name":"Process"},
+    "a": {"id":"a","type":"step","deleted":false,"frameId":"f","label":"A","x":0,"y":0,"width":120,"height":60,"fontFamily":1},
+    "b": {"id":"b","type":"step","deleted":true,"frameId":"f","label":"B","x":200,"y":0,"width":120,"height":60,"fontFamily":1},
+    "c": {"id":"c","type":"step","deleted":false,"frameId":"f","label":"C","x":400,"y":0,"width":120,"height":60,"fontFamily":1},
+    "ab": {"id":"ab","type":"arrow","deleted":false,"frameId":"f","from":"a","to":"@step"},
+    "bc": {"id":"bc","type":"arrow","deleted":true,"frameId":"f","from":null,"to":null},
+    "@step": {"id":"@step","type":"step","deleted":false,"frameId":"f","label":"D-final","x":300,"y":100,"width":120,"height":60,"fontFamily":1},
+    "@arrow": {"id":"@arrow","type":"arrow","deleted":false,"frameId":"f","from":"a","to":"@step"}
+  }
+}

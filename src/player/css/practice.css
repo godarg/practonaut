@@ -1,0 +1,261 @@
+/*
+ * Practice workspace: task head, canvas with floating palette, object tray, inspector cards.
+ * The diagram is the hero; chrome defers to it.
+ */
+
+/* ---------- Head ---------- */
+.practice-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-3); }
+.practice-head__title { font-size: var(--pn-text-large); line-height: var(--pn-leading-large); letter-spacing: var(--pn-tracking-large); font-weight: var(--pn-weight-bold); text-wrap: balance; max-width: 26ch; }
+.practice-head__prompt { font-size: var(--pn-text-body); line-height: var(--pn-leading-body); letter-spacing: var(--pn-tracking-body); color: var(--pn-color-text-secondary); max-width: var(--pn-measure); }
+.practice-head__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pn-space-3); margin-top: var(--pn-space-1); }
+.practice-head__controls .pn-picker { min-width: 0; max-width: 100%; }
+.practice-head__controls .pn-picker__button { max-width: 22rem; }
+.practice-head__meta { margin-left: auto; }
+@media (max-width: 47.99em) {
+  .practice-head__title { font-size: var(--pn-text-title1); line-height: var(--pn-leading-title1); letter-spacing: var(--pn-tracking-title1); }
+  .practice-head__meta { margin-left: 0; }
+}
+
+/* ---------- Canvas ---------- */
+.practice-board { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-3); }
+.canvas {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); border-radius: var(--pn-radius-xl); background: var(--pn-pattern-dots) 0 0 / var(--pn-pattern-dots-size) var(--pn-pattern-dots-size), var(--pn-color-canvas);
+  box-shadow: var(--pn-shadow-raised); overflow: clip; isolation: isolate;
+}
+/* The palette sits in the canvas's flow under the drawing, so it never covers it and the drawing needs no extra inset for it. */
+.canvas__scroll { overflow-x: auto; overscroll-behavior-inline: contain; padding: var(--pn-space-16) var(--pn-space-4) var(--pn-space-3); }
+/* The drawing region fills the card edge to edge, where the card clips outside rings: its focus
+   ring sits inside, following the card's top corners (R3-01). */
+.canvas__scroll.is-clipped-end { mask-image: linear-gradient(to right, var(--pn-color-text) calc(100% - var(--pn-space-8)), transparent); }
+.canvas__scroll.is-clipped-start { mask-image: linear-gradient(to right, transparent, var(--pn-color-text) var(--pn-space-8)); }
+.canvas__scroll.is-clipped-start.is-clipped-end { mask-image: linear-gradient(to right, transparent, var(--pn-color-text) var(--pn-space-8), var(--pn-color-text) calc(100% - var(--pn-space-8)), transparent); }
+.board-scroll-hint { margin: 0; color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+.board-scroll-hint[hidden] { display: none; }
+.canvas__scroll:focus-visible { outline-offset: calc(-1 * var(--pn-focus-width)); border-radius: var(--pn-radius-xl) var(--pn-radius-xl) var(--pn-radius-sm) var(--pn-radius-sm); }
+/* Never narrower than legible labels need; narrow screens draw larger labels (board-art compact) so the cropped frame fits. */
+.board-scroll .board-svg { min-width: calc(var(--_board-span) * var(--pn-text-caption) / var(--_board-text-unit) + var(--pn-space-1)); }
+.board-svg { width: 100%; height: auto; min-height: 18rem; }
+.canvas__coach {
+  position: absolute; top: var(--pn-space-4); left: 50%; translate: -50% 0; z-index: var(--pn-z-floating);
+  max-width: min(36rem, calc(100% - 2 * var(--pn-space-4))); width: max-content;
+  padding: var(--pn-space-2) var(--pn-space-4); border-radius: var(--pn-radius-md);
+  background: var(--pn-color-glass);
+  -webkit-backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate)); backdrop-filter: blur(var(--pn-blur)) saturate(var(--pn-saturate));
+  box-shadow: var(--pn-shadow-glass);
+  font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); letter-spacing: var(--pn-tracking-footnote); font-weight: var(--pn-weight-medium); text-align: center; text-wrap: balance;
+  pointer-events: none;
+}
+.practice-palette {
+  position: relative; justify-self: center; margin: var(--pn-space-3) 0 var(--pn-space-4); z-index: var(--pn-z-floating);
+  max-width: calc(100% - 2 * var(--pn-space-3));
+  /* Many tools (world/2) wrap into a second row instead of running out of the card. */
+  flex-wrap: wrap; justify-content: center; row-gap: var(--pn-space-1);
+}
+.practice-palette:has(.practice-palette__group:not([hidden]) > .pn-btn:nth-child(6)) { border-radius: var(--pn-radius-xl); }
+.practice-palette .pn-btn { flex: none; white-space: nowrap; }
+.practice-palette [hidden] { display: none !important; }
+/* Groups only decide what is offered; their buttons flow as one line that wraps where it must. */
+.practice-palette__group { display: contents; }
+@media (max-width: 47.99em) {
+  .practice-palette .pn-btn:not(.pn-btn--keep-label) > span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .practice-palette .pn-btn:not(.pn-btn--keep-label) { width: var(--pn-control-md); padding: 0; }
+  .canvas__scroll { padding: var(--pn-space-16) var(--pn-space-2) var(--pn-space-4); }
+}
+.practice-note { display: flex; align-items: flex-start; gap: var(--pn-space-2); color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); padding: 0 var(--pn-space-2); }
+.practice-note .pn-icon { width: var(--pn-icon-sm); height: var(--pn-icon-sm); margin-top: var(--pn-nudge); }
+.practice-help { padding: 0 var(--pn-space-2); }
+
+/* Board drawing (SVG). Shapes follow the tokens; selection is a ring, never a colour swap alone. */
+.board-frame { fill: var(--pn-color-frame-bg); stroke: var(--pn-color-object-border); stroke-width: var(--pn-stroke-hairline); }
+.board-frame-label { fill: var(--pn-color-text-secondary); font: var(--pn-weight-medium) var(--pn-text-subhead) var(--pn-font-sans); letter-spacing: var(--pn-tracking-subhead); }
+.board-shadow { flood-color: var(--pn-color-shadow-key); }
+.board-shadow--lift { flood-color: var(--pn-color-shadow-deep); }
+.step { cursor: pointer; outline: none; }
+.step-box { fill: var(--pn-color-object-bg); stroke: var(--pn-color-object-border); stroke-width: var(--pn-stroke-control); filter: url(#step-shadow); transition: stroke var(--pn-duration-fast) var(--pn-ease-standard); }
+.step:hover .step-box { stroke: var(--pn-color-text-secondary); }
+/* world/2 palette: named fills and lines shown through semantic tokens; the step's text names them too. */
+.step-box--fill-red { fill: var(--pn-color-content-fill-red); }
+.step-box--fill-green { fill: var(--pn-color-content-fill-green); }
+.step-box--fill-blue { fill: var(--pn-color-content-fill-blue); }
+.step-box--fill-yellow { fill: var(--pn-color-content-fill-yellow); }
+.step-box--line-black { stroke: var(--pn-color-content-line-black); }
+.step-box--line-red { stroke: var(--pn-color-content-line-red); }
+.step-box--line-green { stroke: var(--pn-color-content-line-green); }
+.step-box--line-blue { stroke: var(--pn-color-content-line-blue); }
+.step-box--line-orange { stroke: var(--pn-color-content-line-orange); }
+/* A drawn line is at least 2 CSS px at every board scale: the board SVG scales with the screen, the outline does not. */
+.step-box[class*="step-box--line-"] { stroke-width: var(--pn-stroke-content); vector-effect: non-scaling-stroke; }
+/* A label on a filled step keeps Excalidraw's own ink, readable on every palette fill. */
+.step:has(.step-box--filled) .step-label { fill: var(--pn-color-content-text); }
+.step-ring { fill: none; stroke: var(--pn-color-accent); stroke-width: 0; opacity: 0; transition: stroke-width var(--pn-duration-fast) var(--pn-ease-spring), opacity var(--pn-duration-fast) var(--pn-ease-standard); }
+.step.selected .step-ring { stroke-width: 3; opacity: 1; }
+.step:focus-visible .step-ring { stroke-width: 5; opacity: 1; stroke: var(--pn-color-focus); }
+.step.picked .step-box { fill: var(--pn-color-accent-tint); stroke: var(--pn-color-accent); filter: url(#step-lift); }
+.step.picked { transform: translateY(-4px); }
+.step-label { fill: var(--pn-color-text); font: var(--pn-weight-medium) var(--pn-text-body) var(--pn-font-sans); letter-spacing: var(--pn-tracking-body); pointer-events: none; }
+.edge { stroke: var(--pn-color-line); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--pn-duration-fast) var(--pn-ease-standard); }
+.edge.selected { stroke: var(--pn-color-accent); stroke-width: 3.5; }
+.edge.pending { stroke: var(--pn-color-accent); stroke-dasharray: 2 9; stroke-width: 3.5; animation: pn-dash var(--pn-duration-pulse) linear infinite; }
+@keyframes pn-dash { to { stroke-dashoffset: -22; } }
+.edge-loose { fill: var(--pn-color-canvas); stroke: var(--pn-color-danger-icon); stroke-width: 2.5; }
+.edge-loose-label { fill: var(--pn-color-danger-fg); font: var(--pn-weight-medium) var(--pn-text-footnote) var(--pn-font-sans); }
+.board-svg--compact .edge-loose-label { font-size: var(--pn-text-title3); }
+.arrowhead { fill: var(--pn-color-line); }
+.arrowhead--selected, .arrowhead--pending { fill: var(--pn-color-accent); }
+
+/* ---------- Object tray: always-available text route to every object ---------- */
+.practice-tray { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-4); }
+.tray-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-2); }
+.tray-group__head { display: flex; align-items: center; justify-content: space-between; gap: var(--pn-space-3); min-height: var(--pn-control-sm); }
+.tray-list { display: flex; flex-wrap: wrap; gap: var(--pn-space-2); }
+.tray-chip { max-width: 100%; white-space: normal; text-align: left; justify-content: flex-start; background: var(--pn-color-surface); box-shadow: var(--pn-shadow-raised); }
+.tray-chip:hover { background: var(--pn-color-fill); }
+.tray-chip[aria-pressed="true"] { background: var(--pn-color-accent-tint); color: var(--pn-color-accent-text); box-shadow: inset 0 0 0 var(--pn-stroke-strong) var(--pn-color-accent); }
+.tray-chip--loose::before { content: ""; width: 0.5rem; height: 0.5rem; flex: none; border-radius: var(--pn-radius-full); border: var(--pn-stroke-strong) solid var(--pn-color-danger-icon); }
+
+/* ---------- Inspector ---------- */
+.practice-inspector {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-4); align-content: start;
+  position: sticky; top: calc(var(--pn-appbar-height) + var(--pn-space-4));
+  max-height: calc(100dvh - var(--pn-appbar-height) - 2 * var(--pn-space-4)); overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--pn-space-1); margin: calc(-1 * var(--pn-space-1));
+}
+@media (max-width: 71.99em) { .practice-inspector { position: static; max-height: none; overflow: visible; } }
+.inspector-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-4); }
+.inspector-card .pn-card__header { margin-bottom: 0; }
+.inspector-card__title { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
+.inspector-card__title .pn-icon { color: var(--pn-color-text-secondary); }
+
+/* Goal: one checklist, one verdict, one primary action */
+.goal-list { display: grid; gap: var(--pn-space-4); }
+.goal-item { display: grid; grid-template-columns: auto 1fr; gap: var(--pn-space-3); align-items: start; }
+.goal-item .pn-status { margin-top: var(--pn-nudge); }
+.goal-item__body { display: grid; gap: var(--pn-space-1); min-width: 0; }
+.goal-item__text { font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); letter-spacing: var(--pn-tracking-subhead); }
+.goal-item__text--more { color: var(--pn-color-text-secondary); }
+.goal-item__formal { margin-top: var(--pn-space-2); }
+/* One quiet switch for every formal condition, never a link under each line. */
+.goal-formal-switch { justify-self: start; color: var(--pn-color-text-secondary); }
+.consequence-open { margin: var(--pn-space-2) 0 0; font-weight: var(--pn-weight-semibold); }
+.consequence-list { display: grid; gap: var(--pn-space-1); margin: var(--pn-space-1) 0 0; padding-left: var(--pn-space-5); }
+.condition-status { display: block; margin-bottom: var(--pn-space-1); font-size: var(--pn-text-caption); line-height: var(--pn-leading-caption); letter-spacing: var(--pn-tracking-eyebrow); text-transform: uppercase; font-weight: var(--pn-weight-semibold); color: var(--pn-color-text-secondary); }
+.goal-item--met .condition-status { color: var(--pn-color-success-fg); }
+.goal-item--unmet .condition-status { color: var(--pn-color-danger-fg); }
+.goal-item .pn-disclosure { margin-top: var(--pn-space-2); }
+.author-data { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--pn-text-footnote) / var(--pn-leading-footnote) var(--pn-font-mono); color: var(--pn-color-text-secondary); background: var(--pn-color-fill); padding: var(--pn-space-3); border-radius: var(--pn-radius-sm); }
+.verdict { padding: var(--pn-space-3) var(--pn-space-4); border-radius: var(--pn-radius-md); display: flex; gap: var(--pn-space-3); align-items: flex-start; background: var(--pn-color-unknown-bg); color: var(--pn-color-text); font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); font-weight: var(--pn-weight-medium); }
+.verdict > .pn-icon { margin-top: var(--pn-nudge); color: var(--pn-color-unknown-icon); }
+.verdict.pass { background: var(--pn-color-success-bg); }
+.verdict.pass > .pn-icon { color: var(--pn-color-success-icon); }
+.verdict.fail { background: var(--pn-color-danger-bg); }
+.verdict.fail > .pn-icon { color: var(--pn-color-danger-icon); }
+.verdict.unknown.stale { background: var(--pn-color-warning-bg); }
+.verdict.unknown.stale > .pn-icon { color: var(--pn-color-warning-icon); }
+.verdict.is-new { animation: pn-verdict var(--pn-duration-slow) var(--pn-ease-spring); }
+@keyframes pn-verdict { from { opacity: 0; transform: translateY(-0.375rem) scale(0.98); } }
+.goal-list.is-new .pn-status--met, .goal-list.is-new .pn-status--unmet { animation: pn-pop var(--pn-duration-slow) var(--pn-ease-settle) both; animation-delay: calc(var(--_i) * var(--pn-duration-instant)); }
+@keyframes pn-pop { from { opacity: 0; transform: scale(0.5); } }
+.history-entry__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--pn-space-1) var(--pn-space-2); }
+.practice-head__actor { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
+.history-origins-switch { justify-self: start; color: var(--pn-color-text-secondary); }
+.goal-note { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+
+/* Hints */
+.hint-dots { display: inline-flex; gap: var(--pn-space-1); align-items: center; }
+.hint-dot { width: 0.5rem; height: 0.5rem; border-radius: var(--pn-radius-full); background: var(--pn-color-fill-pressed); }
+.hint-dot.is-open { background: var(--pn-color-accent); }
+.hint-list { display: grid; gap: var(--pn-space-2); }
+.hint { display: flex; gap: var(--pn-space-3); align-items: flex-start; padding: var(--pn-space-3); border-radius: var(--pn-radius-md); background: var(--pn-color-fill); font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); }
+.hint > .pn-icon { color: var(--pn-color-accent-text); margin-top: var(--pn-nudge); }
+.hint.is-new { animation: pn-verdict var(--pn-duration-slow) var(--pn-ease-spring); }
+
+/* History */
+.history-list { display: grid; }
+.history-entry { display: grid; grid-template-columns: 1.5rem 1fr; gap: var(--pn-space-3); padding: var(--pn-space-3) 0; }
+.history-entry.is-new { animation: pn-verdict var(--pn-duration-slow) var(--pn-ease-spring); }
+.history-entry + .history-entry { border-top: var(--pn-stroke-hairline) solid var(--pn-color-separator); }
+.history-entry__index { display: grid; place-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--pn-radius-full); background: var(--pn-color-fill); color: var(--pn-color-text-secondary); font-size: var(--pn-text-caption); font-weight: var(--pn-weight-semibold); font-variant-numeric: tabular-nums; }
+.history-entry__body { display: grid; gap: var(--pn-space-2); min-width: 0; }
+.history-entry p { font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); }
+.history-entry__then { color: var(--pn-color-text-secondary); }
+.history-entry__consequence { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+.rule-origin { overflow-wrap: anywhere; display: block; font-family: var(--pn-font-mono); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); color: var(--pn-color-text-secondary); letter-spacing: 0; }
+
+/* Consequences and rejections */
+.practice-notices { display: grid; gap: var(--pn-space-3); }
+.practice-notices:empty { display: none; }
+
+/* How it is checked */
+.rule-list { display: grid; gap: var(--pn-space-3); }
+.rule-item { display: grid; gap: var(--pn-space-1); }
+.tool-image { width: 100%; height: auto; border-radius: var(--pn-radius-md); box-shadow: var(--pn-shadow-raised); background: var(--pn-color-surface); }
+
+/* Create-an-exercise invitation */
+.invite { display: grid; gap: var(--pn-space-3); }
+.invite__title { font-size: var(--pn-text-body); line-height: var(--pn-leading-body); letter-spacing: var(--pn-tracking-body); font-weight: var(--pn-weight-semibold); }
+
+/* Engine panel (real editor) in the practice and create workspaces */
+.engine-panel { display: grid; gap: 0; padding: 0; overflow: clip; border-radius: var(--pn-radius-xl); background: var(--pn-color-canvas); box-shadow: var(--pn-shadow-raised); }
+.native-editor-scroll { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+/* Where the editor is wider than its card, a persistent scrollbar shows that it scrolls (R4-02). */
+@media (max-width: 47.99em) { .native-editor-scroll { scrollbar-width: thin; scrollbar-color: var(--pn-color-text-tertiary) transparent; } }
+/* 37.5rem: Excalidraw's toolbar, hint and zoom bar take ~170 px; the rest holds a typical frame at >= 65 % zoom. */
+.engine-panel .native-editor-scroll iframe { display: block; width: 100%; min-width: 40rem; max-width: none; height: 37.5rem; border: 0; }
+@media (max-width: 47.99em) { .engine-panel .native-editor-scroll iframe { height: 28rem; } }
+/* Excalidraw switches to its desktop chrome at 730 px but needs 748 px (English) to 766 px (German)
+   for its top bar; in between it cuts its own Library button. In that band the editor keeps its
+   compact form at 729 px, centred, instead of being clipped (ER-05). */
+.native-editor-scroll { container: native-editor / inline-size; }
+@container native-editor (min-width: 730px) and (max-width: 767.98px) {
+  .engine-panel .native-editor-scroll iframe { width: 729px; min-width: 0; margin-inline: auto; }
+}
+.native-objects { padding: var(--pn-space-4) var(--pn-space-5); border-top: var(--pn-stroke-hairline) solid var(--pn-color-separator); display: grid; gap: var(--pn-space-2); }
+.native-objects ul { display: grid; gap: var(--pn-space-1); font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); }
+
+/* Compact board (narrow screens): the whole diagram fits; strokes and labels are drawn larger so they stay legible when scaled down. */
+.board-svg--compact { min-height: 0; }
+.board-svg--compact .edge { stroke-width: 5; }
+.board-svg--compact .edge.selected, .board-svg--compact .edge.pending { stroke-width: 7; }
+.board-svg--compact .edge-loose { stroke-width: 5; }
+.board-svg--compact .edge-anchor { r: 7; }
+.board-svg--compact .board-frame { stroke-width: 3; }
+.board-svg--compact .board-frame-label { font-size: var(--pn-text-large); }
+.board-svg--compact .step-box { stroke-width: 3; }
+.board-svg--compact .step.selected .step-ring { stroke-width: 6; }
+.step-label--large { font-size: var(--pn-text-large); }
+.step-label--title1 { font-size: var(--pn-text-title1); }
+.step-label--title2 { font-size: var(--pn-text-title2); }
+.step-label--title3 { font-size: var(--pn-text-title3); }
+.edge-anchor { fill: var(--pn-color-line); }
+.edge-anchor.selected { fill: var(--pn-color-accent); }
+
+/* The inspector scrolls on its own; soft edges show that there is more. */
+.practice-inspector.is-clipped-bottom { mask-image: linear-gradient(to bottom, var(--pn-color-text) calc(100% - var(--pn-space-8)), transparent); }
+.practice-inspector.is-clipped-top { mask-image: linear-gradient(to bottom, transparent, var(--pn-color-text) var(--pn-space-8)); }
+.practice-inspector.is-clipped-top.is-clipped-bottom { mask-image: linear-gradient(to bottom, transparent, var(--pn-color-text) var(--pn-space-8), var(--pn-color-text) calc(100% - var(--pn-space-8)), transparent); }
+
+@media (max-width: 47.99em) {
+  .practice-head { gap: var(--pn-space-2); }
+  .practice-head__controls { flex-wrap: nowrap; }
+  .practice-head__controls .pn-picker { flex: 1; }
+  .practice-head__controls .pn-picker__button { width: 100%; max-width: none; justify-content: space-between; }
+  .practice-head__controls .pn-btn > span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .practice-head__controls .pn-btn { width: var(--pn-control-md); padding: 0; flex: none; }
+  .practice-head__meta, .practice-head__actor { display: none; }
+}
+
+@media (pointer: coarse) {
+  .practice-palette .pn-btn, .practice-head__controls .pn-btn { min-width: var(--pn-target-coarse); }
+}
+
+body[data-workspace="editor"] .practice-tray { display: none; }
+.edge-halo { fill: none; stroke: var(--pn-color-accent); stroke-width: 11; stroke-linecap: round; opacity: 0.22; }
+.board-svg--compact .edge-halo { stroke-width: 18; }
+@media (max-width: 47.99em) {
+  .practice-head__controls .pn-btn--primary { width: auto; padding: var(--pn-space-2) var(--pn-space-4); }
+  .practice-head__controls .pn-btn--primary > span { position: static; width: auto; height: auto; margin: 0; clip-path: none; }
+}
+
+@supports not (backdrop-filter: blur(1px)) { .canvas__coach { background: var(--pn-color-surface); } }
+.export-actions { display: flex; flex-wrap: wrap; gap: var(--pn-space-2); }
+.export-status { font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); color: var(--pn-color-text-secondary); }

@@ -1,0 +1,5213 @@
+{
+  "app": "@excalidraw/excalidraw@0.18.1",
+  "react": "18.3.1",
+  "adapter": "1.0.0",
+  "networkAttempts": 0,
+  "runs": [
+    {
+      "repetition": 1,
+      "case": "add_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Confirm",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "d810feee0cfca25ad8ccd18b38a715938301aed5e2c452fd371c4920d6ce4998",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Confirm",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "rename_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "2ff4cc4012de5ca060d114a72ba23bf66de19dd6ec0ea2530ed6aa77bdcb0739",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "move_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "6fc487d187439366e96f1b708fa6d901aa94c66745a8df929dbc8888e6448edc",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "connect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "e39b7299651876a2b6ddb1353fb37dbed52a96ce10ee52d09c6bda02f62a325f",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "reconnect_end-n",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "reconnect_end-start-a",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "20d738940dbe5bc6b2219e440c93768980262fdcd9218dfc228ace59a3a00bf3",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "reconnect_end-start-b",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "disconnect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "bbb81bf77cef606c1511a1766afe9cadde8bb8ecda5b14c708587e7fa7d00e7d",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "reconnect_end-c",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "1af97513f60bf648a7237fbc7854120cacaa21593a45dda9fe5439deb0835d30",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "delete_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "49dbfc6e99e62e48f8036dc8ade25a7f851da48aaddab90efbbc0552982a9fce",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "real-ui-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "34dc552a2da34d2458fa4d564830de82662e64084dc32235a4383a401eb7949e",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 1,
+      "case": "real-api-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          }
+        }
+      },
+      "hash": "525932a1d20829c6eef2d2345b95f6fccfb8e9fbb119c7504b26d8b73f01bca3",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "add_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Confirm",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "d810feee0cfca25ad8ccd18b38a715938301aed5e2c452fd371c4920d6ce4998",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Confirm",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "rename_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "2ff4cc4012de5ca060d114a72ba23bf66de19dd6ec0ea2530ed6aa77bdcb0739",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "move_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "6fc487d187439366e96f1b708fa6d901aa94c66745a8df929dbc8888e6448edc",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "connect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "e39b7299651876a2b6ddb1353fb37dbed52a96ce10ee52d09c6bda02f62a325f",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "reconnect_end-n",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "reconnect_end-start-a",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "20d738940dbe5bc6b2219e440c93768980262fdcd9218dfc228ace59a3a00bf3",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "reconnect_end-start-b",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "disconnect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "bbb81bf77cef606c1511a1766afe9cadde8bb8ecda5b14c708587e7fa7d00e7d",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "reconnect_end-c",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "1af97513f60bf648a7237fbc7854120cacaa21593a45dda9fe5439deb0835d30",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "delete_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "49dbfc6e99e62e48f8036dc8ade25a7f851da48aaddab90efbbc0552982a9fce",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "real-ui-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "34dc552a2da34d2458fa4d564830de82662e64084dc32235a4383a401eb7949e",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 2,
+      "case": "real-api-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          }
+        }
+      },
+      "hash": "525932a1d20829c6eef2d2345b95f6fccfb8e9fbb119c7504b26d8b73f01bca3",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "add_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Confirm",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "d810feee0cfca25ad8ccd18b38a715938301aed5e2c452fd371c4920d6ce4998",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Confirm",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "rename_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 500,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "2ff4cc4012de5ca060d114a72ba23bf66de19dd6ec0ea2530ed6aa77bdcb0739",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "move_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          }
+        }
+      },
+      "hash": "6fc487d187439366e96f1b708fa6d901aa94c66745a8df929dbc8888e6448edc",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "connect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "e39b7299651876a2b6ddb1353fb37dbed52a96ce10ee52d09c6bda02f62a325f",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "reconnect_end-n",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "reconnect_end-start-a",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "20d738940dbe5bc6b2219e440c93768980262fdcd9218dfc228ace59a3a00bf3",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "reconnect_end-start-b",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "n",
+            "to": "c"
+          }
+        }
+      },
+      "hash": "9035ef715e4cb7fe708bb8ed5565053836098ef6903ad81073f68546f6ac5c78",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "nc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "disconnect",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "n"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "bbb81bf77cef606c1511a1766afe9cadde8bb8ecda5b14c708587e7fa7d00e7d",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "reconnect_end-c",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "1af97513f60bf648a7237fbc7854120cacaa21593a45dda9fe5439deb0835d30",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "inventory",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "delete_step",
+      "state": {
+        "objects": {
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": "b"
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "b",
+            "to": "c"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "49dbfc6e99e62e48f8036dc8ade25a7f851da48aaddab90efbbc0552982a9fce",
+      "render": {
+        "ok": true,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Check payment",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "real-ui-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          },
+          "n": {
+            "id": "n",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check inventory",
+            "x": 850,
+            "y": 450,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "nc": {
+            "id": "nc",
+            "type": "arrow",
+            "deleted": true,
+            "frameId": "f",
+            "from": null,
+            "to": null
+          }
+        }
+      },
+      "hash": "34dc552a2da34d2458fa4d564830de82662e64084dc32235a4383a401eb7949e",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "repetition": 3,
+      "case": "real-api-delete-loose-arrow",
+      "state": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Receive request",
+            "x": 300,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "ab": {
+            "id": "ab",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": "a",
+            "to": null
+          },
+          "b": {
+            "id": "b",
+            "type": "step",
+            "deleted": true,
+            "frameId": "f",
+            "label": "Check payment",
+            "x": 650,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "bc": {
+            "id": "bc",
+            "type": "arrow",
+            "deleted": false,
+            "frameId": "f",
+            "from": null,
+            "to": "c"
+          },
+          "c": {
+            "id": "c",
+            "type": "step",
+            "deleted": false,
+            "frameId": "f",
+            "label": "Dispatch",
+            "x": 1050,
+            "y": 300,
+            "width": 180,
+            "height": 100,
+            "fontFamily": 3
+          },
+          "f": {
+            "id": "f",
+            "type": "frame",
+            "deleted": false,
+            "name": "Flow"
+          }
+        }
+      },
+      "hash": "525932a1d20829c6eef2d2345b95f6fccfb8e9fbb119c7504b26d8b73f01bca3",
+      "render": {
+        "ok": false,
+        "arrows": [
+          {
+            "id": "ab",
+            "end": "start",
+            "gap": 4,
+            "ok": true
+          },
+          {
+            "id": "ab",
+            "end": "end",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "start",
+            "gap": null,
+            "ok": false
+          },
+          {
+            "id": "bc",
+            "end": "end",
+            "gap": 4,
+            "ok": true
+          }
+        ],
+        "labels": [
+          {
+            "text": "Receive",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "request",
+            "overflow": 0,
+            "ok": true
+          },
+          {
+            "text": "Dispatch",
+            "overflow": 0,
+            "ok": true
+          }
+        ]
+      }
+    }
+  ]
+}

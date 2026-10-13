@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "recolor",
+  "difficulty": 1,
+  "title": {
+    "en": "Mark the error step",
+    "de": "Den Fehlerschritt markieren"
+  },
+  "prompt": {
+    "en": "Mark “Payment failed” as an error: red line and red fill. Leave the other steps as they are.",
+    "de": "Markiere „Payment failed“ als Fehler: rote Linie und rote Füllung. Lass die anderen Schritte, wie sie sind."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Checkout": "Upload",
+        "Payment failed": "Upload failed",
+        "Retry": "Try again"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Checkout": "Login",
+        "Payment failed": "Login failed",
+        "Retry": "Reset password"
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "remove-step",
+  "difficulty": 1,
+  "title": {
+    "en": "Remove a step",
+    "de": "Einen Schritt entfernen"
+  },
+  "prompt": {
+    "en": "The step “Fax copy” is obsolete. Remove it and keep the other two steps.",
+    "de": "Der Schritt „Fax copy“ ist überholt. Entferne ihn und behalte die anderen beiden Schritte."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Fax copy": "Print form",
+        "Receive": "Collect",
+        "File": "Sort"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Fax copy": "Old check",
+        "Receive": "Open",
+        "File": "Close"
+      }
+    }
+  ]
+}

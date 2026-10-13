@@ -1,0 +1,12 @@
+{
+  "command": "node --test tests/adapter/conformance.test.ts (temporary copy, text centring removed)",
+  "exitCode": 1,
+  "outputSha256": "7018f6d5921b30ce815bd12c559213d071c6a35b0d5535670b134d70467e4e73",
+  "expectedFailure": "all seven actions and rule effects conform 3 times to the real pinned engine",
+  "observedRed": true,
+  "green": {
+    "command": "node --test tests/adapter/conformance.test.ts tests/unit/adapter-integrity.test.ts",
+    "exitCode": 0,
+    "outputSha256": "8588085531c8831fcca9ea9d44c36a69eea1283b2ae232ab1020cfa5b598fc91"
+  }
+}

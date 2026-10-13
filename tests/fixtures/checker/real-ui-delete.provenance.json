@@ -1,0 +1,8 @@
+{
+  "source": "Adapter conformance UI deletion export: .local/adapter/loose-1.excalidraw",
+  "application": "Excalidraw 0.18.1",
+  "operation": "Real Delete keyboard operation on step b; no JSON editing",
+  "expected": "b and its text are tombstones, ab.to is null, bc.from is null",
+  "license": "CC0-1.0",
+  "author": "Practonaut phase-1 adapter producer"
+}

@@ -1,0 +1,84 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      # npm runs package scripts with cmd.exe on Windows; the pack test is a bash script.
+      - name: Use Git Bash for npm scripts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Chromium is an explicit download (never part of npm install). The cache key follows the
+      # lockfile, which pins the Playwright version and with it the browser build.
+      - name: Cache Playwright Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium (Linux, with system dependencies)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium
+        if: runner.os != 'Linux'
+        run: npx playwright install chromium
+
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration
+      - run: npm run test:mcp
+      - run: npm run test:pack
+
+      # Browser-heavy layers run on one platform.
+      - if: runner.os == 'Linux'
+        run: npm run demo
+      - if: runner.os == 'Linux'
+        run: npm run test:adapter
+      - if: runner.os == 'Linux'
+        run: npm run test:e2e
+      - if: runner.os == 'Linux'
+        run: npm run test:a11y
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Personal-account repositories need no license key; an organisation account needs
+      # GITLEAKS_LICENSE (see the gitleaks-action README).
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

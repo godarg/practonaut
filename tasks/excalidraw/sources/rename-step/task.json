@@ -1,0 +1,31 @@
+{
+  "schema": "practonaut.library-task/1",
+  "id": "rename-step",
+  "difficulty": 1,
+  "title": {
+    "en": "Fix a label",
+    "de": "Eine Beschriftung korrigieren"
+  },
+  "prompt": {
+    "en": "The first step is misspelled as “Recieve order”. Rename it to “Receive order”.",
+    "de": "Der erste Schritt ist falsch geschrieben: „Recieve order“. Benenne ihn in „Receive order“ um."
+  },
+  "variants": [
+    {
+      "id": "alt-1",
+      "labels": {
+        "Recieve order": "Shedule visit",
+        "Receive order": "Schedule visit",
+        "Invoice": "Visit"
+      }
+    },
+    {
+      "id": "alt-2",
+      "labels": {
+        "Recieve order": "Adress check",
+        "Receive order": "Address check",
+        "Invoice": "Approve"
+      }
+    }
+  ]
+}
