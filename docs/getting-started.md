@@ -50,12 +50,17 @@ browser went to and its size (about 550 MB for the browser and its headless shel
 Practonaut launches Chromium once before it uses the mirror (`npx practonaut doctor --adapter`
 shows the result as *chromium start*). If it is installed but does not start, a session with the
 default `--mirror auto` runs model-only and prints the reason; `--mirror required` stops with
-`browser_start_failed`. The sandbox stays on ([PADR-0032](adr/0032-chromium-sandbox-stays-on.md)).
-On Linux the two usual causes are:
+`browser_start_failed`. The sandbox stays on where the system allows it
+([PADR-0032](adr/0032-chromium-sandbox-stays-on.md)): when Linux refuses only the sandbox
+(Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor), Practonaut starts
+Chromium once without it, says so in one line, and `doctor` shows "sandbox off". Set
+`PRACTONAUT_CHROMIUM_SANDBOX=require` to refuse that instead. On Linux the two usual causes of a
+start that still fails are:
 
 - **Missing system libraries** (the reason names a `.so` file or "missing dependencies"):
   `npx playwright install --with-deps chromium` installs them (needs sudo).
-- **The sandbox under AppArmor** (the reason says "sandboxing failed" or "No usable sandbox"):
+- **The sandbox under AppArmor** (the reason says "sandboxing failed" or "No usable sandbox",
+  which with the default setting only happens under `PRACTONAUT_CHROMIUM_SANDBOX=require`):
   Ubuntu 23.10 and later restrict unprivileged user namespaces. Follow your distribution's
   documentation for `kernel.apparmor_restrict_unprivileged_userns` or an AppArmor profile for
   Playwright's Chromium, or keep practising model-only.

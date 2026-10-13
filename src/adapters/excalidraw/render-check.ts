@@ -1,6 +1,7 @@
 import type { Artifact } from '../types.ts';
 import type { RawElement } from './raw.ts';
 import { BROWSER_BOUNDS, bounded } from './bounded.ts';
+import { launchChromium } from './chromium.ts';
 /** Step containers of world/1 (rectangle) and world/2 (also ellipse, diamond); checked by their box. */
 const STEP_SHAPES = ['rectangle', 'ellipse', 'diamond'];
 export interface RenderReport { ok: boolean; arrows: Array<{ id: string; end: string; gap: number | null; ok: boolean }>; labels: Array<{ text: string; overflow: number | null; ok: boolean }> }
@@ -22,7 +23,7 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
     }
   }
   const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch);
-  const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
+  const { browser } = await launchChromium(chromium, () => ({ headless: true }));
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', route => route.abort());

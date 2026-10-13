@@ -5,7 +5,8 @@ import {mkdtemp,realpath,rm,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {chromium,type Browser,type BrowserContext,type Page,type Frame} from 'playwright-core';
+import {type Browser,type BrowserContext,type Page,type Frame} from 'playwright-core';
+import {launchBrowser} from '../support/browser.ts';
 import {startHost} from '../../src/host/server.ts';
 import {validateWorld} from '../../src/world/schema.ts';
 import {TOKEN_HEADER,type RunningHost,type HostReply,type HostView} from '../../src/host/protocol.ts';
@@ -59,7 +60,7 @@ async function runCase(t:TestContext,language:Language,id:CaseId):Promise<void>{
   directory=await mkdtemp(join(await realpath(tmpdir()),'pn-p1-regression-runtime-'));
   const world=validateWorld(JSON.parse(await readFile('examples/worlds/flow-diagram/world.json','utf8')));
   const hostCreation=startHost(world,{phase3:true,mirror:'required',taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')}).then(async value=>{host=value;if(closing)await value.close();return value;});constructors.add(hostCreation);void hostCreation.finally(()=>constructors.delete(hostCreation)).catch(()=>{});await stage(hostCreation);
-  const browserCreation=chromium.launch({headless:true,chromiumSandbox:true,timeout:BROWSER_BOUNDS.launch,handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false}).then(async value=>{browser=value;if(closing)await closeBrowser(value);return value;});constructors.add(browserCreation);void browserCreation.finally(()=>constructors.delete(browserCreation)).catch(()=>{});await stage(browserCreation);
+  const browserCreation=launchBrowser({headless:true,timeout:BROWSER_BOUNDS.launch,handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false}).then(async value=>{browser=value;if(closing)await closeBrowser(value);return value;});constructors.add(browserCreation);void browserCreation.finally(()=>constructors.delete(browserCreation)).catch(()=>{});await stage(browserCreation);
   context=await stage(browser!.newContext({viewport:{width:1280,height:900},colorScheme:'light',reducedMotion:'reduce',serviceWorkers:'block'}));await stage(context.addInitScript(passiveProbe));page=await stage(context.newPage());
   const allowed=new Set([host!.origin]);
   page.on('request',request=>{const u=new URL(request.url());if(u.origin===host!.origin&&u.pathname==='/api/author')authorRequests.push({method:request.method(),at:performance.now()});if(u.origin===host!.origin&&u.pathname.startsWith('/api/record/'))recordRequests.push({pathname:u.pathname,method:request.method(),at:performance.now()});});

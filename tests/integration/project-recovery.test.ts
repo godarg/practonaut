@@ -120,7 +120,10 @@ test('a replacement live-writer inode and unsafe pending links cannot be recover
   const dir=await temp(),path=join(dir,'projects'),store=createProjectStore(path),project=prepareRepairProject({id:'committed',title:'Saved',author:'Synthetic',labels:['A','B','C']});
   try {
     await store.save(project);await deadWriter(path,'f'.repeat(32));const lock=join(path,'.projects.lock'),old=await lstat(lock);
-    const {unlink,symlink,link}=await import('node:fs/promises');await unlink(lock);await writeFile(lock,canonicalJson({schema:'practonaut.project-lock/1',pid:process.pid,nonce:'1'.repeat(32)}),{mode:0o600});const replacement=await lstat(lock),bytes=await readFile(lock);assert.notEqual(replacement.ino,old.ino);
+    const {unlink,symlink,link}=await import('node:fs/promises');
+    // Keep the dead writer's inode allocated, so the replacement cannot reuse its number (Linux file
+    // systems hand a freed inode number out again at once).
+    await link(lock,join(dir,'dead-writer-lock'));await unlink(lock);await writeFile(lock,canonicalJson({schema:'practonaut.project-lock/1',pid:process.pid,nonce:'1'.repeat(32)}),{mode:0o600});const replacement=await lstat(lock),bytes=await readFile(lock);assert.notEqual(replacement.ino,old.ino);
     await assert.rejects(store.save(project),/Another writer/);assert.equal((await lstat(lock)).ino,replacement.ino);assert.deepEqual(await readFile(lock),bytes);
     await unlink(lock);const pending=join(path,'.pending-'+'2'.repeat(32)),outside=join(dir,'outside');await writeFile(outside,'untouched',{mode:0o600});await symlink(outside,pending);assert.equal((await store.list())[0]!.id,'committed');assert.equal((await store.read('committed')).id,'committed');await assert.rejects(store.save(project),/safe/);assert.equal(await readFile(outside,'utf8'),'untouched');await unlink(pending);
     await link(outside,pending);assert.equal((await store.list())[0]!.id,'committed');await assert.rejects(store.save(project),/safe/);assert.equal(await readFile(outside,'utf8'),'untouched');

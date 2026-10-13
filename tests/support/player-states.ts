@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Frame, type Page } from "playwright";
+import { launchBrowser } from "./browser.ts";
 import { startHost } from "../../src/host/server.ts";
 import { validateWorld } from "../../src/world/schema.ts";
 import { TOKEN_HEADER, type HostReply, type HostView, type RunningHost } from "../../src/host/protocol.ts";
@@ -930,7 +931,7 @@ export async function initialModuleState(definition:InitialModuleState,theme:The
   trace.module={path:modulePath,entryBytes:entry.length,entrySha256:createHash('sha256').update(entry).digest('hex'),bytes:moduleBytes.length,sha256:createHash('sha256').update(moduleBytes).digest('hex')};sources.push(moduleFile);trace.sourceBefore=sources.map(initialSourceBinding);
   directory=await mkdtemp(join(await realpath(tmpdir()),'pn-design-initial-module-'));
   const worldBytes=readFileSync('examples/worlds/flow-diagram/world.json'),world=validateWorld(JSON.parse(worldBytes.toString('utf8')));
-  stage='browser';browser=await chromium.launch({headless:true,chromiumSandbox:true});trace.browser=browser.version();
+  stage='browser';browser=await launchBrowser({headless:true});trace.browser=browser.version();
   stage='owned-host';host=await startHost(world,{phase3:true,mirror:'required',taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials'),requireOffline:process.env.PN_REQUIRE_OFFLINE==='1'});
   context=await browser.newContext({viewport,colorScheme:theme,reducedMotion:'reduce',serviceWorkers:'block'});page=await context.newPage();const cdp=await context.newCDPSession(page),allowed=new Set([host.origin]);
   const heldInitial=new Promise<void>(resolve=>{releaseInitial=resolve;}),heldRetry=new Promise<void>(resolve=>{releaseRetry=resolve;});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, symlink, stat, readFile, writeFile, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, stat, readFile, writeFile, chmod, lstat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -52,5 +52,18 @@ test('pinned executable refuses PATH, symlinks, writable paths and changed bytes
     await assert.rejects(bindClient('claude'), /absolute/); await symlink(path, join(root, 'link')); await assert.rejects(bindClient(join(root, 'link')));
     await chmod(path, 0o720); await assert.rejects(bindClient(path), /group\/world/); await chmod(path, 0o700);
     await chmod(root, 0o770); await assert.rejects(bindClient(path), /ancestor/); await chmod(root, 0o700);
+    // The sticky bit alone does not make a shared directory safe: only root's /tmp-style directory is.
+    await chmod(root, 0o1777); await assert.rejects(bindClient(path), /ancestor/); await chmod(root, 0o700);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+test('a root-owned sticky shared directory (Linux /tmp, macOS /private/tmp) is a safe client ancestor', { skip: process.platform === 'win32' ? 'no POSIX owners or sticky bit on Windows' : false }, async () => {
+  const shared = await realpath('/tmp'), info = await lstat(shared);
+  assert.ok(info.uid === 0 && (info.mode & 0o1777) === 0o1777, `precondition: ${shared} is root-owned, world-writable and sticky`);
+  const root = await mkdtemp(join(shared, 'pn-client-sticky-'));
+  try {
+    const path = join(root, 'client'); await writeFile(path, '#!/bin/sh\nexit 0\n'); await chmod(path, 0o700);
+    assert.match((await bindClient(path, true)).sha256, /^[a-f0-9]{64}$/);
+    // The coordinator's own directory below it must still be private.
+    await chmod(root, 0o777); await assert.rejects(bindClient(path), /ancestor/); await chmod(root, 0o700);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

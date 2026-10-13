@@ -71,7 +71,7 @@ export async function runChecks(profile: "runtime" | "dev", cwd: string = proces
   checks.push(installed);
   if (installed.ok) {
     const started = await starts();
-    checks.push({ name: 'chromium start', required: adapter, ok: started.ok, detail: started.ok ? cliText('chromiumStarts') : cliText('chromiumStartFails', { detail: started.detail }) + ' — ' + browserAdvice().trim() });
+    checks.push({ name: 'chromium start', required: adapter, ok: started.ok, detail: started.ok ? cliText(started.sandbox ? 'chromiumStarts' : 'chromiumStartsUnsandboxed') : cliText('chromiumStartFails', { detail: started.detail }) + ' — ' + browserAdvice().trim() });
   }
   return checks;
 }

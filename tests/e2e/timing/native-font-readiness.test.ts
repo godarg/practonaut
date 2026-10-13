@@ -5,7 +5,8 @@ import {once} from 'node:events';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,join,basename,extname} from 'node:path';
 import {createHash} from 'node:crypto';
-import {chromium,type Browser,type Page,type Frame} from 'playwright-core';
+import {type Browser,type Page,type Frame} from 'playwright-core';
+import {launchBrowser} from '../../support/browser.ts';
 import {createExcalidrawAdapter,type ExcalidrawAdapter} from '../../../src/adapters/excalidraw/index.ts';
 import {startEditorAssets} from '../../../src/host/editor-assets.ts';
 import {projectSnapshot,snapshotElements} from '../../../src/adapters/excalidraw/recorder.ts';
@@ -44,7 +45,7 @@ async function open(kind:Kind,language:'en'|'de',arm:Arm):Promise<Fixture>{
  if(kind==='mirror'){adapter=await createExcalidrawAdapter(FAMILY3,{},{ready:(b,p)=>{browser=b;page=p;}});origin='http://practonaut.invalid';entry=origin+'/';}
  else{
   let iframeOrigin='';parent=createServer((_q,r)=>{r.setHeader('Content-Type','text/html');r.end('<iframe width="1400" height="900" src="'+iframeOrigin+'/editor.html#parent='+encodeURIComponent(entry)+'"></iframe>');});parent.listen(0,'127.0.0.1');await once(parent,'listening');const a=parent.address();assert(a&&typeof a!=='string');entry='http://127.0.0.1:'+a.port;assets=await startEditorAssets(entry);iframeOrigin=origin=assets.origin;
-  browser=await chromium.launch({headless:true,chromiumSandbox:true});const context=await browser.newContext({viewport:{width:1600,height:1100},serviceWorkers:'block'});await context.route('**/*',async route=>{if([origin,entry].includes(new URL(route.request().url()).origin))await route.continue();else await route.abort();});page=await context.newPage();
+  browser=await launchBrowser({headless:true});const context=await browser.newContext({viewport:{width:1600,height:1100},serviceWorkers:'block'});await context.route('**/*',async route=>{if([origin,entry].includes(new URL(route.request().url()).origin))await route.continue();else await route.abort();});page=await context.newPage();
  }
  const context=page.context(),responses:any[]=[],pending=new Set<Promise<void>>(),faults:any[]=[];
  await context.addInitScript(({arm,TEXT,ASCII})=>{
@@ -176,7 +177,7 @@ async function lateFailure(language:'en'|'de',arm:'missing'|'reject'|'timeout'):
  try{
  parent.listen(0,'127.0.0.1');await once(parent,'listening');const address=parent.address();assert(address&&typeof address!=='string');parentOrigin='http://127.0.0.1:'+address.port;
  assets=await startEditorAssets(parentOrigin);iframeOrigin=assets.origin;
- browser=await chromium.launch({headless:true,chromiumSandbox:true});const context=await browser.newContext({viewport:{width:1600,height:1100},serviceWorkers:'block'}),page=await context.newPage();
+ browser=await launchBrowser({headless:true});const context=await browser.newContext({viewport:{width:1600,height:1100},serviceWorkers:'block'}),page=await context.newPage();
  await context.addInitScript(({arm})=>{
   const w=window as any;w.__lateFailureAdvertisements=[];addEventListener('message',event=>{if(event.data?.type==='practonaut-engine-ready/1')w.__lateFailureAdvertisements.push({type:event.data.type,origin:event.origin,at:performance.now()});});
   if(arm==='missing'){const original=FontFaceSet.prototype.add;FontFaceSet.prototype.add=function(face:FontFace){if(face.family==='Excalifont'&&face.unicodeRange==='U+300-301, U+303')return this;return original.call(this,face);};}
@@ -224,7 +225,7 @@ async function composedFailure(language:'en'|'de',arm:'missing'|'timeout',trace:
  const close=async()=>{release();clearTimeout(timer);try{await browser?.close();}finally{await Promise.allSettled([...pending]);try{await host?.close();}finally{await rm(directory,{recursive:true,force:true});}}};
  try{
   host=await startHost(world,{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')});
-  browser=await chromium.launch({headless:true,chromiumSandbox:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});page=await context.newPage();const allowed=new Set([host.origin]),faults:any[]=[],responses:any[]=[];let armed=false,documentGeneration=0,iframeOrigin='';const documents:any[]=[],requestGenerations=new WeakMap<object,number>();trace.documents=documents;trace.faults=faults;trace.responses=responses;
+  browser=await launchBrowser({headless:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});page=await context.newPage();const allowed=new Set([host.origin]),faults:any[]=[],responses:any[]=[];let armed=false,documentGeneration=0,iframeOrigin='';const documents:any[]=[],requestGenerations=new WeakMap<object,number>();trace.documents=documents;trace.faults=faults;trace.responses=responses;
  await installParentFontReloadProbe(context);
  const held=new Promise<void>(done=>{release=done;});
  await context.addInitScript(({arm,parentOrigin})=>{
@@ -304,7 +305,7 @@ async function coldParentFailure(language:'en'|'de',arm:'missing'|'reject'|'time
  const close=async()=>{releaseDocument();releaseFont();for(const timer of timers)clearTimeout(timer);try{await browser?.close();}finally{await Promise.allSettled([...pending]);try{await host?.close();}finally{await rm(directory,{recursive:true,force:true});}}};
  try{
   host=await startHost(world,{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')});
-  browser=await chromium.launch({headless:true,chromiumSandbox:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'}),page=await context.newPage(),allowed=new Set([host.origin]);
+  browser=await launchBrowser({headless:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'}),page=await context.newPage(),allowed=new Set([host.origin]);
   let iframeOrigin='',documentGeneration=0;const faults:any[]=[],responses:any[]=[],documents:any[]=[],requestGenerations=new WeakMap<object,number>();
   trace.documents=documents;trace.faults=faults;trace.responses=responses;await installParentFontReloadProbe(context);
   const heldDocument=new Promise<void>(done=>{releaseDocument=done;}),heldFont=new Promise<void>(done=>{releaseFont=done;});
@@ -374,7 +375,7 @@ async function retryBoundaryFixture(language:'en'|'de',arm:RetryBoundaryArm,trac
  const realRetryHold=new Promise<void>((resolve,reject)=>{holdResolve=resolve;holdReject=reject;});void realRetryHold.catch(()=>{});
  const close=async()=>{releaseFont();clearTimeout(holdTimer);clearTimeout(holdObservationTimer);if(!holdClosed&&!holdResolved){holdClosed=true;holdReject(new Error('OWN_RETRY_HOLD_CLOSED_NOTREACHED'));}try{await browser?.close();}finally{await Promise.allSettled([...pending]);try{await host?.close();}finally{await rm(directory,{recursive:true,force:true});}}};
  try{
-  host=await startHost(world,{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')});browser=await chromium.launch({headless:true,chromiumSandbox:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});page=await context.newPage();const ownPage=page,allowed=new Set([host.origin]),faults:any[]=[],responses:any[]=[],documents:any[]=[],requestGenerations=new WeakMap<object,number>();let iframeOrigin='',documentGeneration=0,retryHeld=false;
+  host=await startHost(world,{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')});browser=await launchBrowser({headless:true});const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});page=await context.newPage();const ownPage=page,allowed=new Set([host.origin]),faults:any[]=[],responses:any[]=[],documents:any[]=[],requestGenerations=new WeakMap<object,number>();let iframeOrigin='',documentGeneration=0,retryHeld=false;
   trace.documents=documents;trace.faults=faults;trace.responses=responses;
   await context.addInitScript(({arm,parentOrigin})=>{
    const w=window as any;
@@ -489,7 +490,7 @@ async function heldAuthorRetryFixture(language:'en'|'de',trace:any,moments:T09Ra
  try{
   directory=await budget.wait('T09_OWN_DIRECTORY',async()=>mkdtemp(join(await realpath(tmpdir()),'pn-font-author-deadline-')));const world=validateWorld(JSON.parse(await budget.wait('T09_WORLD_READ',()=>readFile('examples/worlds/flow-diagram/world.json','utf8'))));
   const hostCreation=startHost(world,{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')}).then(async value=>{host=value;if(closeStarted)await value.close();return value;});constructors.add(hostCreation);void hostCreation.finally(()=>constructors.delete(hostCreation)).catch(()=>{});host=await budget.wait('T09_HOST_CONSTRUCTOR',()=>hostCreation);
-  const browserCreation=chromium.launch({headless:true,chromiumSandbox:true,timeout:Math.max(1,Math.min(10_000,budget.operationDeadline-performance.now())),handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false}).then(async value=>{browser=value;if(closeStarted)await closeBrowser(value);return value;});constructors.add(browserCreation);void browserCreation.finally(()=>constructors.delete(browserCreation)).catch(()=>{});browser=await budget.wait('T09_BROWSER_CONSTRUCTOR',()=>browserCreation);
+  const browserCreation=launchBrowser({headless:true,timeout:Math.max(1,Math.min(10_000,budget.operationDeadline-performance.now())),handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false}).then(async value=>{browser=value;if(closeStarted)await closeBrowser(value);return value;});constructors.add(browserCreation);void browserCreation.finally(()=>constructors.delete(browserCreation)).catch(()=>{});browser=await budget.wait('T09_BROWSER_CONSTRUCTOR',()=>browserCreation);
   const context=await budget.wait('T09_BROWSER_CONTEXT',()=>browser!.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'}));page=await budget.wait('T09_OWN_PAGE',()=>context.newPage());const ownPage=page,allowed=new Set([host.origin]),faults:any[]=[],responses:any[]=[],documents:any[]=[],authorRequests:any[]=[],abortRequests:any[]=[];let iframeOrigin='',documentGeneration=0;
   trace.faults=faults;trace.responses=responses;trace.documents=documents;trace.authorRequests=authorRequests;trace.abortRequests=abortRequests;trace.observation={clocksDistinct:true,nodeDeliveryStartpoint:'actual NativeAbort+Parentterminal frozen, then instrumental release; Node event may already have arrived and is retained as such',wholeMs:35_000,operationDeadline:budget.operationDeadline,cleanupDeadline:budget.deadline,setupStartedAt:performance.now()};
   await context.addInitScript(()=>{

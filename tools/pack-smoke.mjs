@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { chromium } from 'playwright-core';
+import { launchChromium } from '../src/adapters/excalidraw/chromium.ts';
 
 const [bin, world] = process.argv.slice(2);
 assert.ok(bin && world, 'usage: pack-smoke.mjs <installed-bin> <world>');
@@ -31,7 +32,8 @@ try {
   const resumed = await (await fetch(origin + '/api/resume', { headers: { 'X-Practonaut-Token': token } })).json();
   assert.equal(resumed.ok, true); assert.equal(Object.hasOwn(resumed.value, 'authorToken'), false); assert.equal(Object.hasOwn(resumed.value, 'token'), false);
   assert.equal(tokenFile.startsWith(process.env.PRACTONAUT_HOME), true, 'installed CLI keeps credentials under PRACTONAUT_HOME');
-  browser = await chromium.launch({ headless: true, chromiumSandbox: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
+  // Started like the product's mirror: sandbox first, on Linux once without it if the system refuses it.
+  ({ browser } = await launchChromium(chromium, () => ({ headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false })));
   const context = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce' });
   const external = []; let bootstrapRequests = 0;
   await context.addInitScript(() => {

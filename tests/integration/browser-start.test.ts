@@ -10,12 +10,16 @@ import { chmod, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright-core';
+import { readFileSync } from 'node:fs';
+import { SANDBOX_ENV } from '../../src/adapters/excalidraw/chromium.ts';
 
 const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
 const FAKE = '#!/bin/sh\necho "[0101/000000.000000:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md" >&2\nexit 1\n';
 
-/** A browser cache with the real layout (same revision directories and file names) and failing executables. */
-async function brokenCache(): Promise<{ root: string; env: NodeJS.ProcessEnv }> {
+/** A browser cache with the real layout (same revision directories and file names) and failing executables.
+ * With `unsandboxedRuns`, an executable started with --no-sandbox runs the real browser instead:
+ * a system that refuses only the sandbox. */
+async function brokenCache(unsandboxedRuns = false): Promise<{ root: string; env: NodeJS.ProcessEnv }> {
   const real = chromium.executablePath();
   let revision = dirname(real);
   while (!/^chromium-\d+$/.test(basename(revision))) revision = dirname(revision);
@@ -25,9 +29,11 @@ async function brokenCache(): Promise<{ root: string; env: NodeJS.ProcessEnv }> 
   assert.ok(shells.length > 0, 'the real headless shell was found');
   for (const executable of [relative(realRoot, real), ...shells.map(name => join(shellDir, name))]) {
     await mkdir(dirname(join(root, executable)), { recursive: true });
-    await writeFile(join(root, executable), FAKE); await chmod(join(root, executable), 0o755);
+    const script = unsandboxedRuns ? FAKE.replace('\n', `\ncase " $* " in *" --no-sandbox "*) exec ${JSON.stringify(join(realRoot, executable))} "$@";; esac\n`) : FAKE;
+    await writeFile(join(root, executable), script); await chmod(join(root, executable), 0o755);
   }
-  return { root, env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: root } };
+  const env: NodeJS.ProcessEnv = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: root }; delete env[SANDBOX_ENV];
+  return { root, env };
 }
 
 async function play(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string; code: number | null }> {
@@ -80,9 +86,47 @@ test('installed Chromium that does not start: auto runs model-only with a clear 
   } finally { await rm(root, { recursive: true, force: true }); await rm(home, { recursive: true, force: true }); }
 });
 
+const UNSANDBOXED = "starts (headless, sandbox off: this Linux system does not allow Chromium's sandbox; set PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead)";
+
+test('a system that refuses only the sandbox: Linux starts the real Chromium once without it and says so; require refuses; other platforms never fall back', { timeout: 240_000, skip: process.platform === 'win32' }, async () => {
+  const { root, env } = await brokenCache(true);
+  const home = await mkdtemp(join(await realpath(tmpdir()), 'pn-home-'));
+  const auto = { ...env, PRACTONAUT_HOME: home }, strict = { ...auto, [SANDBOX_ENV]: 'require' };
+  try {
+    const doctor = spawnSync(process.execPath, [main, 'doctor', '--adapter', '--json'], { env: auto, encoding: 'utf8', timeout: 90_000 });
+    const start = (JSON.parse(doctor.stdout) as { checks: Array<{ name: string; ok: boolean; detail: string }> }).checks.find(check => check.name === 'chromium start');
+    const refused = spawnSync(process.execPath, [main, 'doctor', '--adapter'], { env: strict, encoding: 'utf8', timeout: 90_000 });
+    assert.equal(refused.status, 3, 'require: a sandbox refusal is a failed start');
+    assert.match(refused.stdout, /FAIL\s+chromium start\s+installed but does not start: Chromium sandboxing failed!/);
+    if (process.platform !== 'linux') {
+      assert.equal(doctor.status, 3, 'no fallback outside Linux'); assert.equal(start?.ok, false); return;
+    }
+    assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
+    assert.deepEqual(start, { name: 'chromium start', required: true, ok: true, detail: UNSANDBOXED });
+    // The real mirror runs (real-engine), and the terminal says once that it runs without the sandbox.
+    const played = await play(['play', 'connect', '--no-open', '--mirror', 'required'], auto);
+    assert.equal(played.code, 0, played.stderr); assert.match(played.stdout, /Mode: real-engine/);
+    assert.equal(played.stderr.match(/without its sandbox/g)?.length, 1, played.stderr);
+    assert.match(played.stderr, /^practonaut: Chromium runs without its sandbox because this Linux system does not allow it .*PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead\.$/m);
+    const strictPlay = await play(['play', 'connect', '--no-open'], strict);
+    assert.equal(strictPlay.code, 0, strictPlay.stderr); assert.match(strictPlay.stdout, /Mode: model-only/); assert.doesNotMatch(strictPlay.stderr, /without its sandbox/);
+  } finally { await rm(root, { recursive: true, force: true }); await rm(home, { recursive: true, force: true }); }
+});
+
+/** Independent of the product: whether this Linux kernel denies unprivileged user namespaces. */
+function linuxRestrictsUserNamespaces(): boolean {
+  const read = (path: string): string | undefined => { try { return readFileSync(path, 'utf8').trim(); } catch { return undefined; } };
+  return read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1' || read('/proc/sys/kernel/unprivileged_userns_clone') === '0';
+}
+
 test('the real Chromium passes the start check', { timeout: 120_000 }, () => {
   const doctor = spawnSync(process.execPath, [main, 'doctor', '--adapter', '--json'], { encoding: 'utf8', timeout: 90_000 });
-  assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
   const checks = (JSON.parse(doctor.stdout) as { checks: Array<{ name: string; ok: boolean }> }).checks;
-  assert.deepEqual(checks.find(check => check.name === 'chromium start'), { name: 'chromium start', required: true, ok: true, detail: 'starts (headless, sandbox on)' });
+  const start = checks.find(check => check.name === 'chromium start');
+  const restricted = process.platform === 'linux' && linuxRestrictsUserNamespaces();
+  if (restricted && process.env[SANDBOX_ENV] === 'require') {
+    assert.equal(doctor.status, 3, doctor.stdout + doctor.stderr); assert.equal(start?.ok, false); return;
+  }
+  assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
+  assert.deepEqual(start, { name: 'chromium start', required: true, ok: true, detail: restricted ? UNSANDBOXED : 'starts (headless, sandbox on)' });
 });

@@ -11,6 +11,7 @@ import { loadWorldPackage } from '../world/index.ts';
 import { RuntimeError } from './runtime.ts';
 import { chromiumCheck } from './doctor.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
+import { chromiumSandboxFallbackActive } from '../adapters/excalidraw/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
@@ -52,7 +53,8 @@ export function parseServeArguments(args: string[]): ServeArguments {
   return { source: source ?? BUNDLED_WORLD, seed, mirror, open, requireOffline, ...(taskId ? { taskId } : {}) };
 }
 
-export interface MirrorResolution { mode: MirrorMode; fallback: boolean; reason?: 'missing' | 'start'; detail?: string }
+/** `sandbox: false` marks a mirror whose Chromium runs without its sandbox (Linux fallback, PADR-0032). */
+export interface MirrorResolution { mode: MirrorMode; fallback: boolean; reason?: 'missing' | 'start'; detail?: string; sandbox?: boolean }
 export interface MirrorProbes { installed(): Promise<boolean>; starts(): Promise<StartResult> }
 const defaultProbes: MirrorProbes = { installed: async () => (await chromiumCheck(false)).ok, starts: () => chromiumStarts() };
 
@@ -72,12 +74,12 @@ export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes =
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail: started.detail, advice: browserAdvice() }));
     return { mode: 'off', fallback: true, reason: 'start', detail: started.detail };
   }
-  return { mode: 'required', fallback: false };
+  return { mode: 'required', fallback: false, sandbox: started.sandbox };
 }
 
 /** The stderr notice for a model-only fallback. */
 export function fallbackNotice(mirror: MirrorResolution): string {
-  if (!mirror.fallback) return '';
+  if (!mirror.fallback) return mirror.mode === 'required' && mirror.sandbox === false ? cliText('sandboxFallbackNotice') : '';
   return mirror.reason === 'start' ? cliText('mirrorStartFallback', { detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback');
 }
 
@@ -88,7 +90,8 @@ export function fallbackNotice(mirror: MirrorResolution): string {
  */
 export async function startHostWithMirror(choice: MirrorChoice, resolved: MirrorResolution, start: (mode: MirrorMode) => Promise<RunningHost>): Promise<{ host: RunningHost; mirror: MirrorResolution }> {
   if (resolved.mode === 'off') return { host: await start('off'), mirror: resolved };
-  try { return { host: await start('required'), mirror: resolved }; }
+  // The mirror's own start may be the first one that needed the Linux sandbox fallback.
+  try { const host = await start('required'); return { host, mirror: chromiumSandboxFallbackActive() ? { ...resolved, sandbox: false } : resolved }; }
   catch (error) {
     if (!(error instanceof AdapterError)) throw error;
     const detail = launchFailureDetail(error instanceof AdapterInitializationError ? error.primaryError : error);

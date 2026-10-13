@@ -1,6 +1,6 @@
 import { cliText } from './messages.ts';
 import { chromiumCheck } from './doctor.ts';
-import { browserAdvice, chromiumStarts } from './browser-start.ts';
+import { browserAdvice, chromiumStarts, sandboxFallbackNotice } from './browser-start.ts';
 import { spawn } from "node:child_process";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -56,7 +56,7 @@ export async function commandRun(args:string[]):Promise<number>{
  if(flags["--export"]&&mirror==="off")throw new RuntimeError("usage",cliText("nativeExport"));
  if(mirror==='required'){
   if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing'));
-  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));
+  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];

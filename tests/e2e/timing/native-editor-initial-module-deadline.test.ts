@@ -7,7 +7,8 @@ import {readFile,writeFile,mkdir,mkdtemp,rm,realpath} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
-import {chromium,type Browser,type Page,type Frame} from 'playwright-core';
+import {type Browser,type Page,type Frame} from 'playwright-core';
+import {launchBrowser} from '../../support/browser.ts';
 import {startHost} from '../../../src/host/server.ts';
 import {validateWorld} from '../../../src/world/schema.ts';
 import {TOKEN_HEADER} from '../../../src/host/protocol.ts';
@@ -107,7 +108,7 @@ async function open(language:'en'|'de',fault:Fault,workspace:Workspace,row:any,s
  try{
   directory=await mkdtemp(join(await realpath(tmpdir()),'pn-initial-editor-'));
   const worldBytes=await readFile('examples/worlds/flow-diagram/world.json');row.worldBinding={bytes:worldBytes.length,sha256:sha(worldBytes)};
-  browser=await chromium.launch({headless:true,chromiumSandbox:true});row.browser=browser.version();
+  browser=await launchBrowser({headless:true});row.browser=browser.version();
   host=await startHost(validateWorld(JSON.parse(worldBytes.toString('utf8'))),{phase3:true,taskId:'T3',seed:42,localDirectory:directory,tokenDirectory:join(directory,'credentials')});
   const context=await browser.newContext({viewport:{width:1280,height:1000},serviceWorkers:'block',reducedMotion:'reduce'}),page=await context.newPage();await observers(page);
   // Locate the single actual Excalidraw dynamic module dependency from the
