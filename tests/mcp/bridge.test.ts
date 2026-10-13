@@ -9,6 +9,7 @@ import { createTokenFile } from "../../src/host/token-file.ts";
 import { fixture } from "../e2e/harness.ts";
 import { HOST_LIMITS } from "../../src/host/limits.ts";
 import type { McpToolInputs } from "../../src/mcp/contracts.ts";
+import { POSIX } from "../support/platform.ts";
 
 test("canonical host origin cannot choose a remote host, credentials, redirect path or alternate loopback spelling", () => {
   for (const host of ["https://127.0.0.1:1234", "http://localhost:1234", "http://127.0.0.2:1234", "http://[::1]:1234", "http://127.0.0.1:1234/", "http://user:pass@127.0.0.1:1234", "http://127.0.0.1:1234?token=x", "http://2130706433:1234", "http://127.0.0.1:1234/#x"]) assert.throws(() => requireHostOrigin(host), /loopback/);
@@ -20,9 +21,9 @@ test("credential descriptor rejects symlinks, public modes, hardlinks and malfor
     const token = "a".repeat(64), file = await createTokenFile(dir, token);
     assert.equal(await readSessionToken(file.path), token);
     const alias = join(dir, "alias"); await symlink(file.path, alias); await assert.rejects(readSessionToken(alias), /unsafe/);
-    await chmod(file.path, 0o644); await assert.rejects(readSessionToken(file.path), /unsafe/); await chmod(file.path, 0o600);
+    if (POSIX) { await chmod(file.path, 0o644); await assert.rejects(readSessionToken(file.path), /unsafe/); await chmod(file.path, 0o600); }
     await link(file.path, join(dir, "hard")); await assert.rejects(readSessionToken(file.path), /unsafe/); await rm(join(dir, "hard"));
-    await chmod(dir, 0o755); await assert.rejects(readSessionToken(file.path), /unsafe/); await chmod(dir, 0o700);
+    if (POSIX) { await chmod(dir, 0o755); await assert.rejects(readSessionToken(file.path), /unsafe/); await chmod(dir, 0o700); }
     await writeFile(file.path, "bad\n"); await assert.rejects(readSessionToken(file.path), /unsafe/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

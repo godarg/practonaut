@@ -2,8 +2,8 @@
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isAbsolute, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
@@ -114,12 +114,12 @@ export async function prepareAgentMcpEntry(host: Pick<RunningHost, 'origin' | 't
   const sessionArgs = ['--host', host.origin, '--token-file', host.tokenFile];
   if (installed === undefined) {
     const entry = fileURLToPath(new URL('../src/cli/mcp.ts', import.meta.url));
-    const config = { command: process.execPath, args: ['--input-type=module', '-e', `const {commandMcp}=await import(${JSON.stringify(entry)});process.exitCode=await commandMcp(process.argv.slice(1));`, '--', ...sessionArgs] };
+    const config = { command: process.execPath, args: ['--input-type=module', '-e', `const {commandMcp}=await import(${JSON.stringify(pathToFileURL(entry).href)});process.exitCode=await commandMcp(process.argv.slice(1));`, '--', ...sessionArgs] };
     const evidence: AgentMcpEntryEvidence = { mode: 'source-wrapper', entryPath: entry, nodeVersion: process.version, invocation: config };
     return { config, evidence, assertUnchanged: async (): Promise<void> => {} };
   }
   const suffix = join('node_modules', 'practonaut', 'dist', 'cli', 'main.js');
-  if (typeof installed.path !== 'string' || !isAbsolute(installed.path) || resolve(installed.path) !== installed.path || !installed.path.endsWith('/' + suffix)) throw Error('Installed MCP entry requires an absolute installed node_modules/practonaut/dist/cli/main.js path');
+  if (typeof installed.path !== 'string' || !isAbsolute(installed.path) || resolve(installed.path) !== installed.path || !installed.path.endsWith(sep + suffix)) throw Error('Installed MCP entry requires an absolute installed node_modules/practonaut/dist/cli/main.js path');
   if (typeof installed.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(installed.sha256)) throw Error('Installed MCP entry requires an explicit whole-file SHA256 hash');
   if (typeof installed.version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(installed.version)) throw Error('Installed MCP entry requires an explicit package version');
   // Reuse the existing regular-file/full-byte binding and its before/after checks.

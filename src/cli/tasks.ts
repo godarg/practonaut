@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fromScenesBounded } from '../authoring/from-scenes-runner.ts';
@@ -48,6 +48,8 @@ async function outputDirectories(out: string): Promise<{ root: string; world: st
       missing.unshift(basename(existing)); existing = parent;
     }
   }
+  // Windows reports ENOENT, not ENOTDIR, below a regular file: the nearest existing ancestor decides.
+  if (missing.length > 0 && !(await stat(existing)).isDirectory()) throw new RuntimeError('usage', cliText('tasksOutputNotFolder', { path: safeText(displayPath(out)) }));
   let root: string;
   if (missing.length === 0) {
     await refuseLink(requested); root = requested;

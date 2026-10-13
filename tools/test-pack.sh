@@ -45,9 +45,11 @@ const fs = require("node:fs");
 const {execFileSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const bytes=fs.readFileSync(process.argv[2]);
-const names=execFileSync('tar',['-tzf',process.argv[2]],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
+// tar runs beside the tarball with a relative name: GNU tar (Git Bash on Windows) reads "C:\\..." as a remote host.
+const tarIn={cwd:require('node:path').dirname(process.argv[2])},tgzName=require('node:path').basename(process.argv[2]);
+const names=execFileSync('tar',['-tzf',tgzName],{...tarIn,encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
 if(names.some(p=>!/^package\/[A-Za-z0-9._/@+-]+$/.test(p))||new Set(names).size!==names.length)throw Error('Unsafe or duplicate tarball name');
-const types=execFileSync('tar',['-tvzf',process.argv[2]],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
+const types=execFileSync('tar',['-tvzf',tgzName],{...tarIn,encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
 if(types.length!==names.length||types.some(line=>!['-','d'].includes(line[0])))throw Error('Tarball links and special entries are refused before extraction');
 const entries=names.filter(p=>!p.endsWith('/'));
 if(entries.some(p=>!p.startsWith('package/')||p.includes('..'))||new Set(entries).size!==entries.length)throw Error('Unexpected or duplicate tarball member');
@@ -56,7 +58,7 @@ const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.starts
 const extra = files.filter((p) => !allowed(p));
 const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
 const missing = required.filter((p) => !files.includes(p));
-const packageMetadata = JSON.parse(execFileSync('tar',['-xOf',process.argv[2],'package/package.json'],{encoding:'utf8',maxBuffer:1024*1024}));
+const packageMetadata = JSON.parse(execFileSync('tar',['-xOzf',tgzName,'package/package.json'],{...tarIn,encoding:'utf8',maxBuffer:1024*1024}));
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
 const lifecycle = ['preinstall', 'install', 'postinstall', 'prepare'].filter(name => Object.hasOwn(packageMetadata.scripts ?? {}, name));
 if (packageMetadata.private !== false || !packageMetadata.bin?.practonaut) { console.error('test:pack: FAIL package must be public with a practonaut bin'); process.exit(1); }
@@ -80,6 +82,9 @@ for WORLD in "$ROOT/examples/worlds/flow-diagram" ""; do
   node - "$WORLD" "${NPX[@]}" <<'NODE'
 const {spawn}=require('node:child_process');
 const [world,...command]=process.argv.slice(2);
+// Ctrl+C goes to the CLI process itself (its pid is in the token file name): a signal to npx alone
+// does not reach a CLI behind Linux's dash, and npx then reports its own interruption, not the CLI's.
+const posix=process.platform!=='win32';
 const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe']});
 let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
 const timer=setTimeout(()=>{console.error(out);child.kill('SIGKILL');process.exit(1);},60_000);
@@ -89,7 +94,8 @@ const poll=setInterval(()=>{
   clearInterval(poll);
   if(!token.startsWith(process.env.PRACTONAUT_HOME)){console.error('token outside PRACTONAUT_HOME: '+token);process.exit(1);}
   if(!/world flow-diagram/.test(out)){console.error(out);process.exit(1);}
-  child.once('exit',code=>{clearTimeout(timer);process.exit(code===0?0:1);});child.kill('SIGINT');
+  // Windows cannot deliver Ctrl+C to another process; there the session is ended and only the link is checked.
+  child.once('exit',code=>{clearTimeout(timer);process.exit(code===0||!posix?0:1);});if(posix)process.kill(Number(/session-(\d+)-[0-9a-f]{32}\.token$/.exec(token)[1]),'SIGINT');else child.kill();
 },50);
 NODE
   RC=$?

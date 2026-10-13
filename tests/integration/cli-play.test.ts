@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { POSIX } from '../support/platform.ts';
 
 const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[], cwd?: string) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 60_000, ...(cwd ? { cwd } : {}) });
@@ -30,7 +31,9 @@ test('play <task-id> opens the library on that task; options alone mean play', {
   try {
     const task = await started(['play', 'connect', '--no-open', '--mirror', 'off'], home);
     assert.match(task.stdout, /Practonaut is running: “Connect two steps” \(world excalidraw-library, task connect\)/);
-    assert.equal(task.code, 0);
+    // A clean exit on Ctrl+C is a POSIX signal property: Windows cannot deliver SIGINT to another
+    // process, Node ends it abruptly there (bench-interrupt covers the Windows process-tree end).
+    if (POSIX) assert.equal(task.code, 0);
     const bare = await started(['--no-open', '--mirror', 'off'], home);
     assert.match(bare.stdout, /\(world flow-diagram, task T1\)/);
     const conflict = cli(['play', 'connect', '--task', 'align', '--no-open']);

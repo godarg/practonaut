@@ -123,7 +123,8 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
   checkState(initialState);
   if (options.signal?.aborted) throw new Error('cancelled');
   const installed = fileURLToPath(new URL('./engine/', import.meta.url));
-  const sourceFile = fileURLToPath(import.meta.url).endsWith('/src/adapters/excalidraw/index.ts');
+  // The module URL, not the file path: a URL uses / on every platform (Windows paths use \\).
+  const sourceFile = import.meta.url.endsWith('/src/adapters/excalidraw/index.ts');
   const root = sourceFile ? fileURLToPath(new URL('../../../.local/engine/', import.meta.url)) : installed;
   if (!existsSync(resolve(root, 'engine.js'))) throw new Error('Engine bundle missing: run npm run engine:build');
   const launchDeadline = performance.now() + BROWSER_BOUNDS.launch;

@@ -2,7 +2,7 @@
 // named arguments), splits at the first `=`, and an empty inline value is refused like a missing one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -49,15 +49,4 @@ test('the real CLI: --lang=de selects German, an empty inline value is a usage e
     const packed = spawnSync(process.execPath, [main, 'pack', 'examples/worlds/flow-diagram', `--out=${out}`], { encoding: 'utf8', timeout: 60_000 });
     assert.equal(packed.status, 0, packed.stderr); assert.ok((await stat(out)).size > 0);
   } finally { await rm(directory, { recursive: true, force: true }); }
-});
-
-test('the real CLI: mcp --task=excalidraw/connect answers initialize', { timeout: 60_000 }, async () => {
-  const child = spawn(process.execPath, [main, 'mcp', '--task=excalidraw/connect', '--mirror=off'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  let out = '', err = ''; child.stdout.on('data', chunk => { out += String(chunk); }); child.stderr.on('data', chunk => { err += String(chunk); });
-  child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '1' } } }) + '\n');
-  const deadline = Date.now() + 45_000;
-  while (!out.includes('"id":1') && child.exitCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  child.stdin.end();
-  const code = child.exitCode ?? await new Promise<number | null>(resolve => child.once('exit', resolve));
-  assert.match(out, /"serverInfo":\{"name":"practonaut"/, err); assert.equal(code, 0, err);
 });

@@ -31,7 +31,7 @@ test('the built engine bundle contains no unpkg/esm.sh/jsdelivr URL', { timeout:
     // Local fonts and notices travel with the bundle.
     assert.ok((await stat(join(output, 'fonts/Cascadia/CascadiaCode-Regular.woff2'))).size > 0);
     assert.ok((await stat(join(output, 'LICENSES.json'))).size > 0);
-    assert.ok(all.some(path => path.includes('/licenses/')));
+    assert.ok(all.some(path => path.includes(sep + 'licenses' + sep)));
     // The Mermaid converter is the local stub, the More-tools entry is hidden.
     const css = await readFile(join(output, 'engine.css'), 'utf8');
     assert.match(css, /toolbar-laser.{0,40}~.{0,40}toolbar-embeddable/);

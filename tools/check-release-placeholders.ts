@@ -3,7 +3,7 @@
 //   contains the placeholder (package.json, issue templates, root documents); docs/release.md, which
 //   explains the replacement, and archived decision records are not checked.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const root = process.argv[2] ?? process.cwd();
 const PLACEHOLDER = /\bOWNER\b/;
@@ -14,7 +14,7 @@ const found: string[] = [];
 for (const file of files) {
   let text: string;
   try { text = readFileSync(join(root, file), 'utf8'); } catch { continue; }
-  text.split('\n').forEach((line, index) => { if (PLACEHOLDER.test(line)) found.push(`${relative(root, join(root, file))}:${index + 1}: ${line.trim()}`); });
+  text.split('\n').forEach((line, index) => { if (PLACEHOLDER.test(line)) found.push(`${relative(root, join(root, file)).split(sep).join('/')}:${index + 1}: ${line.trim()}`); });
 }
 if (found.length) {
   process.stderr.write(`release: the OWNER placeholder is still in ${found.length} line(s); replace it with the repository owner first (docs/release.md):\n${found.map(line => `  ${line}`).join('\n')}\n`);

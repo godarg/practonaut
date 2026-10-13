@@ -51,7 +51,8 @@ test('project reads/writes reject traversal, symlink, hardlink, permissions, for
     if (POSIX) { await chmod(file,0o644); await assert.rejects(store.read(project.id), /unsafe/); await chmod(file,0o600); }
     const hard = join(dir,'hard'); await link(file,hard); await assert.rejects(store.save(project), /unsafe/); await unlink(hard);
     await unlink(file); const outside = join(dir,'outside'); await writeFile(outside,original,{mode:0o600}); await symlink(outside,file);
-    await assert.rejects(store.save(project), /safe|unsafe/); assert.deepEqual(await readFile(outside),original); await unlink(file);
+    // Refused by code: POSIX at open (O_NOFOLLOW), Windows right after opening.
+    await assert.rejects(store.save(project), (error: unknown) => (error as { code?: string }).code === 'project_store_unsafe'); assert.deepEqual(await readFile(outside),original); await unlink(file);
     await writeFile(file,original,{mode:0o600});
     const altered = JSON.parse(original.toString()); altered.project.notes='altered'; await writeFile(file,JSON.stringify(altered));
     await assert.rejects(store.read(project.id), /digest/); await writeFile(file,original);

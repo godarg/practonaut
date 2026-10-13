@@ -3,7 +3,6 @@ import { connect } from "node:net";
 import { Resolver } from "node:dns/promises";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, open, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -51,7 +50,9 @@ class DiagnosticError extends Error {
 }
 async function privateDiagnostics(tokenFile: string, token: string, codes: () => readonly string[], authorToken?:string): Promise<{ write(record: MirrorDiagnostic): Promise<void>; close(): Promise<void>; discard(): Promise<void> }> {
   const path = tokenFile.replace(/\.token$/, '.mirror.jsonl');
-  const file = await open(path, EXCLUSIVE_CREATE | constants.O_APPEND, 0o600);
+  // Positioned writes instead of O_APPEND: Windows opens an append-only handle without the write
+  // access that truncation (the rotation below) needs.
+  const file = await open(path, EXCLUSIVE_CREATE, 0o600);
   const stat = await file.stat();
   if (!isPrivateFile(stat)) { await file.close(); throw new DiagnosticError('diagnostic_unavailable'); }
   let bytes = 0, generation = 0;
@@ -70,7 +71,7 @@ async function privateDiagnostics(tokenFile: string, token: string, codes: () =>
         if (body.length > DIAGNOSTIC_BYTES) throw new DiagnosticError('diagnostic_limit');
         // Rotate in-place: the most recent rejection is retained, total disk use stays bounded.
         if (bytes + body.length > DIAGNOSTIC_BYTES) { await file.truncate(0); bytes = 0; generation++; body = line(); }
-        await file.appendFile(body); await file.sync(); bytes += body.length;
+        await file.write(body, 0, body.length, bytes); await file.sync(); bytes += body.length;
       } catch (error) { if (error instanceof DiagnosticError) throw error; throw new DiagnosticError('diagnostic_unavailable'); }
     },
     // A diagnostics file that never received a record is not kept (no empty files left behind).

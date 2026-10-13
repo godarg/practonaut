@@ -110,5 +110,8 @@ try {
   }
   // Connection capabilities and bootstrap URL are intentionally never logged.
   assert.equal(serve.exitCode, 0, 'Installed serve must close cleanly.');
-  assert.equal(stderr.length === 0, true, 'Installed serve emitted an unexpected diagnostic.');
+  // The one diagnostic serve may print: the Linux start without the Chromium sandbox (PADR-0032), one line.
+  const SANDBOX_NOTICE = /^practonaut: Chromium runs without its sandbox because this Linux system does not allow it [^\n]*\n/;
+  const diagnostics = process.platform === 'linux' ? stderr.replace(SANDBOX_NOTICE, '') : stderr;
+  assert.equal(diagnostics.length === 0, true, 'Installed serve emitted an unexpected diagnostic.');
 }

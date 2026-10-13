@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MCP_LIMITS } from '../../src/mcp/server.ts';
 test('stdio oversized line returns bounded RPC error then accepts next complete frame',{timeout:10000},async()=>{
   const entry=fileURLToPath(new URL('../../src/mcp/server.ts',import.meta.url));
-  const code=`const {startMcpStdio}=await import(${JSON.stringify(entry)});startMcpStdio({call:async()=>({ok:false,error:{code:'invalid_request',message:'fixed'}})});`;
+  const code=`const {startMcpStdio}=await import(${JSON.stringify(pathToFileURL(entry).href)});startMcpStdio({call:async()=>({ok:false,error:{code:'invalid_request',message:'fixed'}})});`;
   const child=spawn(process.execPath,['--input-type=module','-e',code],{stdio:['pipe','pipe','pipe']});let raw='',stderr='';
   child.stdout.on('data',chunk=>{raw+=chunk;});child.stderr.on('data',chunk=>{stderr+=chunk;});
   const wait=async(predicate:()=>boolean)=>{const deadline=Date.now()+3000;while(!predicate()){if(Date.now()>deadline)throw new Error('No bounded RPC response before deadline');await new Promise(resolve=>setTimeout(resolve,20));}};
@@ -23,7 +23,7 @@ test('stdio oversized line returns bounded RPC error then accepts next complete 
 });
 test('fixed tool schema errors are bounded structured project errors',{timeout:10000},async()=>{
   const entry=fileURLToPath(new URL('../../src/mcp/server.ts',import.meta.url));
-  const child=spawn(process.execPath,['--input-type=module','-e',`const {startMcpStdio}=await import(${JSON.stringify(entry)});startMcpStdio({call:async()=>({ok:true,value:[]})});`],{stdio:['pipe','pipe','pipe']});let raw='';child.stdout.on('data',chunk=>{raw+=chunk;});
+  const child=spawn(process.execPath,['--input-type=module','-e',`const {startMcpStdio}=await import(${JSON.stringify(pathToFileURL(entry).href)});startMcpStdio({call:async()=>({ok:true,value:[]})});`],{stdio:['pipe','pipe','pipe']});let raw='';child.stdout.on('data',chunk=>{raw+=chunk;});
   const wait=async(id:number)=>{const deadline=Date.now()+3000;while(!raw.includes('"id":'+id)){if(Date.now()>deadline)throw new Error('No RPC response');await new Promise(resolve=>setTimeout(resolve,20));}};
   try {
     child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'security',version:'1'}}})+'\n');await wait(1);

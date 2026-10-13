@@ -10,9 +10,7 @@ import { createPrivateOutput, exclusiveOutput, redactCredential } from '../../sr
 import { publicEvaluationWorld } from '../../src/evaluation/contracts.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 
-// Supervised client evaluation (tools/agent-runs.ts) binds the client to the caller's POSIX uid/gid
-// and refuses everything else, Windows included (requireSameUser); its own tests are POSIX-only.
-const SUPERVISED_EVALUATION: string | false = process.platform === 'win32' ? 'supervised client evaluation is POSIX-only; Windows is refused by name (see the win32 test)' : false;
+import { SUPERVISED_EVALUATION } from '../support/platform.ts';
 test('Windows: supervised client evaluation is refused by name, not attempted', { skip: process.platform !== 'win32' }, () => {
   assert.throws(() => requireSameUser({ uid: 0, gid: 0, home: 'C:\\Users\\x' }), (error: unknown) => (error as { code?: string }).code === 'evaluation_identity_unsupported');
 });

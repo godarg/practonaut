@@ -5,3 +5,6 @@
 export const POSIX = process.platform !== 'win32';
 /** `skip` value for tests that are entirely about POSIX owners, modes or uid/gid. */
 export const POSIX_ONLY: string | false = POSIX ? false : 'POSIX owners, modes and uid/gid do not exist on Windows (src/platform/private-fs.ts)';
+/** `skip` value for supervised client evaluation (tools/agent-runs.ts, src/evaluation/client.ts): it
+ * binds the client to the caller's POSIX uid/gid and refuses Windows by name (tests/unit/evaluation.test.ts). */
+export const SUPERVISED_EVALUATION: string | false = POSIX ? false : 'supervised client evaluation is POSIX-only; Windows is refused by name';

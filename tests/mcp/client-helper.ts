@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import type { RunningHost, HostReply } from "../../src/host/protocol.ts";
@@ -7,7 +7,7 @@ import type { McpToolName, McpToolInputs, McpToolValues } from "../../src/mcp/co
 
 export async function sdkClient(host: Pick<RunningHost, "origin" | "tokenFile">, modern = true) {
   const module = fileURLToPath(new URL("../../src/cli/mcp.ts", import.meta.url));
-  const transport = new StdioClientTransport({ command: process.execPath, args: ["--input-type=module", "-e", `const {commandMcp}=await import(${JSON.stringify(module)});process.exitCode=await commandMcp(process.argv.slice(1));`, "--", "--host", host.origin, "--token-file", host.tokenFile], stderr: "pipe" });
+  const transport = new StdioClientTransport({ command: process.execPath, args: ["--input-type=module", "-e", `const {commandMcp}=await import(${JSON.stringify(pathToFileURL(module).href)});process.exitCode=await commandMcp(process.argv.slice(1));`, "--", "--host", host.origin, "--token-file", host.tokenFile], stderr: "pipe" });
   let stderr = ""; transport.stderr?.on("data", chunk => { stderr += String(chunk); });
   const client = new Client({ name: "practonaut-parity", version: "1.0.0" }, modern ? { versionNegotiation: { mode: { pin: "2026-07-28" } } } : {});
   await client.connect(transport);

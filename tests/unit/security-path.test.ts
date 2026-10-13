@@ -5,7 +5,8 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createPrivateOutput} from '../../src/evaluation/private-output.ts';
 import {bindClient} from '../../src/evaluation/client.ts';
-test('evaluation output admits only verified macOS root temp aliases, refuses attacker aliases',{skip:process.platform==='win32'?'supervised client evaluation is POSIX-only; Windows is refused by name':false},async()=>{
+import {SUPERVISED_EVALUATION} from '../support/platform.ts';
+test('evaluation output admits only verified macOS root temp aliases, refuses attacker aliases',{skip:SUPERVISED_EVALUATION},async()=>{
   const root=await mkdtemp(join(tmpdir(),'pn-p5-eval-path-'));
   try {
     const out=await createPrivateOutput(join(root,'report'));assert.equal(out,join(await realpath(root),'report'));
