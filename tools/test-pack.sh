@@ -85,7 +85,7 @@ const [world,...command]=process.argv.slice(2);
 // Ctrl+C goes to the CLI process itself (its pid is in the token file name): a signal to npx alone
 // does not reach a CLI behind Linux's dash, and npx then reports its own interruption, not the CLI's.
 const posix=process.platform!=='win32';
-const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe']});
+const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
 let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
 const timer=setTimeout(()=>{console.error(out);child.kill('SIGKILL');process.exit(1);},60_000);
 const poll=setInterval(()=>{
@@ -110,7 +110,7 @@ const entry=JSON.parse(require('node:fs').readFileSync(serverJson,'utf8')).packa
 if(entry.packageArguments.some(a=>a.type!=='positional'||typeof a.value!=='string')){console.error('server.json arguments must be literal positional values');process.exit(1);}
 const args=entry.packageArguments.map(a=>a.value);
 if(args.join(' ')!=='mcp --task excalidraw/connect'){console.error('server.json arguments: '+args.join(' '));process.exit(1);}
-const child=spawn(command[0],[...command.slice(1),...args],{stdio:['pipe','pipe','pipe']});
+const child=spawn(command[0],[...command.slice(1),...args],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
 let out='',err='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
 const timer=setTimeout(()=>{console.error(err);child.kill('SIGKILL');process.exit(1);},90_000);
 const send=m=>child.stdin.write(JSON.stringify(m)+'\n');

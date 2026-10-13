@@ -66,8 +66,12 @@ version is tagged ([docs/release.md](docs/release.md)).
   the sandbox fallback above. A root-owned sticky shared directory such as `/tmp` is accepted as an
   ancestor of a pinned agent executable (no other user can swap entries below it).
 - **Windows:** text files are checked out with LF (`.gitattributes`), so schema, library and hash
-  checks compare the committed bytes; a path in the home directory is shown from `~` also when the
-  working directory is on another drive.
+  checks compare the committed bytes. Running from a source checkout found the engine bundle only
+  with `/` paths, so the mirror never started. Mirror diagnostics now rotate (an append-only handle
+  cannot be truncated there). A session credential is written only when its file name is the
+  regular file just created (Windows has no `O_NOFOLLOW`). `tasks from-scenes` names a file on the
+  `--out` path as such, and a path in the home directory is shown from `~` also when the working
+  directory is on another drive.
 - **All platforms:** every option that takes a value also accepts `--option=value` (the form MCP
   registries render); an empty value is refused.
 - CI runs the unit, integration, MCP and pack layers on Ubuntu, macOS and Windows and the browser

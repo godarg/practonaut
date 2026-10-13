@@ -154,8 +154,15 @@ test("CSP, fixed asset allowlist, loopback listener and runtime file removal", a
     const shell = await call(f.host, "/"); assert.equal(shell.status, 200); assert.equal(shell.headers["content-security-policy"], PLAYER_CSP); assert.doesNotMatch(PLAYER_CSP, /unsafe-inline/); assert.match(PLAYER_CSP, /require-trusted-types-for 'script'/);
     assert.equal(shell.headers["x-content-type-options"], "nosniff"); assert.equal(shell.headers["cache-control"], "no-store");
     if (POSIX) assert.equal((await lstat(f.host.tokenFile)).mode & 0o777, 0o600);
-    const listener = spawnSync("lsof", ["-nP", `-iTCP:${f.host.port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
-    assert.equal(listener.status, 0, listener.stderr); assert.match(listener.stdout, new RegExp(`127\\.0\\.0\\.1:${f.host.port}`)); assert.doesNotMatch(listener.stdout, /\*:\d+|\[::\]/);
+    if (process.platform === "win32") {
+      // Windows has no lsof; netstat lists the listening sockets with their bound address.
+      const listener = spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8" });
+      const lines = listener.stdout.split(/\r?\n/).filter(line => /LISTENING/.test(line) && new RegExp(`:${f.host.port}\\s`).test(line));
+      assert.equal(listener.status, 0, listener.stderr); assert.ok(lines.length > 0, "the host listens"); assert.ok(lines.every(line => line.includes(`127.0.0.1:${f.host.port}`)), lines.join("\n"));
+    } else {
+      const listener = spawnSync("lsof", ["-nP", `-iTCP:${f.host.port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+      assert.equal(listener.status, 0, listener.stderr); assert.match(listener.stdout, new RegExp(`127\\.0\\.0\\.1:${f.host.port}`)); assert.doesNotMatch(listener.stdout, /\*:\d+|\[::\]/);
+    }
     assert.equal((await call(f.host, "/api/tool.png", { headers: auth(f.host) })).value.error?.code, "mirror_unavailable");
     await f.host.close(); await assert.rejects(lstat(f.host.tokenFile), { code: "ENOENT" }); await f.host.close();
   } finally { await dispose(f); }
