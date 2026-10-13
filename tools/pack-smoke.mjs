@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
@@ -36,7 +37,8 @@ try {
   assert.equal(stdout.includes(token), false, 'practice credential contents stay private');
   const resumed = await (await fetch(origin + '/api/resume', { headers: { 'X-Practonaut-Token': token } })).json();
   assert.equal(resumed.ok, true); assert.equal(Object.hasOwn(resumed.value, 'authorToken'), false); assert.equal(Object.hasOwn(resumed.value, 'token'), false);
-  assert.equal(tokenFile.startsWith(process.env.PRACTONAUT_HOME), true, 'installed CLI keeps credentials under PRACTONAUT_HOME');
+  // Compared as real paths: Windows mixes 8.3 short names, long names and both separators.
+  assert.equal(realpathSync.native(tokenFile).startsWith(realpathSync.native(process.env.PRACTONAUT_HOME)), true, 'installed CLI keeps credentials under PRACTONAUT_HOME');
   // Started like the product's mirror: sandbox first, on Linux once without it if the system refuses it.
   ({ browser } = await launchChromium(chromium, () => ({ headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false })));
   const context = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce' });

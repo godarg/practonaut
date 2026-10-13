@@ -23,6 +23,7 @@ import { CheckerError } from '../checker/index.ts';
 import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
+import { BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string }
 export const PLAYER_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; font-src 'self'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'";
@@ -376,7 +377,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
       const step = async (operation: () => Promise<void>): Promise<void> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try { await Promise.race([Promise.resolve().then(operation), new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(3_000, deadline - performance.now())));
+          // Each step may take as long as a browser's own bounded close (graceful + forced); a shorter cap
+          // reported a slow but completed Chromium close on a loaded machine as unconfirmed.
+          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced, deadline - performance.now())));
         })]); } catch { failed = true; } finally { clearTimeout(timer); }
       };
       clearInterval(heartbeat);

@@ -92,7 +92,9 @@ const poll=setInterval(()=>{
   const link=/^Open: http:\/\/127\.0\.0\.1:\d+\/#code=[0-9a-f]{32}$/m.test(out),token=/^Token file: (.+)$/m.exec(out)?.[1];
   if(!link||!token)return;
   clearInterval(poll);
-  if(!token.startsWith(process.env.PRACTONAUT_HOME)){console.error('token outside PRACTONAUT_HOME: '+token);process.exit(1);}
+  // Compared as real paths: Windows mixes 8.3 short names, long names and both separators.
+  const real=p=>require('node:fs').realpathSync.native(p);
+  if(!real(token).startsWith(real(process.env.PRACTONAUT_HOME))){console.error('token outside PRACTONAUT_HOME: '+token);process.exit(1);}
   if(!/world flow-diagram/.test(out)){console.error(out);process.exit(1);}
   // Windows cannot deliver Ctrl+C to another process; there the session is ended and only the link is checked.
   child.once('exit',code=>{clearTimeout(timer);process.exit(code===0||!posix?0:1);});if(posix)process.kill(Number(/session-(\d+)-[0-9a-f]{32}\.token$/.exec(token)[1]),'SIGINT');else child.kill();
@@ -201,9 +203,11 @@ NODE
 
 cd "$ROOT"
 node src/cli/main.ts pack examples/worlds/minimal --out "$TMP/repo.pnworld" >/dev/null || fail "repository pack"
-A="$(shasum -a 256 "$TMP/installed.pnworld" | cut -d' ' -f1)"
-B="$(shasum -a 256 "$TMP/repo.pnworld" | cut -d' ' -f1)"
-if [ "$A" = "$B" ]; then ok "installed and repository world packs are byte-identical in this source/environment ($A)"; else fail "pack differs: installed $A, repository $B"; fi
+# Hashed by node: shasum is not on every platform (Git Bash on Windows), and an empty hash on both sides must never pass.
+sha256() { node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$1"; }
+A="$(sha256 "$TMP/installed.pnworld")"
+B="$(sha256 "$TMP/repo.pnworld")"
+if [ ${#A} -eq 64 ] && [ "$A" = "$B" ]; then ok "installed and repository world packs are byte-identical in this source/environment ($A)"; else fail "pack differs: installed $A, repository $B"; fi
 
 if [ $FAILED -eq 0 ]; then echo "test:pack: PASSED"; else echo "test:pack: FAILED" >&2; fi
 exit $FAILED
