@@ -1,13 +1,14 @@
 // play <task-id> and options without a command start a real local session; they need the built
 // Player (this layer builds it first, see package.json test:integration).
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[], cwd?: string) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 60_000, ...(cwd ? { cwd } : {}) });
 
 /** Start the CLI, wait for its link, then stop it with SIGINT. */

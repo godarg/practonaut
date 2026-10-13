@@ -11,9 +11,11 @@ import { verifyBenchArtifacts } from '../bench/verify.ts';
 import { BenchReportError, validateBenchReport } from '../bench/report.ts';
 import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { parseJsonEntry } from '../package/json.ts';
+import { inlineOptionValues } from './options.ts';
 
 const VALUED = ['--agent', '--tasks', '--seeds', '--repeats', '--timeout', '--max-actions', '--mirror', '--out'];
-function flags(args: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
+function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
+  const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -22,7 +24,7 @@ function flags(args: string[], valued: string[], booleans: string[] = []): { fla
       if (!valued.includes(arg)) throw new RuntimeError('usage', cliText('optionUnknown', { option: safeText(arg) }));
       if (Object.hasOwn(out, arg)) throw new RuntimeError('usage', cliText('optionDuplicate', { option: arg }));
       const value = args[++i];
-      if (value === undefined || (value.startsWith('--') && arg !== '--agent')) throw new RuntimeError('usage', cliText('optionValue', { option: arg }));
+      if (value === undefined || value === '' || (value.startsWith('--') && arg !== '--agent')) throw new RuntimeError('usage', cliText('optionValue', { option: arg }));
       out[arg] = value;
     } else positional.push(arg);
   }

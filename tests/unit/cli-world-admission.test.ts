@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { packWorldWithManifest } from '../../src/package/packer.ts';
 
-const root = new URL('../../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const main = join(root, 'src/cli/main.ts');
 test('public pack and validate refuse draft, missing-schema and missing-rights worlds without replacing an output', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pn-cli-admission-'));

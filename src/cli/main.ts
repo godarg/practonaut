@@ -207,6 +207,7 @@ async function cmdDoctor(args: string[]): Promise<number> {
 export async function main(argv: string[]): Promise<number> {
   try {
     setCliLanguage("en");
+    if (argv[0]?.startsWith("--lang=")) argv = ["--lang", argv[0].slice("--lang=".length), ...argv.slice(1)];
     if (argv[0] === "--lang") {
       if (argv[1] !== "en" && argv[1] !== "de") throw new UsageError(cliText("languageInvalid"));
       setCliLanguage(argv[1]); argv = argv.slice(2);

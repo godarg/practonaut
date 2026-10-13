@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { mkdtemp, rm, readdir, readFile, realpath, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -76,7 +77,7 @@ test('author host requires new evidence, compiles private files and deletion rev
     assert.equal((await readdir(join(dir, '.local/author'))).length, 96);
     for (const file of quotaFiles) await unlink(file);
     await controller.close();
-    const deleted = spawnSync(process.execPath, [new URL('../../src/cli/main.ts', import.meta.url).pathname, 'record', 'delete', first.recording.manifest.id], { cwd: dir, env: { ...process.env, PRACTONAUT_HOME: join(dir, '.local') }, encoding: 'utf8' });
+    const deleted = spawnSync(process.execPath, [fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url)), 'record', 'delete', first.recording.manifest.id], { cwd: dir, env: { ...process.env, PRACTONAUT_HOME: join(dir, '.local') }, encoding: 'utf8' });
     assert.equal(deleted.status, 0, deleted.stderr);
     assert.equal((await readdir(join(dir, '.local/author'))).length, 0);
     const reopened = await createAuthorController(join(dir, '.local'));

@@ -16,11 +16,13 @@ import { loadCheckerBundle } from "../checker/bundle.ts";
 import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
+import { inlineOptionValues } from './options.ts';
 export class RuntimeError extends Error {
   readonly code: string;
   constructor(code:string,message:string){super(message);this.name="RuntimeError";this.code=code;}
 }
-function options(args:string[],allowed: string[]): {path:string;flags:Record<string,string>} {
+function options(given:string[],allowed: string[]): {path:string;flags:Record<string,string>} {
+ const args=inlineOptionValues(given,allowed);
  const flags:Record<string,string>={};const paths:string[]=[];
  for(let i=0;i<args.length;i++) { const a=args[i]!;if(a.startsWith("--")){if(!allowed.includes(a))throw new RuntimeError("usage",cliText("optionUnknown", { option: a }));const value=args[++i];if(!value||value.startsWith("--"))throw new RuntimeError("usage",cliText("optionValue", { option: a }));if(Object.hasOwn(flags,a))throw new RuntimeError("usage",cliText("optionDuplicate", { option: a }));flags[a]=value;}else paths.push(a);}
  if(paths.length!==1)throw new RuntimeError("usage",cliText("inputUsage"));return {path:paths[0]!,flags};

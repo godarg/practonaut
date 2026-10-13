@@ -11,9 +11,9 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import { packWorld } from '../../src/package/index.ts';
 import { TOKEN_HEADER } from '../../src/host/protocol.ts';
 import { writeLauncher } from '../../src/cli/open-browser.ts';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath} from 'node:url';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const LINK = /^Open: (http:\/\/127\.0\.0\.1:\d+\/#code=([0-9a-f]{32}))$/gm;
 
 interface Served { child: ChildProcessWithoutNullStreams; output(): string; links(): Array<{ url: string; code: string }>; stop(): Promise<number | null> }

@@ -4,6 +4,7 @@
 // launch at the process boundary, no seam in the product. Needs the real Playwright Chromium to copy
 // the layout from (this layer runs after `npm run bootstrap`).
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
@@ -13,7 +14,7 @@ import { chromium } from 'playwright-core';
 import { readFileSync } from 'node:fs';
 import { SANDBOX_ENV } from '../../src/adapters/excalidraw/chromium.ts';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const FAKE = '#!/bin/sh\necho "[0101/000000.000000:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md" >&2\nexit 1\n';
 
 /** A browser cache with the real layout (same revision directories and file names) and failing executables.

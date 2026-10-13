@@ -1,13 +1,14 @@
 // The release workflow refuses to publish while package metadata or templates still name the
 // `OWNER` placeholder. The guard is run as the workflow runs it, on prepared folders.
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const guard = new URL('../../tools/check-release-placeholders.ts', import.meta.url).pathname;
+const guard = fileURLToPath(new URL('../../tools/check-release-placeholders.ts', import.meta.url));
 const run = (root: string) => spawnSync(process.execPath, [guard, root], { encoding: 'utf8' });
 
 test('release guard: OWNER in package.json or an issue template fails with every line named; a filled repository passes', async () => {

@@ -6,13 +6,14 @@ import { join } from 'node:path';
 import { createRecordingStore } from '../../src/recordings/index.ts';
 import { RECORDING_LIMITS } from '../../src/adapters/excalidraw/recorder.ts';
 import { makeRecording } from './recorder-fixture.ts';
+import { POSIX } from '../support/platform.ts';
 
 async function fixture(t: { after(fn: () => Promise<void>): void }) { const base = await mkdtemp(join(await realpath(tmpdir()), 'pn-recording-')); t.after(() => rm(base, { recursive: true, force: true })); return { base, root: join(base, 'recordings') }; }
 
 test('private immutable recording save, digest checked review and actual deletion', async t => {
   const { root } = await fixture(t), store = createRecordingStore(root), recording = makeRecording();
-  assert.equal(await store.save(recording), recording.manifest.id); assert.equal((await stat(root)).mode & 0o777, 0o700);
-  assert.equal((await stat(join(root, recording.manifest.id + '.json'))).mode & 0o777, 0o600);
+  assert.equal(await store.save(recording), recording.manifest.id);
+  if (POSIX) { assert.equal((await stat(root)).mode & 0o777, 0o700); assert.equal((await stat(join(root, recording.manifest.id + '.json'))).mode & 0o777, 0o600); }
   assert.deepEqual(await store.read(recording.manifest.id), recording); assert.deepEqual(await store.list(), [recording.manifest]);
   await assert.rejects(store.save(recording), /EEXIST/);
   assert.deepEqual(await store.delete(recording.manifest.id), { id: recording.manifest.id, removed: [recording.manifest.id + '.json'] });
@@ -28,11 +29,12 @@ test('IDs cannot escape; ancestor and leaf symlinks cannot bypass containment', 
 });
 test('file ownership permissions/hardlink, directory permissions and digest tampering fail closed', async t => {
   const { base, root } = await fixture(t), store = createRecordingStore(root); await store.save(makeRecording());
-  const file = join(root, 'test-recording.json'); await chmod(file, 0o644); await assert.rejects(store.read('test-recording'), /unsafe recording/); await chmod(file, 0o600);
+  const file = join(root, 'test-recording.json');
+  if (POSIX) { await chmod(file, 0o644); await assert.rejects(store.read('test-recording'), /unsafe recording/); await chmod(file, 0o600); }
   await link(file, join(base, 'hardlink')); await assert.rejects(store.read('test-recording'), /unsafe recording/); await rm(join(base, 'hardlink'));
   const envelope = JSON.parse(await readFile(file, 'utf8')); envelope.recording.manifest.author = 'changed'; await writeFile(file, JSON.stringify(envelope));
   await assert.rejects(store.read('test-recording'), /digest mismatch/); await store.delete('test-recording');
-  await chmod(root, 0o755); await assert.rejects(store.list(), /0700/);
+  if (POSIX) { await chmod(root, 0o755); await assert.rejects(store.list(), /0700/); }
 });
 test('byte/count caps reject oversized recordings before writes and bounded inventory is enforced', async t => {
   const { root } = await fixture(t), store = createRecordingStore(root), enormous = makeRecording();

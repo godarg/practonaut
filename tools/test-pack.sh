@@ -60,6 +60,9 @@ const packageMetadata = JSON.parse(execFileSync('tar',['-xOf',process.argv[2],'p
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
 const lifecycle = ['preinstall', 'install', 'postinstall', 'prepare'].filter(name => Object.hasOwn(packageMetadata.scripts ?? {}, name));
 if (packageMetadata.private !== false || !packageMetadata.bin?.practonaut) { console.error('test:pack: FAIL package must be public with a practonaut bin'); process.exit(1); }
+// The MCP Registry verifies npm ownership through mcpName in the published package.json; server.json itself is not shipped.
+if (packageMetadata.mcpName !== 'io.github.godarg/practonaut') { console.error('test:pack: FAIL package.json must carry mcpName io.github.godarg/practonaut'); process.exit(1); }
+if (files.includes('server.json')) { console.error('test:pack: FAIL server.json belongs to the registry entry, not the package'); process.exit(1); }
 console.log(`test:pack: exact candidate: ${files.length} files, ${bytes.length} bytes packed, sha256=${createHash('sha256').update(bytes).digest('hex')}`);
 let bad = false;
 if (lifecycle.length) { console.error(`test:pack: FAIL install-time lifecycle scripts: ${lifecycle.join(', ')}`); bad = true; } else console.log('test:pack: ok   no install-time lifecycle scripts');
@@ -92,11 +95,16 @@ NODE
   RC=$?
   [ $RC -eq 0 ] && ok "npx practonaut serve ${WORLD:+<world> }--no-open prints a one-use link and stops on Ctrl+C" || fail "npx practonaut serve ${WORLD:+<world> }--no-open -> exit $RC"
 done
-# The one-line agent setup: `npx practonaut mcp --task excalidraw/connect` must answer MCP initialize and tools/list.
-node - "${NPX[@]}" <<'NODE'
+# The one-line agent setup, exactly as the MCP Registry entry starts it: the arguments come from
+# server.json (`mcp --task excalidraw/connect`, default mirror) and must answer initialize and tools/list.
+node - "$ROOT/server.json" "${NPX[@]}" <<'NODE'
 const {spawn}=require('node:child_process');
-const command=process.argv.slice(2);
-const child=spawn(command[0],[...command.slice(1),'mcp','--task','excalidraw/connect','--mirror','off'],{stdio:['pipe','pipe','pipe']});
+const [serverJson,...command]=process.argv.slice(2);
+const entry=JSON.parse(require('node:fs').readFileSync(serverJson,'utf8')).packages.find(p=>p.registryType==='npm');
+if(entry.packageArguments.some(a=>a.type!=='positional'||typeof a.value!=='string')){console.error('server.json arguments must be literal positional values');process.exit(1);}
+const args=entry.packageArguments.map(a=>a.value);
+if(args.join(' ')!=='mcp --task excalidraw/connect'){console.error('server.json arguments: '+args.join(' '));process.exit(1);}
+const child=spawn(command[0],[...command.slice(1),...args],{stdio:['pipe','pipe','pipe']});
 let out='',err='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
 const timer=setTimeout(()=>{console.error(err);child.kill('SIGKILL');process.exit(1);},90_000);
 const send=m=>child.stdin.write(JSON.stringify(m)+'\n');
@@ -115,7 +123,7 @@ const poll=setInterval(()=>{
 },50);
 NODE
 RC=$?
-[ $RC -eq 0 ] && ok "npx practonaut mcp --task excalidraw/connect answers initialize and tools/list, link on stderr only" || fail "npx practonaut mcp --task -> exit $RC"
+[ $RC -eq 0 ] && ok "npx <tarball> with the server.json arguments (mcp --task excalidraw/connect) answers initialize and tools/list, link on stderr only" || fail "npx <tarball> mcp --task (server.json arguments) -> exit $RC"
 [ -z "$(ls -A "$TMP/empty")" ] && ok "npx left the working directory empty" || fail "npx wrote into the working directory: $(ls -A "$TMP/empty")"
 
 mkdir -p "$TMP/app"

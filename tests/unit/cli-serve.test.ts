@@ -1,5 +1,6 @@
 // serve/play argument handling, mirror resolution and the browser-open command per platform.
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { BUNDLED_WORLD, fallbackNotice, parseServeArguments, resolveMirror, startHostWithMirror } from '../../src/cli/serve.ts';
@@ -14,7 +15,7 @@ import { join } from 'node:path';
 import { HELP_COMMANDS } from '../../src/cli/help.ts';
 import { RuntimeError } from '../../src/cli/runtime.ts';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[], env: NodeJS.ProcessEnv = process.env) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 30_000, env });
 const url = 'http://127.0.0.1:4321/#code=' + 'a'.repeat(32);
 
@@ -68,8 +69,11 @@ test('the default browser opens a private launcher file, so the code never appea
     const html = await readFile(launcher.path, 'utf8');
     assert.match(html, new RegExp(`<meta http-equiv="refresh" content="0;url=${url.replace(/[.?/]/g, '\\$&')}">`));
     if (process.platform !== 'win32') { assert.equal((await lstat(launcher.path)).mode & 0o777, 0o600); assert.equal((await lstat(join(dir, 'host'))).mode & 0o777, 0o700); }
+    // The launcher path in the form each platform would hand over (a Windows run also checks the
+    // POSIX branches with the same file written as a POSIX path).
+    const posixForm = process.platform === 'win32' ? launcher.path.replace(/^[A-Za-z]:/, '').replaceAll('\\', '/') : launcher.path;
     for (const platform of ['darwin', 'linux', 'freebsd', 'win32'] as const) {
-      const { command, args } = openCommand(launcher.path, platform);
+      const { command, args } = openCommand(platform === 'win32' ? launcher.path : posixForm, platform);
       assert.equal([command, ...args].join(' ').includes('a'.repeat(32)), false, `${platform}: code in argv`);
       assert.equal(command, platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open');
     }

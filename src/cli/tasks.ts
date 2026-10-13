@@ -8,6 +8,7 @@ import { generateVariant } from '../world/variant.ts';
 import { cliText, getCliLanguage } from './messages.ts';
 import { displayPath, readableText, safeJson, safeText } from './output.ts';
 import { RuntimeError } from './runtime.ts';
+import { inlineOptionValues } from './options.ts';
 
 const MAX_SCENE_BYTES = 10 * 1024 * 1024;
 async function readScene(path: string): Promise<Buffer> {
@@ -100,7 +101,8 @@ function show(id: string, json: boolean, withOracle: boolean): number {
   return 0;
 }
 
-async function scenes(args: string[]): Promise<number> {
+async function scenes(given: string[]): Promise<number> {
+  const args = inlineOptionValues(given, ['--out', '--task', '--layout', '--tolerance']);
   const positional: string[] = []; const flags = new Map<string, string | true>();
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

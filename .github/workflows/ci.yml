@@ -51,26 +51,33 @@ jobs:
         run: npx playwright install chromium
 
       - run: npm run check
-      - run: npm test
-      - run: npm run build
-      - run: npm run test:integration
-      - run: npm run test:mcp
-      - run: npm run test:pack
+      # Later layers also run after an earlier one failed, so one run reports every layer; any
+      # failed step still fails the job.
+      - if: ${{ !cancelled() }}
+        run: npm test
+      - if: ${{ !cancelled() }}
+        run: npm run build
+      - if: ${{ !cancelled() }}
+        run: npm run test:integration
+      - if: ${{ !cancelled() }}
+        run: npm run test:mcp
+      - if: ${{ !cancelled() }}
+        run: npm run test:pack
 
       # Browser-heavy layers run on one platform.
-      - if: runner.os == 'Linux'
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: npm run demo
-      - if: runner.os == 'Linux'
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: npm run test:adapter
-      - if: runner.os == 'Linux'
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: npm run test:e2e
-      - if: runner.os == 'Linux'
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: npm run test:a11y
       # Every step above runs under the runner's default AppArmor restriction of unprivileged user
       # namespaces, so Linux exercises the start without the sandbox (PADR-0032 amendment). This
       # step lifts the restriction and proves the sandboxed start with the fallback forbidden.
       - name: Chromium sandbox on Linux (restriction lifted, fallback forbidden)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
         env:
           PRACTONAUT_CHROMIUM_SANDBOX: require
         run: |

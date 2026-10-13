@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { CLI_CATALOG } from '../../src/cli/messages.ts';
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[]) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 30_000 });
 test('German CLI help and usage errors use the selected catalog, without changing machine codes', () => {
   const help = cli(['--lang', 'de', '--help']);

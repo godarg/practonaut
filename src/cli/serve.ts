@@ -19,13 +19,15 @@ import { startHost } from '../host/server.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import type { MirrorMode, RunningHost } from '../host/protocol.ts';
 import type { World } from '../world/types.ts';
+import { inlineOptionValues } from './options.ts';
 
 export type MirrorChoice = MirrorMode | 'auto';
 /** The world that ships with the package; `practonaut` and `practonaut play` start it. */
 export const BUNDLED_WORLD = fileURLToPath(new URL('../../examples/worlds/flow-diagram/', import.meta.url));
 
 export interface ServeArguments { source: string; seed: number; taskId?: string; mirror: MirrorChoice; open: boolean; requireOffline: boolean }
-export function parseServeArguments(args: string[]): ServeArguments {
+export function parseServeArguments(given: string[]): ServeArguments {
+  const args = inlineOptionValues(given, ['--seed', '--task', '--mirror']);
   let source: string | undefined; let seed = 42; let taskId: string | undefined;
   let mirror: MirrorChoice = 'auto'; let requireOffline = false; let open = true;
   const seen = new Set<string>();

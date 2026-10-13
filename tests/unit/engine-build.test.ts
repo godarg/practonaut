@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { applySourcePatches, buildEngine, themeBindings } from '../../tools/build-engine.ts';
 
 // Offline promise: the shipped engine never loads code or fonts from a public CDN.
@@ -24,7 +24,7 @@ test('the built engine bundle contains no unpkg/esm.sh/jsdelivr URL', { timeout:
     await buildEngine(output);
     const all = await files(output);
     const code = all.filter(path => /\.(js|css|html)$/.test(path));
-    assert.ok(code.some(path => path.endsWith('/engine.js')) && code.some(path => path.endsWith('/editor.js')));
+    assert.ok(code.some(path => path.endsWith(sep + 'engine.js')) && code.some(path => path.endsWith(sep + 'editor.js')));
     const offenders: string[] = [];
     for (const path of code) if (CDN.test(await readFile(path, 'utf8'))) offenders.push(path);
     assert.deepEqual(offenders, []);

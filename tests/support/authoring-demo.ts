@@ -42,7 +42,7 @@ async function gesture(page:Page,name:ActionNameV1):Promise<void>{
   await page.mouse.click(a.x,a.y);
   try{await page.waitForFunction('window.__demo.api.getAppState().selectedElementIds.a === true',{},{timeout:5000});}
   catch{throw new Error('Native duplication was not attempted: the intended step was not selected.');}
-  await page.keyboard.press('Meta+d');
+  await page.keyboard.press('ControlOrMeta+d'); // Excalidraw duplicates with Cmd on macOS, Ctrl elsewhere
   try{await page.waitForFunction(()=>{
    const demo=(window as unknown as {__demo:{api:{getSceneElements():Array<{type:string;isDeleted:boolean}>};recorder:{gestures:RecordedGesture[]}}}).__demo;
    return demo.api.getSceneElements().filter(e=>e.type==='rectangle'&&!e.isDeleted).length===4&&demo.recorder.gestures.some(g=>g.boundary==='key'&&g.events.filter(e=>e.kind==='create'&&e.element.type==='rectangle').length===1&&Object.values(g.after.elements).filter(e=>e.type==='rectangle'&&!e.attributes.isDeleted).length===4);
