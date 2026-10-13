@@ -136,7 +136,6 @@ export async function commandServe(args: string[]): Promise<number> {
   const { host, mirror } = await startHostWithMirror(options.mirror, await resolveMirror(options.mirror), mode =>
     startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, ...(options.taskId ? { taskId: options.taskId } : {}) }));
   process.stderr.write(fallbackNotice(mirror));
-  printReady(host, world, mirror.mode, options.taskId ?? world.tasks[0]!.id, options.seed);
   // At most one private launcher file exists; it is removed with its code's lifetime or at exit.
   let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined; let launcherTimer: ReturnType<typeof setTimeout> | undefined;
   const dropLauncher = async (): Promise<void> => { clearTimeout(launcherTimer); const old = launcher; launcher = undefined; await old?.remove().catch(() => {}); };
@@ -148,7 +147,6 @@ export async function commandServe(args: string[]): Promise<number> {
     // Whether the browser could read the file cannot be seen from here; the link is always repeated.
     process.stderr.write(await openInBrowser(launcher.path) ? cliText('openStarted', { url }) : cliText('openFailed', { url }));
   };
-  await open(host.url);
   return await new Promise<number>(resolveExit => {
     let stopping = false;
     const lines = createInterface({ input: process.stdin, terminal: false });
@@ -166,6 +164,10 @@ export async function commandServe(args: string[]): Promise<number> {
       dropLauncher().then(() => host.close()).then(() => resolveExit(0), () => { process.stderr.write(cliText('closeFailed')); resolveExit(3); });
     };
     for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(name, stop);
+    // The link is printed only once Ctrl+C is handled: a Ctrl+C right after it closes the session
+    // (credential file, mirror) instead of killing the process mid-way.
+    printReady(host, world, mirror.mode, options.taskId ?? world.tasks[0]!.id, options.seed);
+    void open(host.url);
   });
 }
 
