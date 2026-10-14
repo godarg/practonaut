@@ -669,6 +669,10 @@
                         "minimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "omittedAtLeast": {
+                        "type": "boolean",
+                        "const": true
+                      },
                       "clientTiming": {
                         "type": "boolean"
                       }

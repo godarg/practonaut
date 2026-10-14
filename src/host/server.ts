@@ -87,9 +87,11 @@ const action = z.strictObject({ name: z.string().min(1).max(128), params: z.reco
 const revisionSchema = z.strictObject({ expectedRevision: revision });
 /** `reply: "delta"`: answer a mutation without the view (PADR-0038); the Player leaves it out. */
 const replyShape = { reply: z.enum(['view', 'delta']).optional() };
-const undoSchema = revisionSchema.extend(replyShape);
-const actSchema = revisionSchema.extend({ action, actor: z.strictObject({ kind: z.literal('agent'), client: z.string().regex(ACTOR_CLIENT) }).optional(), ...replyShape });
-const resetSchema = revisionSchema.extend({ confirmed: z.literal(true), ...replyShape });
+/** Who made a change through MCP (the bridge sets it; absent = a person). */
+const actor = z.strictObject({ kind: z.literal('agent'), client: z.string().regex(ACTOR_CLIENT) }).optional();
+const undoSchema = revisionSchema.extend({ actor, ...replyShape });
+const actSchema = revisionSchema.extend({ action, actor, ...replyShape });
+const resetSchema = revisionSchema.extend({ confirmed: z.literal(true), actor, ...replyShape });
 const variantSchema = revisionSchema.extend({ confirmed: z.literal(true), taskId: z.string().min(1).max(128).optional() });
 const bootstrapSchema = z.strictObject({ code: z.string().min(1).max(128) });
 function withoutView(reply: 'view' | 'delta' | undefined, value: HostReply<MutationReply>): HostReply<MutationReply | MutationDeltaReply> {
@@ -289,9 +291,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
         const checked = <T>(schema: z.ZodType<T>): T => { const result = schema.safeParse(payload); if (!result.success) throw new HostError("invalid_request", "Request does not match route schema"); return result.data; };
         switch (url.pathname) {
           case HOST_ROUTES.act: { const parsed = checked(actSchema); reply = withoutView(parsed.reply, await controller.act({ expectedRevision: parsed.expectedRevision, action: { name: parsed.action.name, params: parsed.action.params, ...(parsed.action.baseStep === undefined ? {} : { baseStep: parsed.action.baseStep }) }, ...(parsed.actor ? { actor: { kind: 'agent' as const, client: parsed.actor.client } } : {}) },transactionContext)); break; }
-          case HOST_ROUTES.reset: { const parsed = checked(resetSchema); reply = withoutView(parsed.reply, await controller.reset({ expectedRevision: parsed.expectedRevision, confirmed: parsed.confirmed },transactionContext)); break; }
+          case HOST_ROUTES.reset: { const parsed = checked(resetSchema); reply = withoutView(parsed.reply, await controller.reset({ expectedRevision: parsed.expectedRevision, confirmed: parsed.confirmed, ...(parsed.actor ? { actor: { kind: 'agent' as const, client: parsed.actor.client } } : {}) },transactionContext)); break; }
           case HOST_ROUTES.variant: { const parsed = checked(variantSchema); reply = await controller.variant({ expectedRevision: parsed.expectedRevision, confirmed: parsed.confirmed, ...(parsed.taskId === undefined ? {} : { taskId: parsed.taskId }) },transactionContext); break; }
-          case HOST_ROUTES.undo: { const parsed = checked(undoSchema); reply = withoutView(parsed.reply, await controller.undo({ expectedRevision: parsed.expectedRevision },transactionContext)); break; }
+          case HOST_ROUTES.undo: { const parsed = checked(undoSchema); reply = withoutView(parsed.reply, await controller.undo({ expectedRevision: parsed.expectedRevision, ...(parsed.actor ? { actor: { kind: 'agent' as const, client: parsed.actor.client } } : {}) },transactionContext)); break; }
           case HOST_ROUTES.hint: reply = await controller.hint(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.check: reply = await controller.check(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.export: reply = await controller.export(checked(revisionSchema),transactionContext); break;
