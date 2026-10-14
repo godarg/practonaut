@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import { BENCH_SCHEMA, passHatK, summarize, validateBenchReport, type BenchReport, type BenchRun } from '../../src/bench/report.ts';
+import { BENCH_SCHEMA_V1, passHatK, summarize, validateBenchReport, type BenchReportV1 as BenchReport, type BenchRunV1 as BenchRun } from '../../src/bench/report.ts';
 import { renderHtml, renderTable } from '../../src/bench/render.ts';
 
 function run(taskId: string, seed: number, repeat: number, verdict: boolean | null, native: boolean | null = verdict, actions = 2): BenchRun {
@@ -15,7 +15,7 @@ function run(taskId: string, seed: number, repeat: number, verdict: boolean | nu
 }
 export function report(runs: BenchRun[], repeats: number, tasks: string[], seeds: number[]): BenchReport {
   return {
-    schema: BENCH_SCHEMA, createdAt: '2026-10-12T20:00:00.000Z',
+    schema: BENCH_SCHEMA_V1, createdAt: '2026-10-12T20:00:00.000Z',
     environment: { practonaut: '0.1.0-dev.0', excalidraw: '0.18.1', node: 'v22.22.3', os: { platform: 'darwin', release: '27.0.0', arch: 'arm64' }, mirror: 'required', library: { worldId: 'excalidraw-library', version: '1.1.0', contentHash: 'a'.repeat(64) } },
     agent: { kind: 'builtin', name: 'oracle', command: [], model: null, modelSource: 'none' },
     settings: { tasks, seeds, repeats, timeoutSeconds: 300, maxActions: 50, mirror: 'auto', prompt: '' },

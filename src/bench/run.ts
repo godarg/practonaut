@@ -6,10 +6,13 @@
  * judging). The agent reaches the session only through `practonaut mcp` (attach mode, session token
  * in a private file). Its output is opaque: the score comes from the host's history and from the
  * independent checker, started as a separate process after the agent ends.
+ *
+ * The public world is stored in the bench folder before the first run and every host loads it from
+ * those bytes; the references are written there only after the last agent has ended (PADR-0036).
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { open, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { arch, homedir, release } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,18 +26,26 @@ import { ensurePrivateDirectory } from '../platform/private-fs.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import { checkInProcess } from '../cli/runtime.ts';
 import { PACKAGE_VERSION } from '../version.ts';
-import { canonicalJson, sha256Hex } from '../canonical/index.ts';
+import { sha256Hex } from '../canonical/index.ts';
 import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
+import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { StdioMcpClient, type McpServerEntry } from './mcp-client.ts';
 import { runOracle, runRandom } from './baselines.ts';
-import { agentArguments, agentEnvironment, BENCH_PROMPT, clientAttestedModel, displayCommand, type AgentSpec } from './agents.ts';
+import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
-import { BENCH_SCHEMA, derivedPass, summarize, validateBenchReport, type BenchReport, type BenchRun } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
+import { libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
+export { worldContentHash } from './world.ts';
 
 export interface BenchOptions {
   agent: AgentSpec; tasks: string[]; seeds: number[]; repeats: number;
   timeoutSeconds: number; maxActions: number; mirrorRequested: 'auto' | 'required' | 'off'; mirror: MirrorMode;
+  /** The world to bench (default: the bundled library) and the validated references of its tasks
+   * (default for the library: its reference solutions; an own world has only those given). */
+  world?: BenchWorld; references?: ReadonlyMap<string, BenchReference>;
+  /** `--label`: stored in the report as given. */
+  label?: string;
   /** Variables a preset agent gets although `withheldFromPreset` names them (`--keep-env`). */
   keepEnv?: readonly string[];
   /** Progress lines (stderr in the CLI). */
@@ -85,23 +96,32 @@ export function countingController(inner: PracticeController, counters: RunCount
 const CLI_ENTRY = fileURLToPath(new URL(`../cli/main.${import.meta.url.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url));
 export function benchId(now = new Date()): string { return now.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z') + '-' + randomBytes(2).toString('hex'); }
 
-/** The bench's world: the bundled library, loaded through the same package path as play and mcp.
- * `contentHash` is the SHA-256 of the world's canonical JSON: a report names the exact world its
- * runs used, and `report --verify` refuses a report made with different content under the same version. */
+/** The bundled library as a bench/1 report names it: `report --verify` of a /1 report re-judges
+ * against this (PADR-0030); /2 reports carry their own stored world. `contentHash` is the SHA-256 of
+ * the world's canonical JSON. */
 export async function libraryWorld(): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
   const world = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
   return { world, entries: new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
 }
-export function worldContentHash(world: World): string { return sha256Hex(canonicalJson(world)); }
 
 /** File names of a run's judged artifacts inside its run directory (`<bench>/<run-id>/`). */
 export const RUN_ARTIFACTS = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
 /** Writes a judged artifact through a fresh temporary file and a rename, so it replaces whatever the
  * agent may have left under that name; anything that is not a replaceable file fails the write. */
-async function writeRunArtifact(directory: string, name: string, text: string): Promise<void> {
+async function writeRunArtifact(directory: string, name: string, text: string | Uint8Array): Promise<void> {
   const temporary = join(directory, `.${name}.${randomBytes(6).toString('hex')}.tmp`);
   try { await writeFile(temporary, text, { mode: 0o600, flag: 'wx' }); await rename(temporary, join(directory, name)); }
   catch (error) { await rm(temporary, { force: true }); throw error; }
+}
+
+/** Stores the public world in the bench folder and loads it back from the stored bytes: the hosts
+ * run exactly the world that `report --verify` will judge against. */
+async function storeWorld(directory: string, prepared: BenchWorld): Promise<{ world: World; sha256: string }> {
+  await writeRunArtifact(directory, BENCH_WORLD_FILE, prepared.bytes);
+  const bytes = await readFile(join(directory, BENCH_WORLD_FILE));
+  const world = await worldFromPackage(bytes);
+  if (worldContentHash(world) !== prepared.contentHash) throw new Error('the stored world differs from the world prepared for the bench');
+  return { world, sha256: sha256Hex(bytes) };
 }
 
 /** A run note never spells out a local path: every absolute path is cut to its last component. */
@@ -123,7 +143,7 @@ export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: bo
   return { passed: verdict.passed && task?.passed === true, errorClasses: (task?.errors ?? []).map(error => error.id).slice(0, 64) };
 }
 
-interface AgentOutcome { status: BenchRun['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
+interface AgentOutcome { status: BenchRunV2['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
 
 /**
  * Ends an agent and everything it started. POSIX: the agent leads its own process group (spawned
@@ -164,11 +184,11 @@ async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, 
   } finally { await stdout.close(); await stderr.close(); }
 }
 
-async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; library: LibraryEntry; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
+async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; oracle: TaskOracle | undefined; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
   let client: StdioMcpClient | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     client = await StdioMcpClient.start(entry, { cwd: context.cwd, env: context.env });
-    const baseline = { client, world: context.world, seed: context.seed, oracle: context.library.oracle, maxActions: context.maxActions, randomSeed: context.randomSeed, deadline: Date.now() + context.deadlineMs };
+    const baseline = { client, world: context.world, seed: context.seed, oracle: context.oracle, maxActions: context.maxActions, randomSeed: context.randomSeed, deadline: Date.now() + context.deadlineMs };
     const work = spec.name === 'oracle' ? runOracle(baseline) : runRandom(baseline);
     const timeout = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), context.deadlineMs); });
     const interrupted = new Promise<'interrupted'>(resolve => { if (context.signal?.aborted) resolve('interrupted'); context.signal?.addEventListener('abort', () => resolve('interrupted'), { once: true }); });
@@ -181,24 +201,36 @@ async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: 
   } finally { clearTimeout(timer); await client?.close().catch(() => {}); }
 }
 
-/** Runs the planned task × seed × repeat grid and returns a validated report (`null` when it was
- * interrupted before the first run finished). */
-export async function runBench(options: BenchOptions): Promise<{ report: BenchReport | null; directory: string; interrupted: boolean; planned: number }> {
-  const { world, entries, contentHash } = await libraryWorld();
-  for (const task of options.tasks) if (!entries.has(task)) throw new Error(`unknown library task ${task}`);
+
+/** The first 64 KiB of an agent's stdout (where a stream-json client writes its init event). */
+async function stdoutHead(path: string): Promise<string> {
+  return open(path, 'r').then(async handle => { try { const read = await handle.read(Buffer.alloc(64 * 1024), 0, 64 * 1024, 0); return read.buffer.subarray(0, read.bytesRead).toString('utf8'); } finally { await handle.close(); } }).catch(() => '');
+}
+
+/** Runs the planned task × seed × repeat grid and returns a validated `practonaut.bench/2` report
+ * (`null` when it was interrupted before the first run finished). */
+export async function runBench(options: BenchOptions): Promise<{ report: BenchReportV2 | null; directory: string; interrupted: boolean; planned: number }> {
+  const prepared = options.world ?? await libraryBenchWorld();
+  const references: ReadonlyMap<string, BenchReference> = options.references ?? (prepared.source === 'library' ? libraryReferences(options.tasks) : new Map());
+  for (const task of options.tasks) if (!prepared.world.tasks.some(value => value.id === task)) throw new Error(`unknown task ${task} in world ${prepared.world.id}`);
+  for (const taskId of references.keys()) if (!options.tasks.includes(taskId)) throw new Error(`reference for task ${taskId}, which is not benched`);
+  if (options.agent.kind === 'builtin' && options.agent.name === 'oracle') for (const task of options.tasks) if (!references.has(task)) throw new Error(`the oracle agent needs a reference for task ${task}`);
   const paths = await resolvedDataPaths(), id = benchId(), directory = join(paths.home, 'bench', id);
   await ensurePrivateDirectory(directory);
+  // The hosts load the world from the stored bytes, so `report --verify` judges the same world.
+  const { world, sha256: worldSha256 } = await storeWorld(directory, prepared);
   const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
-  const runs: BenchRun[] = []; let model: string | null = null; let interrupted = false;
+  const runs: BenchRunV2[] = []; let interrupted = false;
+  let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null };
   for (const [index, item] of plan.entries()) {
     if (interrupted || options.signal?.aborted) { interrupted = true; break; }
-    const library = entries.get(item.taskId)!, runId = `${item.taskId}-s${item.seed}-r${item.repeat}`;
+    const reference = references.get(item.taskId), runId = `${item.taskId}-s${item.seed}-r${item.repeat}`;
     const home = join(directory, runId), agentDirectory = join(home, 'agent');
     await ensurePrivateDirectory(agentDirectory);
     const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
     let inner: PracticeController | undefined; let host: RunningHost | undefined;
     const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions); };
-    let outcome: AgentOutcome; let checker: BenchRun['checker'] = null; let artifacts: BenchRun['artifacts']; let wallMs = 0; let finalActions = 0;
+    let outcome: AgentOutcome; let checker: BenchRunV2['checker'] = null; let artifacts: BenchRunV2['artifacts']; let wallMs = 0; let finalActions = 0;
     try {
       host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
@@ -210,13 +242,13 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       const env: NodeJS.ProcessEnv = { ...agentEnvironment(options.agent, process.env, options.keepEnv).env, PRACTONAUT_HOME: agentDirectory };
       for (const name of ['PRACTONAUT_HOST', 'PRACTONAUT_TOKEN_FILE', 'PRACTONAUT_SESSION_TOKEN']) delete env[name];
       const started = performance.now(), deadlineMs = options.timeoutSeconds * 1000;
-      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, library, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
+      // The oracle baseline plays the reference through MCP actions; the reference itself never
+      // reaches the host, the bridge or the agent's folder.
+      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, oracle: reference?.oracle, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
       else {
         outcome = await runExternal(agentArguments(options.agent.command, { mcpConfig: configPath, prompt: BENCH_PROMPT }), agentDirectory, env, home, deadlineMs, options.signal);
-        if (options.agent.name === 'claude-code' && model === null) {
-          const stdout = await open(join(home, 'agent.stdout'), 'r').then(async handle => { try { const read = await handle.read(Buffer.alloc(64 * 1024), 0, 64 * 1024, 0); return read.buffer.subarray(0, read.bytesRead).toString('utf8'); } finally { await handle.close(); } }).catch(() => '');
-          model = clientAttestedModel(stdout);
-        }
+        // A preset and a command template keep the model and apiKeySource their output reports.
+        if (client.model === null && client.apiKeySource === null) client = clientInit(await stdoutHead(join(home, 'agent.stdout')));
       }
       wallMs = Math.round(performance.now() - started);
       if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
@@ -246,23 +278,40 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       checker = null; artifacts = undefined;
     } finally { await host?.close().catch(() => {}); }
     if (interrupted) break;
-    const run: BenchRun = {
-      id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRun['status'], pass: false,
+    const run: BenchRunV2 = {
+      id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRunV2['status'], pass: false,
       actions: finalActions, acceptedActions: counters.accepted, rejectedActions: counters.rejected, undos: counters.undos, resets: counters.resets,
       toolCalls: { observe: counters.observe, act: counters.act, undo: counters.undoCalls, reset: counters.resetCalls, check: counters.check, total: counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check },
-      wallMs, referenceActions: library.actions, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
+      wallMs, referenceActions: reference ? reference.oracle.steps.length : null, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
   if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
-  const report: BenchReport = {
-    schema: BENCH_SCHEMA, createdAt: new Date().toISOString(),
-    environment: { practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: options.mirror, library: { worldId: world.id, version: world.version, contentHash } },
-    agent: { kind: options.agent.kind, name: options.agent.name, command: displayCommand(options.agent.command), model, modelSource: model === null ? 'none' : 'client-attested' },
+  // Every agent of this bench has ended: only now do the references enter the bench folder.
+  let referencesBinding: BenchReportV2['references'] = null;
+  if (references.size) {
+    const text = referencesText(references, options.tasks);
+    await writeRunArtifact(directory, BENCH_REFERENCES_FILE, text);
+    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(text), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.oracle.steps.length }] : []; }) };
+  }
+  const generated = options.tasks.flatMap(taskId => { const by = world.tasks.find(task => task.id === taskId)?.generatedBy; return by ? [{ taskId, ...by }] : []; });
+  const model = options.agent.kind === 'builtin' ? null : client.model;
+  const report: BenchReportV2 = {
+    schema: BENCH_SCHEMA, createdAt: new Date().toISOString(), ...(options.label !== undefined ? { label: options.label } : {}),
+    environment: {
+      practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: options.mirror,
+      world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated },
+    },
+    agent: {
+      kind: options.agent.kind, name: options.agent.name, command: displayCommand(options.agent.command), isolation: ISOLATION_OF[options.agent.kind],
+      model, modelSource: model === null ? 'none' : options.agent.kind === 'preset' ? 'client-attested' : 'command-output',
+      apiKeySource: options.agent.kind === 'builtin' ? null : client.apiKeySource, keptEnv: options.agent.kind === 'preset' ? [...(options.keepEnv ?? [])] : [],
+    },
     settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT },
+    references: referencesBinding,
     runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length } } : {}), summary: summarize(runs, options.repeats),
   };
-  return { report: validateBenchReport(report), directory, interrupted, planned: plan.length };
+  return { report: validateBenchReportV2(report), directory, interrupted, planned: plan.length };
 }

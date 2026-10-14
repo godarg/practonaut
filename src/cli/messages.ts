@@ -383,6 +383,214 @@ export const CLI_CATALOG = {
     "en": "HTML: {path}\n",
     "de": "HTML: {path}\n"
   },
+  "reportReverifiedWorld": {
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
+    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
+  },
+  "benchSeedsExclusive": {
+    "en": "--seeds and --seed-list exclude each other: --seeds <n> runs seeds 1 to n, --seed-list names them",
+    "de": "--seeds und --seed-list schließen sich aus: --seeds <n> fährt die Seeds 1 bis n, --seed-list nennt sie einzeln"
+  },
+  "benchSeedList": {
+    "en": "--seed-list needs distinct whole numbers from 0 to 999999999, comma-separated (at most 1000)",
+    "de": "--seed-list braucht verschiedene ganze Zahlen von 0 bis 999999999, durch Kommas getrennt (höchstens 1000)"
+  },
+  "benchLabel": {
+    "en": "--label needs a text of 1 to {max} characters",
+    "de": "--label braucht einen Text mit 1 bis {max} Zeichen"
+  },
+  "benchOracleNeedsWorld": {
+    "en": "--oracle names the reference solution of a task in your own world; add --world <dir|.pnworld> (library tasks bring their own)",
+    "de": "--oracle nennt die Referenzlösung einer Aufgabe Ihrer eigenen Welt; --world <Ordner|.pnworld> ergänzen (Bibliotheksaufgaben bringen ihre eigene mit)"
+  },
+  "benchOracleMissing": {
+    "en": "the oracle agent plays each task's reference solution; give --oracle <file> for {tasks} (tasks from-scenes writes it as oracle.json beside the world)",
+    "de": "der Agent oracle spielt die Referenzlösung jeder Aufgabe; --oracle <Datei> für {tasks} angeben (tasks from-scenes schreibt sie als oracle.json neben die Welt)"
+  },
+  "benchWorldOwn": {
+    "en": "practonaut bench: world {world} {version} (your own), {refs} of {tasks} benched {tasks:task has|tasks have} a validated reference\n",
+    "de": "practonaut bench: Welt {world} {version} (Ihre eigene), {refs} von {tasks} {tasks:bewerteten Aufgabe hat|bewerteten Aufgaben haben} eine geprüfte Referenz\n"
+  },
+  "benchWorldRejected": {
+    "en": "the world {path} was rejected ({code}): {detail}",
+    "de": "die Welt {path} wurde abgelehnt ({code}): {detail}"
+  },
+  "benchWorldTaskUnknown": {
+    "en": "task {id} is not in world {world}",
+    "de": "Aufgabe {id} gibt es in der Welt {world} nicht"
+  },
+  "benchTaskCase": {
+    "en": "tasks {a} and {b} differ only in case; their run folders would collide. Bench them separately",
+    "de": "die Aufgaben {a} und {b} unterscheiden sich nur in Groß- und Kleinschreibung; ihre Laufordner würden kollidieren. Getrennt bewerten"
+  },
+  "benchFileTooLarge": {
+    "en": "{path} is larger than {size} MiB",
+    "de": "{path} ist größer als {size} MiB"
+  },
+  "benchOracleJson": {
+    "en": "{path} is not bounded valid JSON, so it is not an oracle file",
+    "de": "{path} ist kein begrenztes gültiges JSON und damit keine Oracle-Datei"
+  },
+  "benchOracleFormat": {
+    "en": "{path} is not a practonaut.task-oracle/1 file (as tasks from-scenes writes it): {issue}",
+    "de": "{path} ist keine practonaut.task-oracle/1-Datei (wie tasks from-scenes sie schreibt): {issue}"
+  },
+  "benchOracleWorld": {
+    "en": "{path} is the oracle of world {world}, not of {expected}",
+    "de": "{path} ist das Oracle der Welt {world}, nicht von {expected}"
+  },
+  "benchOracleTask": {
+    "en": "{path} is the oracle of task {task}, which is not benched (see --tasks)",
+    "de": "{path} ist das Oracle der Aufgabe {task}, die nicht bewertet wird (siehe --tasks)"
+  },
+  "benchOracleTwice": {
+    "en": "two --oracle files are for task {task}; give one",
+    "de": "zwei --oracle-Dateien gehören zur Aufgabe {task}; eine angeben"
+  },
+  "benchReferenceOther": {
+    "en": "the reference given for task {task} belongs to another task or world",
+    "de": "die Referenz für die Aufgabe {task} gehört zu einer anderen Aufgabe oder Welt"
+  },
+  "benchReferenceRejected": {
+    "en": "the reference of task {task} does not pass the checker: with seed {seed} its action {index} is rejected ({code})",
+    "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} wird ihre Aktion {index} abgelehnt ({code})"
+  },
+  "benchReferenceChecker": {
+    "en": "the reference of task {task} does not pass the checker: with seed {seed} the checker refuses it ({code})",
+    "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} lehnt der Prüfer sie ab ({code})"
+  },
+  "benchReferenceFails": {
+    "en": "the reference of task {task} does not pass the checker: with seed {seed} it does not reach the goal",
+    "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} erreicht sie das Ziel nicht"
+  },
+  "benchReportSchemaUnknown": {
+    "en": "report does not match {first} or {second}: its schema field names neither",
+    "de": "der Bericht passt weder zu {first} noch zu {second}: sein Feld schema nennt keines von beiden"
+  },
+  "benchReportTaskCase": {
+    "en": "settings name tasks {a} and {b}, which differ only in case",
+    "de": "die Einstellungen nennen die Aufgaben {a} und {b}, die sich nur in Groß- und Kleinschreibung unterscheiden"
+  },
+  "benchReportIsolation": {
+    "en": "an agent of kind {kind} has isolation level {expected}; the report says {given}",
+    "de": "ein Agent der Art {kind} hat die Isolationsstufe {expected}; der Bericht nennt {given}"
+  },
+  "benchReportModelSource": {
+    "en": "the report names a model without its source, or a model source without a model",
+    "de": "der Bericht nennt ein Modell ohne Quelle oder eine Modellquelle ohne Modell"
+  },
+  "benchReportAgentField": {
+    "en": "an agent of kind {kind} cannot have this {field}",
+    "de": "ein Agent der Art {kind} kann dieses Feld {field} nicht haben"
+  },
+  "benchReportReferenceTask": {
+    "en": "the references name task {task} twice, or a task that is not benched",
+    "de": "die Referenzen nennen die Aufgabe {task} doppelt oder eine Aufgabe, die nicht bewertet wurde"
+  },
+  "benchReportReferenceSource": {
+    "en": "a reference from {source} does not fit a world of source {world}",
+    "de": "eine Referenz aus {source} passt nicht zu einer Welt der Quelle {world}"
+  },
+  "benchReportLibraryReference": {
+    "en": "a library bench has a reference for every task; {task} has none",
+    "de": "ein Bibliotheks-Bench hat für jede Aufgabe eine Referenz; {task} hat keine"
+  },
+  "benchReportGenerated": {
+    "en": "the generator metadata names task {task} twice, or a task that is not benched",
+    "de": "die Generator-Angaben nennen die Aufgabe {task} doppelt oder eine Aufgabe, die nicht bewertet wurde"
+  },
+  "benchReportRunId": {
+    "en": "run {id} is not named after its task, seed and repeat ({expected})",
+    "de": "der Lauf {id} ist nicht nach Aufgabe, Seed und Wiederholung benannt ({expected})"
+  },
+  "benchReportRunReference": {
+    "en": "run {id} names a reference of {given} actions; the report's references give {expected}",
+    "de": "der Lauf {id} nennt eine Referenz von {given} Aktionen; die Referenzen des Berichts ergeben {expected}"
+  },
+  "benchReportArtifacts": {
+    "en": "run {id}: a judged run binds its artifacts and a run that was not judged binds none",
+    "de": "Lauf {id}: ein bewerteter Lauf bindet seine Artefakte, ein nicht bewerteter keine"
+  },
+  "verifyWorldMissing": {
+    "en": "the stored world {file} is missing or unreadable in the bench folder (if the report was moved without its folder, point --runs at the bench folder)",
+    "de": "die gespeicherte Welt {file} fehlt im Bench-Ordner oder ist nicht lesbar (wurde der Bericht ohne seinen Ordner verschoben, --runs auf den Bench-Ordner richten)"
+  },
+  "verifyWorldHash": {
+    "en": "the stored world {file} does not match the hash the report binds",
+    "de": "die gespeicherte Welt {file} passt nicht zum Hash, den der Bericht bindet"
+  },
+  "verifyWorldPackage": {
+    "en": "the stored world {file} is not a valid world package ({code})",
+    "de": "die gespeicherte Welt {file} ist kein gültiges Weltpaket ({code})"
+  },
+  "verifyWorldIdentity": {
+    "en": "the stored world is {world} {version} (content {hash}…), the report names {expectedWorld} {expectedVersion} (content {expectedHash}…)",
+    "de": "die gespeicherte Welt ist {world} {version} (Inhalt {hash}…), der Bericht nennt {expectedWorld} {expectedVersion} (Inhalt {expectedHash}…)"
+  },
+  "verifyWorldGenerated": {
+    "en": "the generator metadata of the stored world's tasks differs from the report's",
+    "de": "die Generator-Angaben der Aufgaben in der gespeicherten Welt weichen vom Bericht ab"
+  },
+  "verifyWorldTask": {
+    "en": "task {task} is not in the stored world",
+    "de": "die Aufgabe {task} gibt es in der gespeicherten Welt nicht"
+  },
+  "verifyArtifactMissing": {
+    "en": "run {run}: artifact {name} is missing or unreadable in the run directory (if the report was moved, point --runs at its bench folder)",
+    "de": "Lauf {run}: das Artefakt {name} fehlt im Laufordner oder ist nicht lesbar (wurde der Bericht verschoben, --runs auf seinen Bench-Ordner richten)"
+  },
+  "verifyArtifactHash": {
+    "en": "run {run}: artifact {name} does not match the hash the report binds",
+    "de": "Lauf {run}: das Artefakt {name} passt nicht zum Hash, den der Bericht bindet"
+  },
+  "verifyReferencesMissing": {
+    "en": "the stored references {file} are missing or unreadable in the bench folder",
+    "de": "die gespeicherten Referenzen {file} fehlen im Bench-Ordner oder sind nicht lesbar"
+  },
+  "verifyReferencesHash": {
+    "en": "the stored references {file} do not match the hash the report binds",
+    "de": "die gespeicherten Referenzen {file} passen nicht zum Hash, den der Bericht bindet"
+  },
+  "verifyReferencesFormat": {
+    "en": "the stored references {file} are not a practonaut.bench-references/1 file",
+    "de": "die gespeicherten Referenzen {file} sind keine practonaut.bench-references/1-Datei"
+  },
+  "verifyReferenceTask": {
+    "en": "the stored references do not hold exactly the tasks the report names (task {task})",
+    "de": "die gespeicherten Referenzen enthalten nicht genau die Aufgaben, die der Bericht nennt (Aufgabe {task})"
+  },
+  "verifyReferenceLength": {
+    "en": "task {task}: the report names a reference of {given} actions; the stored reference has {actual}",
+    "de": "Aufgabe {task}: der Bericht nennt eine Referenz von {given} Aktionen; die gespeicherte Referenz hat {actual}"
+  },
+  "verifySessionOther": {
+    "en": "run {run}: the session artifact belongs to another task or seed",
+    "de": "Lauf {run}: das Sitzungsartefakt gehört zu einer anderen Aufgabe oder einem anderen Seed"
+  },
+  "verifyActions": {
+    "en": "run {run}: the report counts {given} actions; the session's final history holds {actual}",
+    "de": "Lauf {run}: der Bericht zählt {given} Aktionen; die letzte Historie der Sitzung enthält {actual}"
+  },
+  "verifyCheckerSession": {
+    "en": "run {run}: the checker rejects the session artifact",
+    "de": "Lauf {run}: der Prüfer lehnt das Sitzungsartefakt ab"
+  },
+  "verifyCheckerNative": {
+    "en": "run {run}: the checker rejects the native export",
+    "de": "Lauf {run}: der Prüfer lehnt den nativen Export ab"
+  },
+  "verifyNativeState": {
+    "en": "run {run}: the native export does not show the session's final state",
+    "de": "Lauf {run}: der native Export zeigt nicht den Endzustand der Sitzung"
+  },
+  "verifyCheckerStored": {
+    "en": "run {run}: the stored checker output differs from the re-run",
+    "de": "Lauf {run}: die gespeicherte Prüferausgabe weicht von der erneuten Prüfung ab"
+  },
+  "verifyVerdict": {
+    "en": "run {run}: the report's verdict differs from the re-run checker (re-run: {result})",
+    "de": "Lauf {run}: das Urteil im Bericht weicht vom erneut gestarteten Prüfer ab (erneut: {result})"
+  },
   "evalRemoved": {
     "en": "eval was replaced by {cli} bench (independent scoring of any MCP agent on the task library); see {cli} bench --help",
     "de": "eval wurde durch {cli} bench ersetzt (unabhängige Bewertung beliebiger MCP-Agenten an der Aufgabenbibliothek); siehe {cli} bench --help"

@@ -1,0 +1,876 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:practonaut:schema:bench.v2.json",
+  "title": "Practonaut bench report v2 (practonaut.bench/2)",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "practonaut.bench/2"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "practonaut": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "excalidraw": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "node": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "os": {
+          "type": "object",
+          "properties": {
+            "platform": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "release": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "arch": {
+              "type": "string",
+              "maxLength": 32
+            }
+          },
+          "required": [
+            "platform",
+            "release",
+            "arch"
+          ],
+          "additionalProperties": false
+        },
+        "mirror": {
+          "type": "string",
+          "enum": [
+            "required",
+            "off"
+          ]
+        },
+        "world": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "library",
+                "own"
+              ]
+            },
+            "worldId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "version": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "contentHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "package": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "const": "world.pnworld"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "path",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "generated": {
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                  },
+                  "version": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "parameters": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][A-Za-z0-9_-]{0,31}$"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "taskId",
+                  "id",
+                  "version",
+                  "seed",
+                  "parameters"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "source",
+            "worldId",
+            "version",
+            "contentHash",
+            "package",
+            "generated"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "practonaut",
+        "excalidraw",
+        "node",
+        "os",
+        "mirror",
+        "world"
+      ],
+      "additionalProperties": false
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "builtin",
+            "preset",
+            "command"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "command": {
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "isolation": {
+          "type": "string",
+          "enum": [
+            "builtin-baseline",
+            "tool-restricted-preset",
+            "template-unrestricted"
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modelSource": {
+          "type": "string",
+          "enum": [
+            "client-attested",
+            "command-output",
+            "none"
+          ]
+        },
+        "apiKeySource": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_ ./:@()-]{1,64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "keptEnv": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "command",
+        "isolation",
+        "model",
+        "modelSource",
+        "apiKeySource",
+        "keptEnv"
+      ],
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "tasks": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          }
+        },
+        "seeds": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999
+          }
+        },
+        "repeats": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "maxActions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "mirror": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "required",
+            "off"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": [
+        "tasks",
+        "seeds",
+        "repeats",
+        "timeoutSeconds",
+        "maxActions",
+        "mirror",
+        "prompt"
+      ],
+      "additionalProperties": false
+    },
+    "references": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "const": "references.json"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "tasks": {
+              "minItems": 1,
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "library",
+                      "oracle-file"
+                    ]
+                  },
+                  "actions": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "taskId",
+                  "source",
+                  "actions"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "tasks"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runs": {
+      "minItems": 1,
+      "maxItems": 100000,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}-s\\d{1,9}-r\\d{1,4}$"
+          },
+          "taskId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "agent_failed",
+              "timeout",
+              "infra_error"
+            ]
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "actions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "acceptedActions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rejectedActions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "undos": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "resets": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolCalls": {
+            "type": "object",
+            "properties": {
+              "observe": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "act": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "undo": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "reset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "check": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "observe",
+              "act",
+              "undo",
+              "reset",
+              "check",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          "wallMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "referenceActions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checker": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "session": {
+                    "type": "object",
+                    "properties": {
+                      "passed": {
+                        "type": "boolean"
+                      },
+                      "errorClasses": {
+                        "maxItems": 64,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                        }
+                      }
+                    },
+                    "required": [
+                      "passed",
+                      "errorClasses"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "native": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "passed": {
+                            "type": "boolean"
+                          },
+                          "errorClasses": {
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                            }
+                          }
+                        },
+                        "required": [
+                          "passed",
+                          "errorClasses"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "session",
+                  "native"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agentExitCode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "artifacts": {
+            "type": "object",
+            "properties": {
+              "session": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "native": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "checker": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "session",
+              "native",
+              "checker"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "seed",
+          "repeat",
+          "status",
+          "pass",
+          "actions",
+          "acceptedActions",
+          "rejectedActions",
+          "undos",
+          "resets",
+          "toolCalls",
+          "wallMs",
+          "referenceActions",
+          "checker",
+          "agentExitCode"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "interrupted": {
+      "type": "object",
+      "properties": {
+        "plannedRuns": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "plannedRuns"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "judged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "infraErrors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "passAt1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "passHatK": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "k": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "value": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "k",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "meanActions": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meanActionsPassed": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "efficiencyVsReference": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meanWallMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejectedActions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "undos": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "resets": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "byTask": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "taskId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "passed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "passAt1": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "meanActions": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "referenceActions": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "efficiency": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "taskId",
+              "runs",
+              "passed",
+              "passAt1",
+              "meanActions",
+              "referenceActions",
+              "efficiency"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "runs",
+        "passed",
+        "judged",
+        "infraErrors",
+        "passAt1",
+        "passHatK",
+        "meanActions",
+        "meanActionsPassed",
+        "efficiencyVsReference",
+        "meanWallMs",
+        "rejectedActions",
+        "undos",
+        "resets",
+        "toolCalls",
+        "byTask"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "createdAt",
+    "environment",
+    "agent",
+    "settings",
+    "references",
+    "runs",
+    "summary"
+  ],
+  "additionalProperties": false
+}

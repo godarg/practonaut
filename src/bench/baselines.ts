@@ -1,6 +1,6 @@
 /**
  * Built-in baselines without a language model. Both act only through MCP (see mcp-client.ts):
- * `oracle` plays the library's reference solution, `random` picks valid-looking actions at random
+ * `oracle` plays the task's validated reference solution, `random` picks valid-looking actions at random
  * within the action budget. They bound a score from above and below; neither sees the goal predicate.
  */
 import type { TaskOracle, OracleParam } from '../authoring/from-scenes.ts';
@@ -11,7 +11,7 @@ import type { StdioMcpClient } from './mcp-client.ts';
 
 export const BUILTIN_AGENTS = ['oracle', 'random'] as const;
 export type BuiltinAgent = typeof BUILTIN_AGENTS[number];
-export interface BaselineContext { client: StdioMcpClient; world: World; seed: number; oracle: TaskOracle; maxActions: number; randomSeed: number; deadline: number }
+export interface BaselineContext { client: StdioMcpClient; world: World; seed: number; oracle?: TaskOracle | undefined; maxActions: number; randomSeed: number; deadline: number }
 export interface BaselineResult { note?: string }
 
 async function observe(client: StdioMcpClient): Promise<HostView> {
@@ -23,6 +23,8 @@ async function observe(client: StdioMcpClient): Promise<HostView> {
 /** The reference solution with this seed's variant labels; created ids are read from each reply. */
 export async function runOracle(context: BaselineContext): Promise<BaselineResult> {
   const { client, world, seed, oracle } = context;
+  // The bench refuses the oracle agent on a task without a reference before any run starts.
+  if (!oracle) throw new Error('no reference solution for this task');
   const tokens = variantTokens(world.variants.cases[variantIndex(world, seed)]!);
   let view = await observe(client);
   const created: string[] = [];

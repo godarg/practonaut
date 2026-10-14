@@ -21,6 +21,8 @@ async function fakeClaude(dir: string): Promise<void> {
 const names = Object.keys(process.env);
 const values = Object.fromEntries(${JSON.stringify(Object.keys(KEYS))}.filter(name => name in process.env).map(name => [name, process.env[name]]));
 writeFileSync(process.env.PN_ENV_DUMP, JSON.stringify({ names, values, mcpConfig: process.argv.includes('--mcp-config') }));
+// Like Claude Code: a stream-json init line naming the model and where the API key came from.
+process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', model: 'pn-fake-claude', apiKeySource: process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'none' }) + '\\n');
 `);
   if (process.platform === 'win32') await writeFile(join(dir, 'claude.cmd'), `@"${process.execPath}" "${script}" %*\r\n`);
   else { await writeFile(join(dir, 'claude'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`); await chmod(join(dir, 'claude'), 0o755); }
@@ -36,7 +38,8 @@ test('the claude-code preset withholds provider keys unless --keep-env names the
     const env = { ...process.env, ...KEYS, ...odd, [pathKey]: dir + delimiter + (process.env[pathKey] ?? '') };
     // The notice lists every withheld name; other credentials on this machine may be listed too.
     const notice = (stderr: string): string => /does not pass (.*) to the agent/.exec(stderr)?.[1] ?? '';
-    const bench = (dump: string, ...extra: string[]) => spawnSync(process.execPath, [CLI, 'bench', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60', ...extra], { encoding: 'utf8', env: { ...env, PN_ENV_DUMP: dump } });
+    const bench = (dump: string, ...extra: string[]) => spawnSync(process.execPath, [CLI, 'bench', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60', '--out', `${dump}.report.json`, ...extra], { encoding: 'utf8', env: { ...env, PN_ENV_DUMP: dump } });
+    const agentOf = async (dump: string) => (JSON.parse(await readFile(`${dump}.report.json`, 'utf8')) as { agent: Record<string, unknown> }).agent;
     const read = async (path: string) => JSON.parse(await readFile(path, 'utf8')) as { names: string[]; values: Record<string, string>; mcpConfig: boolean };
 
     const plain = bench(join(dir, 'plain.json'));
@@ -49,6 +52,9 @@ test('the claude-code preset withholds provider keys unless --keep-env names the
     for (const name of Object.keys(KEYS)) assert.ok(named.includes(name), `${name} missing from the notice: ${named.join(', ')}`);
     for (const value of ['pn-test-anthropic-value', 'pn-test-openai-value', 'pn-test-odd-value']) assert.equal(plain.stderr.includes(value), false, 'a value in the notice');
     if (process.platform !== 'win32') { assert.ok(named.includes('PN_TEST_\\u{001b}[31m_API_KEY'), named.join(', ')); assert.equal(plain.stderr.includes('\u001b'), false, 'a raw escape on stderr'); }
+    // bench/2 records what the client reported and the names kept, never values (PADR-0034, PADR-0036).
+    const plainAgent = await agentOf(join(dir, 'plain.json'));
+    assert.deepEqual([plainAgent.isolation, plainAgent.model, plainAgent.modelSource, plainAgent.apiKeySource, plainAgent.keptEnv], ['tool-restricted-preset', 'pn-fake-claude', 'client-attested', 'none', []]);
 
     const kept = bench(join(dir, 'kept.json'), '--keep-env', 'ANTHROPIC_API_KEY');
     assert.equal(kept.status, 0, kept.stderr);
@@ -57,6 +63,9 @@ test('the claude-code preset withholds provider keys unless --keep-env names the
     assert.equal(keptSeen.names.includes('OPENAI_API_KEY') || keptSeen.names.includes('CLAUDE_CODE_USE_BEDROCK'), false);
     const keptNamed = notice(kept.stderr).split(', ');
     assert.ok(keptNamed.includes('OPENAI_API_KEY') && keptNamed.includes('CLAUDE_CODE_USE_BEDROCK') && !keptNamed.includes('ANTHROPIC_API_KEY'), keptNamed.join(', '));
+    const keptAgent = await agentOf(join(dir, 'kept.json'));
+    assert.deepEqual([keptAgent.apiKeySource, keptAgent.keptEnv], ['ANTHROPIC_API_KEY', ['ANTHROPIC_API_KEY']]);
+    assert.equal(JSON.stringify(keptAgent).includes(KEYS.ANTHROPIC_API_KEY), false, 'a value in the report');
 
     // A command template is the user's own command: it gets the environment unchanged, so --keep-env
     // would mean nothing there and is refused before any run starts.

@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
-import { summarize, validateBenchReport, type BenchReport } from '../../src/bench/report.ts';
+import { summarize, validateBenchReport, type BenchReportV2 as BenchReport } from '../../src/bench/report.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
@@ -26,7 +26,7 @@ test('CLI: oracle passes every run with the real mirror; report renders; a forge
     const runs = (await readdir(benchRoot)).filter(name => !before.has(name)); assert.equal(runs.length, 1);
     // The native-export artifacts are re-judged as well when the report lives outside its run directory.
     const verified = spawnSync(process.execPath, [CLI, 'report', out, '--verify', '--runs', join(benchRoot, runs[0]!)], { encoding: 'utf8' });
-    assert.equal(verified.status, 0, verified.stderr); assert.match(verified.stdout, /Re-verified: 6 runs re-judged by the checker from their artifacts; every verdict matches \(0 not judged\)/);
+    assert.equal(verified.status, 0, verified.stderr); assert.match(verified.stdout, /Re-verified: 6 runs re-judged by the checker from their artifacts, against the world stored in the bench folder \(excalidraw-library [^)]+\); every verdict matches \(0 not judged\); 3 references re-checked/);
     const report = validateBenchReport(JSON.parse(await readFile(out, 'utf8')));
     assert.deepEqual([report.summary.runs, report.summary.passed, report.summary.passAt1, report.environment.mirror], [6, 6, 1, 'required']);
     for (const run of report.runs) { assert.equal(run.checker?.native?.passed, true, run.id); assert.equal(run.actions, run.referenceActions); }
@@ -86,10 +86,11 @@ test('report --verify re-judges every run from its artifacts; a consistent forge
   const refused = cli(forgedPath, '--verify'); assert.equal(refused.status, 2); assert.match(refused.stderr, /verdict differs from the re-run checker.*\[bench_report_invalid\]/); assert.equal(refused.stdout, '');
   // A changed artifact no longer matches the hash the report binds.
   await appendFile(join(directory, report.runs[1]!.id, 'session.json'), ' ');
-  const tampered = cli(path, '--verify'); assert.equal(tampered.status, 2); assert.match(tampered.stderr, /artifact session\.json does not match the hash the report binds/);
-  // A report without artifact bindings is consistency-checked, never shown as re-verified.
+  const tampered = cli(path, '--verify'); assert.equal(tampered.status, 2); assert.match(tampered.stderr, /artifact session\.json does not match the hash the report binds.*\[bench_artifact_changed\]/);
+  // A /2 report whose judged runs bind no artifacts is refused already by the consistency check
+  // (a /1 report without them can only be consistency-checked: tests/integration/bench-own-world.test.ts).
   const unbound = structuredClone(report) as BenchReport; for (const run of unbound.runs) delete run.artifacts;
   await writeFile(join(directory, 'unbound.json'), JSON.stringify(unbound));
-  const old = cli(join(directory, 'unbound.json'), '--verify'); assert.equal(old.status, 2); assert.match(old.stderr, /binds no artifacts/);
+  const old = cli(join(directory, 'unbound.json'), '--verify'); assert.equal(old.status, 2); assert.match(old.stderr, /a judged run binds its artifacts.*\[bench_report_invalid\]/);
   assert.equal(cli(join(directory, 'unbound.json'), '--runs', directory).status, 1, '--runs needs --verify');
 });

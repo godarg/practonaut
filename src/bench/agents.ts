@@ -5,6 +5,7 @@
  */
 import { homedir } from 'node:os';
 import { BUILTIN_AGENTS, type BuiltinAgent } from './baselines.ts';
+import { API_KEY_SOURCE } from './report.ts';
 export { spawnable, windowsResolve } from '../platform/spawnable.ts';
 
 export class AgentTemplateError extends Error {
@@ -44,7 +45,7 @@ export function withheldFromPreset(name: string): boolean {
 }
 
 /** An environment variable name `--keep-env` accepts. */
-export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+export { ENV_NAME } from './report.ts';
 
 /** The environment an agent starts with. A preset gets `base` without the variables
  * `withheldFromPreset` names, except those kept by name; built-ins and command templates get `base`
@@ -100,15 +101,24 @@ export function displayCommand(command: readonly string[], home: string = homedi
   return command.map(word => word.replace(pattern, '~'));
 }
 
-/** Claude Code's stream-json starts with a system/init event naming the model; anything else is unknown. */
-export function clientAttestedModel(stdout: string): string | null {
+/** What a client says about itself in its stream-json `system/init` event (Claude Code writes one
+ * first): the model and the `apiKeySource`. A field that is missing or not plain text is null;
+ * neither is ever verified. Only the first init event counts. */
+export function clientInit(stdout: string): { model: string | null; apiKeySource: string | null } {
   for (const line of stdout.split('\n')) {
     if (!line.includes('"init"')) continue;
-    try {
-      const event = JSON.parse(line) as { type?: unknown; subtype?: unknown; model?: unknown };
-      if (event.type === 'system' && event.subtype === 'init' && typeof event.model === 'string' && /^[\w.:@/-]{1,128}$/.test(event.model)) return event.model;
-    } catch { /* not a JSON line */ }
+    let event: unknown;
+    try { event = JSON.parse(line); } catch { continue; /* not a JSON line */ }
+    if (event === null || typeof event !== 'object') continue;
+    const { type, subtype, model, apiKeySource } = event as { type?: unknown; subtype?: unknown; model?: unknown; apiKeySource?: unknown };
+    if (type !== 'system' || subtype !== 'init') continue;
+    return {
+      model: typeof model === 'string' && /^[\w.:@/-]{1,128}$/.test(model) ? model : null,
+      apiKeySource: typeof apiKeySource === 'string' && API_KEY_SOURCE.test(apiKeySource) ? apiKeySource : null,
+    };
   }
-  return null;
+  return { model: null, apiKeySource: null };
 }
+/** Claude Code's stream-json starts with a system/init event naming the model; anything else is unknown. */
+export function clientAttestedModel(stdout: string): string | null { return clientInit(stdout).model; }
 
