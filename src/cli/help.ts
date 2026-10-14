@@ -229,17 +229,6 @@ Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/READM
 
 Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and aggregate is re-derived from
 the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
-<<<<<<< HEAD
-a static HTML page. Consistency is not proof: a consistently edited file passes. --verify re-judges every run
-from the artifacts in its bench folder (default: the report's folder; else --runs <bench folder>): for /2 the
-stored world (for a library bench of this Practonaut's library version: against that library's content), the
-references and every artifact against the hashes the report binds, every reference against the stored world,
-then the independent checker on the session and the native export; a /1 report is re-judged against the
-bundled task library. Any difference: exit 2, with bench_world_changed, bench_artifact_changed,
-bench_reference_invalid or bench_report_invalid. The output shows the world's content hash; validate --json
-prints it for a world package.`,
-    de: `Verwendung: practonaut report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]
-=======
 a static HTML page. Consistency is not proof: a consistently edited file passes. Rates are fractions with a
 95 % interval; failures come first with why they failed, read from the bench folder (default: the report's
 folder; else --runs <bench folder>): the unmet conditions and the action after which each was last lost,
@@ -251,20 +240,10 @@ export, and the condition trace; a /1 report is re-judged against the bundled ta
 exit 2, with bench_world_changed, bench_artifact_changed, bench_reference_invalid or bench_report_invalid. The
 output shows the world's content hash; validate --json prints it for a world package.`,
     de: `Verwendung: practonaut report <bench.json> [--verify] [--runs <Ordner>] [--html <out.html>] [--json]
->>>>>>> worktree-agent-ab98e32212f3c7656
 
 Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
 aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
 eine Tabelle oder schreibt eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei
-<<<<<<< HEAD
-besteht. --verify beurteilt jeden Lauf aus den Artefakten seines Bench-Ordners neu (Standard: Ordner des Berichts,
-sonst --runs <Bench-Ordner>): bei /2 gespeicherte Welt (bei einem Bibliotheks-Bench der Bibliotheksversion
-dieses Practonaut gegen deren Inhalt), Referenzen und jedes Artefakt gegen die gebundenen Hashes, jede Referenz
-gegen die gespeicherte Welt, dann der unabhängige Prüfer auf Sitzung und nativem Export; ein /1-Bericht wird
-gegen die mitgelieferte Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit bench_world_changed,
-bench_artifact_changed, bench_reference_invalid oder bench_report_invalid. Die Ausgabe zeigt den Inhalts-Hash
-der Welt; validate --json gibt ihn für ein Weltpaket aus.`,
-=======
 besteht. Raten stehen als Brüche mit 95-%-Intervall; nicht bestandene Läufe kommen zuerst, mit dem Grund aus dem
 Bench-Ordner (Standard: Ordner des Berichts, sonst --runs <Bench-Ordner>): die nicht erfüllten Bedingungen und
 die Aktion, nach der jede zuletzt verloren ging, Fehlerklassen, der Verlauf, die Zeichnung am Ende und das
@@ -302,7 +281,6 @@ Regression. Das Urteil über Raten nutzt einen exakten McNemar-Test auf den Inst
 unterscheiden: Verbesserung oder Verschlechterung bei p < 0,05, sonst „bei diesem n nicht unterscheidbar“.
 --fail-on-regression endet mit Exit 2 (instance_regression), wenn es eine Instanz-Regression gibt. --verify
 rechnet jeden Bericht zuerst aus seinem eigenen Ordner nach. --html schreibt eine statische Seite.`,
->>>>>>> worktree-agent-ab98e32212f3c7656
   },
   setup: {
     en: `Usage: practonaut setup

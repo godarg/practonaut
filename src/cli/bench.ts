@@ -10,15 +10,11 @@ import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
 import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
-<<<<<<< HEAD
-import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
-=======
 import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { loadReportDetails } from '../bench/details.ts';
 import { compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable } from '../bench/render-compare.ts';
 import type { BenchReport } from '../bench/report.ts';
->>>>>>> worktree-agent-ab98e32212f3c7656
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
@@ -191,31 +187,6 @@ async function readReport(path: string): Promise<BenchReport> {
     if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message);
     throw new RuntimeError('bench_report_invalid', cliText('reportJson'));
   }
-<<<<<<< HEAD
-  // Without --verify only the report's own arithmetic is checked; --verify re-judges the run artifacts:
-  // a /2 report against the world stored in its bench folder, a /1 report against the bundled library.
-  let verification: { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult) = { level: 'consistency-checked' };
-  let stored: VerificationResultV2 | undefined;
-  if (parsed.booleans.has('--verify')) {
-    const runs = parsed.flags['--runs'] ?? dirname(path);
-    try {
-      if (isBenchReportV2(report)) { stored = await verifyBenchV2(report, runs, libraryWorld); verification = { level: 're-verified', ...stored }; }
-      else verification = { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
-    } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
-  }
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
-  else {
-    process.stdout.write(renderTable(report, getCliLanguage()));
-    if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
-    else if (stored === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
-    else {
-      const world = { world: safeText(stored.world.id), version: safeText(stored.world.version) };
-      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: stored.world.contentHash, runs: stored.reverified, unjudged: stored.unjudged, references: stored.references }));
-      // What the stored world is anchored to: this Practonaut's library, or only the bench's own record.
-      process.stdout.write(stored.library === undefined ? cliText('reportWorldOwn')
-        : stored.library.status === 'same' ? cliText('reportLibrarySame', world)
-        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${stored.library.shipped.id} ${stored.library.shipped.version}`) }));
-=======
 }
 type Verified = { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult & Partial<Pick<VerificationResultV2, 'references' | 'world' | 'library'>>);
 /** --verify re-judges the run artifacts: a /2 report against the world stored in its bench folder
@@ -252,7 +223,6 @@ export async function commandReport(args: string[]): Promise<number> {
       process.stdout.write(verification.library === undefined ? cliText('reportWorldOwn')
         : verification.library.status === 'same' ? cliText('reportLibrarySame', world)
         : cliText('reportLibraryOther', { ...world, shipped: safeText(`${verification.library.shipped.id} ${verification.library.shipped.version}`) }));
->>>>>>> worktree-agent-ab98e32212f3c7656
     }
   }
   const html = parsed.flags['--html'];

@@ -24,11 +24,7 @@ import { commandRecord, commandCompile } from './authoring.ts';
 import { AuthoringError } from '../authoring/index.ts';
 import { CheckerError } from '../checker/index.ts';
 import { commandMcp } from './mcp.ts';
-<<<<<<< HEAD
-import { commandBench, commandReport } from './bench.ts';
-=======
 import { commandBench, commandCompare, commandReport } from './bench.ts';
->>>>>>> worktree-agent-ab98e32212f3c7656
 import { worldContentHash } from '../bench/world.ts';
 import { commandSetup } from './setup.ts';
 import { commandTasks } from './tasks.ts';

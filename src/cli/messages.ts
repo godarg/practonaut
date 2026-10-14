@@ -559,8 +559,6 @@ export const CLI_CATALOG = {
     "en": "run {id} is not named after its task, seed and repeat ({expected})",
     "de": "der Lauf {id} ist nicht nach Aufgabe, Seed und Wiederholung benannt ({expected})"
   },
-<<<<<<< HEAD
-=======
   "verifyMutationsFormat": {
     "en": "run {run}: mutations.jsonl is not a mutation log",
     "de": "Lauf {run}: mutations.jsonl ist kein Änderungsprotokoll"
@@ -597,7 +595,6 @@ export const CLI_CATALOG = {
     "en": "run {id}: client figures come only from an external agent's own output, with the source its kind ({kind}) allows",
     "de": "Lauf {id}: Client-Angaben stammen nur aus der Ausgabe eines externen Agenten, mit der Quelle, die seine Art ({kind}) erlaubt"
   },
->>>>>>> worktree-agent-ab98e32212f3c7656
   "benchReportRunReference": {
     "en": "run {id} names a reference of {given} actions; the report's references give {expected}",
     "de": "der Lauf {id} nennt eine Referenz von {given} Aktionen; die Referenzen des Berichts ergeben {expected}"

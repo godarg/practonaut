@@ -18,11 +18,6 @@
  * must equal both the stored checker output and the report's verdicts. pass, pass@1, pass^k, mean
  * actions and efficiency then follow from these values (the validator re-derives them). Any
  * difference rejects the report.
-<<<<<<< HEAD
- *
- * Not re-verifiable, self-reported by the runner: acceptedActions, rejectedActions, undos, resets,
- * toolCalls, wallMs, status, agentExitCode, note, the client-reported model and apiKeySource.
-=======
  *
  * bench/2 run evidence (PADR-0039): the call log, mutation log, condition trace and engine picture
  * against their hashes; the mutation log against the run's counters; the trace re-derived by the
@@ -31,7 +26,6 @@
  * Not re-verifiable, self-reported by the runner: acceptedActions, rejectedActions, undos, resets,
  * toolCalls, wallMs, status, agentExitCode, note, the client-reported model and apiKeySource, the
  * client's tokens, turns and cost, and the call log (written by the agent's own bridge).
->>>>>>> worktree-agent-ab98e32212f3c7656
  *
  * What this shows: the report's verdicts follow from the artifacts on disk. What it does not show:
  * that those artifacts came from the agent named in the report. Whoever can write the run directory
@@ -42,23 +36,15 @@ import { isDeepStrictEqual } from 'node:util';
 import { sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { safeText } from '../cli/output.ts';
-<<<<<<< HEAD
-import { checkInProcess } from '../cli/runtime.ts';
-=======
 import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
->>>>>>> worktree-agent-ab98e32212f3c7656
 import { nativeMatchesState } from '../host/export-pair.ts';
 import { PackageError } from '../package/index.ts';
 import { LIMITS } from '../package/limits.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
-<<<<<<< HEAD
-import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun } from './report.ts';
-=======
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun, type BenchRunV2 } from './report.ts';
 import { mutationCounts, parseMutations, RUN_EVIDENCE, timelineOf } from './evidence.ts';
->>>>>>> worktree-agent-ab98e32212f3c7656
 import { RUN_ARTIFACTS, verdictOf } from './run.ts';
 import { MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage, type BenchReference, type ReferencesFile } from './world.ts';
 
@@ -74,13 +60,8 @@ async function artifact(directory: string, runId: string, name: string, expected
   return bytes.toString('utf8');
 }
 
-<<<<<<< HEAD
-/** Re-judges one judged run from its artifacts against `world`. */
-async function rejudge(run: BenchRun, world: World, directory: string, artifactCode: BenchErrorCode): Promise<void> {
-=======
 /** Re-judges one judged run from its artifacts against `world`; returns the session's text. */
 async function rejudge(run: BenchRun, world: World, directory: string, artifactCode: BenchErrorCode): Promise<string> {
->>>>>>> worktree-agent-ab98e32212f3c7656
   if (!run.artifacts) throw new BenchReportError(`run ${run.id} binds no artifacts; the report can be consistency-checked but not re-verified`);
   const sessionText = await artifact(directory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, artifactCode);
   const checkerText = await artifact(directory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, artifactCode);
@@ -103,8 +84,6 @@ async function rejudge(run: BenchRun, world: World, directory: string, artifactC
     throw new BenchReportError(cliText('verifyCheckerStored', { run: run.id }));
   const recomputed = { session: verdictOf(sessionRaw, run.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, run.taskId) };
   if (!isDeepStrictEqual(recomputed, run.checker)) throw new BenchReportError(cliText('verifyVerdict', { run: run.id, result: `session ${recomputed.session.passed ? 'pass' : 'fail'}${recomputed.native ? `, native ${recomputed.native.passed ? 'pass' : 'fail'}` : ''}` }));
-<<<<<<< HEAD
-=======
   return sessionText;
 }
 
@@ -140,7 +119,6 @@ async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string
     derived = JSON.stringify(await traceInProcess(world, sessionText, timeline.timeline, { seed: run.seed, taskId: run.taskId })) + '\n';
   } catch { throw new BenchReportError(cliText('verifyTrace', { run: run.id })); }
   if (derived !== texts.trace) throw new BenchReportError(cliText('verifyTrace', { run: run.id }));
->>>>>>> worktree-agent-ab98e32212f3c7656
 }
 
 /** bench/1: re-judges every judged run of an already validated report against the bundled library;
@@ -236,12 +214,6 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
     library = libraryAnchor(report.environment.world, { id: shipped.world.id, version: shipped.world.version, contentHash: shipped.contentHash });
   }
   const stored = await storedReferences(report, runsDirectory);
-<<<<<<< HEAD
-  for (const run of report.runs) if (run.artifacts) {
-    await artifact(runsDirectory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, 'bench_artifact_changed');
-    await artifact(runsDirectory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, 'bench_artifact_changed');
-    if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
-=======
   // Artifacts and evidence are compared with their hashes before anything is re-judged.
   const evidence = new Map<string, { mutations: string | null; trace: string | null }>();
   for (const run of report.runs) {
@@ -251,19 +223,13 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
       if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
     }
     evidence.set(run.id, await evidenceHashes(run, runsDirectory));
->>>>>>> worktree-agent-ab98e32212f3c7656
   }
   const references = await verifyReferences(report, world, stored);
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
-<<<<<<< HEAD
-    if (run.checker === null) { unjudged++; continue; }
-    await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
-=======
     if (run.checker === null) { unjudged++; await verifyEvidence(run, world, null, evidence.get(run.id)!); continue; }
     const sessionText = await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
     await verifyEvidence(run, world, sessionText, evidence.get(run.id)!);
->>>>>>> worktree-agent-ab98e32212f3c7656
     reverified++;
   }
   return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}) };
