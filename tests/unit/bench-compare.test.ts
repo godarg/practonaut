@@ -1,10 +1,11 @@
 // `practonaut compare` (PADR-0039 C) on hand-built reports: every documented verdict — instance
-// regression, improvement, decline, not distinguishable, single runs, unjudged runs, incomparable —
-// with p-values worked out by hand next to each case, the CLI exit codes, and escaped output.
+// regression, improvement, decline, not distinguishable, single runs, unjudged runs, an incomplete
+// candidate, nothing paired, incomparable — with p-values worked out by hand next to each case, the
+// CLI exit codes, and escaped output.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BENCH_SCHEMA_V2, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
@@ -55,7 +56,7 @@ test('instance regression: three repeats a side, all passed on the baseline, all
   const changedText = renderCompareTable({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed);
   assert.match(changedText, /Outcome changed, not in every repeat — not a regression signal:\n  T · seed 1: passed on the baseline \(2\/3\), failed on the candidate \(1\/3\)/);
   const changedHtml = renderCompareHtml({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed, ':root{}');
-  assert.match(changedHtml, /<td class="text">outcome changed, not in every repeat — not a regression signal<\/td>/);
+  assert.match(changedHtml, /<td data-label="change" class="text">outcome changed, not in every repeat — not a regression signal<\/td>/);
   assert.equal(changedHtml.includes('same outcome'), false);
   assert.equal(comparison.regressionSignal, true);
   // b = 1 (seed 1), c = 1 (seed 3): p = min(1, 2 · P(X ≤ 1 | n = 2)) = min(1, 2 · 3/4) = 1.
@@ -91,28 +92,48 @@ test('rate verdicts: exact McNemar on the discordant instances at α = 0.05', ()
   assert.deepEqual([declined.verdict, declined.discordant], ['decline', { baselineOnly: 8, candidateOnly: 1 }]);
   assert.ok(Math.abs(declined.p - 20 / 512) < 1e-12);
   const text = renderCompareTable({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close);
-  assert.match(text, /Verdict: not distinguishable at this n \(exact McNemar p = 0\.063; 0 only on the baseline, 5 only on the candidate\)/);
+  assert.match(text, /Verdict: rate difference not distinguishable at this n \(exact McNemar p = 0\.063; 0 only on the baseline, 5 only on the candidate\)/);
   // Each side carries its mirror, isolation level and verification status (vision §6, principle 4).
   assert.match(text, /^Baseline: generic · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
   assert.match(text, /^Candidate: generic · .* · model only \(no mirror\) · template: tools not restricted by Practonaut · consistency-checked, not re-verified · /m);
   const page = renderCompareHtml({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close, ':root{}', 'de');
-  assert.equal((page.match(/nur Modell \(keine Spiegelung\) · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt/g) ?? []).length, 2);
-  assert.match(text, /Baseline: 5\/10 instances passed · 95 % interval 23–77 % over the 10 instances judged on both sides/);
+  assert.equal((page.match(/<li class="chip">nur Modell \(keine Spiegelung\)<\/li><li class="chip">Vorlage: Werkzeuge nicht von Practonaut eingeschränkt<\/li>/g) ?? []).length, 2);
+  assert.match(text, /Baseline: 5\/10 instances passed · 95 % interval 23–77 % over the 10 instances on both sides/);
 });
 
-test('unjudged runs and missing instances are listed, never counted', () => {
-  // Seed 2 has no judged run on the candidate; an unjudged repeat beside judged ones does not count.
+test('every run counts: a run that was not judged counts as not passed, is named, and leaves the candidate incomplete', () => {
   const baseline = report(instances([[true, true, true], [true, true, true], [false, false, false]]));
   const candidate = report(instances([[true, null, true], [null, null, null], [true, null, false]]));
   const comparison = compareReports(baseline, candidate);
-  assert.deepEqual(comparison.notCompared.map(pair => [pair.seed, pair.kind, pair.side]), [[2, 'unjudged', 'candidate']]);
-  assert.equal(comparison.paired, 2);
-  assert.deepEqual(comparison.pairs[2]!.candidate, { repeats: 3, judged: 2, passed: 1, outcome: 'pass' });
-  assert.equal(comparison.regressions.length, 0, 'two judged repeats are not three');
+  // Seed 2 has no judged run on the candidate: it is compared, as a fail (0 of 3 passed), never left out.
+  assert.deepEqual([comparison.paired, comparison.notCompared.length], [3, 0]);
+  assert.deepEqual(comparison.pairs[1]!.candidate, { repeats: 3, judged: 0, unjudged: 3, passed: 0, outcome: 'fail' });
+  // Seed 3: 1 of 3 passed, one not judged: a fail. Over judged runs only it would be 1 of 2, a pass.
+  assert.deepEqual(comparison.pairs[2]!.candidate, { repeats: 3, judged: 2, unjudged: 1, passed: 1, outcome: 'fail' });
+  // b = 1 (seed 2 passed only on the baseline), c = 0; the candidate rate counts every run.
+  assert.deepEqual([comparison.discordant, comparison.candidate.passed], [{ baselineOnly: 1, candidateOnly: 0 }, 1]);
+  assert.equal(comparison.regressions.length, 0, 'no judged candidate repeat on seed 2: not an instance regression');
+  assert.deepEqual(comparison.withUnjudged.map(pair => pair.seed), [1, 2, 3]);
+  assert.deepEqual(comparison.incomplete.map(pair => pair.seed), [1, 2, 3]);
+  const text = renderCompareTable({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison);
+  assert.match(text, /Runs not judged:\n  T · seed 1: 1 run not judged on the candidate, counted as not passed\n  T · seed 2: 3 runs not judged on the candidate, counted as not passed/);
+  assert.match(text, /The candidate is incomplete: 3 instances are missing, cut short or hold a run that was not judged\./);
+  assert.deepEqual(compareReports(baseline, baseline).incomplete, [], 'a complete candidate');
+  // An interrupted candidate: the instance it never ran is listed, left out and incomplete.
   const missing = report(instances([[true], [true]]), value => { value.runs = value.runs.slice(0, 1); value.interrupted = { plannedRuns: 2 }; });
   const partial = compareReports(report(instances([[true], [true]])), missing);
   assert.deepEqual(partial.notCompared.map(pair => [pair.seed, pair.kind, pair.side]), [[2, 'missing', 'candidate']]);
-  assert.match(renderCompareTable({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison), /Not compared:\n  T · seed 2: no judged run on the candidate \(infrastructure\)/);
+  assert.deepEqual(partial.incomplete.map(pair => pair.seed), [2]);
+  // Fewer repeats than planned (cut short) is incomplete too.
+  const short = report(instances([[true, true, true]]), value => { value.runs = value.runs.slice(0, 2); value.interrupted = { plannedRuns: 3 }; });
+  assert.deepEqual(compareReports(report(instances([[true, true, true]])), short).incomplete.map(pair => pair.candidate!.repeats), [2]);
+  // No instance on both sides: nothing to test, said so (not "not distinguishable").
+  const onlyFirst = report(instances([[true], [true]])), onlySecond = report(instances([[true], [true]]));
+  onlyFirst.runs = onlyFirst.runs.filter(run => run.seed === 1); onlySecond.runs = onlySecond.runs.filter(run => run.seed === 2);
+  const nothing = compareReports(onlyFirst, onlySecond);
+  assert.deepEqual([nothing.verdict, nothing.paired], ['nothing_paired', 0]);
+  assert.match(renderCompareTable({ report: onlyFirst, verification: 'consistency-checked' }, { report: onlySecond, verification: 'consistency-checked' }, nothing), /Verdict: nothing to compare: no instance has runs on both sides/);
+  assert.match(renderCompareHtml({ report: onlyFirst, verification: 'consistency-checked' }, { report: onlySecond, verification: 'consistency-checked' }, nothing, ':root{}'), /<p class="verdict">Nothing to compare: no instance has runs on both sides\.<\/p>/);
 });
 
 test('incomparable reports are refused, naming every difference', () => {
@@ -147,9 +168,22 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     const gated = cli(baseline, candidate, '--fail-on-regression');
     assert.equal(gated.status, 2); assert.match(gated.stderr, /1 instance regression .*T seed 1 \[instance_regression\]/);
     assert.equal(cli(baseline, baseline, '--fail-on-regression').status, 0, 'no regression: the gate passes');
+    // One run of the candidate was not judged: two judged failures are not three, so no regression is
+    // found, but the gate must not pass it as "no regression".
+    const hidden = write('h.json', report(instances([[false, false, null], [true, true, true]])));
+    const incomplete = cli(baseline, hidden, '--fail-on-regression');
+    assert.equal(incomplete.status, 2, incomplete.stdout); assert.match(incomplete.stderr, /the candidate is incomplete: 1 instance is missing, cut short or holds a run that was not judged \(T seed 1\).*\[compare_incomplete\]/);
+    assert.equal(cli(baseline, hidden).status, 0, 'without the gate it is a report, not a failure');
+    // The page names each side by its label or file name.
+    const named = readFileSync(join(dir, 'c.html'), 'utf8');
+    assert.match(named, /<h1>&lt;b&gt;baseline&lt;\/b&gt;\\u\{202e\} \(baseline\) → b \(candidate\)<\/h1>/);
     const other = write('d.json', report(instances([[true, true, true], [true, true, true]]), value => { value.settings.maxActions = 10; value.environment.mirror = 'off'; }));
-    const refused = cli(baseline, other);
+    const refused = cli(baseline, other, '--html', join(dir, 'refused.html'));
     assert.equal(refused.status, 2); assert.match(refused.stderr, /the action budget differs \(50 on the baseline, 10 on the candidate\).*\[compare_incomparable\]/);
+    // With --html the refusal is a page that names every difference.
+    const refusal = readFileSync(join(dir, 'refused.html'), 'utf8');
+    assert.match(refusal, /<p class="headline">Not comparable\.<\/p>/); assert.match(refusal, /<p class="banner-title">What differs<\/p>/); assert.match(refusal, /action budget: 50 on the baseline, 10 on the candidate/);
+    assert.equal(existsSync(join(dir, 'refused.html')) && !/<script|style="/i.test(refusal), true);
     const json = JSON.parse(cli(baseline, candidate, '--json').stdout);
     assert.deepEqual([json.comparison.regressions.length, json.comparison.verdict], [1, 'not_distinguishable']);
     const html = renderCompareHtml({ report: report(instances([[true]]), value => { value.label = '<img src=x onerror=alert(1)>'; }), verification: 'consistency-checked' }, { report: report(instances([[true]])), verification: 'consistency-checked' }, compareReports(report(instances([[true]])), report(instances([[true]]))), ':root{}');

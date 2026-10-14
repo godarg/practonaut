@@ -16,10 +16,15 @@ export function number(value: number, digits: number, language: Language): strin
 /** The decimals a percentage of n may show: null below 100 (none at all), 0 from 100, 1 from 1000. */
 export function percentDigits(n: number): number | null { return n >= 1000 ? 1 : n >= 100 ? 0 : null; }
 
-/** `k/n`, plus the percentage where n allows one: `150/200 (75 %)`. */
+/** `k/n`, plus the percentage where n allows one: `150/200 (75 %)`. A fraction that is neither none
+ * nor all is never shown as 0 % or 100 %: below the smallest step it reads `< 1 %`, above the largest
+ * `> 99 %` (one decimal from n = 1000). */
 export function rateText(k: number, n: number, language: Language): string {
   const digits = percentDigits(n);
-  return digits === null || n === 0 ? `${k}/${n}` : `${k}/${n} (${number((100 * k) / n, digits, language)} %)`;
+  if (digits === null || n === 0) return `${k}/${n}`;
+  const step = 10 ** -digits, shown = Number(((100 * k) / n).toFixed(digits));
+  const percent = k > 0 && shown === 0 ? `< ${number(step, digits, language)}` : k < n && shown === 100 ? `> ${number(100 - step, digits, language)}` : number((100 * k) / n, digits, language);
+  return `${k}/${n} (${percent} %)`;
 }
 
 /** The 95 % Wilson interval of k/n in whole percent, rounded outward. */

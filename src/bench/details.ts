@@ -3,7 +3,8 @@
  * from the bench folder: the goal conditions with their history (the checker's trace), the error
  * classes with their explanation (the stored checker output), the trajectory (the mutation log), the
  * final board (the engine's picture or a schematic of the judged state), groups and frames, an example
- * target from a validated reference, the call log summary.
+ * target from a validated reference, the call log summary. The final board and the target share one
+ * viewBox, so they are drawn at one scale and in one coordinate system.
  *
  * The folder is untrusted: a file is used only when its SHA-256 is the one the report binds, and a
  * file that does not parse is reported as unreadable, never guessed around. Nothing here judges: a
@@ -24,8 +25,8 @@ import { worldEra, type Action, type Localized, type SessionData, type State, ty
 import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
-import { engineSvgMarkup, MAX_SVG_BYTES } from './svg.ts';
-import { boardObjects, framesOf, groupsOf, schematicSvg, type BoardObject, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
+import { boardObjects, framesOf, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -37,11 +38,11 @@ export type ConditionHistory =
 export interface ConditionDetail { id: string; text: Localized; formal: Localized | null; met: boolean | null; history: ConditionHistory }
 export interface TrajectoryRow {
   number: number; op: MutationRecord['op']; text: string; client: string | null;
-  outcome: MutationRecord['outcome']; code: string | null; step: number;
+  outcome: MutationRecord['outcome']; code: string | null; step: number; revision: number;
   /** After an accepted mutation, from the trace: conditions met (as numbers 1 …), and which changed. */
   met: number | null; gained: number[]; lost: number[];
 }
-export interface CallSummary { calls: number; byTool: Array<[string, number]>; codes: Array<[string, number]>; resultBytes: number; bridgeMedianMs: number | null; clientMedianMs: number | null; dropped: number; omitted: number }
+export interface CallSummary { calls: number; byTool: Array<[string, number]>; codes: Array<[string, number]>; resultBytes: number; bridgeMedianMs: number | null; clientMedianMs: number | null; dropped: number; omitted: number; omittedAtLeast: boolean }
 export type PictureReason = 'model-only' | 'no-picture' | 'picture-unreadable' | 'picture-changed';
 export type Picture = { kind: 'engine'; markup: string } | { kind: 'schematic'; markup: string; reason: PictureReason };
 /** A part that could not be shown, and why. */
@@ -55,12 +56,23 @@ export interface RunDetail {
   /** Every object of the judged state with its attributes in full (labels are never cut here). */
   objects: BoardObject[];
   target: string | null; targetMissing: 'no-reference' | 'unreadable' | null;
+  /** Every object of the example target, like `objects`. */
+  targetObjects: BoardObject[];
+  /** Whether the pictures (one shared width) are wider than a phone or a desktop column. */
+  overflow: 'none' | 'narrow' | 'wide';
   calls: CallSummary | null; callsMissing: Missing | null;
   /** Distinct MCP client names that changed the board (from the mutation log). */
   clients: string[];
   rejected: Array<[string, number]>;
 }
-export interface ReportDetails { folder: 'read' | 'missing' | 'world-changed' | 'world-unreadable'; runs: Map<string, RunDetail> }
+export interface ReportDetails {
+  folder: 'read' | 'missing' | 'world-changed' | 'world-unreadable'; runs: Map<string, RunDetail>;
+  /** Error-class explanations by task, seed and id, from the bundled library when the report's world is
+   * it (shown even without the bench folder). */
+  explanations: Map<string, Localized>;
+}
+/** Explanations name the seed's own labels (a variant fills them in), so they are kept per seed. */
+export const explanationKey = (taskId: string, seed: number, id: string): string => `${taskId}\u0000${seed}\u0000${id}`;
 
 /** A regular file of at most `max` bytes (the limit enforced while reading), or null. */
 const bounded = (path: string, max: number): Promise<Buffer | null> => readRegularFile(path, max);
@@ -125,7 +137,7 @@ function trajectoryOf(records: readonly MutationRecord[], world: World, run: Ben
     const met = metAfter.get(record.seq) ?? null, gained: number[] = [], lost: number[] = [];
     if (met !== null && previous !== null) for (let index = 0; index < met.length; index++) { if (met[index] === '1' && previous[index] === '0') gained.push(index + 1); if (met[index] === '0' && previous[index] === '1') lost.push(index + 1); }
     if (met !== null) previous = met;
-    return { number: record.seq + 1, op: record.op, text, client: record.client, outcome: record.outcome, code: record.code ?? null, step: record.step, met: met === null ? null : count(met), gained, lost };
+    return { number: record.seq + 1, op: record.op, text, client: record.client, outcome: record.outcome, code: record.code ?? null, step: record.step, revision: record.revision, met: met === null ? null : count(met), gained, lost };
   });
 }
 
@@ -134,14 +146,14 @@ const median = (values: number[]): number | null => {
   const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle]! : Math.round(((sorted[middle - 1]! + sorted[middle]!) / 2) * 10) / 10;
 };
-function summarizeCalls(records: readonly CallRecord[], dropped: number, omitted: number): CallSummary {
+function summarizeCalls(records: readonly CallRecord[], dropped: number, omitted: number, omittedAtLeast: boolean): CallSummary {
   const tally = (key: (record: CallRecord) => string | null): Array<[string, number]> => {
     const counts = new Map<string, number>();
     for (const record of records) { const value = key(record); if (value !== null) counts.set(value, (counts.get(value) ?? 0) + 1); }
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   };
   const client = records.flatMap(record => record.clientMs === null ? [] : [record.clientMs]);
-  return { calls: records.length, byTool: tally(record => record.tool), codes: tally(record => record.code === 'ok' ? null : record.code), resultBytes: records.reduce((sum, record) => sum + record.resultBytes, 0), bridgeMedianMs: median(records.map(record => record.bridgeMs)), clientMedianMs: median(client), dropped, omitted };
+  return { calls: records.length, byTool: tally(record => record.tool), codes: tally(record => record.code === 'ok' ? null : record.code), resultBytes: records.reduce((sum, record) => sum + record.resultBytes, 0), bridgeMedianMs: median(records.map(record => record.bridgeMs)), clientMedianMs: median(client), dropped, omitted, omittedAtLeast };
 }
 
 /** The stored world as the report binds it, or why it cannot be used. */
@@ -173,16 +185,49 @@ async function boundReferences(report: BenchReport, folder: string): Promise<Map
   } catch { return null; }
 }
 
+/** Error-class explanations of the report's tasks when its world is the bundled library (its content
+ * hash says so), so they can be shown without the bench folder. */
+async function libraryExplanations(report: BenchReport): Promise<Map<string, Localized>> {
+  const explanations = new Map<string, Localized>();
+  if (isBenchReportV2(report) && report.environment.world.source !== 'library') return explanations;
+  const { libraryWorld } = await import('./run.ts');
+  const library = await libraryWorld();
+  const wanted = isBenchReportV2(report) ? report.environment.world.contentHash : report.environment.library.contentHash;
+  if (library.contentHash !== wanted) return explanations;
+  for (const seed of new Set(report.runs.map(run => run.seed))) {
+    for (const task of generateVariant(library.world, seed).tasks) for (const error of task.errorClasses) explanations.set(explanationKey(task.id, seed, error.id), error.explanation);
+  }
+  return explanations;
+}
+
+/** Where the scene of `native.excalidraw` lies (board units): the box Excalidraw's export is centred on. */
+function sceneBounds(text: string): Box | null {
+  const scene = parseJsonEntry(Buffer.from(text), ARTIFACT.native, 64) as { elements?: unknown };
+  if (!Array.isArray(scene.elements)) return null;
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const element of scene.elements as Array<Record<string, unknown>>) {
+    if (!element || typeof element !== 'object' || element.isDeleted === true) continue;
+    const x = element.x, y = element.y, width = element.width, height = element.height;
+    if (![x, y, width, height].every(value => typeof value === 'number' && Number.isFinite(value))) continue;
+    const points = Array.isArray(element.points) ? (element.points as unknown[]).filter((point): point is [number, number] => Array.isArray(point) && point.length >= 2 && point.every(value => typeof value === 'number' && Number.isFinite(value))) : [];
+    const xs = points.length ? points.map(point => (x as number) + point[0]) : [x as number, (x as number) + (width as number)];
+    const ys = points.length ? points.map(point => (y as number) + point[1]) : [y as number, (y as number) + (height as number)];
+    left = Math.min(left, ...xs); right = Math.max(right, ...xs); top = Math.min(top, ...ys); bottom = Math.max(bottom, ...ys);
+  }
+  return Number.isFinite(left) ? { x: left, y: top, width: right - left, height: bottom - top } : null;
+}
+
 /** Reads the details of every run from `folder` (the bench folder); `null` folder: none given. */
 export async function loadReportDetails(report: BenchReport, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
   const runs = new Map<string, RunDetail>();
-  if (folder === null) return { folder: 'missing', runs };
+  const explanations = await libraryExplanations(report).catch(() => new Map<string, Localized>());
+  if (folder === null) return { folder: 'missing', runs, explanations };
   const found = await boundWorld(report, folder);
-  if ('problem' in found) return { folder: found.problem, runs };
+  if ('problem' in found) return { folder: found.problem, runs, explanations };
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
   for (const [index, run] of report.runs.entries()) {
-    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, calls: null, callsMissing: null, clients: [], rejected: [] };
+    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
@@ -216,7 +261,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       } else { detail.trajectoryMissing = read.missing; trace = null; detail.conditionsMissing ??= read.missing; }
       if (v2.logs.calls) {
         const calls = await bound(folder, run.id, RUN_EVIDENCE.calls, v2.logs.calls.sha256, MAX_LOG_BYTES);
-        if ('text' in calls) { try { detail.calls = summarizeCalls(parseCallLog(calls.text), v2.logs.calls.dropped, v2.logs.calls.omitted ?? 0); } catch { detail.callsMissing = 'unreadable'; } }
+        if ('text' in calls) { try { detail.calls = summarizeCalls(parseCallLog(calls.text), v2.logs.calls.dropped, v2.logs.calls.omitted ?? 0, v2.logs.calls.omittedAtLeast === true); } catch { detail.callsMissing = 'unreadable'; } }
         else detail.callsMissing = calls.missing;
       } else detail.callsMissing = 'not-recorded';
     } else { detail.trajectoryMissing = 'not-recorded'; detail.callsMissing = 'not-recorded'; }
@@ -244,23 +289,43 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       return { id: condition.id, text: condition.text, formal: condition.formalText ?? null, met: evaluated.ok ? evaluated.value : null, history: { kind: 'unknown' } };
     });
     detail.groups = groupsOf(state, words.group); detail.frames = framesOf(state); detail.objects = boardObjects(state);
-    // Ids inside the pictures are unique on the page by the run's position, whatever its id's length.
-    const schematic = (reason: PictureReason): Picture => ({ kind: 'schematic', reason, markup: schematicSvg(state!, { prefix: `run${index}-final`, label: words.finalBoard, words }) });
+    // The engine's picture when it is there and readable; where its drawing lies in board units comes
+    // from the judged native scene (the export is centred on it), so the pair can share a viewBox.
+    let engine: { read: EngineSvg; box: Box | null } | null = null, reason: PictureReason | null = null;
     const board = v2?.artifacts?.board;
     if (typeof board === 'string') {
       const read = await bound(folder, run.id, RUN_EVIDENCE.board, board, MAX_SVG_BYTES);
-      if ('text' in read) { try { detail.picture = { kind: 'engine', markup: engineSvgMarkup(read.text, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board' }) }; } catch { detail.picture = schematic('picture-unreadable'); } }
-      else detail.picture = schematic(read.missing === 'changed' ? 'picture-changed' : 'no-picture');
-    } else detail.picture = schematic(mirror === 'required' ? 'no-picture' : 'model-only');
+      if ('text' in read) {
+        try {
+          const svg = readEngineSvg(read.text, `run${index}-engine`);
+          let scene: Box | null = null;
+          if (run.artifacts.native) { const native = await bound(folder, run.id, ARTIFACT.native, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
+          engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
+        } catch { reason = 'picture-unreadable'; }
+      } else reason = read.missing === 'changed' ? 'picture-changed' : 'no-picture';
+    } else reason = mirror === 'required' ? 'no-picture' : 'model-only';
     // Example target: the validated reference's end state for this seed, as a schematic.
     const steps = references?.get(run.taskId);
+    let target: State | null = null;
     if (references === null) detail.targetMissing = 'unreadable';
     else if (!steps) detail.targetMissing = 'no-reference';
     else {
       const played = runOracle(world, run.seed, run.taskId, steps);
-      if (played.ok) detail.target = schematicSvg(played.session.state, { prefix: `run${index}-target`, label: words.target, words });
-      else detail.targetMissing = 'unreadable';
+      if (played.ok) target = played.session.state; else detail.targetMissing = 'unreadable';
     }
+    // One viewBox for the pair: the union in board units; an export whose place is unknown gets a frame
+    // of the same size as the target's, so the two are still drawn at one scale.
+    const finalBox = engine ? engine.box ?? engine.read.box : schematicBounds(state), targetBox = target ? schematicBounds(target) : null;
+    let finalView = finalBox, targetView = targetBox;
+    if (targetBox && (!engine || engine.box)) finalView = targetView = unionBox(finalBox, targetBox);
+    else if (targetBox) { const width = Math.max(finalBox.width, targetBox.width), height = Math.max(finalBox.height, targetBox.height); finalView = { ...finalBox, width, height }; targetView = { ...targetBox, width, height }; }
+    // Ids inside the pictures are unique on the page by the run's position, whatever its id's length.
+    if (engine) {
+      const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
+    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView! }); detail.targetObjects = boardObjects(target); }
+    detail.overflow = pictureOverflow(finalView.width);
   }
-  return { folder: 'read', runs };
+  return { folder: 'read', runs, explanations };
 }
