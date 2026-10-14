@@ -6,9 +6,9 @@ import { stateHash } from '../canonical/index.ts';
 import { checkState, parseScene, type Unmodeled } from '../checker/index.ts';
 import { Session } from '../core/index.ts';
 import { evaluate } from '../predicate/index.ts';
-import { validateWorld } from '../world/schema.ts';
+import { validateState, validateWorld } from '../world/schema.ts';
 import { generateVariant, substituteTokens, variantIndex, variantTokens } from '../world/variant.ts';
-import type { ActionName, Arrow, ErrorClass, Frame, Localized, Predicate, Scalar, State, StepV2, Task, Value, World } from '../world/types.ts';
+import type { ActionName, Arrow, ErrorClass, Frame, GeneratedBy, Localized, Predicate, Scalar, State, StepV2, Task, TaskLimits, Value, World } from '../world/types.ts';
 import { AuthoringError } from './project.ts';
 
 export interface SceneVariant { id: string; labels: Record<string, string> }
@@ -71,6 +71,11 @@ function tokenTable(taskId: string, variants: SceneVariant[]): Tokens {
 }
 
 interface Clause { predicate: Predicate; text: Localized }
+/** The goal predicate from-scenes derives from a goal state (no variant tokens): what the
+ * minimal-length analysis regenerates to confirm that it read a goal exactly (PADR-0040). */
+export function goalPredicateOf(goal: State, frames: boolean, options: { tolerance: number; layout?: 'relative'; align?: boolean }, resized: ReadonlySet<string> = new Set()): Predicate {
+  return all(...goalClauses(goal, frames, options, label => label, resized).map(clause => clause.predicate));
+}
 /** Exact multiset of step, arrow and frame signatures, plus group, order and alignment facts. */
 function goalClauses(goal: State, frames: boolean, options: Required<Pick<FromScenesOptions, 'tolerance'>> & FromScenesOptions, tok: Tokens['of'], resized: ReadonlySet<string> = new Set()): Clause[] {
   const steps = liveSteps(goal), arrows = liveArrows(goal), frameList = liveFrames(goal);
@@ -385,14 +390,25 @@ const tooComplex = (clauses: number): never => fail('goal_too_complex', `the goa
 /** "1 arrow", "2 arrows": the language's plural rule, never `n === 1`. */
 function counted(language: 'en' | 'de', n: number, one: string, other: string): string { return `${n} ${new Intl.PluralRules(language).select(n) === 'one' ? one : other}`; }
 export function fromScenes(startScene: string | Uint8Array, goalScene: string | Uint8Array, options: FromScenesOptions = {}): FromScenesResult {
-  return buildFromScenes(startScene, goalScene, options);
+  let start: ReturnType<typeof parseScene>, goal: ReturnType<typeof parseScene>;
+  try { start = parseScene(startScene); goal = parseScene(goalScene); } catch (error) { return fail('scene_invalid', error instanceof Error ? error.message : 'scene could not be read'); }
+  return fromStates(start.state, goal.state, options, { start: start.unmodeled, goal: goal.unmodeled });
 }
-function buildFromScenes(startScene: string | Uint8Array, goalScene: string | Uint8Array, options: FromScenesOptions): FromScenesResult {
+
+/** Options of the state-based core: those of from-scenes, plus what a generator records on the task
+ * (PADR-0036 `generatedBy`) and the task's public limits (PADR-0040). */
+export interface FromStatesOptions extends FromScenesOptions { generatedBy?: GeneratedBy; limits?: TaskLimits }
+/**
+ * The state-based core of from-scenes: a world/2 task from a start and a goal state (world/2 states,
+ * as the checker's scene parser produces them), with goal clauses, error classes, a reference
+ * solution and near misses, all verified with the independent checker. Generators call it directly
+ * (PADR-0040); `fromScenes` parses two drawings and calls it.
+ */
+export function fromStates(startInput: State, goalInput: State, options: FromStatesOptions = {}, unmodeled: FromScenesResult['unmodeled'] = { start: [], goal: [] }): FromScenesResult {
   const tolerance = options.tolerance ?? 8;
   if (!Number.isSafeInteger(tolerance) || tolerance < 0 || tolerance > 1000) fail('usage', 'tolerance must be an integer between 0 and 1000');
   const taskId = options.taskId ?? 'from-scenes', worldId = options.worldId ?? 'from-scenes';
-  let start: ReturnType<typeof parseScene>, goal: ReturnType<typeof parseScene>;
-  try { start = parseScene(startScene); goal = parseScene(goalScene); } catch (error) { return fail('scene_invalid', error instanceof Error ? error.message : 'scene could not be read'); }
+  const start = { state: readState(startInput, 'start') }, goal = { state: readState(goalInput, 'goal') };
   requireSize(start.state, 'start'); requireSize(goal.state, 'goal');
   // A singleton group cannot be produced by group_steps; the goal treats it as ungrouped.
   const goalState = structuredClone(goal.state);
@@ -433,6 +449,8 @@ function buildFromScenes(startScene: string | Uint8Array, goalScene: string | Ui
     ],
     errorClasses: errorClasses(goalState, tokens.of),
     conditionTexts: clauses.map(c => c.text),
+    ...(options.generatedBy ? { generatedBy: structuredClone(options.generatedBy) } : {}),
+    ...(options.limits ? { limits: structuredClone(options.limits) } : {}),
   };
   const original = Object.fromEntries([...tokens.map].map(([label, token]) => [token, label]));
   const cases = [{ id: 'drawn', labels: original, params: {}, layoutOffset: { x: 0, y: 0 } }, ...variants.map(v => ({ id: v.id, labels: Object.fromEntries([...tokens.map].map(([label, token]) => [token, v.labels[label] ?? label])), params: {}, layoutOffset: { x: 0, y: 0 } }))];
@@ -443,7 +461,13 @@ function buildFromScenes(startScene: string | Uint8Array, goalScene: string | Ui
     provenance: { authors: options.authors ?? ['Practonaut contributors'] }, rights: { license: 'CC0-1.0' },
   }));
   const verified = checked(() => verifyTask(world, taskId, oracleSteps, tokenize(goalState)));
-  return { world, task: world.tasks[0]!, oracle: verified, goal: tokenize(goalState), unmodeled: { start: start.unmodeled, goal: goal.unmodeled }, summary: { ...counts, clauses: clauses.length, errorClasses: task.errorClasses.length } };
+  return { world, task: world.tasks[0]!, oracle: verified, goal: tokenize(goalState), unmodeled, summary: { ...counts, clauses: clauses.length, errorClasses: task.errorClasses.length } };
+}
+
+/** A world/2 state given to the core; anything else is refused by name before any derivation. */
+function readState(input: State, which: 'start' | 'goal'): State {
+  try { return validateState(structuredClone(input), 2); }
+  catch (error) { return fail('state_invalid', `the ${which} state is not a world/2 state: ${error instanceof Error ? error.message : 'invalid'}`); }
 }
 
 /** For every variant: goal state passes (counter-probes included), oracle passes, near misses fail. */
