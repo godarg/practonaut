@@ -162,7 +162,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
 // files `report --html` and `compare --html` write, light and dark, 1280 and 320 px, EN and DE. Text in a
 // board picture is never drawn below 12 CSS px (design-language §10.2), measured as rendered.
 {
-  const fixtures = await fixtureBenches(output + "/report-fixtures", { mirror: true });
+  const fixtures = await fixtureBenches(output + "/report-fixtures", { mirror: true, compare: true });
   const states = await reportStates(fixtures);
   const pages: Array<{ id: string; language: "en" | "de"; file: string; open: boolean }> = [];
   for (const st of states) for (const language of ["en", "de"] as const) {
