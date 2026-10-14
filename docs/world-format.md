@@ -304,7 +304,8 @@ host enforces them for every attempt, for the Player and agents alike, and shows
 attempt may make at most `actions` accepted changes — every accepted `act`, `undo` and `reset` (and
 editor change) counts; a refused request does not — and evaluate at most `checks` checks. A request
 beyond a limit is refused with `action_budget_exhausted` or `check_budget_exhausted` and changes
-nothing. Reset and undo give nothing back; a new task or variant starts a new attempt. A session
+nothing. Reset and undo give nothing back; a new variant of the same task counts like a reset and
+keeps the counts; only another task starts a new attempt. A session
 started with `--checks <n>` uses the smaller of `n` and the task's own check limit. The checker
 judges the end state only; `report --verify` additionally refuses a bench run whose final history is
 longer than its task's action limit.

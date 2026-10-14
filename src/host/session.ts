@@ -399,7 +399,10 @@ export async function createPracticeController(input: World, options: PracticeSe
       }
       if (!Number.isSafeInteger(seed)) throw { code: 'invalid_argument', message: 'Seed limit reached' };
       return { candidate: new Session(original, seed, request.taskId ?? session.taskId), reset: true };
-    },context,{ counted: false, newAttempt: true }),
+      // Under task limits (PADR-0040) a new variant of the same task counts like a reset: it uses one
+      // change, is refused once the changes are used up, and keeps the attempt's counts. Only another
+      // task starts fresh counts (a single-task host refuses that).
+    },context,(request.taskId === undefined || request.taskId === session.taskId) && limitsOf(session) ? { counted: true } : { counted: false, newAttempt: true }),
     hint: async (request,suppliedContext) => {
       const context=contextFor(suppliedContext),invalid = guard<HostView>(request,context); if (invalid) return rejected(invalid);
       try {

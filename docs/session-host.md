@@ -80,7 +80,8 @@ named error. When the attempt has limits (a task's `limits`, or `--checks` on `p
 `mcp --task` and `bench`; [PADR-0040](adr/0040-challenge-tier-generated-families-and-gate.md)), the
 view and every mutation delta carry `limits: { actions?: {limit, used}, checks?: {limit, used} }`;
 accepted act, undo, reset and editor changes count as actions, evaluated checks as checks, a refused
-request counts for neither, and only a new task or variant starts fresh counts. Heartbeat contains revision only. Practice does not load a checker bundle.
+request counts for neither. A new variant of the same task counts like a reset (one change, counts
+kept, refused once the changes are used up); only another task starts fresh counts. Heartbeat contains revision only. Practice does not load a checker bundle.
 Quantified predicates remain whole public conditions so different witnesses cannot incorrectly
 satisfy split fragments. Every result is explicitly end-state-only, not learner attestation.
 

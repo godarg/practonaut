@@ -114,8 +114,10 @@ judged state and the error classes, and the judged state may hold whatever an ag
    The host counts, per task attempt, accepted mutations (act, undo, reset, editor gestures; a
    refused request costs nothing) and evaluated checks. A mutation beyond the action limit is refused
    with `action_budget_exhausted`, a check beyond the check limit with `check_budget_exhausted`;
-   neither changes the session. `reset` and `undo` do not give anything back; a new task or variant
-   starts a new attempt with fresh counters. The view, every mutation reply and every check carry the
+   neither changes the session. `reset` and `undo` do not give anything back, and a new variant of
+   the same task counts like a reset (one change, refused once the changes are used up, counts kept);
+   only another task starts a new attempt with fresh counters, which a single-task (bench) host
+   refuses. The view, every mutation reply and every check carry the
    counts (`limits.actions|checks: { limit, used }`, `checksRemaining`); the Player shows them.
    `--checks <n>` on `bench`, `play`/`serve` and `mcp --task` sets a session check limit; with a
    task limit the smaller one applies. The checker stays end-state-only; `report --verify` also

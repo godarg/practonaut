@@ -67,9 +67,13 @@ describe('the host enforces the action limit', () => {
       if (!refused.ok) assert.equal(refused.error.code, 'action_budget_exhausted');
       assert.equal(controller.view().hash, hash, 'the refused change left the board as it was');
       assert.equal((await controller.undo({ expectedRevision: revision })).ok, false);
-      // A new variant is a new attempt with fresh counts.
-      assert.equal((await controller.variant({ expectedRevision: revision, confirmed: true })).ok, true);
-      assert.deepEqual(controller.view().limits, { actions: { limit: 3, used: 0 } });
+      // A new variant of the same task counts like a reset: with every change used it is refused too,
+      // with or without naming the task (PADR-0040).
+      for (const request of [{ expectedRevision: revision, confirmed: true as const }, { expectedRevision: revision, confirmed: true as const, taskId: 'T1' }]) {
+        const variant = await controller.variant(request);
+        assert.equal(!variant.ok && variant.error.code, 'action_budget_exhausted');
+      }
+      assert.deepEqual(controller.view().limits, { actions: { limit: 3, used: 3 } });
     } finally { await controller.close(); }
   });
 
@@ -131,5 +135,32 @@ describe('the host enforces the check limit', () => {
       const { view: _view, ...delta } = reply.value;
       assert.deepEqual(mutationResult(delta, 'en').limits, { actions: { limit: 2, used: 1 }, checks: { limit: 1, used: 0 } });
     } finally { await controller.close(); }
+  });
+});
+
+describe('a new variant under task limits', () => {
+  it('counts like a reset and keeps the counts; only another task starts fresh ones; a single-task host offers no way out', async () => {
+    const two = v2World({ tasks: [v2Task({ limits: { actions: 2, checks: 1 } }), v2Task({ id: 'T2' })] });
+    const controller = await createPracticeController(two, { seed: 1, taskId: 'T1', mirror: 'off' }, noMirror);
+    try {
+      assert.equal((await controller.check({ expectedRevision: 0 })).ok, true);
+      const variant = await controller.variant({ expectedRevision: 0, confirmed: true });
+      assert.ok(variant.ok);
+      // One change used by the variant, the check stays used.
+      assert.deepEqual(controller.view().limits, { actions: { limit: 2, used: 1 }, checks: { limit: 1, used: 1 } });
+      assert.equal(controller.view().revision, 1);
+      // Another task: its own (no) limits, fresh counts; back to T1: a new attempt with fresh counts.
+      assert.equal((await controller.variant({ expectedRevision: 1, confirmed: true, taskId: 'T2' })).ok, true);
+      assert.equal(controller.view().limits, undefined);
+      assert.equal((await controller.variant({ expectedRevision: 2, confirmed: true, taskId: 'T1' })).ok, true);
+      assert.deepEqual(controller.view().limits, { actions: { limit: 2, used: 0 }, checks: { limit: 1, used: 0 } });
+    } finally { await controller.close(); }
+    const single = await createPracticeController(limited({ actions: 1 }), { seed: 1, taskId: 'T1', mirror: 'off', singleTask: true }, noMirror);
+    try {
+      assert.equal((await single.act({ expectedRevision: 0, action: move(150) })).ok, true);
+      const again = await single.variant({ expectedRevision: 1, confirmed: true });
+      assert.equal(!again.ok && again.error.code, 'action_budget_exhausted');
+      assert.deepEqual(single.view().limits, { actions: { limit: 1, used: 1 } });
+    } finally { await single.close(); }
   });
 });
