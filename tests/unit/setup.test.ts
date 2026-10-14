@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -50,7 +50,12 @@ test('setup explicitly provisions Chromium and propagates installer failure at t
     await cp(new URL('../../src/cli/output.ts', import.meta.url), join(dir, 'output.ts'));
     await cp(new URL('../../src/cli/chromium-download.ts', import.meta.url), join(dir, 'chromium-download.ts'));
     await writeFile(join(dir, 'package.json'), '{"type":"module"}');
-    await writeFile(join(dir, 'node_modules/playwright-core/package.json'), '{"name":"playwright-core","type":"module","exports":{"./package.json":"./package.json"}}');
+    await writeFile(join(dir, 'node_modules/playwright-core/package.json'), '{"name":"playwright-core","type":"module","exports":{".":"./index.js","./package.json":"./package.json"}}');
+    // Where Playwright would put the headed browser and, beside it, the headless shell: 100,000,000
+    // bytes on disk (a sparse file), which is 100 MB and 95 MiB.
+    const cache = join(dir, 'cache'), shell = join(cache, 'chromium_headless_shell-1248', 'chrome-headless-shell-mac-arm64');
+    await mkdir(shell, { recursive: true }); await writeFile(join(shell, 'chrome-headless-shell'), ''); await truncate(join(shell, 'chrome-headless-shell'), 100_000_000);
+    await writeFile(join(dir, 'node_modules/playwright-core/index.js'), `export const chromium = { executablePath: () => ${JSON.stringify(join(cache, 'chromium-1248', 'chrome-mac-arm64', 'Chromium'))} };`);
     await writeFile(join(dir, 'node_modules/playwright-core/cli.js'), `
       import assert from 'node:assert/strict';
       // Playwright's own check (isLikelyNpxGlobal): a CLI path containing _npx prints a warning box.
@@ -74,6 +79,8 @@ test('setup explicitly provisions Chromium and propagates installer failure at t
     assert.match(green.stdout, /installer-boundary:\["install","--only-shell","chromium","--dry-run"\]/);
     assert.match(green.stdout, /installer-boundary:\["install","--only-shell","chromium"\]/);
     assert.doesNotMatch(green.stderr, /WARNING: It looks like you are running/, 'no Playwright npx warning box under npx practonaut');
+    // The size on disk in decimal megabytes, like the download size before it.
+    assert.match(green.stdout, /setup: the Chromium headless shell is ready in .+ \(100 MB on disk\)/);
     const failed = run(7);
     assert.equal(failed.status, 3, failed.stdout + failed.stderr);
     assert.doesNotMatch(failed.stdout, /provisioning completed/);

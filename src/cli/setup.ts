@@ -41,7 +41,8 @@ export async function commandSetup(args: string[]): Promise<number> {
   if (await run(['--dry-run']) !== 0) return 3;
   if (await run([]) !== 0) return 3;
   const installed = await installedHeadlessShell();
-  process.stdout.write(installed ? cliText('setupDoneAt', { name: HEADLESS_SHELL.name, path: safeText(displayPath(installed.directory)), size: (installed.bytes / 1024 / 1024).toFixed(0) }) : cliText("setupDone"));
+  // Megabytes are 10^6 bytes here, as in the download size printed before it.
+  process.stdout.write(installed ? cliText('setupDoneAt', { name: HEADLESS_SHELL.name, path: safeText(displayPath(installed.directory)), size: Math.round(installed.bytes / 1_000_000) }) : cliText("setupDone"));
   return 0;
 }
 

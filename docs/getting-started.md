@@ -55,7 +55,7 @@ applied to a real, pinned Excalidraw 0.18.1 running in the background and read b
 counts (the "mirror"). Without it Practonaut runs **model-only**: tasks work, the terminal and the
 Player say so, and results are not checked against the real app. `--mirror required` refuses to
 start without Chromium; `--mirror off` always runs model-only. `setup` ends by naming the folder the
-headless shell went to and its size on disk (203 MB measured on macOS).
+headless shell went to and its size on disk (213 MB measured on macOS). All sizes here are decimal megabytes (10^6 bytes).
 
 ### Chromium does not start
 
