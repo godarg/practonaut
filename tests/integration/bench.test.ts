@@ -77,7 +77,8 @@ test('report --verify re-judges every run from its artifacts; a consistent forge
   const plain = cli(path); assert.equal(plain.status, 0, plain.stderr); assert.match(plain.stdout, /Consistency-checked, not re-verified/);
   const json = cli(path, '--json'); assert.equal(JSON.parse(json.stdout).verification.level, 'consistency-checked');
   const verified = cli(path, '--verify'); assert.equal(verified.status, 0, verified.stderr); assert.match(verified.stdout, /Re-verified: 2 runs re-judged/);
-  assert.deepEqual(JSON.parse(cli(path, '--verify', '--json').stdout).verification, { level: 're-verified', reverified: 2, unjudged: 0 });
+  const verification = JSON.parse(cli(path, '--verify', '--json').stdout).verification;
+  assert.deepEqual([verification.level, verification.reverified, verification.unjudged, verification.references, verification.world.id], ['re-verified', 2, 0, 2, 'excalidraw-library']);
   // A forgery that keeps the file consistent: a failed run rewritten to pass, the summary recomputed.
   const forged = structuredClone(report) as BenchReport; const target = forged.runs[0]!;
   target.checker!.session = { passed: true, errorClasses: [] }; target.pass = true; forged.summary = summarize(forged.runs, 1);

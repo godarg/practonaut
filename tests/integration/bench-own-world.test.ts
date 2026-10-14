@@ -107,6 +107,8 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     refused(await changed(async copy => { await appendFile(join(copy, 'my-task-s5-r1', 'session.json'), ' '); }), 'bench_artifact_changed', /run my-task-s5-r1: artifact session\.json does not match the hash the report binds/);
     refused(await changed(async copy => { await appendFile(join(copy, 'my-task-s2-r1', 'native.excalidraw'), ' '); }), 'bench_artifact_changed', /run my-task-s2-r1: artifact native\.excalidraw does not match/);
     refused(await changed(async copy => { await appendFile(join(copy, 'references.json'), ' '); }), 'bench_artifact_changed', /the stored references references\.json do not match the hash the report binds/);
+    // Larger than the 64 MiB the threat model allows: not read at all.
+    refused(await changed(async copy => { await writeFile(join(copy, 'references.json'), Buffer.alloc(64 * 1024 * 1024 + 1, 32)); }), 'bench_artifact_changed', /the stored references references\.json are missing or unreadable/);
     // A consistent forgery of the reference: a near miss stored as the reference, every hash and
     // length in the report updated to it. The checker does not accept it.
     refused(await changed(async (copy, value) => {

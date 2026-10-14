@@ -40,7 +40,7 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun } from './report.ts';
 import { RUN_ARTIFACTS, verdictOf } from './run.ts';
-import { MAX_ORACLE_BYTES, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage } from './world.ts';
+import { MAX_REFERENCES_BYTES, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage } from './world.ts';
 
 const MAX_ARTIFACT_BYTES = 32 * 1024 * 1024;
 
@@ -131,7 +131,7 @@ async function storedWorld(report: BenchReportV2, directory: string): Promise<Wo
 async function verifyReferences(report: BenchReportV2, world: World, directory: string): Promise<number> {
   const bound = report.references;
   if (bound === null) return 0;
-  const bytes = await boundedBytes(join(directory, BENCH_REFERENCES_FILE), MAX_ORACLE_BYTES * 16);
+  const bytes = await boundedBytes(join(directory, BENCH_REFERENCES_FILE), MAX_REFERENCES_BYTES);
   if (bytes === null) throw new BenchReportError(cliText('verifyReferencesMissing', { file: BENCH_REFERENCES_FILE }), 'bench_artifact_changed');
   if (sha256Hex(bytes) !== bound.sha256) throw new BenchReportError(cliText('verifyReferencesHash', { file: BENCH_REFERENCES_FILE }), 'bench_artifact_changed');
   const fail = (message: string): never => { throw new BenchReportError(message, 'bench_reference_invalid'); };

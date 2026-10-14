@@ -81,6 +81,8 @@ export function resolveWorldTasks(world: World, requested: 'all' | readonly stri
 
 /** Largest oracle sidecar or references file read. */
 export const MAX_ORACLE_BYTES = 4 * 1024 * 1024;
+/** Largest `references.json` read back by `report --verify`. */
+export const MAX_REFERENCES_BYTES = 64 * 1024 * 1024;
 const MAX_STEPS = 1000;
 const scalar = z.union([z.string().max(4096), z.number().int().safe(), z.boolean(), z.null()]);
 const OracleStepSchema = z.strictObject({
