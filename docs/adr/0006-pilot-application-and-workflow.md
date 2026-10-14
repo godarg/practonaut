@@ -1,5 +1,10 @@
 # PADR-0006 — Pilot application and first workflow
 
+> **Decision 4 (Penpot as the second adapter) is proposed to be superseded by
+> [PADR-0033](0033-product-direction-measurement-you-can-act-on.md):** draw.io behind a preregistered
+> spike, because Penpot installs officially only with containers. Until PADR-0033 is accepted,
+> decision 4 stands.
+
 > **Maintainer confirmation 2026-10-03:** "Pilot Excalidraw bestätigt" — after being shown the
 > disagreement of the external model reviews (Grok, Gemini preferred Penpot).
 

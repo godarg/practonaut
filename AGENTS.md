@@ -6,9 +6,11 @@ here. `CLAUDE.md` imports this file; other agent tools read it directly.
 ## 1. Read first
 
 1. `README.md` — what Practonaut is and its limits.
-2. `CONTRIBUTING.md` — setup, which test layers to run, how to add tasks, predicates, actions.
-3. `docs/architecture.md` — modules and the invariants in §10.
-4. The decision records your change touches (`docs/adr/README.md`).
+2. `docs/vision.md` and `docs/roadmap.md` — where the project is going, the current milestone and
+   its acceptance lines. Pick work from the current milestone in its listed order.
+3. `CONTRIBUTING.md` — setup, which test layers to run, how to add tasks, predicates, actions.
+4. `docs/architecture.md` — modules and the invariants in §10.
+5. The decision records your change touches (`docs/adr/README.md`).
 
 Path-scoped rules in `.claude/rules/` apply when you work in those paths. Agents that do not load
 them automatically must read the matching file before editing:
