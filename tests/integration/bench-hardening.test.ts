@@ -57,8 +57,9 @@ test('a bench agent sees no reference length of any task, even in a full observe
   try {
     await runBench({ ...base, agent: command('tasks'), tasks: ['connect'] });
     const tasks = JSON.parse(await readFile(join(state, 'tasks.json'), 'utf8')) as Array<Record<string, unknown>>;
-    // The library has 16 tasks; the agent sees their ids and titles, never a level or a reference length.
-    assert.equal(tasks.length, loadLibrary().library.tasks.length);
+    // A bench host lists only the run's own task, by id and title: no level, no reference length,
+    // and no other task of the world.
+    assert.deepEqual(tasks.map(task => task.id), ['connect']);
     for (const task of tasks) assert.deepEqual(Object.keys(task).sort(), ['id', 'title'], JSON.stringify(task));
   } finally { delete process.env.PN_TEST_AGENT_STATE; await rm(state, { recursive: true, force: true }); }
 });
