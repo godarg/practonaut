@@ -162,6 +162,10 @@ export const CLI_CATALOG = {
     "en": "seed must be a safe integer",
     "de": "Seed muss eine sichere Ganzzahl sein"
   },
+  "checksUsage": {
+    "en": "--checks must be a whole number from 0 to 1000 (checks allowed per attempt)",
+    "de": "--checks muss eine ganze Zahl von 0 bis 1000 sein (erlaubte Prüfungen je Versuch)"
+  },
   "checkerTimeout": {
     "en": "checker exceeded 10 s wall limit",
     "de": "Checker hat die Grenze von 10 Sekunden überschritten"
@@ -562,6 +566,22 @@ export const CLI_CATALOG = {
   "verifyReferenceLength": {
     "en": "task {task}: the report names a reference of {given} actions; the stored reference has {actual}",
     "de": "Aufgabe {task}: der Bericht nennt eine Referenz von {given} Aktionen; die gespeicherte Referenz hat {actual}"
+  },
+  "verifyReferenceMinimal": {
+    "en": "task {task}: the report says the reference is {given}; the minimal-length analysis on the stored world says {actual}",
+    "de": "Aufgabe {task}: laut Bericht ist die Referenz {given}; die Analyse der Minimallänge auf der gespeicherten Welt ergibt {actual}"
+  },
+  "verifyActionLimit": {
+    "en": "run {run}: its final history holds {actions} actions, more than the task's action limit of {limit}",
+    "de": "Lauf {run}: seine letzte Historie hat {actions} Aktionen, mehr als das Aktionslimit der Aufgabe von {limit}"
+  },
+  "lengthMinimal": {
+    "en": "proven minimal",
+    "de": "nachweislich minimal"
+  },
+  "lengthReference": {
+    "en": "a reference length",
+    "de": "eine Referenzlänge"
   },
   "verifySessionOther": {
     "en": "run {run}: the session artifact belongs to another task or seed",

@@ -90,7 +90,7 @@ test('HTML is static and self-contained, escapes report text and never shows sta
   assert.match(table, /8 runs, 4 passed \(50\.0 %\), 1 not judged \(infrastructure\), counted as not passed/);
   assert.match(table, /^n = 8 runs · 2 seeds · 2 repeats$/m);
   assert.match(table, /pass@1 0\.50   pass\^1 0\.50   pass\^2 0\.25/);
-  assert.match(table, /efficiency vs reference 0\.50  \(> 1 = fewer actions than the reference solution\)/);
+  assert.match(table, /efficiency vs reference length 0\.50  \(> 1 = fewer actions than the reference solution\)/);
   assert.match(renderTable(value, 'de'), /Läufe/);
 });
 
@@ -154,11 +154,11 @@ test('summary cards show each figure once: pass^k only from k = 2, the passed co
   const cards = (html: string): string[] => [...html.matchAll(/<div class="figure"><dt>([^<]*)<\/dt><dd>([^<]*)<\/dd>/g)].map(match => `${match[1]}=${match[2]}`);
   const single = report([run('connect', 1, 1, true), run('decision', 1, 1, true)], 1, ['connect', 'decision'], [1]);
   const one = renderHtml(single, ':root{}');
-  assert.deepEqual(cards(one).map(card => card.split('=')[0]), ['pass@1', 'mean actions', 'efficiency vs reference', 'mean time per run']);
+  assert.deepEqual(cards(one).map(card => card.split('=')[0]), ['pass@1', 'mean actions', 'efficiency vs reference length', 'mean time per run']);
   assert.match(one, /<dl class="figures n4">/); assert.match(one, /2 of 2 runs passed/);
   assert.equal(/pass\^1/.test(one), false, 'pass^1 equals pass@1 and is not shown twice');
   const two = renderHtml(fixture(), ':root{}');
-  assert.deepEqual(cards(two).map(card => card.split('=')[0]), ['pass@1', 'pass^2', 'mean actions', 'efficiency vs reference', 'mean time per run']);
+  assert.deepEqual(cards(two).map(card => card.split('=')[0]), ['pass@1', 'pass^2', 'mean actions', 'efficiency vs reference length', 'mean time per run']);
   assert.match(two, /<dl class="figures n5">/); assert.match(two, /1 not judged \(infrastructure\), counted as not passed/);
   // No grid width leaves one card alone in a row: 4 cards = 2 × 2 or 4 × 1; 5 cards = 1 + 2 + 2, 3 + 2 or 5 × 1.
   assert.match(two, /\.figures\.n5 \.figure:first-child\{grid-column:1\/-1\}/);

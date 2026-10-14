@@ -2,7 +2,7 @@ import { cliText } from './messages.ts';
 import { createBridge, McpConfigurationError } from "../mcp/bridge.ts";
 import { startMcpStdio } from "../mcp/server.ts";
 import { toolSchemasFor, type McpBridgeConfig } from "../mcp/contracts.ts";
-import { fallbackNotice, resolveMirror, resolvePracticeSource, startHostWithMirror, type MirrorChoice } from './serve.ts';
+import { checksOption, fallbackNotice, resolveMirror, resolvePracticeSource, startHostWithMirror, type MirrorChoice } from './serve.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { RuntimeError } from './runtime.ts';
 import { safeText } from './output.ts';
@@ -15,11 +15,11 @@ import { inlineOptionValues } from './options.ts';
 /** Self-start: `--task` (with optional `--task-id`, `--seed`, `--mirror`, `--open`). Attach: `--host` + `--token-file`. */
 export interface McpArguments {
   attach?: { host?: string; tokenFile?: string };
-  start?: { task: string; taskId?: string; seed: number; mirror: MirrorChoice; open: boolean };
+  start?: { task: string; taskId?: string; seed: number; mirror: MirrorChoice; open: boolean; checks?: number };
   /** `--call-log <file>`: one JSON line per tool call (tool, result code, result bytes, bridge time). */
   callLog?: string;
 }
-const VALUED = ['--host', '--token-file', '--task', '--task-id', '--seed', '--mirror', '--call-log'];
+const VALUED = ['--host', '--token-file', '--task', '--task-id', '--seed', '--mirror', '--call-log', '--checks'];
 export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = process.env): McpArguments {
   const args = inlineOptionValues(given, VALUED);
   const flags: Record<string, string> = {}; let open = false;
@@ -30,7 +30,7 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
     if (!VALUED.includes(key) || !value || value.startsWith('--') || Object.hasOwn(flags, key)) throw new McpConfigurationError('invalid_request');
     flags[key] = value;
   }
-  const attachFlags = '--host' in flags || '--token-file' in flags, startFlags = ['--task', '--task-id', '--seed', '--mirror'].some(key => key in flags) || open;
+  const attachFlags = '--host' in flags || '--token-file' in flags, startFlags = ['--task', '--task-id', '--seed', '--mirror', '--checks'].some(key => key in flags) || open;
   if (attachFlags && startFlags) throw new McpConfigurationError('invalid_request');
   const callLog = flags['--call-log'] === undefined ? {} : { callLog: flags['--call-log'] };
   if (startFlags) {
@@ -40,7 +40,8 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
     if (!/^-?\d+$/.test(seedText) || !Number.isSafeInteger(Number(seedText))) throw new RuntimeError('usage', cliText('seedUsage'));
     const mirror = flags['--mirror'] ?? 'auto';
     if (mirror !== 'auto' && mirror !== 'required' && mirror !== 'off') throw new RuntimeError('usage', cliText('mirrorUsage'));
-    return { start: { task, seed: Number(seedText), mirror, open, ...(flags['--task-id'] ? { taskId: flags['--task-id'] } : {}) }, ...callLog };
+    const checks = flags['--checks'] === undefined ? {} : { checks: checksOption(flags['--checks']) };
+    return { start: { task, seed: Number(seedText), mirror, open, ...(flags['--task-id'] ? { taskId: flags['--task-id'] } : {}), ...checks }, ...callLog };
   }
   const host = flags['--host'] ?? env.PRACTONAUT_HOST, tokenFile = flags['--token-file'] ?? env.PRACTONAUT_TOKEN_FILE;
   if (!host) throw new RuntimeError('usage', cliText('mcpUsage'));
@@ -57,7 +58,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     if (parsed.start) {
       const { world, taskId } = await resolvePracticeSource(parsed.start.task, parsed.start.taskId);
       const paths = await resolvedDataPaths(), seed = parsed.start.seed;
-      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror), mode => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home }));
+      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror), mode => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home, ...(parsed.start!.checks !== undefined ? { checks: parsed.start!.checks } : {}) }));
       host = started.host; const mirror = started.mirror;
       process.stderr.write(fallbackNotice(mirror));
       // The session credential stays in this process; the one-use watch link goes to stderr only.

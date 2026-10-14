@@ -25,10 +25,15 @@ export type MirrorChoice = MirrorMode | 'auto';
 /** The world that ships with the package; `practonaut` and `practonaut play` start it. */
 export const BUNDLED_WORLD = fileURLToPath(new URL('../../examples/worlds/flow-diagram/', import.meta.url));
 
-export interface ServeArguments { source: string; seed: number; taskId?: string; mirror: MirrorChoice; open: boolean; requireOffline: boolean }
+export interface ServeArguments { source: string; seed: number; taskId?: string; mirror: MirrorChoice; open: boolean; requireOffline: boolean; checks?: number }
+/** `--checks <n>`: checks allowed per attempt, 0 … 1000 (a task's own limit can only be lowered). */
+export function checksOption(value: string): number {
+  if (!/^\d{1,4}$/.test(value) || Number(value) > 1000) throw new RuntimeError('usage', cliText('checksUsage'));
+  return Number(value);
+}
 export function parseServeArguments(given: string[]): ServeArguments {
-  const args = inlineOptionValues(given, ['--seed', '--task', '--mirror']);
-  let source: string | undefined; let seed = 42; let taskId: string | undefined;
+  const args = inlineOptionValues(given, ['--seed', '--task', '--mirror', '--checks']);
+  let source: string | undefined; let seed = 42; let taskId: string | undefined; let checks: number | undefined;
   let mirror: MirrorChoice = 'auto'; let requireOffline = false; let open = true;
   const seen = new Set<string>();
   for (let i = 0; i < args.length; i++) {
@@ -36,7 +41,7 @@ export function parseServeArguments(given: string[]): ServeArguments {
     if (arg === '--require-offline' || arg === '--no-open') {
       if (seen.has(arg)) throw new RuntimeError('usage', cliText('optionDuplicate', { option: arg }));
       seen.add(arg); if (arg === '--no-open') open = false; else requireOffline = true;
-    } else if (['--seed', '--task', '--mirror'].includes(arg)) {
+    } else if (['--seed', '--task', '--mirror', '--checks'].includes(arg)) {
       if (seen.has(arg)) throw new RuntimeError('usage', cliText('optionDuplicate', { option: arg }));
       seen.add(arg); const value = args[++i];
       if (!value || value.startsWith('--')) throw new RuntimeError('usage', cliText('optionValue', { option: arg }));
@@ -44,6 +49,7 @@ export function parseServeArguments(given: string[]): ServeArguments {
         if (!/^-?\d+$/.test(value) || !Number.isSafeInteger(Number(value))) throw new RuntimeError('usage', cliText('seedUsage'));
         seed = Number(value);
       } else if (arg === '--task') taskId = value;
+      else if (arg === '--checks') checks = checksOption(value);
       else {
         if (value !== 'auto' && value !== 'required' && value !== 'off') throw new RuntimeError('usage', cliText('mirrorUsage'));
         mirror = value;
@@ -52,7 +58,7 @@ export function parseServeArguments(given: string[]): ServeArguments {
     else if (source !== undefined) throw new RuntimeError('usage', cliText('serveUsage'));
     else source = arg;
   }
-  return { source: source ?? BUNDLED_WORLD, seed, mirror, open, requireOffline, ...(taskId ? { taskId } : {}) };
+  return { source: source ?? BUNDLED_WORLD, seed, mirror, open, requireOffline, ...(taskId ? { taskId } : {}), ...(checks !== undefined ? { checks } : {}) };
 }
 
 /** `sandbox: false` marks a mirror whose Chromium runs without its sandbox (Linux fallback, PADR-0032). */
@@ -134,7 +140,7 @@ export async function commandServe(args: string[]): Promise<number> {
   const world = await loadSource(options.source);
   const paths = await resolvedDataPaths();
   const { host, mirror } = await startHostWithMirror(options.mirror, await resolveMirror(options.mirror), mode =>
-    startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, ...(options.taskId ? { taskId: options.taskId } : {}) }));
+    startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, ...(options.taskId ? { taskId: options.taskId } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }));
   process.stderr.write(fallbackNotice(mirror));
   // At most one private launcher file exists; it is removed with its code's lifetime or at exit.
   let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined; let launcherTimer: ReturnType<typeof setTimeout> | undefined;

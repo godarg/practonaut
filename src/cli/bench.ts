@@ -2,7 +2,7 @@ import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
-import { fallbackNotice, resolveMirror } from './serve.ts';
+import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
@@ -14,7 +14,7 @@ import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--checks'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -52,6 +52,8 @@ export interface BenchArguments {
   tasks: string[] | 'all';
   world?: string; oracles: string[];
   seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; label?: string; out?: string;
+  /** `--checks <n>`: checks allowed per run (a task's own limit can only be lowered). */
+  checks?: number;
 }
 export function parseBenchArguments(args: string[]): BenchArguments {
   const parsed = flags(args, VALUED);
@@ -86,6 +88,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
     agent: parsed.flags['--agent']!, tasks, ...(world !== undefined ? { world } : {}), oracles, seeds,
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
     maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
+    ...(parsed.flags['--checks'] !== undefined ? { checks: checksOption(parsed.flags['--checks']) } : {}),
   };
 }
 
@@ -143,7 +146,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {

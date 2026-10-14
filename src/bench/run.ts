@@ -30,6 +30,7 @@ import { sha256Hex } from '../canonical/index.ts';
 import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
+import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 import { StdioMcpClient, type McpServerEntry } from './mcp-client.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
@@ -46,6 +47,8 @@ export interface BenchOptions {
   world?: BenchWorld; references?: ReadonlyMap<string, BenchReference>;
   /** `--label`: stored in the report as given. */
   label?: string;
+  /** `--checks`: checks allowed per run; with a task's own limit the smaller applies (PADR-0040). */
+  checks?: number;
   /** Variables a preset agent gets although `withheldFromPreset` names them (`--keep-env`). */
   keepEnv?: readonly string[];
   /** Progress lines (stderr in the CLI). */
@@ -233,7 +236,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     let outcome: AgentOutcome; let checker: BenchRunV2['checker'] = null; let artifacts: BenchRunV2['artifacts']; let wallMs = 0; let finalActions = 0;
     try {
       // No task-list facts for bench agents: the reference length of any task is not theirs to see.
-      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory, taskInfo: {} });
+      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory, taskInfo: {}, ...(options.checks !== undefined ? { checks: options.checks } : {}) });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile], env: { PRACTONAUT_HOME: agentDirectory } };
       const configPath = join(agentDirectory, 'mcp.json');
@@ -295,7 +298,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
   if (references.size) {
     const text = referencesText(references, options.tasks);
     await writeRunArtifact(directory, BENCH_REFERENCES_FILE, text);
-    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(text), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.oracle.steps.length }] : []; }) };
+    // Whether each reference is a proven minimal solution for every planned seed (PADR-0040).
+    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(text), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.oracle.steps.length, minimal: analyseLengthForSeeds(world, taskId, options.seeds, value.oracle.steps.length).kind === 'minimal' }] : []; }) };
   }
   const generated = options.tasks.flatMap(taskId => { const by = world.tasks.find(task => task.id === taskId)?.generatedBy; return by ? [{ taskId, ...by }] : []; });
   const model = options.agent.kind === 'builtin' ? null : client.model;
@@ -310,7 +314,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       model, modelSource: model === null ? 'none' : options.agent.kind === 'preset' ? 'client-attested' : 'command-output',
       apiKeySource: options.agent.kind === 'builtin' ? null : client.apiKeySource, keptEnv: options.agent.kind === 'preset' ? [...(options.keepEnv ?? [])] : [],
     },
-    settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT },
+    settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT, ...(options.checks !== undefined ? { checks: options.checks } : {}) },
     references: referencesBinding,
     runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length } } : {}), summary: summarize(runs, options.repeats),
   };

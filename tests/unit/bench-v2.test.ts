@@ -104,7 +104,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
-  assert.match(table, /efficiency vs reference 0\.50, over 1 of 2 tasks with a validated reference/);
+  assert.match(table, /efficiency vs reference length 0\.50, over 1 of 2 tasks with a validated reference/);
   assert.match(table, /^other .* no reference +no reference$/m);
   assert.match(html, /Label: nightly \\u\{001b\}\[31m&lt;b&gt;run&lt;\/b&gt;\\u\{202e\}/);
   assert.match(html, /<dt>Isolation<\/dt><dd>template: tools not restricted by Practonaut<\/dd>/);
@@ -205,4 +205,25 @@ test('own world and oracle files: packed like pack, hostile input refused by nam
     const broken = ownReferences(loaded.world, tasks, [{ path: 'b.json', oracle: { ...oracle, steps: [{ name: 'connect', params: { from: 'a', to: 'nowhere' } }] } }]);
     await assert.rejects(validateOwnReferences(loaded.world, broken, [1]), (error: Error & { code?: string }) => error.code === 'bench_oracle_invalid' && /with seed 1 its action 0 is rejected/.test(error.message));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('efficiency says "minimal length" only when every referenced task is proven minimal (PADR-0040)', () => {
+  const all = v2Report([run('Flow', 2, 1, true, 4, 2), run('Flow', 5, 1, true, 2, 2)]);
+  all.settings.tasks = ['Flow']; all.references!.tasks[0]!.minimal = true; all.summary = summarize(all.runs, 1);
+  assert.doesNotThrow(() => validateBenchReportV2(all));
+  // Hand calculation: (2/4 + 2/2) / 2 = 0.75.
+  assert.match(renderTable(all), /efficiency vs minimal length 0\.75  \(1 = as few actions as possible\)/);
+  assert.match(renderTable(all), /^Flow .* 2 \(minimal\) +0\.75$/m);
+  assert.match(renderTable(all, 'de'), /Effizienz gegenüber Minimallänge 0\.75/);
+  // Not proven: the plain reference length, as before.
+  const reference = structuredClone(all); reference.references!.tasks[0]!.minimal = false;
+  assert.match(renderTable(reference), /efficiency vs reference length 0\.75  \(> 1 = fewer actions than the reference solution\)/);
+  assert.match(renderTable(reference), /^Flow .* 2 +0\.75$/m);
+  // Some referenced tasks without a proof: the reference length, saying for how many it is proven.
+  const mixed = v2Report([run('Flow', 2, 1, true, 4, 2), run('other', 2, 1, true, 3, 3)]);
+  mixed.settings.seeds = [2];
+  mixed.references!.tasks = [{ taskId: 'Flow', source: 'oracle-file', actions: 2, minimal: true }, { taskId: 'other', source: 'oracle-file', actions: 3, minimal: false }];
+  mixed.summary = summarize(mixed.runs, 1);
+  assert.doesNotThrow(() => validateBenchReportV2(mixed));
+  assert.match(renderTable(mixed), /efficiency vs reference length 0\.75, proven minimal for 1 of 2/);
 });

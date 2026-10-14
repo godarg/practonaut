@@ -310,6 +310,11 @@
         "prompt": {
           "type": "string",
           "maxLength": 4096
+        },
+        "checks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
         }
       },
       "required": [
@@ -358,6 +363,9 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 1000
+                  },
+                  "minimal": {
+                    "type": "boolean"
                   }
                 },
                 "required": [

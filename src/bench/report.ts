@@ -197,11 +197,16 @@ export const BenchReportSchemaV2 = z.strictObject({
     repeats: z.number().int().min(1).max(1000), timeoutSeconds: z.number().int().min(1).max(86_400),
     maxActions: z.number().int().min(1).max(10_000), mirror: z.enum(['auto', 'required', 'off']),
     prompt: text(4096),
+    /** `--checks`: checks allowed per run (PADR-0040); a task's own limits are in the stored world. */
+    checks: z.number().int().min(0).max(1000).optional(),
   }),
   /** Validated references, stored in the bench folder after the last agent ended; null: none. */
   references: z.strictObject({
     path: z.literal(BENCH_REFERENCES_FILE), sha256,
-    tasks: z.array(z.strictObject({ taskId, source: z.enum(['library', 'oracle-file']), actions: z.number().int().min(1).max(1000) })).min(1).max(1000),
+    tasks: z.array(z.strictObject({ taskId, source: z.enum(['library', 'oracle-file']), actions: z.number().int().min(1).max(1000),
+      /** The reference is a proven minimal solution for every planned seed (PADR-0040); absent or false:
+       * a reference length. `report --verify` recomputes it. */
+      minimal: z.boolean().optional() })).min(1).max(1000),
   }).nullable(),
   runs: z.array(BenchRunSchemaV2).min(1).max(100_000),
   interrupted: z.strictObject({ plannedRuns: z.number().int().min(2).max(Number.MAX_SAFE_INTEGER) }).optional(),

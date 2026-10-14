@@ -41,6 +41,7 @@ import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun } from './report.ts';
 import { RUN_ARTIFACTS, verdictOf } from './run.ts';
 import { MAX_REFERENCES_BYTES, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage } from './world.ts';
+import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 
 const MAX_ARTIFACT_BYTES = 32 * 1024 * 1024;
 
@@ -148,6 +149,11 @@ async function verifyReferences(report: BenchReportV2, world: World, directory: 
       const problem = await referenceProblem(world, expected.taskId, entry.oracle as Parameters<typeof referenceProblem>[2], seed);
       if (problem !== null) fail(problem);
     }
+    // A minimality claim is re-derived on the stored world (PADR-0040).
+    if (expected.minimal !== undefined) {
+      const proven = analyseLengthForSeeds(world, expected.taskId, report.settings.seeds, expected.actions).kind === 'minimal';
+      if (proven !== expected.minimal) fail(cliText('verifyReferenceMinimal', { task: expected.taskId, given: cliText(expected.minimal ? 'lengthMinimal' : 'lengthReference'), actual: cliText(proven ? 'lengthMinimal' : 'lengthReference') }));
+    }
   }
   return bound.tasks.length;
 }
@@ -166,6 +172,9 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
     if (run.checker === null) { unjudged++; continue; }
+    // The host enforces a task's action limit; a longer final history cannot come from a bench run.
+    const limit = world.tasks.find(task => task.id === run.taskId)?.limits?.actions;
+    if (limit !== undefined && run.actions > limit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: run.actions, limit }));
     await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
     reverified++;
   }

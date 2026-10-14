@@ -108,7 +108,7 @@ function status(code: HostErrorCode): number {
   if (code === "origin_rejected" || code === "author_required") return 403;
   if (code === "json_required") return 415;
   if (code === "body_too_large" || code === "result_too_large") return 413;
-  if (code === "rate_limited" || code === "limit_exceeded" || code === "action_budget_exhausted") return 429;
+  if (code === "rate_limited" || code === "limit_exceeded" || code === "action_budget_exhausted" || code === "check_budget_exhausted") return 429;
   if (code === "not_found") return 404;
   if (code === "method_not_allowed") return 405;
   if (["session_busy", "project_store_busy", "stale_base", "real_tool_disagrees", "replay_mismatch"].includes(code)) return 409;

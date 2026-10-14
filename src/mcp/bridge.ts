@@ -58,7 +58,10 @@ const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const localized = z.strictObject({ en: z.string().max(8192), de: z.string().max(8192) });
 const diagnosis = z.array(z.strictObject({ id: z.string(), explanation: localized }));
 const condition = z.strictObject({ id: z.string(), text: localized, formalText: localized.optional() });
-const checkSchema = z.strictObject({ scope: z.literal("end-state-only"), hash: z.string(), revision: integer, passed: z.boolean(), conditions: z.array(condition.extend({ met: z.boolean() })), errors: diagnosis, mode: z.enum(["real-engine", "model-only"]), practiceEvidence: z.boolean() });
+const checkSchema = z.strictObject({ scope: z.literal("end-state-only"), hash: z.string(), revision: integer, passed: z.boolean(), conditions: z.array(condition.extend({ met: z.boolean() })), errors: diagnosis, mode: z.enum(["real-engine", "model-only"]), practiceEvidence: z.boolean(), checksRemaining: integer.optional() });
+/** The attempt's limits (PADR-0040): only the counts, never anything about the solution. */
+const limitCount = z.strictObject({ limit: integer, used: integer });
+const limitsSchema = z.strictObject({ actions: limitCount.optional(), checks: limitCount.optional() });
 const action = z.strictObject({ name: z.string(), params: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean(), z.null()])), baseStep: integer.optional() });
 /** Fail closed on unknown fields: a future host field never silently becomes an agent oracle. */
 export const publicViewSchema = z.strictObject({
@@ -72,11 +75,12 @@ export const publicViewSchema = z.strictObject({
   actions: z.union([WorldSchema.shape.actions, z.array(ActionDefinitionSchemaV2).max(32)]), rules: z.union([WorldSchema.shape.rules, z.array(RuleSchemaV2).max(128)]), mirror: z.enum(["required", "off"]),
   mirrorHealth: z.strictObject({ status: z.enum(["available", "unavailable", "closed", "model-only"]), recoveries: integer }),
   practiceEvidence: z.boolean(), attempt: integer, hintsOpened: integer, hints: z.array(localized), result: checkSchema.nullable(), errors: diagnosis,
+  limits: limitsSchema.optional(),
 });
 const effect = z.strictObject({ kind: z.string(), id: z.string() });
 /** A mutation answered without its view (`reply: "delta"`, PADR-0038); `changed` holds state objects. */
 const deltaReplySchema = z.strictObject({
-  delta: z.strictObject({ step: integer, revision: integer, hash: z.string(), changed: z.record(z.string(), z.unknown()), created: z.array(z.string()), removed: z.array(z.string()), effects: z.array(effect), errors: diagnosis, changedOmitted: z.literal(true).optional() }),
+  delta: z.strictObject({ step: integer, revision: integer, hash: z.string(), changed: z.record(z.string(), z.unknown()), created: z.array(z.string()), removed: z.array(z.string()), effects: z.array(effect), errors: diagnosis, changedOmitted: z.literal(true).optional(), limits: limitsSchema.optional() }),
   mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative(),
 }).superRefine((value, context) => { if (!AnyStateSchema.safeParse({ objects: value.delta.changed }).success) context.addIssue({ code: "custom", message: "changed objects do not match the state schema" }); });
 // Only practice/core failures are part of these seven tools. Authoring/runtime or future
