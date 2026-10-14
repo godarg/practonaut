@@ -1,4 +1,4 @@
-// `practonaut mcp --call-log`: one line per tools/call with the tool, its result code, the exact
+// `practonaut mcp --call-log`: one line per tools/call with its request id, the tool, its result code, the exact
 // bytes of the result as sent and the bridge's time — on both wire eras, including refused and
 // rate-limited calls, and never any argument or reply content.
 import { test } from 'node:test';
@@ -46,6 +46,10 @@ test('the call log has one exact line per tool call on both wire eras, refusals 
       assert.equal(sent.every(id => wire.has(id)), true, 'every call was answered');
       const sizes = sent.map(id => Buffer.byteLength(JSON.stringify(wire.get(id)))).sort((a, b) => a - b);
       assert.deepEqual(entries.map(entry => entry.resultBytes).sort((a, b) => a - b), sizes, modern ? 'modern era' : 'legacy era');
+      // Each line names its request id, so a client can join its own round trip to the bridge's line.
+      const byId = new Map(entries.map(entry => [entry.id, entry.resultBytes]));
+      assert.equal(byId.size, sent.length, 'every request id once');
+      for (const id of sent) assert.equal(byId.get(id), Buffer.byteLength(JSON.stringify(wire.get(id))), `request ${String(id)}`);
       for (const entry of entries) assert.ok(entry.bridgeMs >= 0 && entry.bridgeMs < 60_000);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }

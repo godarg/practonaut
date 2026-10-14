@@ -18,8 +18,13 @@
  * actions and efficiency then follow from these values (the validator re-derives them). Any
  * difference rejects the report.
  *
+ * bench/2 run evidence (PADR-0039): the call log, mutation log, condition trace and engine picture
+ * against their hashes; the mutation log against the run's counters; the trace re-derived by the
+ * checker from the session and the mutation log. The picture cannot be re-derived without the engine.
+ *
  * Not re-verifiable, self-reported by the runner: acceptedActions, rejectedActions, undos, resets,
- * toolCalls, wallMs, status, agentExitCode, note, the client-reported model and apiKeySource.
+ * toolCalls, wallMs, status, agentExitCode, note, the client-reported model and apiKeySource, the
+ * client's tokens, turns and cost, and the call log (written by the agent's own bridge).
  *
  * What this shows: the report's verdicts follow from the artifacts on disk. What it does not show:
  * that those artifacts came from the agent named in the report. Whoever can write the run directory
@@ -31,14 +36,15 @@ import { isDeepStrictEqual } from 'node:util';
 import { sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { safeText } from '../cli/output.ts';
-import { checkInProcess } from '../cli/runtime.ts';
+import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
 import { nativeMatchesState } from '../host/export-pair.ts';
 import { PackageError } from '../package/index.ts';
 import { LIMITS } from '../package/limits.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
-import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun, type BenchRunV2 } from './report.ts';
+import { mutationCounts, parseMutations, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { RUN_ARTIFACTS, verdictOf } from './run.ts';
 import { MAX_REFERENCES_BYTES, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage } from './world.ts';
 
@@ -63,8 +69,8 @@ async function artifact(directory: string, runId: string, name: string, expected
   return bytes.toString('utf8');
 }
 
-/** Re-judges one judged run from its artifacts against `world`. */
-async function rejudge(run: BenchRun, world: World, directory: string, artifactCode: BenchErrorCode): Promise<void> {
+/** Re-judges one judged run from its artifacts against `world`; returns the session's text. */
+async function rejudge(run: BenchRun, world: World, directory: string, artifactCode: BenchErrorCode): Promise<string> {
   if (!run.artifacts) throw new BenchReportError(`run ${run.id} binds no artifacts; the report can be consistency-checked but not re-verified`);
   const sessionText = await artifact(directory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, artifactCode);
   const checkerText = await artifact(directory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, artifactCode);
@@ -87,6 +93,39 @@ async function rejudge(run: BenchRun, world: World, directory: string, artifactC
     throw new BenchReportError(cliText('verifyCheckerStored', { run: run.id }));
   const recomputed = { session: verdictOf(sessionRaw, run.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, run.taskId) };
   if (!isDeepStrictEqual(recomputed, run.checker)) throw new BenchReportError(cliText('verifyVerdict', { run: run.id, result: `session ${recomputed.session.passed ? 'pass' : 'fail'}${recomputed.native ? `, native ${recomputed.native.passed ? 'pass' : 'fail'}` : ''}` }));
+  return sessionText;
+}
+
+/** bench/2 run evidence (PADR-0039): the call and mutation logs, the trace and the picture against
+ * their hashes; the mutation log against the run's counters. */
+async function evidenceHashes(run: BenchRunV2, directory: string): Promise<{ mutations: string | null; trace: string | null }> {
+  const code: BenchErrorCode = 'bench_artifact_changed';
+  if (run.logs?.calls) await artifact(directory, run.id, RUN_EVIDENCE.calls, run.logs.calls.sha256, code);
+  const mutations = run.logs ? await artifact(directory, run.id, RUN_EVIDENCE.mutations, run.logs.mutations.sha256, code) : null;
+  const trace = typeof run.artifacts?.trace === 'string' ? await artifact(directory, run.id, RUN_EVIDENCE.trace, run.artifacts.trace, code) : null;
+  if (typeof run.artifacts?.board === 'string') await artifact(directory, run.id, RUN_EVIDENCE.board, run.artifacts.board, code);
+  return { mutations, trace };
+}
+
+/** The mutation log agrees with the run's counters, and the checker re-derives the stored trace from
+ * the session and that log. */
+async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string | null, texts: { mutations: string | null; trace: string | null }): Promise<void> {
+  if (texts.mutations === null || !run.logs) return;
+  let records;
+  try { records = parseMutations(texts.mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }
+  const counted = mutationCounts(records), omitted = run.logs.mutations.omitted;
+  if (records.length !== run.logs.mutations.entries || counted.accepted !== run.acceptedActions || counted.undos !== run.undos || counted.resets !== run.resets
+    || counted.act + counted.undoCalls + counted.resetCalls + omitted !== run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset
+    || counted.rejected > run.rejectedActions || (omitted === 0 && counted.rejected !== run.rejectedActions))
+    throw new BenchReportError(cliText('verifyMutationsCounters', { run: run.id }));
+  if (texts.trace === null || sessionText === null) return;
+  const timeline = timelineOf(records, omitted);
+  let derived: string;
+  try {
+    if ('reason' in timeline) throw new Error(timeline.reason);
+    derived = JSON.stringify(await traceInProcess(world, sessionText, timeline.timeline, { seed: run.seed, taskId: run.taskId })) + '\n';
+  } catch { throw new BenchReportError(cliText('verifyTrace', { run: run.id })); }
+  if (derived !== texts.trace) throw new BenchReportError(cliText('verifyTrace', { run: run.id }));
 }
 
 /** bench/1: re-judges every judged run of an already validated report against the bundled library;
@@ -156,17 +195,22 @@ async function verifyReferences(report: BenchReportV2, world: World, directory: 
  * world. Throws a named `BenchReportError` on the first difference. */
 export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string): Promise<VerificationResultV2> {
   const world = await storedWorld(report, runsDirectory);
-  // Artifacts are compared with their hashes before anything is re-judged.
-  for (const run of report.runs) if (run.artifacts) {
-    await artifact(runsDirectory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, 'bench_artifact_changed');
-    await artifact(runsDirectory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, 'bench_artifact_changed');
-    if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
+  // Artifacts and evidence are compared with their hashes before anything is re-judged.
+  const evidence = new Map<string, { mutations: string | null; trace: string | null }>();
+  for (const run of report.runs) {
+    if (run.artifacts) {
+      await artifact(runsDirectory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, 'bench_artifact_changed');
+      await artifact(runsDirectory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, 'bench_artifact_changed');
+      if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
+    }
+    evidence.set(run.id, await evidenceHashes(run, runsDirectory));
   }
   const references = await verifyReferences(report, world, runsDirectory);
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
-    if (run.checker === null) { unjudged++; continue; }
-    await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
+    if (run.checker === null) { unjudged++; await verifyEvidence(run, world, null, evidence.get(run.id)!); continue; }
+    const sessionText = await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
+    await verifyEvidence(run, world, sessionText, evidence.get(run.id)!);
     reverified++;
   }
   return { reverified, unjudged, references, world: { id: world.id, version: world.version } };

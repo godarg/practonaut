@@ -1,0 +1,171 @@
+/**
+ * Run evidence in the bench folder (PADR-0039 A): the call log the agent's bridge writes, the
+ * mutation log the runner's host-side wrapper writes, the timeline the checker's trace replays, and
+ * the client's own token, turn and cost figures. Every file here is data read back from a folder
+ * an agent could write to: it is parsed with strict, bounded schemas and a line that does not fit is
+ * dropped (call log) or refuses the file (mutation log).
+ */
+import { z } from 'zod';
+import type { ClientCall } from './mcp-client.ts';
+import type { Action, Scalar } from '../world/types.ts';
+import { ACTOR_CLIENT } from '../host/protocol.ts';
+
+/** File names of the evidence next to the judged artifacts in a run folder. */
+export const RUN_EVIDENCE = Object.freeze({ calls: 'calls.jsonl', mutations: 'mutations.jsonl', trace: 'trace.json', board: 'board.svg' });
+/** The largest call or mutation log read back. */
+export const MAX_LOG_BYTES = 16 * 1024 * 1024;
+/** The most lines a log keeps. */
+export const MAX_LOG_LINES = 100_000;
+/** Budget refusals recorded in full before they are only counted. */
+export const MAX_RECORDED_REFUSALS = 100;
+/** Strings of a rejected action's parameters are cut to this many characters. */
+export const MAX_REJECTED_TEXT = 256;
+
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const millis = z.number().nonnegative().max(86_400_000);
+const code = z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/);
+const requestId = z.union([z.number().int().safe(), z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/), z.null()]);
+
+/** One line the bridge writes (`practonaut mcp --call-log`, PADR-0038 decision 8). */
+const BridgeLineSchema = z.strictObject({ id: requestId.optional(), tool: code, code, resultBytes: count, bridgeMs: millis });
+/** One line of a run's `calls.jsonl` after the runner normalised it. */
+export const CallRecordSchema = z.strictObject({ seq: count, id: requestId, tool: code, code, resultBytes: count, bridgeMs: millis, clientMs: millis.nullable() });
+export type CallRecord = z.infer<typeof CallRecordSchema>;
+
+const lines = (text: string): string[] => text.split('\n').filter(line => line.trim() !== '').slice(0, MAX_LOG_LINES);
+
+/**
+ * The bridge's raw call log, normalised: well-formed lines in order, numbered, with the client's
+ * round trip joined by request id where Practonaut's own client made the call (built-in agents).
+ * Lines that do not fit the bridge's format are dropped and counted.
+ */
+export function normaliseCallLog(raw: string, client?: readonly ClientCall[]): { records: CallRecord[]; dropped: number; text: string } {
+  const timing = new Map((client ?? []).map(call => [call.id, call.ms]));
+  const records: CallRecord[] = []; let dropped = 0;
+  for (const line of lines(raw)) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(line); } catch { dropped++; continue; }
+    const entry = BridgeLineSchema.safeParse(parsed);
+    if (!entry.success) { dropped++; continue; }
+    const id = entry.data.id ?? null;
+    records.push({ seq: records.length, id, tool: entry.data.tool, code: entry.data.code, resultBytes: entry.data.resultBytes, bridgeMs: entry.data.bridgeMs, clientMs: client && typeof id === 'number' ? timing.get(id) ?? null : null });
+  }
+  return { records, dropped, text: records.map(record => JSON.stringify(record)).join('\n') + (records.length ? '\n' : '') };
+}
+
+export function parseCallLog(text: string): CallRecord[] {
+  return lines(text).map((line, index) => {
+    const parsed = CallRecordSchema.safeParse(JSON.parse(line));
+    if (!parsed.success || parsed.data.seq !== index) throw new Error(`calls.jsonl line ${index + 1} is not a call record`);
+    return parsed.data;
+  });
+}
+
+// ---- mutations.jsonl ----
+
+const scalar = z.union([z.string().max(4096), z.number().int().safe(), z.boolean(), z.null()]);
+const ActionSchema = z.strictObject({ name: z.string().regex(/^[a-z_]{1,32}$/), params: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,31}$/), scalar), baseStep: z.number().int().nonnegative().safe().optional() });
+export const MutationRecordSchema = z.strictObject({
+  seq: count, op: z.enum(['act', 'undo', 'reset']),
+  /** For `act`: the action as the host received it; a rejected action's strings are cut. */
+  action: ActionSchema.optional(),
+  /** The MCP client name the agent declared (shown, never trusted); null without one. */
+  client: z.string().regex(ACTOR_CLIENT).nullable(),
+  outcome: z.enum(['accepted', 'rejected']),
+  /** The host's error code of a rejected mutation (`action_budget_exhausted` from the runner's budget). */
+  code: code.optional(),
+  /** Step and revision after the mutation (unchanged when it was rejected). */
+  step: count, revision: count,
+});
+export type MutationRecord = z.infer<typeof MutationRecordSchema>;
+export type MutationOp = MutationRecord['op'];
+
+/** A rejected action's parameters as the log keeps them: scalars only, strings cut. */
+function keptParams(params: Record<string, unknown>): Record<string, Scalar> {
+  const kept: Record<string, Scalar> = {};
+  for (const [key, value] of Object.entries(params).slice(0, 32)) {
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(key)) continue;
+    if (typeof value === 'string') kept[key] = value.length > MAX_REJECTED_TEXT ? value.slice(0, MAX_REJECTED_TEXT) + '…' : value;
+    else if (typeof value === 'number') kept[key] = Number.isSafeInteger(value) ? value : String(value).slice(0, 32);
+    else if (typeof value === 'boolean' || value === null) kept[key] = value;
+    else kept[key] = '[not a scalar]';
+  }
+  return kept;
+}
+
+/** The runner's record of every mutation that reaches the session (PADR-0039 A.2). */
+export class MutationRecorder {
+  readonly records: MutationRecord[] = [];
+  /** Budget refusals beyond MAX_RECORDED_REFUSALS: counted, not recorded. */
+  omitted = 0;
+  private refusals = 0;
+  /** `position` is read only for an entry that is kept (a refusal beyond the cap costs nothing). */
+  record(entry: { op: MutationOp; action?: Action; client?: string | null; outcome: 'accepted' | 'rejected'; code?: string; position: () => { step: number; revision: number } }): void {
+    if (entry.code === 'action_budget_exhausted' && ++this.refusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
+    if (this.records.length >= MAX_LOG_LINES) { this.omitted++; return; }
+    const { step, revision } = entry.position();
+    const action = entry.action === undefined ? undefined : {
+      name: /^[a-z_]{1,32}$/.test(entry.action.name) ? entry.action.name : 'unknown',
+      params: entry.outcome === 'accepted' ? entry.action.params : keptParams(entry.action.params),
+      ...(Number.isSafeInteger(entry.action.baseStep) && (entry.action.baseStep ?? -1) >= 0 ? { baseStep: entry.action.baseStep } : {}),
+    };
+    const client = typeof entry.client === 'string' && ACTOR_CLIENT.test(entry.client) ? entry.client : null;
+    this.records.push({ seq: this.records.length, op: entry.op, ...(action ? { action } : {}), client, outcome: entry.outcome, ...(entry.code && /^[A-Za-z0-9_.:-]{1,64}$/.test(entry.code) ? { code: entry.code } : {}), step, revision });
+  }
+  text(): string { return this.records.map(record => JSON.stringify(record)).join('\n') + (this.records.length ? '\n' : ''); }
+}
+
+/** Reads a run's `mutations.jsonl` strictly: every line a record, numbered from 0. */
+export function parseMutations(text: string): MutationRecord[] {
+  return lines(text).map((line, index) => {
+    let raw: unknown;
+    try { raw = JSON.parse(line); } catch { throw new Error(`mutations.jsonl line ${index + 1} is not JSON`); }
+    const parsed = MutationRecordSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.seq !== index) throw new Error(`mutations.jsonl line ${index + 1} is not a mutation record`);
+    return parsed.data;
+  });
+}
+
+/** What a mutation log says about the run's counters (each kind of call and its outcome). */
+export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number } {
+  const of = (op: MutationOp, outcome?: 'accepted' | 'rejected'): number => records.filter(record => record.op === op && (outcome === undefined || record.outcome === outcome)).length;
+  return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted') };
+}
+
+/** The accepted mutations as the checker's trace replays them, or the reason there is none: a log
+ * that was cut cannot be replayed. */
+export type TimelineEntry = { seq: number; op: 'act'; action: Action } | { seq: number; op: 'undo' | 'reset' };
+export function timelineOf(records: readonly MutationRecord[], omitted = 0): { timeline: TimelineEntry[] } | { reason: 'log_truncated' } {
+  if (records.length >= MAX_LOG_LINES && omitted > 0) return { reason: 'log_truncated' };
+  const timeline: TimelineEntry[] = [];
+  for (const record of records) {
+    if (record.outcome !== 'accepted') continue;
+    if (record.op === 'act') timeline.push({ seq: record.seq, op: 'act', action: record.action as Action });
+    else timeline.push({ seq: record.seq, op: record.op });
+  }
+  return { timeline };
+}
+
+// ---- the client's own figures ----
+
+/** What a stream-json client says about its run (Claude Code's `system/init` and `result` events). */
+export interface ClientFigures { model: string | null; turns: number | null; costUsd: number | null; tokens: { input: number; output: number; cacheRead: number; cacheCreation: number } | null }
+const nonNegativeInteger = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+
+/** The last `result` event of a stream-json output (turns, cost, tokens); every field that is missing
+ * or not a plain non-negative number is null. Never verified. */
+export function clientResult(stdout: string): Omit<ClientFigures, 'model'> {
+  const none = { turns: null, costUsd: null, tokens: null };
+  const found = stdout.split('\n').reverse().find(line => line.includes('"result"') && line.includes('"type"'));
+  if (!found) return none;
+  let event: unknown;
+  try { event = JSON.parse(found); } catch { return none; }
+  if (event === null || typeof event !== 'object' || (event as { type?: unknown }).type !== 'result') return none;
+  const { num_turns: turns, total_cost_usd: cost, usage } = event as { num_turns?: unknown; total_cost_usd?: unknown; usage?: Record<string, unknown> };
+  const tokens = usage && typeof usage === 'object' ? { input: nonNegativeInteger(usage.input_tokens), output: nonNegativeInteger(usage.output_tokens), cacheRead: nonNegativeInteger(usage.cache_read_input_tokens), cacheCreation: nonNegativeInteger(usage.cache_creation_input_tokens) } : null;
+  return {
+    turns: nonNegativeInteger(turns),
+    costUsd: typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 && cost < 1e6 ? Math.round(cost * 1e6) / 1e6 : null,
+    tokens: tokens && tokens.input !== null && tokens.output !== null ? { input: tokens.input, output: tokens.output, cacheRead: tokens.cacheRead ?? 0, cacheCreation: tokens.cacheCreation ?? 0 } : null,
+  };
+}

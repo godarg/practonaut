@@ -80,6 +80,37 @@ test('a consistent /2 report validates; every inconsistent /2 field is refused',
   refused(value => { (value as unknown as Record<string, unknown>).schema = 'practonaut.bench/3'; }, /report does not match practonaut\.bench\/1 or practonaut\.bench\/2/);
 });
 
+test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client timing and client figures follow their rules', () => {
+  /** A command agent's report whose first run carries every evidence field. */
+  const withEvidence = (): BenchReportV2 => {
+    const value = structuredClone(v2Report()), first = value.runs[0]!;
+    first.artifacts = { ...first.artifacts!, trace: hash('7'), board: null };
+    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act, omitted: 0 } };
+    first.client = { source: 'command-output', model: 'some-model', turns: 6, costUsd: 0.05, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 } };
+    return value;
+  };
+  assert.doesNotThrow(() => validateBenchReportV2(withEvidence()));
+  const refused = (mutate: (value: BenchReportV2) => void, message: RegExp): void => {
+    const value = withEvidence(); mutate(value); value.summary = summarize(value.runs, value.settings.repeats);
+    assert.throws(() => validateBenchReport(value), (error: Error & { code?: string }) => error.code === 'bench_report_invalid' && message.test(error.message), message.source);
+  };
+  refused(value => { value.runs[0]!.artifacts!.board = hash('b'); }, /binds a picture of the real engine, but the bench ran without the mirror/);
+  refused(value => { value.runs[0]!.artifacts!.traceError = 'checker_timeout'; }, /trace and a trace error must not appear together/);
+  refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
+  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
+  refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
+  refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);
+  // A trace that could not be made, with its error, is valid; so is a run without any evidence (an older /2 report).
+  const failed = withEvidence(); failed.runs[0]!.artifacts!.trace = null; failed.runs[0]!.artifacts!.traceError = 'checker_timeout';
+  assert.doesNotThrow(() => validateBenchReportV2(failed));
+  // The JSON Schema file accepts the evidence fields and refuses an unknown one inside them.
+  const schema = z.fromJSONSchema(JSON.parse(readFileSync(new URL('../../schemas/bench.v2.json', import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
+  const value = JSON.parse(JSON.stringify(withEvidence()));
+  assert.equal(schema.safeParse(value).success, true);
+  value.runs[0].logs.mutations.extra = 1;
+  assert.equal(schema.safeParse(value).success, false);
+});
+
 test('schemas/bench.v2.json, read from the file, accepts a /2 report and rejects extra, missing or /1 fields', () => {
   const read = (file: string) => z.fromJSONSchema(JSON.parse(readFileSync(new URL(`../../schemas/${file}`, import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
   const v2 = read('bench.v2.json'), v1 = read('bench.v1.json');

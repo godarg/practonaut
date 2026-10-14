@@ -12,7 +12,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { arch, homedir, release } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,16 +21,17 @@ import { loadWorldPackage } from '../world/index.ts';
 import { loadLibrary, LIBRARY_WORLD_DIR, type LibraryEntry } from '../library/index.ts';
 import { startHost } from '../host/server.ts';
 import { createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
-import type { ControllerFactory, HostReply, MirrorMode, PracticeController, RunningHost } from '../host/protocol.ts';
+import type { ActRequest, ControllerFactory, HostReply, MirrorMode, MutationReply, PracticeController, RunningHost } from '../host/protocol.ts';
 import { ensurePrivateDirectory } from '../platform/private-fs.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
-import { checkInProcess } from '../cli/runtime.ts';
+import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { sha256Hex } from '../canonical/index.ts';
 import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
-import { StdioMcpClient, type McpServerEntry } from './mcp-client.ts';
+import { StdioMcpClient, type ClientCall, type McpServerEntry } from './mcp-client.ts';
+import { clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
@@ -57,36 +58,46 @@ export interface BenchOptions {
 export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
 
 /** Counts every host operation and refuses mutations beyond the action budget with a named error.
- * The wrapped controller is the host's only session; this changes nothing it decides. */
-export function countingController(inner: PracticeController, counters: RunCounters, maxActions: number): PracticeController {
+ * With a recorder, every act, undo and reset that reaches it is written to the run's mutation log
+ * (PADR-0039): the action, the client the agent declared, accepted or rejected with the error code,
+ * and the step and revision afterwards. The wrapped controller is the host's only session; this
+ * changes nothing it decides. */
+export function countingController(inner: PracticeController, counters: RunCounters, maxActions: number, recorder?: MutationRecorder): PracticeController {
   const exhausted = <T>(): HostReply<T> => ({ ok: false, error: { code: 'action_budget_exhausted', message: `This run's action budget (${maxActions} act, undo or reset calls) is used up` } });
+  const note = (op: 'act' | 'undo' | 'reset', reply: HostReply<MutationReply>, extra: { action?: ActRequest['action']; client?: string | null } = {}): void => {
+    if (!recorder) return;
+    if (reply.ok) { const { step, revision } = reply.value.view; recorder.record({ op, ...extra, outcome: 'accepted', position: () => ({ step, revision }) }); return; }
+    recorder.record({ op, ...extra, outcome: 'rejected', code: reply.error.code, position: () => { const now = inner.view(); return { step: now.step, revision: now.revision }; } });
+  };
   const controller: PracticeController = {
     view: () => { counters.observe++; return inner.view(); },
     act: async (request, context) => {
       counters.act++;
-      if (counters.mutations >= maxActions) { counters.rejected++; return exhausted(); }
+      const extra = { action: request.action, client: request.actor?.kind === 'agent' ? request.actor.client : null };
+      if (counters.mutations >= maxActions) { counters.rejected++; const refused = exhausted<MutationReply>(); note('act', refused, extra); return refused; }
       counters.mutations++;
       const reply = await inner.act(request, context);
       if (reply.ok) counters.accepted++; else counters.rejected++;
+      note('act', reply, extra);
       return reply;
     },
     undo: async (request, context) => {
       counters.undoCalls++;
-      if (counters.mutations >= maxActions) return exhausted();
+      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('undo', refused); return refused; }
       counters.mutations++;
-      const reply = await inner.undo(request, context); if (reply.ok) counters.undos++; return reply;
+      const reply = await inner.undo(request, context); if (reply.ok) counters.undos++; note('undo', reply); return reply;
     },
     reset: async (request, context) => {
       counters.resetCalls++;
-      if (counters.mutations >= maxActions) return exhausted();
+      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('reset', refused); return refused; }
       counters.mutations++;
-      const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; return reply;
+      const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; note('reset', reply); return reply;
     },
     check: async (request, context) => { counters.check++; return inner.check(request, context); },
     variant: (request, context) => inner.variant(request, context),
     hint: (request, context) => inner.hint(request, context),
     png: context => inner.png(context),
-    export: (request, context) => inner.export(request, context),
+    export: (request, context, options) => inner.export(request, context, options),
     subscribe: listener => inner.subscribe(listener),
     close: () => inner.close(),
   };
@@ -184,7 +195,7 @@ async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, 
   } finally { await stdout.close(); await stderr.close(); }
 }
 
-async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; oracle: TaskOracle | undefined; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
+async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; oracle: TaskOracle | undefined; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal; calls: ClientCall[] }): Promise<AgentOutcome> {
   let client: StdioMcpClient | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     client = await StdioMcpClient.start(entry, { cwd: context.cwd, env: context.env });
@@ -198,13 +209,58 @@ async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: 
     return { status: 'completed', exitCode: 0, ...(result.note ? { note: result.note } : {}) };
   } catch (error) {
     return { status: 'agent_failed', exitCode: null, note: (error instanceof Error ? error.message : 'baseline failed').slice(0, 200) };
-  } finally { clearTimeout(timer); await client?.close().catch(() => {}); }
+  } finally { clearTimeout(timer); await client?.close().catch(() => {}); if (client) context.calls.push(...client.calls); }
 }
 
 
 /** The first 64 KiB of an agent's stdout (where a stream-json client writes its init event). */
 async function stdoutHead(path: string): Promise<string> {
   return open(path, 'r').then(async handle => { try { const read = await handle.read(Buffer.alloc(64 * 1024), 0, 64 * 1024, 0); return read.buffer.subarray(0, read.bytesRead).toString('utf8'); } finally { await handle.close(); } }).catch(() => '');
+}
+/** The last 256 KiB of an agent's stdout (where a stream-json client writes its result event). */
+async function stdoutTail(path: string): Promise<string> {
+  const size = 256 * 1024;
+  return open(path, 'r').then(async handle => { try { const length = (await handle.stat()).size, start = Math.max(0, length - size); const read = await handle.read(Buffer.alloc(size), 0, size, start); const text = read.buffer.subarray(0, read.bytesRead).toString('utf8'); return start > 0 ? text.slice(text.indexOf('\n') + 1) : text; } finally { await handle.close(); } }).catch(() => '');
+}
+/** A regular file's text, at most `max` bytes; null when it is missing, not a regular file or larger. */
+async function boundedText(path: string, max: number): Promise<string | null> {
+  try { const info = await lstat(path); if (!info.isFile() || info.size > max) return null; return await readFile(path, 'utf8'); } catch { return null; }
+}
+
+/** The run's evidence beside its judged artifacts (PADR-0039): the normalised call log (with the
+ * bench client's round trips for built-in agents) and the mutation log, each bound by hash. */
+async function writeRunLogs(home: string, recorder: MutationRecorder, clientCalls: readonly ClientCall[] | undefined): Promise<NonNullable<BenchRunV2['logs']>> {
+  const mutations = recorder.text();
+  await writeRunArtifact(home, RUN_EVIDENCE.mutations, mutations);
+  const raw = await boundedText(join(home, RUN_EVIDENCE.calls), MAX_LOG_BYTES);
+  let calls: NonNullable<BenchRunV2['logs']>['calls'] = null;
+  if (raw !== null) {
+    const normalised = normaliseCallLog(raw, clientCalls);
+    await writeRunArtifact(home, RUN_EVIDENCE.calls, normalised.text);
+    calls = { sha256: sha256Hex(normalised.text), entries: normalised.records.length, dropped: normalised.dropped, clientTiming: normalised.records.some(record => record.clientMs !== null) };
+  } else await rm(join(home, RUN_EVIDENCE.calls), { recursive: true, force: true }).catch(() => {});
+  return { calls, mutations: { sha256: sha256Hex(mutations), entries: recorder.records.length, omitted: recorder.omitted } };
+}
+
+/** The real engine's picture of the final board (mirror only, best effort) and the checker's
+ * condition trace of the run (PADR-0039). Neither changes the verdict: a picture that cannot be taken
+ * or a trace that cannot be made is null, the trace with its error code. */
+async function pictureAndTrace(home: string, world: World, item: { taskId: string; seed: number }, sessionText: string, revision: number, recorder: MutationRecorder, inner: PracticeController, mirror: MirrorMode): Promise<{ trace: string | null; traceError?: string; board: string | null }> {
+  let board: string | null = null;
+  if (mirror === 'required') {
+    const pictured = await inner.export({ expectedRevision: revision }, undefined, { picture: true }).catch(() => undefined);
+    if (pictured?.ok && pictured.value.picture) { await writeRunArtifact(home, RUN_EVIDENCE.board, pictured.value.picture.utf8); board = sha256Hex(pictured.value.picture.utf8); }
+  }
+  const timeline = timelineOf(recorder.records, recorder.omitted);
+  if ('reason' in timeline) return { trace: null, traceError: timeline.reason, board };
+  try {
+    const text = JSON.stringify(await traceInProcess(world, sessionText, timeline.timeline, { seed: item.seed, taskId: item.taskId })) + '\n';
+    await writeRunArtifact(home, RUN_EVIDENCE.trace, text);
+    return { trace: sha256Hex(text), board };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    return { trace: null, traceError: typeof code === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(code) ? code : 'checker_invalid', board };
+  }
 }
 
 /** Runs the planned task × seed × repeat grid and returns a validated `practonaut.bench/2` report
@@ -228,14 +284,17 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     const home = join(directory, runId), agentDirectory = join(home, 'agent');
     await ensurePrivateDirectory(agentDirectory);
     const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
+    const recorder = new MutationRecorder(), clientCalls: ClientCall[] = [];
     let inner: PracticeController | undefined; let host: RunningHost | undefined;
-    const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions); };
+    const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions, recorder); };
     let outcome: AgentOutcome; let checker: BenchRunV2['checker'] = null; let artifacts: BenchRunV2['artifacts']; let wallMs = 0; let finalActions = 0;
+    let runClient: BenchRunV2['client']; let logs: BenchRunV2['logs'];
     try {
       // No task-list facts for bench agents: the reference length of any task is not theirs to see.
       host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory, taskInfo: {} });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
-      const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile], env: { PRACTONAUT_HOME: agentDirectory } };
+      // The bridge's call log goes into the run folder, outside the agent's own folder (PADR-0039).
+      const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile, '--call-log', join(home, RUN_EVIDENCE.calls)], env: { PRACTONAUT_HOME: agentDirectory } };
       const configPath = join(agentDirectory, 'mcp.json');
       await writeFile(configPath, JSON.stringify({ mcpServers: { practonaut: { type: 'stdio', ...entry } } }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
       // The agent's data folder is its own subdirectory, not the run directory the artifacts go to.
@@ -245,11 +304,15 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       const started = performance.now(), deadlineMs = options.timeoutSeconds * 1000;
       // The oracle baseline plays the reference through MCP actions; the reference itself never
       // reaches the host, the bridge or the agent's folder.
-      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, oracle: reference?.oracle, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
+      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, oracle: reference?.oracle, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, calls: clientCalls, ...(options.signal ? { signal: options.signal } : {}) });
       else {
         outcome = await runExternal(agentArguments(options.agent.command, { mcpConfig: configPath, prompt: BENCH_PROMPT }), agentDirectory, env, home, deadlineMs, options.signal);
         // A preset and a command template keep the model and apiKeySource their output reports.
-        if (client.model === null && client.apiKeySource === null) client = clientInit(await stdoutHead(join(home, 'agent.stdout')));
+        const head = await stdoutHead(join(home, 'agent.stdout')), init = clientInit(head);
+        if (client.model === null && client.apiKeySource === null) client = init;
+        // Tokens, turns and cost as the client states them (self-reported, PADR-0039).
+        const figures = clientResult(await stdoutTail(join(home, 'agent.stdout')));
+        if (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null) runClient = { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures };
       }
       wallMs = Math.round(performance.now() - started);
       if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
@@ -271,7 +334,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       await writeRunArtifact(home, RUN_ARTIFACTS.session, sessionText);
       if (nativeText !== null) await writeRunArtifact(home, RUN_ARTIFACTS.native, nativeText);
       await writeRunArtifact(home, RUN_ARTIFACTS.checker, checkerText);
-      artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText) };
+      artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText), ...await pictureAndTrace(home, world, item, sessionText, view.revision, recorder, inner!, options.mirror) };
       checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
     } catch (error) {
       if (options.signal?.aborted) { interrupted = true; continue; }
@@ -279,11 +342,14 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       checker = null; artifacts = undefined;
     } finally { await host?.close().catch(() => {}); }
     if (interrupted) break;
+    // The logs explain the run whether or not it was judged; a log that cannot be written is left out.
+    if (host) logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
     const run: BenchRunV2 = {
       id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRunV2['status'], pass: false,
       actions: finalActions, acceptedActions: counters.accepted, rejectedActions: counters.rejected, undos: counters.undos, resets: counters.resets,
       toolCalls: { observe: counters.observe, act: counters.act, undo: counters.undoCalls, reset: counters.resetCalls, check: counters.check, total: counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check },
       wallMs, referenceActions: reference ? reference.oracle.steps.length : null, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
+      ...(logs ? { logs } : {}), ...(runClient ? { client: runClient } : {}),
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);

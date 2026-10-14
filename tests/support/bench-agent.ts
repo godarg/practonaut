@@ -12,6 +12,10 @@
 // init    : print a stream-json system/init line (model pn-test-model, apiKeySource none), then solve.
 // snoop   : look for reference solutions everywhere it can reach: every file in the bench folder
 //           (PRACTONAUT_HOME/../..) and every MCP reply; findings go to PRACTONAUT_HOME/snoop.json.
+// script  : play the steps PN_TEST_AGENT_SCRIPT (a JSON file) names for the observed task:
+//           { "<task id>": { "clients"?: [names], "print"?: [stdout lines], "steps": [step, …] } }
+//           step: { "act": name, "params": {…}, "client"?: n } | { "undo": true } | { "reset": true }
+//           | { "check": true } | { "sleep": true }; a param { "created": k } is the id the k-th act made.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -47,6 +51,32 @@ else if (mode === 'snoop') {
   const replies = [JSON.stringify(await client.call('observe', {})), JSON.stringify(await client.call('list_actions', {})), JSON.stringify(await client.call('explain_result', {})), JSON.stringify(await client.listTools())];
   await client.close();
   writeFileSync(join(home, 'snoop.json'), JSON.stringify({ files, hits, replyHits: replies.filter(text => marks.some(mark => text.includes(mark))).length }));
+  process.exit(0);
+}
+else if (mode === 'script') {
+  type Step = { act?: string; params?: Record<string, unknown>; client?: number; undo?: true; reset?: true; check?: true; sleep?: true };
+  const scripts = JSON.parse(readFileSync(process.env.PN_TEST_AGENT_SCRIPT!, 'utf8')) as Record<string, { clients?: string[]; print?: string[]; steps: Step[] }>;
+  const clients = [await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env })];
+  const first = await clients[0]!.call<{ task: { id: string }; step: number; revision: number }>('observe', {});
+  if (!first.ok) process.exit(3);
+  const script = scripts[first.value.task.id];
+  if (!script) process.exit(5);
+  for (const name of script.clients ?? []) clients.push(await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env, clientName: name }));
+  for (const line of script.print ?? []) process.stdout.write(line + '\n');
+  let position = { step: first.value.step, revision: first.value.revision };
+  const created: string[] = [];
+  const resync = async (): Promise<void> => { const seen = await clients[0]!.call<{ step: number; revision: number }>('observe', {}); if (seen.ok) position = { step: seen.value.step, revision: seen.value.revision }; };
+  for (const step of script.steps) {
+    if (step.sleep) await new Promise(() => {});
+    const client = clients[step.client ?? 0]!;
+    if (step.check) { await client.call('check_result', { expectedRevision: position.revision }); continue; }
+    const reply = step.act
+      ? await client.call<{ step: number; revision: number; created: string[] }>('act', { name: step.act, params: Object.fromEntries(Object.entries(step.params ?? {}).map(([key, value]) => [key, value !== null && typeof value === 'object' && 'created' in value ? created[(value as { created: number }).created] ?? 'missing' : value])), baseStep: position.step, expectedRevision: position.revision })
+      : await client.call<{ step: number; revision: number; created: string[] }>(step.undo ? 'undo' : 'reset', { expectedRevision: position.revision, ...(step.reset ? { confirmed: true } : {}) });
+    if (reply.ok) { position = { step: reply.value.step, revision: reply.value.revision }; if (step.act) created.push(reply.value.created[0] ?? ''); }
+    else { if (step.act) created.push(''); await resync(); }
+  }
+  for (const client of clients) await client.close();
   process.exit(0);
 }
 else {
