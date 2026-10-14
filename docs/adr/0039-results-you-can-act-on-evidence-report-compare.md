@@ -89,9 +89,10 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    self-reported (`client-attested` for the preset, `command-output` for a template). Never verified,
    never part of a verdict or an aggregate.
 6. **Report `/2`** (still unreleased, PADR-0036 decision 8) gains optional per-run fields:
-   `artifacts.trace` and `artifacts.board` (SHA-256 or null), `logs` (`calls`: SHA-256, entry count,
-   whether client timing is present — or null; `mutations`: SHA-256, entry count, refusals not
-   recorded), and `client`. The validator requires `board` null without the mirror, the mutation
+   `artifacts.trace` and `artifacts.board` (SHA-256 or null; a null trace carries `traceError`, the
+   checker's error code), `logs` (`calls`: SHA-256, entry count, lines dropped as unreadable, whether
+   client timing is present — or null; `mutations`: SHA-256, entry count, refusals not recorded), and
+   `client`. The validator requires `board` null without the mirror, the mutation
    entries to equal the counted `act`, `undo` and `reset` calls, and `client` only for external
    agents with the source their kind allows. `/1` stays as it is.
 7. **`report --verify`** additionally checks the hashes of `calls.jsonl`, `mutations.jsonl`,
