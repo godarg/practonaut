@@ -272,8 +272,11 @@ function readStream(path: string): Record<string, any> {
       if (l.type === 'user' && c.type === 'tool_result') {
         const use = uses.get(c.tool_use_id);
         const body = typeof c.content === 'string' ? c.content : (c.content ?? []).map((p: any) => p.text ?? '').join('');
-        const checkpoint = /Checkpoint id: "([0-9a-f]{18})"/.exec(body)?.[1] ?? null;
-        calls.push({ name: use?.name ?? 'unknown', isError: c.is_error === true, ...(use?.elements === undefined ? {} : { elements: use.elements }), ...(checkpoint ? { checkpoint } : {}), ...(c.is_error ? { error: body.slice(0, 300) } : {}) });
+        // Claude Code passes the server's structuredContent ({"checkpointId": …}) instead of its text when both exist.
+        const structured = l.tool_use_result?.structuredContent?.checkpointId;
+        const found = typeof structured === 'string' ? structured : /(?:Checkpoint id: |"checkpointId":)\s*"([0-9a-f]{18})"/.exec(body)?.[1];
+        const checkpoint = found && /^[0-9a-f]{18}$/.test(found) ? found : null;
+        calls.push({ name: use?.name ?? 'unknown', isError: c.is_error === true, ...(use?.elements === undefined ? {} : { elements: use.elements }), ...(checkpoint ? { checkpoint } : {}), modelSaw: body.slice(0, 300) });
         if (use?.name === 'mcp__excalidraw__create_view' && c.is_error !== true && checkpoint) finalCheckpoint = checkpoint;
       }
     }
@@ -307,8 +310,47 @@ function judge(runDirArg: string): void {
   console.log(summary(task, judged));
 }
 
+/** Post-hoc diagnostic (not preregistered, no model run): the level-B rules one at a time on a run's
+ * stored result, to attribute each readable attribute to the rule it needs. */
+function diagnose(runDirArg: string): void {
+  const runDir = resolve(runDirArg);
+  const judged = JSON.parse(readFileSync(join(runDir, 'judge.json'), 'utf8')) as Record<string, any>;
+  const task = taskOf(judged.task);
+  const stored = (JSON.parse(readFileSync(join(runDir, 'tmp', 'excalidraw-mcp-checkpoints', `${judged.finalCheckpoint}.json`), 'utf8')) as { elements: El[] }).elements;
+  const noPseudo = stored.filter(e => !PSEUDO.has(e.type));
+  const steps: Array<[string, El[]]> = [
+    ['P1 pseudo-elements dropped', noPseudo],
+    ['P2 P1 + label as bound text', normalize(noPseudo.map(e => e.type === 'frame' ? (({ children: _c, ...rest }) => rest)(e) : e))],
+    ['P3 P2 but frames only from children', normalize(noPseudo.map(e => { const { frameId: _f, ...rest } = e; return rest; }))],
+  ];
+  const out: Record<string, unknown> = {};
+  for (const [name, elements] of steps) {
+    const file = join(runDir, `diagnose.${name.slice(0, 2)}.excalidraw`);
+    const text = JSON.stringify({ type: 'excalidraw', version: 2, source: 'spike diagnostic', elements, appState: {}, files: {} });
+    writeFileSync(file, text + '\n');
+    const check = spawnSync(process.execPath, [join(REPO, 'src/cli/main.ts'), 'check', file, '--world', WORLD_PKG, '--seed', String(SEED), '--task', task], { cwd: REPO, encoding: 'utf8' });
+    let verdict: any = null; try { verdict = JSON.parse(check.stdout); } catch { /* rejected */ }
+    let reading: unknown; try { reading = project(parseScene(text).state); } catch (error) { reading = { rejected: error instanceof Error ? error.message : String(error) }; }
+    const t = verdict?.tasks?.[0];
+    out[name] = { verdict: verdict ? (t?.passed ? 'pass' : 'fail') : 'no verdict', errors: t?.errors?.map((e: any) => e.id) ?? [], reading };
+    console.log(`${task.padEnd(11)} ${name.padEnd(38)} ${verdict ? (t?.passed ? 'PASS' : `FAIL ${t?.errors?.map((e: any) => e.id).join(',') ?? ''}`) : `no verdict (${check.stderr.trim()})`}`);
+  }
+  writeFileSync(join(runDir, 'diagnose.json'), JSON.stringify(out, null, 2) + '\n');
+}
+
+/** Re-derive facts.json from a run's saved stream (after a fix of this parser; never reruns the model). */
+function refacts(runDirArg: string): void {
+  const runDir = resolve(runDirArg), path = join(runDir, 'facts.json');
+  const old = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  const facts = { n: old.n, task: old.task, seed: old.seed, exit: old.exit, timedOut: old.timedOut, wallMs: old.wallMs, ...readStream(join(runDir, 'agent.stdout.jsonl')) };
+  writeFileSync(path, JSON.stringify(facts, null, 2) + '\n');
+  console.log(JSON.stringify({ n: facts.n, task: facts.task, finalCheckpoint: facts.finalCheckpoint, calls: facts.calls.length }));
+}
+
 const [command, arg, ...rest] = process.argv.slice(2);
 if (command === 'controls') controls();
+else if (command === 'refacts') refacts(arg ?? fail('refacts needs a run directory'));
+else if (command === 'diagnose') diagnose(arg ?? fail('diagnose needs a run directory'));
 else if (command === 'prepare') console.log(prompt(taskOf(arg)));
 else if (command === 'run') await run(taskOf(arg), rest[0] === '--rerun-reason' ? rest.slice(1).join(' ') || fail('empty rerun reason') : undefined);
 else if (command === 'judge') judge(arg ?? fail('judge needs a run directory'));
