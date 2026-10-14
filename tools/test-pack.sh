@@ -87,7 +87,8 @@ const [world,...command]=process.argv.slice(2);
 const posix=process.platform!=='win32';
 const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
 let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
-const timer=setTimeout(()=>{console.error(out);child.kill('SIGKILL');process.exit(1);},60_000);
+// Generous: a cold npx on a Windows runner has taken over a minute before the CLI printed anything.
+const timer=setTimeout(()=>{console.error('no session link within 180 s:\n'+out);child.kill('SIGKILL');process.exit(1);},180_000);
 const poll=setInterval(()=>{
   const link=/^Open: http:\/\/127\.0\.0\.1:\d+\/#code=[0-9a-f]{32}$/m.test(out),token=/^Token file: (.+)$/m.exec(out)?.[1];
   if(!link||!token)return;
