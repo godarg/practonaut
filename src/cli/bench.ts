@@ -1,5 +1,5 @@
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
 import { fallbackNotice, resolveMirror } from './serve.ts';
@@ -13,7 +13,7 @@ import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, rea
 import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { loadReportDetails } from '../bench/details.ts';
 import { compareReports, CompareError } from '../bench/compare.ts';
-import { renderCompareHtml, renderCompareTable } from '../bench/render-compare.ts';
+import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
 import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
@@ -242,22 +242,32 @@ export async function commandCompare(args: string[]): Promise<number> {
   const [baselinePath, candidatePath] = parsed.positional as [string, string];
   const baseline = await readReport(baselinePath), candidate = await readReport(candidatePath);
   const level = async (report: BenchReport, path: string): Promise<'consistency-checked' | 're-verified'> => parsed.booleans.has('--verify') ? (await verifyReport(report, dirname(path))).level : 'consistency-checked';
-  const sides = { baseline: { report: baseline, verification: await level(baseline, baselinePath) }, candidate: { report: candidate, verification: await level(candidate, candidatePath) } };
+  // Each side goes by its label, else its file name (the page title says which is which).
+  const named = (report: BenchReport, path: string): string => isBenchReportV2(report) && report.label !== undefined ? report.label : basename(path).replace(/\.json$/i, '');
+  const sides = { baseline: { report: baseline, verification: await level(baseline, baselinePath), name: named(baseline, baselinePath) }, candidate: { report: candidate, verification: await level(candidate, candidatePath), name: named(candidate, candidatePath) } };
+  const language = getCliLanguage();
+  const html = parsed.flags['--html'];
   let comparison;
   try { comparison = compareReports(baseline, candidate); }
   catch (error) {
     if (!(error instanceof CompareError)) throw error;
+    // With --html the refusal is a page too, naming every difference.
+    if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language));
     const field = (name: string): string => cliText(`compareField_${name}` as Parameters<typeof cliText>[0]);
     throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; ') }));
   }
-  const language = getCliLanguage();
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verification: sides.baseline.verification }, candidate: { schema: candidate.schema, verification: sides.candidate.verification }, comparison }) + '\n');
   else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));
-  const html = parsed.flags['--html'];
   if (html) {
     await writeAtomic(html, renderCompareHtml(sides.baseline, sides.candidate, comparison, await readTokensCss(), language));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
   }
-  if (parsed.booleans.has('--fail-on-regression') && comparison.regressions.length) throw new RuntimeError('instance_regression', cliText('compareRegression', { n: comparison.regressions.length, list: comparison.regressions.map(pair => `${safeText(pair.taskId)} seed ${pair.seed}`).join(', ') }));
+  if (parsed.booleans.has('--fail-on-regression')) {
+    const named = (pairs: typeof comparison.regressions): string => pairs.map(pair => `${safeText(pair.taskId)} seed ${pair.seed}`).join(', ');
+    if (comparison.regressions.length) throw new RuntimeError('instance_regression', cliText('compareRegression', { n: comparison.regressions.length, list: named(comparison.regressions) }));
+    // A candidate instance that is missing, cut short or not judged could hide a regression: the gate
+    // fails on it by its own name, never passes it as "no regression".
+    if (comparison.incomplete.length) throw new RuntimeError('compare_incomplete', cliText('compareIncomplete', { n: comparison.incomplete.length, list: named(comparison.incomplete) }));
+  }
   return 0;
 }

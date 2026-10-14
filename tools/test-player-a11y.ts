@@ -159,15 +159,16 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   console.log(`player:a11y ${stem}: scanned editor, export and create workspaces`);
 }
 // Bench report and compare pages (PADR-0039): every named state from real fixture runs, as the static
-// files `report --html` and `compare --html` write, light and dark, 1280 and 320 px, EN and DE.
+// files `report --html` and `compare --html` write, light and dark, 1280 and 320 px, EN and DE. Text in a
+// board picture is never drawn below 12 CSS px (design-language §10.2), measured as rendered.
 {
   const fixtures = await fixtureBenches(output + "/report-fixtures", { mirror: true });
   const states = await reportStates(fixtures);
-  const pages: Array<{ id: string; language: "en" | "de"; file: string }> = [];
+  const pages: Array<{ id: string; language: "en" | "de"; file: string; open: boolean }> = [];
   for (const st of states) for (const language of ["en", "de"] as const) {
     const file = resolve(output, `${st.id}.${language}.html`);
     await writeFile(file, await st.html(language));
-    pages.push({ id: st.id, language, file });
+    pages.push({ id: st.id, language, file, open: st.open === true });
   }
   const browser = await chromium.launch({ headless: true });
   try {
@@ -178,6 +179,15 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
       const page = await context.newPage();
       for (const entry of pages) {
         await page.goto(pathToFileURL(entry.file).href);
+        // A reader who opened every card (the page has no script; the test opens them).
+        if (entry.open) await page.evaluate(() => { for (const details of document.querySelectorAll("details")) details.open = true; });
+        const small = await page.evaluate(() => [...document.querySelectorAll("svg.schematic text, svg.engine-board text")].flatMap(text => {
+          const element = text as SVGTextElement, matrix = element.getScreenCTM();
+          if (!element.getClientRects().length || !matrix) return [];
+          const size = parseFloat(getComputedStyle(element).fontSize) * Math.hypot(matrix.a, matrix.b);
+          return size < 11.95 ? [`${(element.textContent ?? "").slice(0, 24)} at ${size.toFixed(1)} px`] : [];
+        }));
+        if (small.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: picture text below 12 px: ${small.slice(0, 3).join("; ")}`);
         await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
       }
       assert.deepEqual(external, [], "a report page loads nothing");

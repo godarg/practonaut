@@ -39,6 +39,6 @@ contradict these definitions.
 | **Near miss** | A result that looks close to the goal but must fail the check; proves the goal predicate is strict enough. |
 | **Bench run** | One agent attempt on one task, seed and repeat, in a fresh session, scored by the checker after the agent stops. |
 | **pass@1 / pass^k** | Share of passed runs / the chance that all of k repeats of the same task and seed pass (τ-bench). |
-| **Instance** | One task at one seed, the unit `compare` counts; its repeats give one outcome (passed when at least half of them passed). |
-| **Instance regression** | An instance with at least three judged repeats on each side that passed in every baseline repeat and failed in every candidate repeat (PADR-0039). |
+| **Instance** | One task at one seed, the unit `compare` counts; its repeats give one outcome (passed when at least half of all of them passed; a run that was not judged counts as not passed). |
+| **Instance regression** | An instance with at least three judged repeats on each side that passed in every judged baseline repeat and failed in every judged candidate repeat (PADR-0039). `compare --fail-on-regression` also fails when the candidate is incomplete (`compare_incomplete`). |
 | **Condition trace** | The checker's record of which goal conditions held at the start and after every accepted act, undo and reset of a run. |

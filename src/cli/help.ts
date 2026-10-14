@@ -8,13 +8,14 @@ const EXIT: Text = {
   0  success
   1  usage error (bad command, option or path; validate needs a regular file)
   2  package or source rejected (named code), failed check, rejected bench report, incomparable reports
-     or (compare --fail-on-regression) an instance regression
+     or (compare --fail-on-regression) an instance regression or an incomplete candidate
   3  environment missing (for example Chromium for --mirror required) or session shutdown failure`,
   de: `Exit-Codes:
   0  Erfolg
   1  Bedienfehler (unbekannter Befehl, Option oder Pfad; validate braucht eine reguläre Datei)
   2  Paket oder Quelle abgelehnt (benannter Code), nicht bestandene Prüfung, abgelehnter Bench-Bericht,
-     nicht vergleichbare Berichte oder (compare --fail-on-regression) eine Instanz-Regression
+     nicht vergleichbare Berichte oder (compare --fail-on-regression) eine Instanz-Regression oder ein
+     unvollständiger Kandidat
   3  Umgebung fehlt (etwa Chromium für --mirror required) oder Sitzung nicht sauber beendet`,
 };
 
@@ -261,26 +262,32 @@ gibt ihn für ein Weltpaket aus.`,
 
 Compares two bench reports by the rules of PADR-0039. They must agree on the world content, the grid of tasks
 and seeds, the mirror, the action budget and the isolation level; otherwise compare refuses with exit 2
-(compare_incomparable) and names every difference. The unit is the instance (task × seed): judged repeats give
-one outcome per side (a pass when at least half passed). An instance regression has at least three judged
-repeats on each side, all passed on the baseline and all failed on the candidate; with fewer repeats a flip is
-listed as a single run, never a regression. The rate verdict uses an exact McNemar test on the instances the
-two disagree on: improvement or decline at p < 0.05, otherwise "not distinguishable at this n".
---fail-on-regression exits 2 (instance_regression) when there is an instance regression. --verify re-verifies
-each report from its own folder first. --html writes a static page.`,
+(compare_incomparable) and names every difference. The unit is the instance (task × seed): its repeats give
+one outcome per side (a pass when at least half of all its repeats passed; a run that was not judged counts as
+not passed). An instance regression has at least three judged repeats on each side, all passed on the baseline
+and all failed on the candidate; with fewer repeats a flip is listed as a single run, never a regression. The
+rate verdict uses an exact McNemar test on the instances the two disagree on: improvement or decline at
+p < 0.05, otherwise "rate difference not distinguishable at this n".
+--fail-on-regression exits 2 (instance_regression) when there is an instance regression, and 2
+(compare_incomplete) when a candidate instance is missing, cut short or holds a run that was not judged.
+--verify re-verifies each report from its own folder first. --html writes a static page (also for reports
+that cannot be compared).`,
     de: `Verwendung: practonaut compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression]
                           [--verify] [--json]
 
 Vergleicht zwei Bench-Berichte nach den Regeln von PADR-0039. Sie müssen im Inhalt der Welt, im Raster aus
 Aufgaben und Seeds, in der Spiegelung, im Aktionsbudget und in der Isolationsstufe übereinstimmen; sonst lehnt
 compare mit Exit 2 ab (compare_incomparable) und nennt jeden Unterschied. Einheit ist die Instanz (Aufgabe × Seed):
-bewertete Wiederholungen ergeben je Seite ein Ergebnis (bestanden, wenn mindestens die Hälfte bestand). Eine
-Instanz-Regression hat auf jeder Seite mindestens drei bewertete Wiederholungen, alle bestanden bei der Basis und
-alle nicht bestanden beim Kandidaten; mit weniger Wiederholungen ist ein Wechsel ein Einzellauf, nie eine
-Regression. Das Urteil über Raten nutzt einen exakten McNemar-Test auf den Instanzen, in denen sich beide
-unterscheiden: Verbesserung oder Verschlechterung bei p < 0,05, sonst „bei diesem n nicht unterscheidbar“.
---fail-on-regression endet mit Exit 2 (instance_regression), wenn es eine Instanz-Regression gibt. --verify
-rechnet jeden Bericht zuerst aus seinem eigenen Ordner nach. --html schreibt eine statische Seite.`,
+ihre Wiederholungen ergeben je Seite ein Ergebnis (bestanden, wenn mindestens die Hälfte all ihrer
+Wiederholungen bestand; ein nicht bewerteter Lauf zählt als nicht bestanden). Eine Instanz-Regression hat auf
+jeder Seite mindestens drei bewertete Wiederholungen, alle bestanden bei der Basis und alle nicht bestanden beim
+Kandidaten; mit weniger Wiederholungen ist ein Wechsel ein Einzellauf, nie eine Regression. Das Urteil über
+Raten nutzt einen exakten McNemar-Test auf den Instanzen, in denen sich beide unterscheiden: Verbesserung oder
+Verschlechterung bei p < 0,05, sonst „Unterschied der Raten bei diesem n nicht unterscheidbar“.
+--fail-on-regression endet mit Exit 2 (instance_regression), wenn es eine Instanz-Regression gibt, und mit Exit 2
+(compare_incomplete), wenn eine Instanz des Kandidaten fehlt, abgebrochen wurde oder einen nicht bewerteten
+Lauf enthält. --verify rechnet jeden Bericht zuerst aus seinem eigenen Ordner nach. --html schreibt eine
+statische Seite (auch für Berichte, die sich nicht vergleichen lassen).`,
   },
   setup: {
     en: `Usage: practonaut setup

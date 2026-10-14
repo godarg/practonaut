@@ -75,12 +75,14 @@ test('power and the sample-size table: ψ = 0.20 against a separate binomial sum
   assert.throws(() => instancesNeeded(0.3, 0.2, 0.8), RangeError);
 });
 
-test('aggregation: judged repeats only, a pass when at least half passed; regressions need three repeats a side', () => {
-  assert.deepEqual(aggregateInstance([true, false, true]), { repeats: 3, judged: 3, passed: 2, outcome: 'pass' });
+test('aggregation: every repeat counts, a pass when at least half of all repeats passed; regressions need three judged repeats a side', () => {
+  assert.deepEqual(aggregateInstance([true, false, true]), { repeats: 3, judged: 3, unjudged: 0, passed: 2, outcome: 'pass' });
   assert.equal(aggregateInstance([true, false]).outcome, 'pass');
   assert.equal(aggregateInstance([false, false, true]).outcome, 'fail');
-  assert.deepEqual(aggregateInstance([null, null]), { repeats: 2, judged: 0, passed: 0, outcome: 'unjudged' });
-  assert.deepEqual(aggregateInstance([null, true]), { repeats: 2, judged: 1, passed: 1, outcome: 'pass' });
+  // A run that was not judged counts as not passed (roadmap 0.2.0: every run counts): 1 of 3 is below half.
+  assert.deepEqual(aggregateInstance([true, null, null]), { repeats: 3, judged: 1, unjudged: 2, passed: 1, outcome: 'fail' });
+  assert.deepEqual(aggregateInstance([null, null]), { repeats: 2, judged: 0, unjudged: 2, passed: 0, outcome: 'fail' });
+  assert.deepEqual(aggregateInstance([null, true]), { repeats: 2, judged: 1, unjudged: 1, passed: 1, outcome: 'pass' });
   const all = (value: boolean | null, n: number) => aggregateInstance(Array.from({ length: n }, () => value));
   assert.equal(isInstanceRegression(all(true, 3), all(false, 3)), true);
   assert.equal(isInstanceRegression(all(true, 2), all(false, 3)), false, 'two baseline repeats are single runs');
