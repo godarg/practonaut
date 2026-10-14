@@ -28,7 +28,9 @@ All notable changes are recorded here. The format follows
   on `excalidraw/connect`: an `act` result 866 bytes instead of up to 63 KB, client round trip
   10.4 ms instead of 133.7 ms (33.6 ms instead of 150.0 ms with the mirror); oracle episodes on the
   six hardest tasks −79 % result bytes. Scripts that read `value.view` from a mutation reply must
-  use the delta or `observe` with `detail: "full", lang: "both"`.
+  use the delta or `observe` with `detail: "full", lang: "both"`. The `random` baseline now draws
+  ids from the live objects of the compact view only (0.1.0 also drew deleted ones), so its floor
+  can differ slightly from 0.1.0 reports.
 - **Faster transactions** ([PADR-0037](docs/adr/0037-fork-the-committed-session-for-candidates.md)):
   a candidate forks the committed session instead of being rebuilt from the log, and the world is
   validated once and frozen; the replay checks before every result check and publication stay.

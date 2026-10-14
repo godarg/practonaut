@@ -1,6 +1,6 @@
 # PADR-0038 — Lean MCP replies: compact observe, mutation deltas, one language by default
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 1 · Changes the reply shapes of
+Status: accepted 2026-10-14 after independent review (pull request #25); decision 4 departs from the roadmap's "short text reply" and was taken under the maintainer's delegation of 2026-10-14 · Date: 2026-10-14 · Roadmap 0.2.0, Must 1 · Changes the reply shapes of
 [PADR-0005](0005-session-host-and-agent-protocol.md)'s MCP tools; the tools, their names and the
 host contract for the Player stay
 
@@ -50,21 +50,27 @@ documented (checked 2026-10-14); public reports conflict about whether the text 
 4. **Every result carries the same JSON as its text part and as `structuredContent`.** The roadmap
    asked for a short text next to `structuredContent`; because clients differ in which part reaches
    the model and Claude Code's behaviour is undocumented, the text stays complete. Reply sizes are
-   measured with both parts counted.
+   measured with both parts counted, escaping included. A reply too large for both goes as text
+   alone; one too large even for that is refused as `result_too_large`. A mutation whose changed
+   objects exceed 512 KiB answers with ids only and `changedOmitted: true` (observe for the board);
+   the delta is computed before the commit, so a committed change always has its reply.
 5. **Errors say what to fix.** A refused input names each path and what the schema expects (at most
    four problems, 600 characters), checking act parameters against the named action's own
    parameters; it never repeats input text (values, unknown keys, an unknown tool name). `stale_base`
-   carries the current `step` and `revision` in `error.details`.
+   carries the current `step` and `revision` in `error.details`, whether the revision or the core's
+   `baseStep` check refused the request.
 6. **Capabilities that are announced are real:** the resource `practonaut://task` (title, prompt and
    conditions in English and German) and one task-neutral prompt `practise`. **Annotations:**
-   `observe`, `list_actions`, `explain_result`, `check_result` are read-only and idempotent; `reset`
-   is destructive; `act` and `undo` are not (both are reversible inside the session); nothing is
-   open-world.
+   `observe`, `list_actions`, `explain_result`, `check_result` are read-only and idempotent; `undo`
+   (there is no redo, and it can take back a person's change) and `reset` are destructive; `act` is
+   not (an action is reversible through undo); nothing is open-world.
 7. **Bench agents see no reference lengths.** A bench host publishes no task-list facts, so a bench
    agent's `observe` (even `full`) holds no `referenceActions` of any task.
-8. **`practonaut mcp --call-log <file>`** appends one JSON line per tool call: tool, result code,
-   full result bytes, the bridge's own processing time. It is a measurement aid and the basis for
-   the call log of Must 3; the client's round trip is not visible to the bridge.
+8. **`practonaut mcp --call-log <file>`** appends one JSON line per `tools/call`: tool, result code,
+   the bytes of the result exactly as sent (with what the SDK adds), the bridge's own processing
+   time. It records at the transport, so refused and rate-limited calls are included; it holds no
+   arguments and no content. It is a measurement aid and the basis for the call log of Must 3; the
+   client's round trip is not visible to the bridge.
 
 ## Consequences
 
@@ -72,7 +78,15 @@ documented (checked 2026-10-14); public reports conflict about whether the text 
   calls after 8 warm-up calls): `act` client round trip 10.4 ms instead of 133.7 ms without the
   mirror and 33.6 ms instead of 150.0 ms with it; one `act` result 866 bytes and flat (0.1.0: +600
   bytes per action); the first `observe` 3,692 bytes instead of 8,050; the oracle episodes on the six
-  hardest tasks 192,668 instead of 910,466 bytes (−79 %).
+  hardest tasks 192,668 instead of 910,466 bytes (−79 %), or 244,126 bytes (−73 %) for an agent that
+  also reads `list_actions` once (0.1.0 carried the definitions in every observe). Re-measured
+  back-to-back on a loaded machine (load average ~16): 4.2–7.1 ms vs 187–404 ms without the mirror,
+  33.2–33.5 ms vs 183–208 ms with it.
+- Measured in 24 real runs (Claude Code 2.1.299, 2026-10-14): Claude Code passes the text part to
+  the model (the JSON once), so the duplicate `structuredContent` costs wire bytes, not model tokens.
+  On six instances measured on both versions the tool-result bytes the model received fell from
+  245,287 to 38,663 (−84 %); the paired grid (six tasks × seeds 1–2 × Opus and Haiku) passed 24 of
+  24 on both versions.
 - Clients and scripts that read `value.view` from a mutation reply must read the delta or observe
   again; `observe` with `detail: "full", lang: "both"` returns the old shape. The bench's own
   baselines and the documentation use the new shapes.

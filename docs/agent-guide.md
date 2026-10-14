@@ -112,16 +112,18 @@ The goal conditions — the sentence and the formal form of each — are in ever
 `check_result`, in the chosen language, exactly as the Player shows them. The server also offers the
 current task as the resource `practonaut://task` (title, prompt and conditions in English and
 German) and one task-neutral prompt, `practise`. Tool annotations mark `observe`, `list_actions`,
-`explain_result` and `check_result` read-only and `reset` destructive; no tool reaches outside the
-session.
+`explain_result` and `check_result` read-only and `undo` and `reset` destructive; no tool reaches
+outside the session.
 
 Measured on 2026-10-14 with `tools/measure-agent-surface.ts` against the published 0.1.0 on the same
 machine (macOS arm64, Node 22): one `act` on `excalidraw/connect` costs 866 bytes of full result
 instead of 12–63 KB (0.1.0 repeated the whole view and grew by about 600 bytes per action); the
 first `observe` 3.7 KB instead of 8.1 KB; an oracle episode on the six hardest library tasks 79 %
-fewer result bytes in total (192,668 instead of 910,466 bytes over 12 episodes); the client round
-trip of an `act` 10.4 ms instead of 133.7 ms without the mirror and 33.6 ms instead of 150.0 ms with
-it (median of 72 calls after 8 warm-up calls).
+fewer result bytes in total (192,668 instead of 910,466 bytes over 12 episodes; 73 % fewer if the
+agent also reads `list_actions` once); the client round trip of an `act` 10.4 ms instead of
+133.7 ms without the mirror and 33.6 ms instead of 150.0 ms with it (median of 72 calls after 8
+warm-up calls). In real Claude Code runs the tool results the model read shrank by 84 % on the same
+tasks.
 
 The `act` tool's input schema is generated from the session world when `practonaut mcp` starts:
 its `name` enum lists exactly the world's actions and `params` offers one strict parameter object

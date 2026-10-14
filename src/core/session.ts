@@ -6,6 +6,7 @@ import { RUNTIME_LIMITS } from "../world/limits.ts";
 import { PACKAGE_VERSION } from "../version.ts";
 import type { Action, ApplyResult, LogEntry, Result, SessionData, State, World } from "../world/types.ts";
 import { createSessionTransitions, failure } from "./apply.ts";
+import { deepFreeze } from "./freeze.ts";
 
 export interface ReplayState { state: State; hash: string }
 /** A trusted caller may stop traversal; the callback receives no state or authority. */
@@ -19,14 +20,6 @@ export class SessionError extends Error {
   constructor(message: string) { super(message); this.name = "SessionError"; }
 }
 interface Snapshot { data: Buffer; bytes: number }
-/** Deep-freezes plain JSON data in place; a frozen world can be shared without copying. */
-function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
-  }
-  return value;
-}
 /** Everything a fork shares or copies. Not exported: only `Session.fork` can make one, so no caller
  * can hand a Session an unvalidated world, state or prefix (PADR-0037). */
 class ForkParts {

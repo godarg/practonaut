@@ -98,3 +98,27 @@ describe('host session transaction',()=>{
  });
 
 });
+
+describe('stale requests name what is current (PADR-0038)', () => {
+  it('an old revision and a step the core no longer matches both carry the current step and revision', async () => {
+    const controller = await createPracticeController(world(), { seed: 42, taskId: 'T3' }, async initial => fake(initial));
+    assert.equal((await controller.act({ expectedRevision: 0, action: move })).ok, true); // step 1, revision 1
+    assert.equal((await controller.hint({ expectedRevision: 1 })).ok, true);              // step 1, revision 2
+    const oldRevision = await controller.act({ expectedRevision: 1, action: move });
+    assert.equal(oldRevision.ok, false); if (!oldRevision.ok) assert.deepEqual([oldRevision.error.code, oldRevision.error.details], ['stale_base', { step: 1, revision: 2 }]);
+    // Current revision, but a baseStep from before the first action: the core's prefix check refuses it.
+    const oldStep = await controller.act({ expectedRevision: 2, action: { ...move, baseStep: 0 } });
+    assert.equal(oldStep.ok, false); if (!oldStep.ok) { assert.deepEqual([oldStep.error.code, oldStep.error.details], ['stale_base', { step: 1, revision: 2 }]); assert.match(oldStep.error.message, /current step is 1 and the current revision 2/); }
+    assert.equal(controller.view().step, 1); assert.equal(controller.view().revision, 2);
+  });
+  it('a mutation reply carries the delta of exactly what changed, computed before the commit', async () => {
+    const controller = await createPracticeController(world(), { seed: 42, taskId: 'T3' }, async initial => fake(initial));
+    const before = controller.view();
+    const moved = await controller.act({ expectedRevision: 0, action: move });
+    assert.ok(moved.ok);
+    // Expected from the action itself: move_step changes only step a, to x 200 and y 220.
+    assert.deepEqual(Object.keys(moved.value.delta.changed), ['a']);
+    assert.deepEqual(moved.value.delta.changed.a, { ...before.state.objects.a, x: 200, y: 220 });
+    assert.deepEqual([moved.value.delta.created, moved.value.delta.removed, moved.value.delta.step, moved.value.delta.revision], [[], [], 1, 1]);
+  });
+});

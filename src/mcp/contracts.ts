@@ -16,13 +16,13 @@ export const TOOL_DESCRIPTIONS: Readonly<Record<McpToolName, string>> = Object.f
   explain_result: "Read the result of the last check and the player-visible explanations of errors in the current state. Optional lang. Changes nothing and never reveals hidden evaluation data.",
   check_result: "Check whether the current state meets the task's goal conditions: passed plus one met/unmet entry per condition with its sentence and formal form, the same check a human player gets. Argument: expectedRevision (the current revision); optional lang. Checking changes nothing.",
 });
-/** MCP tool annotations: four tools only read; reset discards the attempt; nothing reaches outside
- * the practice session. Act and undo stay reversible through undo and reset. */
+/** MCP tool annotations: four tools only read; undo (there is no redo, and it can take back a
+ * person's change) and reset discard work; nothing reaches outside the practice session. */
 export const TOOL_ANNOTATIONS: Readonly<Record<McpToolName, { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint: false }>> = Object.freeze({
   observe: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   list_actions: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   act: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  undo: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  undo: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   reset: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   explain_result: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   check_result: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },

@@ -66,6 +66,12 @@ function actionDescription(action: Action, before: State, after: State): Localiz
   return { en: render('en'), de: render('de') };
 }
 const reject = <T>(code: HostErrorCode, message: string): HostReply<T> => ({ ok: false, error: { code, message } });
+/** A delta larger than this leaves its changed objects out (`changedOmitted`); the view and an
+ * `observe` still carry the board. Keeps view plus delta inside the 4 MiB reply budget. */
+export const DELTA_LIMIT_BYTES = 512 * 1024;
+export function boundedDelta(delta: MutationDelta, limit = DELTA_LIMIT_BYTES): MutationDelta {
+  return Buffer.byteLength(JSON.stringify(delta)) > limit ? { ...delta, changed: {}, changedOmitted: true } : delta;
+}
 /** What a mutation changed, from the committed state before it and the published view after it:
  * every object that differs (deleted objects keep their tombstone), the ids it created and the ids
  * it deleted. Derived from public data only; an agent learns nothing a view would not show. */
@@ -326,17 +332,20 @@ export async function createPracticeController(input: World, options: PracticeSe
       const latencyMs = Math.round(performance.now() - started);
       if(next.action){projectedHistory.at(-1)!.latencyMs=latencyMs;projectedHistory.at(-1)!.mirrorConfirmed=synchronized.value;}
       const value=makeView(next.candidate,{revision:revision+1,history:projectedHistory,result:null,...(next.reset?{attempt:nextAttempt,hintsOpened:0,hints:[]}:{})});admit(value);
-      const before = session.state;
+      // The delta is computed and bounded before the commit, so a committed change always has its reply.
+      const delta = boundedDelta(mutationDelta(session.state, value, next.effects ?? []));
       deadline(context); // No await between this final check and the synchronous commit.
       session = next.candidate; revision++; result = null;history=projectedHistory;
       if (next.reset) { attempt = nextAttempt; hintsOpened = 0; }
       mirrorWritten=false;emit({ type: 'changed', view: value });
-      const delta = mutationDelta(before, value, next.effects ?? []);
       return { ok: true, value: { view: value, delta, mirrorConfirmed: synchronized.value, latencyMs } };
     } catch (error) {
       const timedOut=!continues(context);
       if(mirrorWritten)await recoverMirror(); // Lock stays held through verified rollback/disposal.
       const failure = error as { code?: HostErrorCode; message?: string };
+      // A step that no longer matches (the core's baseStep check) is as stale as an old revision:
+      // name what is current, as the revision guard does.
+      if (!timedOut && failure.code === 'stale_base') return rejected({ ok: false, error: { code: 'stale_base', message: `${failure.message ?? 'Board changed since this request'}; the current step is ${session.step} and the current revision ${revision}`, details: { step: session.step, revision } } });
       return rejected(reject(timedOut?'mirror_timeout':failure.code ?? 'replay_mismatch',timedOut?'Transaction deadline reached; committed board restored or mirror disposed':failure.message ?? 'Transaction failed'));
     } finally { busy = false; }
   };

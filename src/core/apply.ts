@@ -4,6 +4,7 @@ import { preflightJson, WorldError } from "../world/preflight.ts";
 import { derivedArrowFrame, validateState, validateWorld, V2_PARAMETERS } from "../world/schema.ts";
 import { RUNTIME_LIMITS } from "../world/limits.ts";
 import { isDisplayText } from '../world/display-text.ts';
+import { deepFreeze } from './freeze.ts';
 import { worldEra } from "../world/types.ts";
 import type { Action, ActionName, ActionNameV1, ApplyContext, ApplyResult, EffectKind, Era, Failure, Parameter, State, Step, StepV1, StepV2, World } from "../world/types.ts";
 
@@ -239,7 +240,8 @@ export function apply(world: World, state: State, action: Action, context: Apply
  */
 export function createSessionTransitions(world: World, seed: number, taskId: string) {
   if (!Number.isSafeInteger(seed)) throw new WorldError('seed must be a safe integer');
-  const validated = validateWorld(world); // Zod returns a detached post-variant world.
+  // Zod returns a detached post-variant world; frozen, it is shared by every fork and replay.
+  const validated = deepFreeze(validateWorld(world));
   if (typeof taskId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(taskId) || !validated.tasks.some(task => task.id === taskId)) throw new WorldError('unknown or invalid task');
   return executor(validated, seed, []);
 }

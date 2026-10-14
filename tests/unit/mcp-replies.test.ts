@@ -4,9 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkResult, compactView, fullView, localize, mutationResult } from '../../src/mcp/replies.ts';
 import { inputProblems, toolSchemasFor, TOOL_SCHEMAS } from '../../src/mcp/contracts.ts';
-import { mutationDelta } from '../../src/host/session.ts';
+import { boundedDelta, mutationDelta, publicConditions } from '../../src/host/session.ts';
+import { toolResult } from '../../src/mcp/server.ts';
 import { loadLibrary } from '../../src/library/index.ts';
-import type { HostView, PublicCheck } from '../../src/host/protocol.ts';
+import type { HostView, MutationDelta, PublicCheck } from '../../src/host/protocol.ts';
 import type { State } from '../../src/world/types.ts';
 
 const step = (id: string, label: string, deleted = false) => ({ id, type: 'step' as const, frameId: 'f', label, x: 0, y: 0, width: 100, height: 50, deleted });
@@ -45,17 +46,36 @@ test('compact observe: task with goal conditions in the chosen language, live ob
 });
 
 test('every library task: compact observe and check_result carry each goal condition exactly as the Player shows it', () => {
-  // The Player renders text[lang] and formalText[lang] of the host view's conditions.
+  // The Player renders text[lang] and formalText[lang] of the host's public conditions (publicConditions).
   const { world } = loadLibrary();
   for (const task of world.tasks) {
-    const conditions = task.conditionTexts?.map((text, index) => ({ id: `goal-${index + 1}`, text, formalText: { en: `formal ${index}`, de: `formal ${index} de` } })) ?? [];
+    const conditions = publicConditions(task).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) }));
+    assert.ok(conditions.length > 0, task.id);
     const taskView = { ...view, task: { ...view.task, id: task.id, conditions } } as HostView;
     for (const lang of ['en', 'de'] as const) {
-      assert.deepEqual(compactView(taskView, lang).task.conditions, conditions.map(condition => ({ id: condition.id, text: condition.text[lang], formalText: condition.formalText[lang] })), `${task.id} ${lang}`);
+      assert.deepEqual(compactView(taskView, lang).task.conditions, conditions.map(condition => ({ id: condition.id, text: condition.text[lang], ...(condition.formalText ? { formalText: condition.formalText[lang] } : {}) })), `${task.id} ${lang}`);
       const checked = checkResult({ ...check, conditions: conditions.map(condition => ({ ...condition, met: false })) }, lang);
-      assert.deepEqual(checked.conditions.map(condition => [condition.text, condition.formalText]), conditions.map(condition => [condition.text[lang], condition.formalText[lang]]));
+      assert.deepEqual(checked.conditions.map(condition => [condition.text, condition.formalText]), conditions.map(condition => [condition.text[lang], condition.formalText?.[lang]]));
     }
   }
+});
+
+test('a result goes as text and structured content; too large for both, as text alone; too large for that, refused by name', () => {
+  const reply = { ok: true, value: { label: '"quoted"'.repeat(10) } };
+  const both = toolResult(reply, 10_000);
+  assert.deepEqual(both.structuredContent, reply); assert.deepEqual(JSON.parse(both.content[0]!.text), reply);
+  // Escaping counts: the text part of this reply is larger than the reply itself.
+  const size = Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(reply) }], isError: false }));
+  const textOnly = toolResult(reply, size);
+  assert.equal('structuredContent' in textOnly, false); assert.deepEqual(JSON.parse(textOnly.content[0]!.text), reply);
+  const refused = toolResult(reply, size - 1);
+  assert.equal(refused.isError, true); assert.deepEqual(refused.structuredContent, { ok: false, error: { code: 'result_too_large', message: 'Tool reply exceeds result budget' } });
+});
+
+test('a delta too large to send keeps its ids and leaves the changed objects out', () => {
+  const big = { step: 1, revision: 2, hash: 'h', changed: { a: step('a', 'x'.repeat(2000)) }, created: ['a'], removed: [], effects: [], errors: [] } as unknown as MutationDelta;
+  assert.equal(boundedDelta(big, 100_000), big);
+  assert.deepEqual(boundedDelta(big, 1000), { ...big, changed: {}, changedOmitted: true });
 });
 
 test('the host delta lists changed objects as they are now, created ids and removed ids; the agent result localises its errors', () => {

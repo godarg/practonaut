@@ -7,7 +7,7 @@
 //
 //   node tools/measure-agent-surface.ts --server 0.1.0|local [--mirror required|off]
 //        [--latency] [--warmup 8] [--calls 72] [--call-log]
-//        [--episodes decision,restyle-flow,… --seeds 1,2] [--out <file.json>]
+//        [--episodes decision,restyle-flow,… --seeds 1,2 [--list-actions]] [--out <file.json>]
 //
 // Host processing time (`latencyMs` in act replies) and, when the server writes one, the bridge's
 // call log are reported alongside and labelled as such; they are not the latency measure.
@@ -135,7 +135,7 @@ async function latency(server: string, mirror: string, warmup: number, calls: nu
 }
 
 /** One oracle episode on a library task: observe, the reference solution, check_result. */
-async function episode(server: string, mirror: string, task: string, seed: number, home: string): Promise<object> {
+async function episode(server: string, mirror: string, task: string, seed: number, home: string, listActions: boolean): Promise<object> {
   const { world, library } = loadLibrary();
   const entry = library.tasks.find(value => value.id === task);
   if (!entry) throw new Error(`unknown library task ${task}`);
@@ -143,6 +143,8 @@ async function episode(server: string, mirror: string, task: string, seed: numbe
   const probe = await Probe.start(serverEntry(server, `excalidraw/${task}`, seed, mirror), home);
   try {
     const observed = await probe.call('observe', {});
+    // An agent that reads the parameter contracts once pays for list_actions too (0.1.0 put them in observe).
+    if (listActions) await probe.call('list_actions', {});
     let { step, revision } = position(observed.value.value);
     let known = new Set(Object.keys(objectsOf(observed.value.value)));
     const created: string[] = [];
@@ -158,7 +160,7 @@ async function episode(server: string, mirror: string, task: string, seed: numbe
     const check = await probe.call('check_result', { expectedRevision: revision });
     const passed = (check.value.value as { passed?: unknown } | undefined)?.passed === true;
     const bytes = probe.samples.reduce((sum, sample) => sum + sample.resultBytes, 0);
-    return { task, seed, actions: entry.oracle.steps.length, passed, calls: probe.samples.length, resultBytes: bytes, byTool: Object.fromEntries(['observe', 'act', 'check_result'].map(tool => [tool, probe.samples.filter(sample => sample.tool === tool).reduce((sum, sample) => sum + sample.resultBytes, 0)])) };
+    return { task, seed, actions: entry.oracle.steps.length, passed, calls: probe.samples.length, resultBytes: bytes, byTool: Object.fromEntries(['observe', 'list_actions', 'act', 'check_result'].map(tool => [tool, probe.samples.filter(sample => sample.tool === tool).reduce((sum, sample) => sum + sample.resultBytes, 0)])) };
   } finally { await probe.close(); }
 }
 
@@ -172,7 +174,8 @@ async function main(args: string[]): Promise<void> {
   const out: Record<string, unknown> = {
     tool: 'tools/measure-agent-surface.ts', measuredAt: new Date().toISOString(), server, mirror,
     machine: { platform: platform(), release: release(), arch: arch(), cpu: cpus()[0]?.model ?? 'unknown', node: process.version },
-    git: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim() || null,
+    // The commit only says something about the local build; a published version is named by `server`.
+    ...(server === 'local' ? { git: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim() || null } : {}),
   };
   const home = mkdtempSync(join(tmpdir(), 'pn-measure-'));
   try {
@@ -181,7 +184,7 @@ async function main(args: string[]): Promise<void> {
     if (tasks) {
       const seeds = (option(args, '--seeds', '1') ?? '1').split(',').map(Number);
       const episodes = [];
-      for (const task of tasks.split(',')) for (const seed of seeds) episodes.push(await episode(server, mirror, task, seed, home));
+      for (const task of tasks.split(',')) for (const seed of seeds) episodes.push(await episode(server, mirror, task, seed, home, args.includes('--list-actions')));
       out.episodes = episodes;
       out.episodeBytesTotal = episodes.reduce((sum, value) => sum + (value as { resultBytes: number }).resultBytes, 0);
     }

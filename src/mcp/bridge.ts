@@ -76,7 +76,7 @@ export const publicViewSchema = z.strictObject({
 const effect = z.strictObject({ kind: z.string(), id: z.string() });
 /** A mutation answered without its view (`reply: "delta"`, PADR-0038); `changed` holds state objects. */
 const deltaReplySchema = z.strictObject({
-  delta: z.strictObject({ step: integer, revision: integer, hash: z.string(), changed: z.record(z.string(), z.unknown()), created: z.array(z.string()), removed: z.array(z.string()), effects: z.array(effect), errors: diagnosis }),
+  delta: z.strictObject({ step: integer, revision: integer, hash: z.string(), changed: z.record(z.string(), z.unknown()), created: z.array(z.string()), removed: z.array(z.string()), effects: z.array(effect), errors: diagnosis, changedOmitted: z.literal(true).optional() }),
   mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative(),
 }).superRefine((value, context) => { if (!AnyStateSchema.safeParse({ objects: value.delta.changed }).success) context.addIssue({ code: "custom", message: "changed objects do not match the state schema" }); });
 // Only practice/core failures are part of these seven tools. Authoring/runtime or future

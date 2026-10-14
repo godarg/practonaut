@@ -67,6 +67,8 @@ export interface MutationDelta {
   changed: Record<string, State['objects'][string]>;
   created: string[]; removed: string[]; effects: Effect[];
   errors: Array<{ id: string; explanation: Localized }>;
+  /** Set when the changed objects were too large to send (DELTA_LIMIT_BYTES): observe instead. */
+  changedOmitted?: true;
 }
 export interface MutationReply { view: HostView; delta: MutationDelta; mirrorConfirmed: boolean; latencyMs: number }
 /** The HTTP reply to a mutation that asked for `reply: "delta"` (the MCP bridge does): the same

@@ -69,11 +69,13 @@ export interface MutationResult {
   changed: State['objects']; created: string[]; removed: string[];
   effects: Array<{ kind: string; id: string }>;
   errors: Array<{ id: string; explanation: Text }>;
+  /** The changed objects were too large to send; call observe for the board. */
+  changedOmitted?: true;
   mirrorConfirmed: boolean; latencyMs: number;
 }
 export function mutationResult(reply: MutationDeltaReply, lang: Lang): MutationResult {
   const { delta } = reply;
-  return localize({ step: delta.step, revision: delta.revision, changed: delta.changed, created: delta.created, removed: delta.removed, effects: delta.effects, errors: delta.errors, mirrorConfirmed: reply.mirrorConfirmed, latencyMs: reply.latencyMs }, lang) as MutationResult;
+  return localize({ step: delta.step, revision: delta.revision, changed: delta.changed, created: delta.created, removed: delta.removed, effects: delta.effects, errors: delta.errors, ...(delta.changedOmitted ? { changedOmitted: true } : {}), mirrorConfirmed: reply.mirrorConfirmed, latencyMs: reply.latencyMs }, lang) as MutationResult;
 }
 
 export function checkResult(check: PublicCheck, lang: Lang): PublicCheck { return localize(check, lang); }

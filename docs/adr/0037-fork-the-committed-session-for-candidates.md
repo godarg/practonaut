@@ -1,6 +1,6 @@
 # PADR-0037 — Transaction candidates fork the committed session; the world is validated once
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 1 · Refines
+Status: accepted 2026-10-14 after independent review (pull request #25) · Date: 2026-10-14 · Roadmap 0.2.0, Must 1 · Refines
 [PADR-0022](0022-linear-replay-and-transaction-deadline.md) ("the host retains committed-session
 replay, tentative reconstruction and candidate replay")
 
@@ -58,6 +58,14 @@ validation and copying, not work an action needs:
 - Measured on the same machine on 2026-10-14 (median of 72 calls): host processing per `act` 5 ms
   without and 31 ms with the mirror (0.1.0: 100 ms and 128 ms); the client round trip is in
   PADR-0038, which also changes the reply size.
+- Long logs (PADR-0022 C4), per mutation in the core — fork, act and the candidate's full replay —
+  against 0.1.0's committed replay, rebuild and candidate replay, median of 5 on the library task
+  `connect` with `move_step` actions, on a loaded machine: 20 vs 277 ms at 300 actions, 65 vs 313 ms
+  at 2,000, 162 vs 615 ms at 5,000, 264 vs 1,156 ms at 9,000. The cost stays linear in the log and
+  inside the 2-second step budget; the 3 MiB view budget, which includes log and history, binds
+  before the 10,000-action limit, as before.
+- The executor's validated world is frozen as well, so a fork, a replay and the live session can
+  never disagree about a world one of them changed.
 - Code that wrote to `session.world` would now throw; nothing in the repository does
   (`tests/unit/core.test.ts` pins the frozen world and the independence of a fork).
 - A defect that corrupted the committed session between two mutations would surface at the next
