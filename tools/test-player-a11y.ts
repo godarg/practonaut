@@ -139,6 +139,8 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   try {
     await setLanguage(workspaces.page, language);
     for (const st of PLAYER_STATES.filter(x => x.id.startsWith("practice-export-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    // The bundled example's demonstration: asking, playing, finished, stopped and stopped early.
+    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("demo-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
     for (const st of PLAYER_STATES.filter(x => x.workspace === "editor")) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
     for (const st of [...PLAYER_STATES.filter(x => x.workspace === "author"), ...CREATE_PROGRESS_STATES]) {
       try { await st.enter(workspaces); await state(workspaces, st.id, stem, CREATE_GATES ? failures : createFindings); }

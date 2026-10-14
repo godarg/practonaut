@@ -26,7 +26,9 @@ import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
 import { BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
 
-export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string }
+export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string;
+  /** Test seam: how the demonstration waits before each step (real timers when absent; the CLI never sets it). */
+  demonstrationPause?: (milliseconds: number, signal: AbortSignal) => Promise<void> }
 export const PLAYER_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; font-src 'self'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'";
 /** New routes default to denial until their exact handler capability is declared. */
 export const HTTP_CAPABILITIES:Readonly<Record<string,'public'|'practice'|'author'>>=Object.freeze({
@@ -196,7 +198,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   catch (error) { await diagnostics.discard(); await credential.remove(); throw error; }
   // The bundled example's demonstration owns the session while it runs; every surface goes through it.
   let demonstration: DemonstrationControl | undefined;
-  if (options.demonstration && demonstrationWorld(world)) ({ controller, demonstration } = withDemonstration(controller, world));
+  if (options.demonstration && demonstrationWorld(world)) ({ controller, demonstration } = withDemonstration(controller, world, options.demonstrationPause ? { pause: options.demonstrationPause } : {}));
   const playerInfo = (): { modelOnly?: ModelOnlyNotice; demonstration?: DemonstrationInfo } => ({
     ...(options.modelOnly && options.mirror === 'off' ? { modelOnly: structuredClone(options.modelOnly) } : {}),
     ...(demonstration ? { demonstration: { tasks: demonstration.tasks(), status: demonstration.status() } } : {}),

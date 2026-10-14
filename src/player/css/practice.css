@@ -181,6 +181,21 @@
 .history-entry__consequence { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
 .rule-origin { overflow-wrap: anywhere; display: block; font-family: var(--pn-font-mono); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); color: var(--pn-color-text-secondary); letter-spacing: 0; }
 
+/* Model-only session: one banner above the head and the inspector, in the stage's status row. */
+.model-only-banner { grid-area: status; margin-bottom: var(--pn-space-6); }
+.model-only-banner__command { font-family: var(--pn-font-mono); letter-spacing: 0; white-space: nowrap; }
+body[data-workspace="author"] .model-only-banner { display: none; }
+
+/* Demonstration: three numbered lines (actions, real tool, result check), each with its state in words. */
+.demo-rows { display: grid; gap: var(--pn-space-3); }
+.demo-row { display: grid; grid-template-columns: 1.5rem 1fr; gap: var(--pn-space-3); align-items: start; }
+.demo-row__index { display: grid; place-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--pn-radius-full); background: var(--pn-color-fill); color: var(--pn-color-text-secondary); font-size: var(--pn-text-caption); font-weight: var(--pn-weight-semibold); font-variant-numeric: tabular-nums; }
+.demo-row__body { display: grid; gap: var(--pn-space-1); min-width: 0; }
+.demo-row__title { font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); letter-spacing: var(--pn-tracking-subhead); font-weight: var(--pn-weight-medium); }
+.demo-row__detail { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); letter-spacing: var(--pn-tracking-footnote); }
+.demo-row__verdict { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
+.demo-row__verdict .pn-status { width: var(--pn-icon-sm); height: var(--pn-icon-sm); }
+
 /* Consequences and rejections */
 .practice-notices { display: grid; gap: var(--pn-space-3); }
 .practice-notices:empty { display: none; }
@@ -254,6 +269,10 @@ body[data-workspace="editor"] .practice-tray { display: none; }
 @media (max-width: 47.99em) {
   .practice-head__controls .pn-btn--primary { width: auto; padding: var(--pn-space-2) var(--pn-space-4); }
   .practice-head__controls .pn-btn--primary > span { position: static; width: auto; height: auto; margin: 0; clip-path: none; }
+  /* A first-time offer is never a bare symbol: on narrow screens it takes its own line, in words. */
+  .practice-head__controls:has(> .practice-head__demo) { flex-wrap: wrap; }
+  .practice-head__controls .practice-head__demo { order: 1; flex: 0 0 100%; justify-content: flex-start; width: auto; padding: var(--pn-space-2) var(--pn-space-3); }
+  .practice-head__controls .practice-head__demo > span { position: static; width: auto; height: auto; margin: 0; clip-path: none; }
 }
 
 @supports not (backdrop-filter: blur(1px)) { .canvas__coach { background: var(--pn-color-surface); } }

@@ -1,5 +1,5 @@
 import type { Action, Arrow, Frame, Localized, Step, StepV2, WorldObject } from '../world/types.ts';
-import type { HostEvent, HostReply, HostView, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
+import type { DemonstrationStatus, HostEvent, HostReply, HostView, ModelOnlyNotice, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
 import { createPhase3 } from './phase3.ts';
 import { catalogs } from './messages.ts';
 import type { Language, Message } from './messages.ts';
@@ -29,10 +29,17 @@ let working = false, announcement = '', errorCode: string | undefined, lastCheck
 let freshVerdict = false, previousHints = 0, previousHistory = 0;
 // Where each step was drawn last, so a step glides to its new place instead of jumping.
 const drawn = new Map<string, { x: number; y: number }>();
+// Why the session is model-only (from the CLI), and the bundled example's demonstration.
+let modelOnlyNotice: ModelOnlyNotice | undefined, demoTasks: string[] = [], demo: DemonstrationStatus | null = null;
+/** The demonstration owns the current attempt: while it runs and after it, until a reset or variant. */
+function demoAttempt(): boolean { return !!demo && !!current && demo.taskId === current.task.id && demo.attempt === current.attempt; }
+function demoRunning(): boolean { return demoAttempt() && demo!.state === 'running'; }
+/** Nothing may change the session: a request is in flight or the demonstration is playing. */
+function locked(): boolean { return working || demoRunning(); }
 
 function cacheSession(): void { if (token&&current) reloadAvailable = writeTabSession({ schema: 'practonaut.tab-session/2', token, ...(authorToken?{authorToken}:{}),sessionId:current.sessionId,language, theme, workspace }); }
 const msg = (key: Message): string => catalogs[language][key];
-const exportControl=createExportControl({current:()=>current,request:expectedRevision=>request('export',{expectedRevision}),message:msg,working:()=>working,setWorking:value=>{working=value;},render,announce:say});
+const exportControl=createExportControl({current:()=>current,request:expectedRevision=>request('export',{expectedRevision}),message:msg,working:()=>locked(),demonstration:()=>demoAttempt(),setWorking:value=>{working=value;},render,announce:say});
 const text = (value: Localized): string => value[language];
 const tagged = <T extends Element>(node: T, id: string): T => { node.setAttribute('data-testid', id); return node; };
 
@@ -70,6 +77,8 @@ function actionCount(n: number): string { return count(n, 'action1', 'actionN');
 function endName(id: string | null): string { return id === null ? msg('loose') : objectName(current!.state.objects[id]); }
 function arrowText(arrow: Arrow): string { return `${endName(arrow.from)} → ${endName(arrow.to)}`; }
 function coachText(): string {
+  // During and after the demonstration the board is its board, and the coach says so.
+  if (demoAttempt()) return demoRunning() ? msg('demoCoachRunning').replace('{n}', String(demo!.done)).replace('{total}', String(demo!.total)) : msg('demoCoachDone');
   // On narrow screens the inspector with its banner is below the board: the coach says it too (R5-03).
   if (errorCode === 'unmodeled' && narrow()) return msg('coachUnmodeled');
   if (pending?.kind === 'move') return msg('coachMove');
@@ -161,7 +170,7 @@ function cancelPreview(restore = true): void {
   if (!pending) return; const id = pending.returnId; pending = undefined; render(); if (restore) restoreFocus(id); say(msg('cancelled'));
 }
 function beginRelation(kind: 'connect' | 'start' | 'end' | 'group'): void {
-  if (!current || working) return;
+  if (!current || working || demoAttempt()) return;
   const object = current.state.objects[selected];
   const fromStep = kind === 'connect' || kind === 'group';
   if (fromStep && object?.type !== 'step' || !fromStep && object?.type !== 'arrow') return;
@@ -171,7 +180,7 @@ function beginRelation(kind: 'connect' | 'start' | 'end' | 'group'): void {
   selected = targets[0]!.id; render(); focusObject(selected); say(`${coachText()} ${msg('editing')}`);
 }
 function beginMove(): void {
-  const object = current?.state.objects[selected]; if (object?.type !== 'step' || working) return;
+  const object = current?.state.objects[selected]; if (object?.type !== 'step' || working || demoAttempt()) return;
   pending = { kind: 'move', origin: selected, returnId: selected, x: object.x, y: object.y }; render(); focusObject(selected); say(msg('moving'));
 }
 /** The first live frame; a world/2 board may have none. */
@@ -229,7 +238,7 @@ function confirmPreview(targetId = selected): void {
   else void act({ name: 'reconnect_end', params: { id: preview.origin, end: preview.kind === 'start' ? 'start' : 'end', target: targetId } });
 }
 function removeSelected(): void {
-  const object = current?.state.objects[selected]; if (!object || working) return;
+  const object = current?.state.objects[selected]; if (!object || working || demoAttempt()) return;
   if (object.type === 'arrow') void act({ name: 'disconnect', params: { id: selected } });
   if (object.type === 'step') void act({ name: 'delete_step', params: { id: selected } });
 }
@@ -264,7 +273,7 @@ function boardKey(event: KeyboardEvent, id: string): void {
 // ---------- Sheets ----------
 type DialogKind = 'add' | 'rename' | 'move' | 'resize' | 'restyle' | 'frame' | 'renameFrame';
 function dialogForm(kind: DialogKind): void {
-  if (!current || working) return;
+  if (!current || working || demoAttempt()) return;
   pending = undefined;
   const object = current.state.objects[selected]; const returnId = selected;
   const step = object?.type === 'step' ? object : undefined, styled: StepV2 | undefined = step && isStepV2(step) ? step : undefined;
@@ -373,6 +382,57 @@ async function showTool(): Promise<void> {
   } catch { working = false; rejected('mirror_unavailable'); }
 }
 
+// ---------- Demonstration (bundled example only) ----------
+/** Asks first only when the person's own unsolved work would be cleared, like a task change. */
+function watchDemonstration(): void {
+  if (!current || locked() || document.querySelector('dialog[open]')) return;
+  const accept = (): void => { void startDemonstration(); };
+  if ((!current.step && !current.hintsOpened) || solvedNow()) { accept(); return; }
+  confirmationDialog({ title: 'demoConfirmTitle', explanation: 'demoConfirmExplanation', confirm: 'demoConfirm', confirmId: 'demo-confirm', cancelId: 'demo-cancel', returnId: 'demo-start', accept, destructive: false });
+}
+async function startDemonstration(): Promise<void> {
+  if (!current || locked()) return;
+  working = true; errorCode = undefined; pending = undefined; render(); say(msg('working'));
+  const reply = await request<DemonstrationStatus>('demonstration', { expectedRevision: current.revision, confirmed: true });
+  // The fresh attempt it started, before its first action lands.
+  const latest = await request<HostView>('observe');
+  working = false;
+  if (latest.ok) absorb(latest.value);
+  if (!reply.ok) { rejected(reply.error.code); return; }
+  // An event may already have brought a later status of this demonstration.
+  if (!demo || demo.attempt !== reply.value.attempt || demo.taskId !== reply.value.taskId) demo = reply.value;
+  // A verdict of the attempt before is gone; one the demonstration already reached (events can be faster) stays.
+  if (lastCheck && current && (lastCheck.hash !== current.hash || lastCheck.revision !== current.revision)) lastCheck = undefined;
+  showFormal = false; selected = '';
+  // The whole board in view while it plays (narrow screens scroll to it), the one way out focused.
+  render(); document.querySelector('.canvas')?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  document.querySelector<HTMLElement>('[data-testid="demo-stop"]')?.focus({ preventScroll: true });
+  say(msg('demoStarted'));
+}
+async function stopDemonstration(): Promise<void> {
+  if (!demoRunning()) return;
+  // The host stops after the action in flight; the final status arrives as an event.
+  const reply = await request<DemonstrationStatus | null>('demonstration/stop', {});
+  if (!reply.ok) rejected(reply.error.code);
+}
+/** The demonstration's board is not the person's: a fresh attempt on the same task and variant. */
+function ownAttempt(): void { void mutate('reset', { confirmed: true }, 'demoOwnAttemptDone'); }
+/** What the demonstration just did, for the live region; at its end the focus goes to the Goal card. */
+function demonstrationChanged(previous: DemonstrationStatus | null): void {
+  const d = demo;
+  if (!d || !current || !demoAttempt()) return;
+  const total = String(d.total);
+  if (d.state === 'running' && d.done > (previous?.state === 'running' && previous.attempt === d.attempt ? previous.done : 0)) {
+    const last = current.history.filter(item => item.actor.kind === 'demonstration').at(-1);
+    say(`${msg('demoAnnounceAction').replace('{n}', String(d.done)).replace('{total}', total)} ${last ? text(last.description) : ''} ${msg(last?.mirrorConfirmed ? 'demoAnnounceConfirmed' : 'demoAnnounceModel')}`);
+    return;
+  }
+  if (d.state === 'running' || previous?.state !== 'running') return;
+  if (d.state === 'finished') { freshVerdict = true; say(`${msg('demoAnnounceFinished')} ${msg(d.passed ? 'passed' : 'failed')}`); }
+  else if (d.state === 'stopped') say(msg('demoAnnounceStopped').replace('{n}', String(d.done)).replace('{total}', total));
+  else say(`${msg('demoAnnounceFailed')} ${msg(d.error && Object.hasOwn(catalogs.en, d.error) ? d.error as Message : 'genericError')}`);
+}
+
 // ---------- Board drawing ----------
 const narrowQuery = window.matchMedia('(max-width: 47.99em)');
 const narrow = (): boolean => narrowQuery.matches;
@@ -409,7 +469,11 @@ function boardSvg(): SVGSVGElement {
 function tool(shortKey: Message, fullKey: Message, glyph: IconName, id: string, click: () => void, options: { danger?: boolean; disabled?: boolean } = {}): HTMLButtonElement {
   return button({ label: msg(shortKey), title: msg(fullKey), icon: glyph, variant: options.danger ? 'tool-danger' : 'tool', testid: id, onClick: click, disabled: !!options.disabled || working });
 }
-function palette(): HTMLElement {
+function palette(): HTMLElement | undefined {
+  // While the demonstration plays, the one way out sits where the tools are; afterwards its board
+  // offers no tools (the next step, an own attempt, is in the Goal card).
+  if (demoAttempt()) return demoRunning() ? h('div', { class: 'practice-palette pn-floating', attrs: { role: 'group', 'aria-label': msg('demoTitle') } },
+    button({ label: msg('demoStop'), title: msg('demoStopTitle'), icon: 'stop', variant: 'tool', class: 'pn-btn--keep-label', testid: 'demo-stop', onClick: () => { void stopDemonstration(); } })) : undefined;
   const visible = paletteVisibility();
   const group = (name: string, ...children: Node[]): HTMLElement => h('div', { class: 'practice-palette__group', attrs: { 'data-palette': name, hidden: !visible[name] || undefined } }, ...children);
   const root = h('div', { class: 'practice-palette pn-floating', attrs: { role: 'group', 'aria-label': msg('board') } });
@@ -467,7 +531,7 @@ function boardSection(): HTMLElement {
   const canvas = h('div', { class: 'canvas' });
   const scroll = h('div', { class: 'canvas__scroll board-scroll', attrs: { tabindex: 0, role: 'region', 'aria-label': msg('diagramScroll') } }, boardSvg());
   const status = tagged(h('p', { class: 'canvas__coach', text: coachText() }), 'board-status');
-  canvas.append(scroll, status, palette());
+  const tools = palette(); canvas.append(scroll, status, ...(tools ? [tools] : []));
   // A board wider than the screen (narrow phones) says so: faded edges where more of it lies, and a
   // line under it that the region names as its description.
   const hint = h('p', { class: 'board-scroll-hint', testid: 'board-scroll-hint', text: msg('boardSwipe'), attrs: { id: 'board-scroll-hint' } });
@@ -481,7 +545,7 @@ function boardSection(): HTMLElement {
   hint.hidden = true;
   scroll.addEventListener('scroll', edges, { passive: true });
   boardResize.disconnect(); boardResize = new ResizeObserver(edges); boardResize.observe(scroll);
-  section.append(canvas, hint, h('p', { class: 'practice-note' }, icon('info'), h('span', { text: current!.mirror === 'off' ? msg('modelOnlySetup') : msg('boardModel'), attrs: { 'data-testid': 'mirror-mode-note' } })));
+  section.append(canvas, hint, h('p', { class: 'practice-note' }, icon('info'), h('span', { text: current!.mirror === 'off' ? msg('modelOnly') : msg('boardModel'), attrs: { 'data-testid': 'mirror-mode-note' } })));
   section.append(disclosure({ summary: msg('help'), class: 'practice-help' }, h('p', { class: 't-subhead t-secondary', text: msg('keyboard') })));
   return section;
 }
@@ -490,15 +554,18 @@ function boardSection(): HTMLElement {
 /** Exactly one filled button is visible: the next sensible action wins (design language P2). */
 /** The board as it is now passed a check: nothing unsolved would be lost by moving on. */
 function solvedNow(): boolean { const c = current!; return !!lastCheck && lastCheck.passed && lastCheck.hash === c.hash && lastCheck.revision === c.revision; }
-function primaryOwner(): 'variant' | 'check' { return solvedNow() ? 'variant' : 'check'; }
+/** On the demonstration's board the next step is an own attempt, whatever its verdict says. */
+function primaryOwner(): 'demo' | 'variant' | 'check' { return demoAttempt() ? 'demo' : solvedNow() ? 'variant' : 'check'; }
 function practiceHead(): HTMLElement {
   const c = current!;
   const head = h('section', { class: 'practice-head', attrs: { 'aria-labelledby': 'task-title' } });
   head.append(h('p', { class: 't-eyebrow', text: msg('task') }), h('h1', { class: 'practice-head__title', id: 'task-title', text: text(c.task.title) }), h('p', { class: 'practice-head__prompt', text: text(c.task.prompt) }));
   const controls = h('div', { class: 'practice-head__controls' });
   // One step: choosing a task switches to it (a dialog asks only when unsolved work would be lost).
-  controls.append(listPicker({ id: 'task-picker', testid: 'task-picker', label: msg('taskSelect'), value: c.task.id, currentWord: msg('taskCurrent'), disabled: working, items: c.tasks.map(item => ({ value: item.id, label: text(item.title), ...(item.level && item.referenceActions ? { detail: actionCount(item.referenceActions), meter: { value: item.level, max: 3, label: msg('taskDifficulty').replace('{n}', String(item.level)) } } : {}) })), onPick: id => changeAttempt(id) }));
-  controls.append(button({ label: msg('newVariant'), title: msg('newVariant'), icon: 'shuffle', variant: 'plain', testid: 'new-variant', disabled: working, onClick: () => changeAttempt() }));
+  controls.append(listPicker({ id: 'task-picker', testid: 'task-picker', label: msg('taskSelect'), value: c.task.id, currentWord: msg('taskCurrent'), disabled: locked(), items: c.tasks.map(item => ({ value: item.id, label: text(item.title), ...(item.level && item.referenceActions ? { detail: actionCount(item.referenceActions), meter: { value: item.level, max: 3, label: msg('taskDifficulty').replace('{n}', String(item.level)) } } : {}) })), onPick: id => changeAttempt(id) }));
+  controls.append(button({ label: msg('newVariant'), title: msg('newVariant'), icon: 'shuffle', variant: 'plain', testid: 'new-variant', disabled: locked(), onClick: () => changeAttempt() }));
+  // The bundled example can show its task solved once; never offered on its own board.
+  if (demoTasks.includes(c.task.id) && !demoAttempt()) controls.append(button({ label: msg('demoWatch'), title: msg('demoWatch'), icon: 'play', variant: 'plain', class: 'practice-head__demo', testid: 'demo-start', disabled: working, onClick: watchDemonstration }));
   controls.append(h('span', { class: 'practice-head__meta t-footnote t-secondary t-tabular', text: `${msg('attempt')} ${c.attempt} · ${actionCount(c.step)}` }));
   // While an agent works on the session, the head says so: the last change and who made it.
   const last = c.history.at(-1);
@@ -547,10 +614,13 @@ function goalCard(): HTMLElement {
   const failedNow = matches && !lastCheck!.passed;
   const quietCheck = (!c.step && !lastCheck) || failedNow;
   const facts = failedNow ? h('p', { class: 'goal-note', text: msg('factsOnBoard').replace('{facts}', boardFacts()) }) : undefined;
-  const checkButton = button({ label: owner === 'variant' ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: working });
+  const checkButton = button({ label: owner === 'variant' || (owner === 'demo' && matches) ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: locked() });
   const formalSwitch = hasFormal ? button({ label: msg(showFormal ? 'formalHide' : 'formalShow'), icon: showFormal ? 'chevronUp' : 'chevronDown', variant: 'plain', size: 'sm', class: 'goal-formal-switch', testid: 'formal-switch', pressed: showFormal, onClick: () => { showFormal = !showFormal; render(); document.querySelector<HTMLElement>('[data-testid="formal-switch"]')?.focus(); } }) : undefined;
-  result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
+  // A verdict on the demonstration's board says whose board it judged.
+  const whose = owner === 'demo' && verdict ? h('p', { class: 'goal-note', testid: 'demo-verdict-note', text: msg('demoVerdictNote') }) : undefined;
+  result.append(...(verdict ? [verdict] : []), ...(whose ? [whose] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
   if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
+  if (owner === 'demo' && !demoRunning()) result.append(button({ label: msg('demoOwnAttempt'), icon: 'reset', variant: 'primary', size: 'lg', block: true, testid: 'demo-own-attempt', disabled: working, onClick: ownAttempt }));
   result.append(checkButton);
   return result;
 }
@@ -563,22 +633,24 @@ function hintsCard(): HTMLElement {
     root.append(list);
   }
   previousHints = c.hintsOpened;
-  root.append(button({ label: msg(c.hintsOpened >= c.task.hintCount ? 'allHints' : 'hint'), icon: 'lightbulb', variant: 'secondary', block: true, testid: 'hint', onClick: () => { void openHint(); }, disabled: c.hintsOpened >= c.task.hintCount || working }));
+  root.append(button({ label: msg(c.hintsOpened >= c.task.hintCount ? 'allHints' : 'hint'), icon: 'lightbulb', variant: 'secondary', block: true, testid: 'hint', onClick: () => { void openHint(); }, disabled: c.hintsOpened >= c.task.hintCount || working || demoAttempt() }));
   return root;
 }
 function historyCard(): HTMLElement {
   const c = current!;
   const root = card({ title: msg('history'), class: 'inspector-card', actions: [
-    button({ label: msg('undo'), icon: 'undo', variant: 'plain', size: 'sm', testid: 'undo', onClick: () => { void mutate('undo', {}, 'undoDone'); }, disabled: !c.step || working }),
-    button({ label: msg('reset'), icon: 'reset', variant: 'plain', size: 'sm', testid: 'reset', onClick: resetDialog, disabled: (!c.step && !c.hintsOpened) || working }),
+    button({ label: msg('undo'), icon: 'undo', variant: 'plain', size: 'sm', testid: 'undo', onClick: () => { void mutate('undo', {}, 'undoDone'); }, disabled: !c.step || working || demoAttempt() }),
+    button({ label: msg('reset'), icon: 'reset', variant: 'plain', size: 'sm', testid: 'reset', onClick: resetDialog, disabled: (!c.step && !c.hintsOpened) || locked() }),
   ] });
   if (!c.history.length) { root.append(h('p', { class: 't-subhead t-secondary', text: msg('emptyHistory') })); return root; }
   const list = h('ol', { class: 'history-list' });
   const grew = c.history.length > previousHistory;
   previousHistory = c.history.length;
   c.history.forEach((item, index) => {
-    // Who made the change comes first: an agent through MCP (with the client's declared name) or you.
-    const actor = item.actor.kind === 'agent' ? chip(msg('actorAgent').replace('{client}', item.actor.client), { tone: 'accent', testid: 'history-actor' }) : chip(msg('actorYou'), { testid: 'history-actor' });
+    // Who made the change comes first: an agent through MCP (with the client's declared name), the
+    // bundled example's demonstration, or you.
+    const actor = item.actor.kind === 'agent' ? chip(msg('actorAgent').replace('{client}', item.actor.client), { tone: 'accent', testid: 'history-actor' })
+      : item.actor.kind === 'demonstration' ? chip(msg('actorDemonstration'), { icon: 'play', testid: 'history-actor' }) : chip(msg('actorYou'), { testid: 'history-actor' });
     const body = h('div', { class: 'history-entry__body' }, h('p', { class: 'history-entry__head' }, actor, h('span', { text: text(item.description) })));
     for (const consequence of item.consequences) body.append(h('p', { class: 'history-entry__consequence' }, h('span', { class: 'history-entry__then', text: `${msg('atMoment')} ` }), text(consequence.explanation)));
     if (showRuleOrigins) body.append(h('p', { class: 'rule-origin', testid: 'history-rule-origin', text: `${msg('provenance')} ${item.ruleIds.join(', ')} · ${msg(item.mirrorConfirmed ? 'origin' : 'modelOnly')}` }));
@@ -593,11 +665,36 @@ function howCheckedCard(): HTMLElement {
   const c = current!;
   const root = card({ title: msg('howChecked'), class: 'inspector-card' });
   root.append(h('p', { class: 't-subhead' }, evidence(c.practiceEvidence ? 'confirmed' : 'observed', msg(c.practiceEvidence ? 'evidence' : 'noEvidence'))));
-  root.append(button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || working }));
+  root.append(button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || locked() }));
   if (toolUrl) root.append(h('img', { class: 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } }));
   const rules = h('div', { class: 'rule-list' });
   for (const rule of c.rules) rules.append(h('div', { class: 'rule-item' }, h('span', { class: 't-footnote t-medium', text: `${msg('confirmed')} · ${rule.id}` }), h('small', { class: 'rule-origin', text: `${msg('origin')}: ${rule.evidence.map(evidence => `${evidence.run} / ${evidence.case}`).join('; ')}` })));
   root.append(disclosure({ summary: msg('rules') }, rules));
+  return root;
+}
+/** The demonstration in three lines, the way every result is made: actions land on the board, the
+ * real Excalidraw confirms each one (or the session says it is model-only), the result check judges. */
+function demonstrationCard(): HTMLElement {
+  const c = current!, d = demo!;
+  const done = c.history.filter(item => item.actor.kind === 'demonstration');
+  const confirmed = done.filter(item => item.mirrorConfirmed).length;
+  const state: Record<DemonstrationStatus['state'], { word: Message; tone: 'accent' | 'neutral' | 'warning' }> = { running: { word: 'demoRunning', tone: 'accent' }, finished: { word: 'demoFinished', tone: 'neutral' }, stopped: { word: 'demoStopped', tone: 'warning' }, failed: { word: 'demoFailed', tone: 'warning' } };
+  const root = card({ title: msg('demoTitle'), titleId: 'demo-title', class: 'inspector-card', testid: 'demonstration', actions: [chip(msg(state[d.state].word), { tone: state[d.state].tone, testid: 'demo-state' })] });
+  // Machine-readable state for tests; people read it in the chip and the three lines.
+  root.dataset.state = d.state; root.dataset.done = String(d.done);
+  const count = (key: Message, n: number, total: number): string => msg(key).replace('{n}', String(n)).replace('{total}', String(total));
+  const row = (index: number, title: Message, detail: HTMLElement, testid: string): HTMLElement => h('li', { class: 'demo-row', testid },
+    h('span', { class: 'demo-row__index', text: String(index), attrs: { 'aria-hidden': 'true' } }), h('div', { class: 'demo-row__body' }, h('p', { class: 'demo-row__title', text: msg(title) }), detail));
+  const mirrored = c.mirror === 'required';
+  const mirror = !mirrored ? evidence('observed', msg('demoMirrorOff')) : done.length ? evidence('confirmed', count('demoMirrorCount', confirmed, done.length)) : h('span', { text: msg('demoMirrorNone') });
+  const verdict = d.state === 'finished' && d.passed !== undefined
+    ? h('span', { class: 'demo-row__verdict' }, statusIcon(d.passed ? 'met' : 'unmet'), h('span', { text: msg(d.passed ? 'passed' : 'failed') }))
+    : h('span', { class: 'demo-row__verdict' }, statusIcon('pending'), h('span', { text: msg(d.state === 'running' ? 'demoCheckPending' : 'demoCheckSkipped') }));
+  root.append(h('p', { class: 't-subhead t-secondary', text: msg('demoIntro') }), h('ol', { class: 'demo-rows' },
+    row(1, 'demoRowActions', h('p', { class: 'demo-row__detail t-tabular', text: count('demoRowActionsCount', d.done, d.total) }), 'demo-actions'),
+    row(2, 'demoRowMirror', h('p', { class: 'demo-row__detail' }, mirror), 'demo-mirror'),
+    row(3, 'demoRowCheck', h('p', { class: 'demo-row__detail' }, verdict), 'demo-check')));
+  if (d.state === 'failed') root.append(banner({ tone: 'danger', title: msg('demoAnnounceFailed'), text: msg(d.error && Object.hasOwn(catalogs.en, d.error) ? d.error as Message : 'genericError'), testid: 'demo-failed' }));
   return root;
 }
 function inviteCard(): HTMLElement {
@@ -620,7 +717,7 @@ function inspector(): HTMLElement {
   const points = c.errors.map(error => text(error.explanation));
   const consequence = last ? banner({ tone: 'accent', title: msg('consequence'), text: text(last.description), class: 'notice consequence', testid: 'consequence' },
     ...(points.length ? [h('p', { class: 'consequence-open', text: msg('stillToFix') }), h('ul', { class: 'consequence-list' }, ...points.map(point => h('li', { text: point })))] : [])) : undefined;
-  side.append(notices, goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(),inviteCard());
+  side.append(notices, ...(demoAttempt() ? [demonstrationCard()] : []), goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(),inviteCard());
   freshVerdict = false;
   const edges = (): void => { side.classList.toggle('is-clipped-top', side.scrollTop > 2); side.classList.toggle('is-clipped-bottom', side.scrollHeight - side.clientHeight - side.scrollTop > 2); };
   side.addEventListener('scroll', edges, { passive: true });
@@ -654,6 +751,16 @@ function renderBar(): void {
   nodes.push(controls);
   bar.replaceChildren(...nodes);
 }
+/** A model-only session says so above everything, with what gets the real engine: the one
+ * download with its size, a check of a Chromium that did not start, or the switch that was chosen. */
+function modelOnlyBanner(): HTMLElement {
+  const notice = modelOnlyNotice;
+  const key: Message = !notice ? 'modelOnlyUnknown' : notice.reason === 'missing' ? 'modelOnlyMissing' : notice.reason === 'start' ? 'modelOnlyStart' : 'modelOnlyOff';
+  const sentence = msg(key).replace('{name}', notice?.download?.name ?? '').replace('{size}', String(notice?.download?.megabytes ?? ''));
+  const [before, after] = sentence.split('{command}');
+  const body = after !== undefined && notice?.command ? h('p', {}, before, h('code', { class: 'model-only-banner__command', text: notice.command }), after) : h('p', { text: sentence });
+  return banner({ tone: 'warning', title: msg('modelOnlyTitle'), class: 'notice model-only-banner', testid: 'model-only-banner' }, body);
+}
 function centered(glyph: IconName, title: string, body: string, danger = false): HTMLElement {
   return h('div', { class: 'shell-center' }, h('div', { class: `shell-message${danger ? ' shell-message--danger' : ''}` },
     h('span', { class: 'shell-message__glyph' }, icon(glyph)), h('h1', { class: 't-title1', text: title }), h('p', { class: 'shell-message__text', text: body }),
@@ -669,6 +776,7 @@ function render(): void {
     return;
   }
   const nodes: Node[] = [];
+  if (current.mirror === 'off') nodes.push(modelOnlyBanner());
   if (streamPaused) nodes.push(banner({tone:'warning',text:msg('streamRecovering'),class:'notice',testid:'stream-recovering'}));
   if (!reloadAvailable) nodes.push(banner({ tone: 'warning', text: msg('reloadUnavailable'), class: 'notice' }));
   nodes.push(practiceHead(), boardSection(), trayNode(), inspector());
@@ -708,6 +816,16 @@ async function events(signal: AbortSignal = eventLifetime.signal): Promise<void>
           if (value.type === 'changed' || value.type === 'ready') {
             failures = 0; streamPaused = false; absorb(value.view); if (!working) render();
           } else if (value.type === 'rejected' && !working) rejected(value.error.code);
+          else if (value.type === 'demonstration') {
+            const previous = demo, active = document.activeElement;
+            const followed = !active || active === document.body || !!active.closest('[data-testid="demo-stop"]');
+            demo = value.status; demonstrationChanged(previous);
+            if (!working) {
+              render();
+              // The Stop button is gone at the end: the focus follows to the verdict and the next step.
+              if (demo && demo.state !== 'running' && previous?.state === 'running' && followed) document.querySelector<HTMLElement>('[data-testid="check-result"]')?.focus();
+            }
+          }
         }
       }
     } catch { /* Transport, parsing and EOF use the same bounded reconnect path below. */ }
@@ -723,12 +841,15 @@ async function events(signal: AbortSignal = eventLifetime.signal): Promise<void>
 }
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && pending) { event.preventDefault(); cancelPreview(); }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); if (!working && !document.querySelector('dialog[open]') && !document.querySelector<HTMLElement>('.native-editor-scroll')?.inert && current?.step) void mutate('undo', {}, 'undoDone'); }
+  // Escape stops a playing demonstration from anywhere but an open sheet.
+  else if (event.key === 'Escape' && demoRunning() && !document.querySelector('dialog[open]')) { event.preventDefault(); void stopDemonstration(); }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); if (!working && !document.querySelector('dialog[open]') && !document.querySelector<HTMLElement>('.native-editor-scroll')?.inert && current?.step && !demoAttempt()) void mutate('undo', {}, 'undoDone'); }
 });
 render();
 const code = new URLSearchParams(location.hash.slice(1)).get('code'); history.replaceState(null, '', location.pathname);
 function startPlayer(value: ResumeReply, restored: boolean): void {
   authorAvailable=Boolean(authorToken&&value.authorEnabled);if(!authorAvailable&&workspace==='author')workspace='board';
+  modelOnlyNotice = value.modelOnly; demoTasks = value.demonstration?.tasks ?? []; demo = value.demonstration?.status ?? null;
   absorb(value.view); selected = ''; cacheSession();
   if (value.engineOrigin) phase3 = createPhase3(value.engineOrigin, { authorEnabled:authorAvailable,mount: workbench, navChanged: renderBar, request, current: () => current!, language: () => language, absorb, redraw: render, undo: () => mutate('undo', {}, 'undoDone'), ...(restored ? { restoredWorkspace: workspace } : {}), workspaceChanged: next => { workspace = next; cacheSession(); render(); } });
   render(); say(msg('waiting')); void events();
