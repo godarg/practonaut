@@ -330,9 +330,14 @@ self-checks 10 000–19 999 (default 10 001…10 024), held-out ≥ 1 000 000. `
 `instances.json`).
 
 **Held-out sets** are generated right before a gate round and not looked at while tuning:
-`node tools/challenge.ts generate <family> --set heldout --round 1 --count 24 --difficulty <d> --out <dir>`
+`node tools/challenge.ts generate <family> --set heldout --round 1 --dev-runs <n> --difficulty <d> --out <dir>`
 draws a random seed base (printed and recorded); round 2 uses a new base, and the gate refuses a
-round that reuses an earlier round's seeds.
+round that reuses an earlier round's seeds. The size is preregistered: the largest set the budget of
+100 model runs per family and round allows next to the round's development runs,
+min(30, ⌊(100 − development runs) / 3⌋), never fewer than 24 — 30 instances (90 gate runs) with at
+most 10 development runs. Even at 30 the exact McNemar test is not strong: if two agents disagree on
+20 % of the instances, all in one agent's favour, it reaches p < 0.05 with probability 0.57 (0.34 at
+24 instances; 39 are needed for 0.8). A family that fails discrimination may still separate agents.
 
 **The gate** takes the five bench/2 reports of one round — oracle, random and the three ladder agents
 (`claude-code` with Opus, Sonnet and Haiku, chosen with `ANTHROPIC_MODEL`), all on the same held-out
@@ -342,7 +347,7 @@ every stored near miss in a checker process, and writes the gate report:
 ```bash
 node tools/challenge.ts gate --family repair --round 1 --oracle <oracle/report.json> --random <random/report.json> \
   --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --strongest <model> --weakest <model> \
-  --dev-runs <n> --out docs/benchmarks/challenge/repair-round1.md
+  --dev-runs <n> --out docs/benchmarks/challenge/repair-round1.md   # --dev-runs is required
 ```
 
 `--strongest` and `--weakest` are the models named from the development runs before the round

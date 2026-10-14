@@ -138,8 +138,9 @@ judged state and the error classes, and the judged state may hold whatever an ag
 6. **Bench.** `--checks <n>` (stored as `settings.checks`); task limits apply automatically; bench/2
    gains `settings.checks` and `references.tasks[].minimal` (optional, as PADR-0036 decision 8
    allows before 0.2.0 ships). `--max-actions` stays the bench's outer cap per run.
-7. **Statistics** (`src/bench/stats.ts`): the 95 % Wilson score interval and the exact two-sided
-   McNemar test (binomial on the discordant pairs, p = min(1, 2·P(X ≤ min(b, c))), X ~ Bin(b + c, ½)).
+7. **Statistics** (`src/bench/stats.ts`, the same functions `wilson` and `mcnemarExact` as Must 3's
+   module): the 95 % Wilson score interval and the exact two-sided McNemar test (binomial on the
+   discordant pairs, p = min(1, 2·P(X ≤ min(b, c))), X ~ Bin(b + c, ½)).
 
 ## Gate preregistration (binding for every family and round; roadmap 0.2.0 item 4)
 
@@ -150,10 +151,22 @@ judged state and the error classes, and the judged state may hold whatever an ag
 - **Tuning** (difficulty, family parameters, bench settings) uses development instances only. The
   **strongest and the weakest agent are named from the development runs before the gate** and given
   to the gate tool as arguments; the gate never picks them from gate data.
-- **Gate set:** at least **24 fresh held-out instances**, generated right before the round and not
-  looked at while tuning; **one run per agent per instance** (`--seed-list 1 --repeats 1`), the
-  **instance is the unit** (as in `compare`). All five agents (oracle, random, three ladder agents)
-  run the same world, tasks, seeds, mirror, timeout, action cap and check settings.
+- **Gate set:** fresh held-out instances, generated right before the round and not looked at while
+  tuning; **one run per agent per instance** (`--seed-list 1 --repeats 1`), the **instance is the
+  unit** (as in `compare`). All five agents (oracle, random, three ladder agents) run the same world,
+  tasks, seeds, mirror, timeout, action cap and check settings.
+- **Gate size and power:** the round uses the largest held-out set the 100-run budget allows next to
+  its development runs: **n = min(30, ⌊(100 − development runs) / 3⌋)**, never fewer than 24 (the
+  roadmap's floor; a round that cannot reach 24 does not start). With at most 10 development runs
+  (for example three per ladder agent) that is **30 held-out instances: 90 gate runs + ≤ 10
+  development runs**. The size is fixed before the round by the development runs spent, and the gate
+  tool refuses another. Power, stated so a "does not pass" is read correctly: when the two agents
+  disagree on 20 % of the instances and every disagreement favours the stronger one (a 20-point
+  difference), the exact McNemar test rejects at α = 0.05 only with at least 6 discordant instances,
+  which happens with probability **0.34 at 24 instances** (as measured for `compare`, Must 3),
+  **0.57 at 30** and 0.82 at 39 (39 instances are needed for 80 % power; P(D ≥ 6) for
+  D ~ Bin(n, 0.2), computed exactly). A family that misses discrimination at 30 instances may still
+  separate the agents; the gate does not claim otherwise.
 - **Headroom:** the strongest agent passes between 10 % and 80 % of the instances (both inclusive).
 - **Discrimination:** strongest minus weakest is at least 20 percentage points **and** the exact
   McNemar test on the discordant instances gives p < 0.05.

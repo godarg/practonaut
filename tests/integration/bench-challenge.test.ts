@@ -77,13 +77,13 @@ test('the gate tool reads, re-verifies and judges five bench folders, and refuse
       copies.push(join(copy, 'report.json'));
     }
     const gate = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
-      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--out', join(dir, 'gate.md')]);
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--out', join(dir, 'gate.md')]);
     assert.equal(gate.status, 2, gate.stderr);
     assert.match(gate.stderr, /gate_input_invalid: the gate needs at least 24 held-out instances, these reports have 2/);
     // A report whose artifacts were changed is refused before anything is computed.
     await writeFile(join(dir, 'agent-1', 'tight-budget-1000000-s1-r1', 'session.json'), '{}');
     const tampered = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
-      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--out', join(dir, 'gate.md')]);
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--out', join(dir, 'gate.md')]);
     assert.equal(tampered.status, 2); assert.match(tampered.stderr, /bench_artifact_changed/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

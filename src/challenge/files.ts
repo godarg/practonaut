@@ -97,7 +97,7 @@ async function readReport(path: string): Promise<BenchReportV2> {
   return report;
 }
 
-export interface GateFiles { family: Family; round: number; oracle: string; random: string; ladder: string[]; strongest: string; weakest: string; developmentRuns?: number; previous?: string[]; releaseRunsBefore?: number }
+export interface GateFiles { family: Family; round: number; oracle: string; random: string; ladder: string[]; strongest: string; weakest: string; developmentRuns: number; previous?: string[]; releaseRunsBefore?: number }
 /** Reads, validates and re-verifies the five reports against their bench folders, judges the stored
  * near misses, and computes the gate. */
 export async function gateFromFiles(files: GateFiles): Promise<{ result: GateResult; markdown: string }> {
@@ -118,7 +118,7 @@ export async function gateFromFiles(files: GateFiles): Promise<{ result: GateRes
   for (const path of files.previous ?? []) previousSeeds.push(...(await readReport(path)).environment.world.generated.map(entry => entry.seed));
   const result = computeGate({
     family: files.family, round: files.round, oracle, random, ladder, strongest: files.strongest, weakest: files.weakest, nearMisses: { total: nearMisses.total, passed: nearMisses.passed },
-    ...(files.developmentRuns !== undefined ? { developmentRuns: files.developmentRuns } : {}), ...(previousSeeds.length ? { previousSeeds } : {}),
+    developmentRuns: files.developmentRuns, ...(previousSeeds.length ? { previousSeeds } : {}),
     ...(files.releaseRunsBefore !== undefined ? { releaseRunsBefore: files.releaseRunsBefore } : {}),
   });
   return { result, markdown: renderGate(result) };
