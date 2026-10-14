@@ -1,8 +1,9 @@
 # Vision
 
-Status: **proposed** 2026-10-14 ([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)); a
-maintainer accepts or changes it. Milestones and exit criteria: [roadmap](roadmap.md). Evidence
-behind every claim here: [landscape 2026-10](research/landscape-2026-10.md).
+Status: **accepted** 2026-10-14 by the maintainer
+([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)); it changes only by a new
+PADR. Milestones and exit criteria: [roadmap](roadmap.md). Evidence behind every claim here:
+[landscape 2026-10](research/landscape-2026-10.md).
 
 This page says where Practonaut is going and why. It is written for the people and the AI coding
 agents who develop Practonaut over the next months and years: read it before you pick work, and

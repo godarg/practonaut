@@ -1,6 +1,6 @@
 # PADR-0033 — Product direction: measurement you can act on
 
-Status: proposed · Date: 2026-10-14
+Status: accepted · Date: 2026-10-14 (maintainer acceptance the same day)
 
 ## Context
 

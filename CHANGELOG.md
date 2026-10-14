@@ -8,7 +8,7 @@ All notable changes are recorded here. The format follows
 
 ### Documentation
 
-- Vision, roadmap to 1.0 and the proposed product direction
+- Vision, roadmap to 1.0 and the product direction
   ([docs/vision.md](docs/vision.md), [docs/roadmap.md](docs/roadmap.md),
   [PADR-0033](docs/adr/0033-product-direction-measurement-you-can-act-on.md)), with a research note
   and the measured baseline of 0.1.0 ([docs/research/landscape-2026-10.md](docs/research/landscape-2026-10.md)).

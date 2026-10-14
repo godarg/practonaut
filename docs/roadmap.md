@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **proposed** 2026-10-14 together with the [vision](vision.md)
+Status: **accepted** 2026-10-14 by the maintainer, together with the [vision](vision.md)
 ([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)). Dates are targets, not
 promises. Each deliverable has an **acceptance** line; it is done when that line is measured.
 Sizes are rough estimates in agent sessions (one session ≈ one reviewable pull request with tests):
