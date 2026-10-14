@@ -83,7 +83,7 @@ clients and the seven tools: [agent guide](agent-guide.md).
 
 ```bash
 npx practonaut bench --agent oracle --tasks excalidraw/connect       # reference solution, no model
-npx practonaut bench --agent claude-code --tasks excalidraw/connect  # Claude Code, Practonaut tools only, your subscription
+npx practonaut bench --agent claude-code --tasks excalidraw/connect  # Claude Code, Practonaut tools only, its own login
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 ```
 

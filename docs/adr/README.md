@@ -42,5 +42,5 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0031](0031-public-release-and-trusted-publishing.md) | Public 0.1.0 release: fresh snapshot, npm trusted publishing, manual approval | accepted | 2026-10-12 |
 | [PADR-0032](0032-chromium-sandbox-stays-on.md) | The Chromium sandbox stays on where the system allows it; a browser that does not start falls back or fails by name | accepted (amended: Linux start without the sandbox when the system refuses it) | 2026-10-13 |
 | [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted | 2026-10-14 |
-| [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | proposed | 2026-10-14 |
-| [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | proposed | 2026-10-14 |
+| [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | accepted | 2026-10-14 |
+| [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | accepted | 2026-10-14 |

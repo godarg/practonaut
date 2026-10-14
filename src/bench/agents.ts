@@ -26,19 +26,21 @@ export type AgentSpec =
   | { kind: 'builtin'; name: BuiltinAgent; command: [] }
   | { kind: 'preset' | 'command'; name: string; command: string[] };
 
-/** Exact names a preset withholds besides every `*_API_KEY` and `*_AUTH_TOKEN`: the cloud-provider
- * switches, the Bedrock key and the profile and federation credentials that Claude Code ranks above
- * the subscription login (PADR-0034). */
-const PRESET_WITHHELD = new Set(['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_ANTHROPIC_AWS',
-  'CLAUDE_CODE_USE_MANTLE', 'AWS_BEARER_TOKEN_BEDROCK', 'ANTHROPIC_PROFILE', 'ANTHROPIC_FEDERATION_RULE_ID']);
+/** Exact names a preset withholds besides every `*_API_KEY`, `*_AUTH_TOKEN` and `CLAUDE_CODE_USE_*`:
+ * credentials and headers through which Claude Code authenticates other than with its login
+ * (PADR-0034). */
+const PRESET_WITHHELD = new Set(['AWS_BEARER_TOKEN_BEDROCK', 'ANTHROPIC_PROFILE', 'ANTHROPIC_FEDERATION_RULE_ID', 'ANTHROPIC_IDENTITY_TOKEN',
+  'ANTHROPIC_IDENTITY_TOKEN_FILE', 'ANTHROPIC_CUSTOM_HEADERS', 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR', 'CLAUDE_CODE_GATEWAY_TOKEN',
+  'CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR']);
 
-/** True for a variable a preset does not pass on: provider keys, tokens and billing switches. A set
- * ANTHROPIC_API_KEY silently moves Claude Code from the user's subscription to API billing.
- * CLAUDE_CODE_OAUTH_TOKEN is the subscription's own token and passes. Names compare
- * case-insensitively, as Windows treats them. */
+/** True for a variable a preset does not pass on: provider keys and tokens, every `CLAUDE_CODE_USE_*`
+ * switch (the provider switches, current and future; the preset has no built-in tools, so the
+ * feature switches of that family do nothing there) and the names above. A set ANTHROPIC_API_KEY
+ * silently moves Claude Code from the user's login to API billing. CLAUDE_CODE_OAUTH_TOKEN, the
+ * subscription's own token, passes. Names compare case-insensitively, as Windows treats them. */
 export function withheldFromPreset(name: string): boolean {
   const upper = name.toUpperCase();
-  return upper.endsWith('_API_KEY') || upper.endsWith('_AUTH_TOKEN') || PRESET_WITHHELD.has(upper);
+  return upper.endsWith('_API_KEY') || upper.endsWith('_AUTH_TOKEN') || upper.startsWith('CLAUDE_CODE_USE_') || PRESET_WITHHELD.has(upper);
 }
 
 /** An environment variable name `--keep-env` accepts. */

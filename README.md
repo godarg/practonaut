@@ -76,10 +76,11 @@ npx practonaut report ~/.practonaut/bench/<id>/report.json --verify     # re-jud
 ```
 
 Each run gets its own session and data folder; the agent reaches the session only through the
-Practonaut MCP tools and gets the same public task a person gets. The `claude-code` preset runs on
-your Claude subscription: it does not pass provider keys, tokens or billing switches from your
-environment to Claude Code (a set `ANTHROPIC_API_KEY` would silently switch it to API billing);
-`--keep-env ANTHROPIC_API_KEY` passes one on on purpose. Scores come from the host's history and a
+Practonaut MCP tools and gets the same public task a person gets. The `claude-code` preset does not
+pass provider keys, tokens or billing switches from your environment to Claude Code (a set
+`ANTHROPIC_API_KEY` would silently switch it to API billing), so Claude Code uses the login it has —
+your subscription, if you logged in with one; `--keep-env ANTHROPIC_API_KEY` passes a key on
+purpose. Scores come from the host's history and a
 separate checker, never from what the agent says: pass@1, pass^k, actions, efficiency against the
 reference solution. The JSON report has a schema. `report` checks that every pass and every number
 follows from the verdicts in the file — consistency, not proof: a file edited consistently still

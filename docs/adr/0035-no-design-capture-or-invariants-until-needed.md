@@ -1,6 +1,7 @@
 # PADR-0035 — `design:capture` and `design:invariants` are not built until a review needs them
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 0 · Amends decision 8 of
+Status: accepted 2026-10-14 after independent review (pull request #23; the roadmap's Must 0 sets the
+substance) · Date: 2026-10-14 · Amends decision 8 of
 [PADR-0020](0020-design-system-v1.md)
 
 ## Context

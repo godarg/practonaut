@@ -63,10 +63,6 @@ Node version that ships a recent npm. See npm's
    Between releases `main` carries the next development version, `X.Y.Z-dev.0`, in the same four
    places, so sessions and reports written from `main` are not mistaken for the release.
 
-   **0.1.0, the first release:** its section is `## [0.1.0] - unreleased` and there is no separate
-   `Unreleased` list (0.1.0 itself has not been published, so changes go straight into its
-   entry). The maintainer replaces `unreleased` with the tag date (`YYYY-MM-DD`) in the commit that
-   is tagged, and starts a new `## [Unreleased]` section above it after the release.
 2. Run the full local chain on the merged commit (it needs Chromium):
 
    ```bash

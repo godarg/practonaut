@@ -8,11 +8,12 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 
-- **The `claude-code` preset runs on your subscription.** `bench` no longer passes provider keys,
-  tokens or billing switches from your environment to the preset agent (`*_API_KEY`,
-  `*_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK` and the other cloud switches); a set
-  `ANTHROPIC_API_KEY` used to switch Claude Code to API billing without notice. `bench` names what
-  it withheld; `--keep-env <name,…>` passes named variables on
+- **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
+  tokens and billing switches in your environment from the preset agent (`*_API_KEY`,
+  `*_AUTH_TOKEN`, `CLAUDE_CODE_USE_*`, gateway, profile and federation credentials,
+  `ANTHROPIC_CUSTOM_HEADERS`), so Claude Code uses the login it has; a set `ANTHROPIC_API_KEY` used
+  to switch it to API billing without notice. `bench` names what it withheld; `--keep-env <name,…>`
+  passes named variables on
   ([PADR-0034](docs/adr/0034-preset-agents-get-no-provider-credentials.md)).
 - `main` carries the development version `0.2.0-dev.0`; the checker accepts its sessions, and
   [docs/release.md](docs/release.md) lists every place a version bump touches.

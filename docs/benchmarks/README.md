@@ -38,16 +38,20 @@ variant labels; `random` picks a random action with random values that fit each 
 contract (ids from the current objects), until the action budget or the timeout. Both start the
 same `practonaut mcp` bridge an external agent gets and speak MCP to it.
 
-**Preset `claude-code`.** Uses an installed, logged-in Claude Code CLI with only the Practonaut tools,
-on the subscription it is logged in with
-([PADR-0034](../adr/0034-preset-agents-get-no-provider-credentials.md)). A provider key in the
-environment would silently switch Claude Code to API billing (in `-p` mode a set `ANTHROPIC_API_KEY`
-always wins over the login), so the preset does not pass on any variable whose name ends in
-`_API_KEY` or `_AUTH_TOKEN`, nor `CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY`, `_ANTHROPIC_AWS`,
-`_MANTLE`, `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_PROFILE` or `ANTHROPIC_FEDERATION_RULE_ID`.
-`bench` names the variables it withheld on stderr (names only). `CLAUDE_CODE_OAUTH_TOKEN`, the
-subscription's own token from `claude setup-token`, passes. To bill through a key on purpose, name it:
-`--keep-env ANTHROPIC_API_KEY`. Built-ins and command templates get your environment unchanged.
+**Preset `claude-code`.** Uses an installed, logged-in Claude Code CLI with only the Practonaut tools
+and the login it has ([PADR-0034](../adr/0034-preset-agents-get-no-provider-credentials.md)). A
+provider key in the environment would silently switch Claude Code to API billing (in `-p` mode a set
+`ANTHROPIC_API_KEY` always wins over the login), so the preset does not pass on any variable whose
+name ends in `_API_KEY` or `_AUTH_TOKEN` or starts with `CLAUDE_CODE_USE_` (the cloud and gateway
+switches), nor `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`,
+`ANTHROPIC_IDENTITY_TOKEN`, `ANTHROPIC_IDENTITY_TOKEN_FILE`, `ANTHROPIC_CUSTOM_HEADERS`,
+`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`, `CLAUDE_CODE_GATEWAY_TOKEN` or
+`CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR`. `bench` names the variables it withheld on stderr
+(names only). `CLAUDE_CODE_OAUTH_TOKEN`, the subscription's own token from `claude setup-token`,
+passes. To bill through a key on purpose, name it: `--keep-env ANTHROPIC_API_KEY`. What Claude Code
+reads outside the environment still counts: a Console (API) login, an active profile in
+`~/.config/anthropic` or a managed `apiKeyHelper` bill as they are set up. Built-ins and command
+templates get your environment unchanged.
 
 ```text
 claude -p --output-format stream-json --verbose --no-session-persistence --tools '' \

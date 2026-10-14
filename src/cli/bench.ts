@@ -71,7 +71,7 @@ export async function commandBench(args: string[]): Promise<number> {
   if (options.keepEnv.length && agent.kind !== 'preset') throw new RuntimeError('usage', cliText('benchKeepEnvPreset'));
   // Names only, never values: what the preset agent will not get (PADR-0034).
   const { withheld } = agentEnvironment(agent, process.env, options.keepEnv);
-  if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.join(', ') }));
+  if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.map(safeText).join(', ') }));
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
   process.stderr.write(cliText('benchStart', { runs: options.tasks.length * options.seeds.length * options.repeats, agent: agent.name, mode: mirror.mode === 'required' ? 'real-engine' : cliText('modelOnly') }));

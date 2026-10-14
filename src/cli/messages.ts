@@ -328,8 +328,8 @@ export const CLI_CATALOG = {
     "de": "--keep-env gilt nur für einen voreingestellten Agenten (claude-code); eingebaute Agenten und Befehlsvorlagen bekommen Ihre Umgebung unverändert"
   },
   "benchWithheld": {
-    "en": "practonaut bench: the {agent} preset does not pass {names} to the agent (a provider key would switch it from your subscription to API billing); --keep-env <name> passes one on\n",
-    "de": "practonaut bench: die Voreinstellung {agent} gibt {names} nicht an den Agenten weiter (ein Anbieterschlüssel würde ihn vom Abonnement auf API-Abrechnung umstellen); --keep-env <Name> gibt einen weiter\n"
+    "en": "practonaut bench: the {agent} preset does not pass {names} to the agent (a provider key would switch it from its login to API billing); --keep-env <name> passes one on\n",
+    "de": "practonaut bench: die Voreinstellung {agent} gibt {names} nicht an den Agenten weiter (ein Anbieterschlüssel würde ihn von seiner Anmeldung auf API-Abrechnung umstellen); --keep-env <Name> gibt einen weiter\n"
   },
   "benchStart": {
     "en": "practonaut bench: {runs} {runs:run|runs} with agent {agent}, {mode}\n",

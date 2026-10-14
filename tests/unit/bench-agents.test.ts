@@ -39,15 +39,19 @@ test('preset environment: provider keys and billing switches are withheld unless
   const base: NodeJS.ProcessEnv = {
     PATH: '/usr/bin', HOME: '/var/h/someone', ANTHROPIC_API_KEY: 'k-anthropic', OPENAI_API_KEY: 'k-openai', anthropic_auth_token: 'k-token',
     CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_USE_VERTEX: '1', CLAUDE_CODE_USE_FOUNDRY: '1', CLAUDE_CODE_USE_ANTHROPIC_AWS: '1', CLAUDE_CODE_USE_MANTLE: '1',
-    AWS_BEARER_TOKEN_BEDROCK: 'k-bedrock', ANTHROPIC_FOUNDRY_AUTH_TOKEN: 'k-entra', ANTHROPIC_PROFILE: 'work', ANTHROPIC_FEDERATION_RULE_ID: 'rule',
-    // These stay: the subscription's own token, model and endpoint choices, tool switches that are not billing.
-    CLAUDE_CODE_OAUTH_TOKEN: 'subscription', ANTHROPIC_MODEL: 'some-model', ANTHROPIC_BASE_URL: 'http://127.0.0.1:9', CLAUDE_CODE_USE_POWERSHELL_TOOL: '1',
+    CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD: '1', CLAUDE_CODE_USE_GATEWAY: '1', CLAUDE_CODE_GATEWAY_TOKEN: 'k-gateway', CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR: '5',
+    CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: '3', AWS_BEARER_TOKEN_BEDROCK: 'k-bedrock', ANTHROPIC_FOUNDRY_AUTH_TOKEN: 'k-entra', ANTHROPIC_PROFILE: 'work',
+    ANTHROPIC_FEDERATION_RULE_ID: 'rule', ANTHROPIC_IDENTITY_TOKEN: 'k-oidc', ANTHROPIC_IDENTITY_TOKEN_FILE: '/var/h/t', ANTHROPIC_CUSTOM_HEADERS: 'X-Api-Key: k-header',
+    // These stay: the subscription's own token (and its file descriptor), model and endpoint choices.
+    CLAUDE_CODE_OAUTH_TOKEN: 'subscription', CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: '4', ANTHROPIC_MODEL: 'some-model', ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
   };
   const preset = resolveAgent('claude-code');
   const without = agentEnvironment(preset, base);
-  assert.deepEqual(Object.keys(without.env).sort(), ['ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_POWERSHELL_TOOL', 'HOME', 'PATH']);
-  assert.deepEqual(without.withheld, ['ANTHROPIC_API_KEY', 'ANTHROPIC_FEDERATION_RULE_ID', 'ANTHROPIC_FOUNDRY_AUTH_TOKEN', 'ANTHROPIC_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK',
-    'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_MANTLE', 'CLAUDE_CODE_USE_VERTEX', 'OPENAI_API_KEY', 'anthropic_auth_token']);
+  assert.deepEqual(Object.keys(without.env).sort(), ['ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR', 'HOME', 'PATH']);
+  assert.deepEqual(without.withheld, ['ANTHROPIC_API_KEY', 'ANTHROPIC_CUSTOM_HEADERS', 'ANTHROPIC_FEDERATION_RULE_ID', 'ANTHROPIC_FOUNDRY_AUTH_TOKEN', 'ANTHROPIC_IDENTITY_TOKEN',
+    'ANTHROPIC_IDENTITY_TOKEN_FILE', 'ANTHROPIC_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK', 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR', 'CLAUDE_CODE_GATEWAY_TOKEN',
+    'CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR', 'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD', 'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_GATEWAY', 'CLAUDE_CODE_USE_MANTLE', 'CLAUDE_CODE_USE_VERTEX', 'OPENAI_API_KEY', 'anthropic_auth_token']);
   const kept = agentEnvironment(preset, base, ['ANTHROPIC_API_KEY']);
   assert.equal(kept.env.ANTHROPIC_API_KEY, 'k-anthropic');
   assert.equal(kept.env.OPENAI_API_KEY, undefined);
