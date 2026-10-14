@@ -59,10 +59,11 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
 
 1. **`calls.jsonl`** — one line per `tools/call`: the tool, the result code, the full result bytes and
    the bridge's processing time (PADR-0038 decision 8), plus the JSON-RPC request id. The runner
-   passes `--call-log <run folder>/calls.jsonl` in the generated MCP configuration, outside the
-   agent's own folder. After the agent has ended the runner reads it (bounded), keeps the well-formed
-   lines, and for its built-in agents adds `clientMs`, the round trip measured by Practonaut's own
-   bench client, joined by request id. Other clients: `clientMs: null`, shown as "client timing
+   passes `--call-log <run folder>/calls.bridge.jsonl` in the generated MCP configuration, outside the
+   agent's own folder; that file stays as the bridge wrote it. After the agent has ended the runner
+   reads its head (bounded), keeps the well-formed lines in `calls.jsonl`, counts unreadable lines
+   (`dropped`) and every line beyond the limits (`omitted`), and for its built-in agents adds
+   `clientMs`, the round trip measured by Practonaut's own bench client, joined by request id. Other clients: `clientMs: null`, shown as "client timing
    unavailable". The bridge is started by the agent's client, so an agent can leave no call log or
    alter it: the report says "no call log" when there is none, and the call log is labelled as
    recorded by the agent's bridge.
@@ -126,7 +127,9 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    re-escaped), so board text is never markup. Without the mirror, or when `board.svg` is missing or
    unreadable: a schematic drawn from the judged session state with shape, fill, stroke, size,
    position and frames, labelled "schematic". Groups come from the judged state: a dashed outline in
-   the schematic and a legend under either picture. An **example target** is shown only when the
+   the schematic and a legend under either picture; under either picture, too, every object of the
+   judged state in words with each goal-relevant attribute and its label in full (a drawing may cut a
+   long label). An **example target** is shown only when the
    report binds a validated reference for the task (`references.json`, checked by the checker before
    the bench, by hash at render time and again by `--verify`): a schematic of the reference's end
    state for that seed. Otherwise "no example target".
@@ -156,7 +159,9 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    in every baseline repeat and failed in every candidate repeat. The mirror image is an instance
    fix. `--fail-on-regression` exits 2 (`instance_regression`) when there is at least one. Instances
    with fewer than three judged repeats on a side are never regressions; a flip there is listed under
-   "single runs — not a regression signal".
+   "single runs — not a regression signal". With three or more a side, an outcome that changed but not
+   in every repeat (for example 2/3 passed before, 1/3 after) is listed as "outcome changed, not in every
+   repeat — not a regression signal". Every flip is one of the discordant instances of 4.
 4. **Rate claims** use the exact two-sided McNemar test on the discordant instances: b passed only on
    the baseline, c only on the candidate, p = min(1, 2 · P(X ≤ min(b, c))) for X ~ Binomial(b + c,
    1/2). At p < 0.05 the verdict is "improvement" (c > b) or "decline" (b > c), always with b, c and
@@ -181,8 +186,8 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
 | 0.60 | 0.20 / 0.40 | 124 | 162 |
 
    At 24 instances (the challenge gate's minimum) the power for a 20-point difference is 0.34 at
-   ψ = 0.20 and 0.19 at ψ = 0.50; at 6 instances no split can reach p < 0.05 (the smallest exact
-   p is 2 · 2⁻⁶ ≈ 0.031 at six discordant instances, all one way).
+   ψ = 0.20 and 0.19 at ψ = 0.50. With five or fewer discordant instances no split can reach
+   p < 0.05 (five all one way give 2 · 2⁻⁵ = 0.0625); six all one way give 2 · 2⁻⁶ ≈ 0.031.
 
 The statistics live in one module (`src/bench/stats.ts`) that the challenge gate (Must 4) reuses.
 

@@ -91,7 +91,7 @@ practonaut bench --agent "my-agent --mcp-config {mcp_config} --task-prompt {prom
 ```
 
 `{mcp_config}` is the path of a generated file in the standard `mcpServers` format:
-`{"mcpServers":{"practonaut":{"type":"stdio","command":"<node>","args":["…/main.js","mcp","--host","http://127.0.0.1:<port>","--token-file","<private file>","--call-log","<run folder>/calls.jsonl"],"env":{"PRACTONAUT_HOME":"<run folder>/agent"}}}}`.
+`{"mcpServers":{"practonaut":{"type":"stdio","command":"<node>","args":["…/main.js","mcp","--host","http://127.0.0.1:<port>","--token-file","<private file>","--call-log","<run folder>/calls.bridge.jsonl"],"env":{"PRACTONAUT_HOME":"<run folder>/agent"}}}}`.
 It names the session credential's private file, never the credential itself, and the run's call log,
 which lies outside the agent's own folder (§3). The agent's data
 folder and working directory are the run folder's `agent/` subfolder, which starts empty; the
@@ -168,7 +168,8 @@ run folder also keeps what explains the verdict, each file bound by its SHA-256 
 
 | File | Written by | Content |
 |---|---|---|
-| `calls.jsonl` | the agent's bridge (`practonaut mcp --call-log`), normalised by the runner | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). The agent starts the bridge, so an agent can leave no call log; the report then says so. |
+| `calls.bridge.jsonl` | the agent's bridge (`practonaut mcp --call-log`) | as the bridge wrote it; never changed by the runner |
+| `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
 | `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself), accepted or rejected with the host's error code, step and revision afterwards. Refusals for an exhausted budget are kept up to 100 and counted beyond; a rejected action's strings are cut at 256 characters. |
 | `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made; the verdict never depends on it. |
 | `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw` |
@@ -225,7 +226,7 @@ outside it is referenced, so it can be moved, archived or handed over:
 
 | Entry | Written | Content |
 |---|---|---|
-| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
+| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
 | `world.pnworld` | after the last agent has ended; the runs' hosts loaded the world from the same bytes, hashed before the first run | the public world |
 | `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
@@ -309,8 +310,10 @@ come first, each with:
 - the **board**: the real Excalidraw's export when the mirror ran (reduced to an allowlist of geometry
   and paint, so board text is shown as text and never interpreted as markup), otherwise a schematic of
   the judged state, labelled "schematic"; groups, which no export shows, as a dashed outline and a
-  legend; frames as labelled outlines; beside it an **example target** — a schematic of the validated
-  reference's end state for that seed — or "no example target" when the task has none;
+  legend; frames as labelled outlines; under it every object of the judged state in words — each label
+  in full (a drawing may cut a long one), shape, line, fill, size, position, frame and group; beside it
+  an **example target** — a schematic of the validated reference's end state for that seed — or "no
+  example target" when the task has none;
 - the **trajectory**: every act, undo and reset in order, accepted or rejected, with the conditions met
   afterwards and which ones changed;
 - the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
@@ -341,7 +344,8 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
 - **Instance regression**: at least three judged repeats on each side, every baseline repeat passed and
   every candidate repeat failed. `--fail-on-regression` exits 2 (`instance_regression`) when there is
   one — this is what a CI gate should use. With fewer repeats a flip is listed as "single runs — not a
-  regression signal".
+  regression signal"; with three or more, an outcome that changed but not in every repeat is listed as
+  "outcome changed, not in every repeat — not a regression signal".
 - **Rate verdict**: the exact two-sided McNemar test on the instances the two disagree on (b passed only
   on the baseline, c only on the candidate): "improvement" or "decline" at p < 0.05, always with b, c and
   p; otherwise "not distinguishable at this n".
