@@ -4,6 +4,7 @@
 //   node tools/challenge.ts generate <family> --set dev|check|heldout [--round <1|2>] [--seed <n>]
 //                                    [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
 //   node tools/challenge.ts verify <dir>
+//   node tools/challenge.ts args <dir>        the set's bench arguments on one line
 //   node tools/challenge.ts gate --family <f> --round <k> --oracle <report.json> --random <report.json>
 //                                --ladder <a.json,b.json,c.json> --strongest <model> --weakest <model>
 //                                --dev-runs 9 --set <held-out dir> [--previous <report.json,…>] [--release-runs <n>]
@@ -15,7 +16,8 @@
 // before a gate round and do not look at them while tuning). A held-out set has the preregistered
 // size of 26 instances (with 9 development runs: 3 instances × 3 agents).
 import { randomInt } from 'node:crypto';
-import { lstat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
 import { gateFromFiles, verifySet, writeSet } from '../src/challenge/files.ts';
@@ -24,6 +26,7 @@ import { GATE, heldOutSize } from '../src/challenge/gate.ts';
 const usage = `usage:
   node tools/challenge.ts generate <family> --set dev|check|heldout [--round 1|2] [--dev-runs <n>] [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
   node tools/challenge.ts verify <dir>
+  node tools/challenge.ts args <dir>      (the set's bench arguments, for: practonaut bench --agent <a> $(…))
   node tools/challenge.ts gate --family <f> --round <k> --oracle <report.json> --random <report.json> --ladder <a.json,b.json,c.json>
                                --strongest <model> --weakest <model> --dev-runs 9 --set <held-out dir> [--previous <report.json,…>] [--release-runs <n>] --out <file.md> [--force]
 families: ${FAMILIES.join(', ')}`;
@@ -92,6 +95,16 @@ async function verify(args: string[]): Promise<void> {
   if (result.references.passed !== result.references.total || result.nearMisses.passed) process.exitCode = 2;
 }
 
+/** The bench arguments a set's instances.json names, one line, for `bench --agent <a> $(…)`. */
+async function benchArgs(args: string[]): Promise<void> {
+  const { positional } = options(args, []);
+  if (positional.length !== 1) fail('name one generated folder');
+  const instances = JSON.parse(await readFile(join(positional[0]!, 'instances.json'), 'utf8')) as { bench: { args: string[] } };
+  const values = instances.bench.args.slice(1);
+  if (values.some(value => /\s/.test(value))) fail('a path in the bench arguments contains white space; pass them by hand');
+  process.stdout.write(values.join(' ') + '\n');
+}
+
 async function gate(args: string[]): Promise<void> {
   const { values, flags } = options(args, ['--family', '--round', '--oracle', '--random', '--ladder', '--strongest', '--weakest', '--dev-runs', '--previous', '--release-runs', '--out', '--set'], ['--force']);
   const family = values['--family'] as Family;
@@ -114,6 +127,7 @@ const [command, ...rest] = process.argv.slice(2);
 try {
   if (command === 'generate') await generate(rest);
   else if (command === 'verify') await verify(rest);
+  else if (command === 'args') await benchArgs(rest);
   else if (command === 'gate') await gate(rest);
   else fail('name a command');
 } catch (error) {

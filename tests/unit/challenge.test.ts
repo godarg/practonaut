@@ -173,6 +173,9 @@ test('a set is one world with one task per seed; seeds are distinct and held-out
     assert.equal(tool(['generate', 'repair', '--set', 'heldout', '--seed', '1000000', '--count', '2', '--out', join(dir, 'y')]).status, 1, 'a held-out set names its round');
     const made = tool(['generate', 'tight-budget', '--set', 'dev', '--count', '2', '--out', join(dir, 'dev')]);
     assert.equal(made.status, 0, made.stderr);
+    const args = tool(['args', join(dir, 'dev')]);
+    assert.equal(args.status, 0, args.stderr);
+    assert.match(args.stdout, /^--world \S+\/world --oracle \S+tight-budget-1\.json,\S+tight-budget-2\.json --seed-list 1 --repeats 1 --max-actions 50 --timeout 600\n$/);
     const checked = tool(['verify', join(dir, 'dev')]);
     assert.equal(checked.status, 0, checked.stderr);
     assert.match(checked.stdout, /references passed 2\/2; near misses failed 8\/8/);
