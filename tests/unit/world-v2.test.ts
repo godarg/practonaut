@@ -9,6 +9,8 @@ import { verifySessionHistory } from '../../src/checker/replay.ts';
 import { generateVariant, validateState, validateWorld, WorldError } from '../../src/world/index.ts';
 import type { Action, Arrow, Predicate, State, StepV2 } from '../../src/world/types.ts';
 import { stepV2, v2Start, v2Task, v2World } from '../support/world-v2.ts';
+import { canonicalJson } from '../../src/canonical/index.ts';
+import { createPracticeController } from '../../src/host/session.ts';
 
 const must = (session: Session, action: Action): void => { const r = session.act(action); assert.equal(r.ok, true, !r.ok ? `${r.error.code}: ${r.error.message}` : undefined); };
 const rejected = (session: Session, action: Action, code: string): void => {
@@ -214,5 +216,25 @@ describe('world/2 checker', () => {
   it('counter-probes still run before a world/2 verdict', () => {
     const world = v2World({ tasks: [v2Task({ goal: { op: 'true' } })] });
     assert.throws(() => checkState(world, v2Start, { taskId: 'T1' }), /counterprobe_failed/);
+  });
+});
+
+describe('world/2 generated tasks (PADR-0036)', () => {
+  it('a task may carry generatedBy; it is bounded, covered by the content, and never part of the Player\'s or an agent\'s view', async () => {
+    const by = { id: 'repair', version: '0.1.0', seed: 424242, parameters: { defects: 3, family: 'repair-subtle' } };
+    const plain = v2World(), world = v2World({ tasks: [{ ...v2Task(), generatedBy: by }] });
+    assert.deepEqual(world.tasks[0]!.generatedBy, by);
+    assert.notEqual(canonicalJson(world), canonicalJson(plain), 'the world content holds the metadata');
+    assert.deepEqual(validateWorld(world), world, 'a validated world validates to itself');
+    assert.deepEqual(v2World({ tasks: [{ ...v2Task(), generatedBy: { id: 'repair', version: '1.0.0', seed: 1 } }] }).tasks[0]!.generatedBy?.parameters, {});
+    const bad = [{ id: 'Repair', version: '1.0.0', seed: 1 }, { id: 'repair', version: 'one', seed: 1 }, { id: 'repair', version: '1.0.0', seed: 1.5 },
+      { id: 'repair', version: '1.0.0', seed: 1, parameters: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`p${i}`, i])) },
+      { id: 'repair', version: '1.0.0', seed: 1, parameters: { level: 'a\u202eb' } }, { id: 'repair', version: '1.0.0', seed: 1, parameters: { Level: 1 } }, { id: 'repair', version: '1.0.0', seed: 1, extra: true }];
+    for (const value of bad) assert.throws(() => v2World({ tasks: [{ ...v2Task(), generatedBy: value }] }), WorldError, JSON.stringify(value));
+    const controller = await createPracticeController(world, { seed: 1, taskId: 'T1', mirror: 'off' }, async () => { throw new Error('mirror must not start'); });
+    try {
+      const view = JSON.stringify(controller.view());
+      for (const secret of ['generatedBy', 'repair-subtle', '424242']) assert.equal(view.includes(secret), false, `${secret} reached the view`);
+    } finally { await controller.close(); }
   });
 });
