@@ -15,6 +15,17 @@ updates:
     ignore:
       # Pinned on purpose: the adapter, engine build and conformance tests target this version.
       - dependency-name: "@excalidraw/excalidraw"
+      # Excalidraw 0.18 runs on React 18; Node 22 is the supported runtime. Majors need a deliberate upgrade.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
