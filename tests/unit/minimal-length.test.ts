@@ -10,6 +10,8 @@ import { evaluate } from '../../src/predicate/index.ts';
 import { loadLibrary } from '../../src/library/index.ts';
 import { FILL_COLORS, SHAPES, STROKE_COLORS, type Action, type State, type World } from '../../src/world/types.ts';
 import { stepV2 } from '../support/world-v2.ts';
+import { createRandom } from '../../src/challenge/random.ts';
+import type { StepV2 } from '../../src/world/types.ts';
 
 const arrow = (id: string, from: string, to: string) => ({ id, type: 'arrow' as const, deleted: false, frameId: null, from, to });
 const state = (...objects: State['objects'][string][]): State => ({ objects: Object.fromEntries(objects.map(object => [object.id, object])) });
@@ -145,3 +147,90 @@ describe('assignment cost (Hungarian method)', () => {
     assert.equal(assignmentCost([[1, 1, 1], [1, 1, 1], [1, 1, 0]]), 2);
   });
 });
+
+/** A breadth-first search over real core actions whose parameters come from the goal and the board:
+ * goal labels, goal styles (shape, line, fill together, as set_style sets them) and current ids.
+ * A shortest solution needs no other value: any other label or style would have to be overwritten.
+ * True when some sequence of at most `depth` actions reaches the goal. */
+function solvableWithinGoalValues(world: World, depth: number): boolean {
+  const task = world.tasks[0]!, goal = task.goal;
+  const goalSteps = Object.values(readGoalState(world).objects).filter((o): o is StepV2 => o.type === 'step');
+  const labels = [...new Set(goalSteps.map(step => step.label))];
+  const styles = [...new Map(goalSteps.map(step => [`${step.shape}/${step.stroke}/${step.fill}`, step])).values()];
+  const candidates = (s: State): Action[] => {
+    const steps = Object.values(s.objects).filter(o => o.type === 'step' && !o.deleted).map(o => o.id);
+    const arrows = Object.values(s.objects).filter(o => o.type === 'arrow' && !o.deleted).map(o => o.id);
+    const out: Action[] = [];
+    for (const id of steps) {
+      out.push({ name: 'delete_step', params: { id } });
+      for (const label of labels) out.push({ name: 'rename_step', params: { id, label } });
+      for (const style of styles) out.push({ name: 'set_style', params: { id, shape: style.shape, stroke: style.stroke, fill: style.fill } });
+      for (const to of steps) if (to !== id) out.push({ name: 'connect', params: { from: id, to } });
+    }
+    for (const id of arrows) {
+      out.push({ name: 'disconnect', params: { id } });
+      for (const target of steps) for (const end of ['start', 'end']) out.push({ name: 'reconnect_end', params: { id, end, target } });
+    }
+    for (const label of labels) for (const shape of SHAPES) out.push({ name: 'add_step', params: { frameId: null, label, x: 0, y: 0, width: 160, height: 80, shape } });
+    return out;
+  };
+  const explore = (session: Session, left: number): boolean => {
+    const holds = evaluate(goal, session.state);
+    if (holds.ok && holds.value) return true;
+    if (left === 0) return false;
+    for (const action of candidates(session.state)) {
+      if (!session.act(structuredClone(action)).ok) continue;
+      const found = explore(session, left - 1);
+      session.undo();
+      if (found) return true;
+    }
+    return false;
+  };
+  return explore(new Session(world, 0, task.id), depth);
+}
+/** The goal state from-scenes was given, kept beside each random task below. */
+const goalStates = new WeakMap<World, State>();
+const readGoalState = (world: World): State => goalStates.get(world)!;
+
+describe('minimal length against exhaustive search on random small tasks (review)', () => {
+  it('every "minimal" claim on 80 seeded random tasks survives a breadth-first search one action shorter', () => {
+    const random = createRandom(20261015);
+    const labels = ['Pack', 'Ship', 'Bill', 'Send', 'Check'];
+    const palette = [{ shape: 'rectangle', stroke: 'black', fill: 'none' }, { shape: 'ellipse', stroke: 'black', fill: 'none' }, { shape: 'rectangle', stroke: 'blue', fill: 'yellow' }, { shape: 'diamond', stroke: 'red', fill: 'none' }] as const;
+    let claimed = 0, checked = 0, tasks = 0;
+    const started = performance.now();
+    for (let n = 0; n < 80; n++) {
+      // A start of 2–3 steps with 0–2 arrows; a goal from 1–3 random edits.
+      const count = random.int(2, 3), names = random.shuffle(labels).slice(0, count);
+      const start: State = { objects: {} };
+      names.forEach((label, index) => { start.objects[`s${index}`] = stepV2(`s${index}`, label, index * 300, 0, { ...random.pick(palette) }); });
+      const ids = Object.keys(start.objects);
+      for (let a = 0, arrows = random.int(0, 2); a < arrows; a++) { const [from, to] = random.shuffle(ids); if (!Object.values(start.objects).some(o => o.type === 'arrow' && o.from === from && o.to === to)) start.objects[`a${a}`] = arrow(`a${a}`, from!, to!); }
+      const goal: State = structuredClone(start);
+      for (let e = 0, edits = random.int(1, 3); e < edits; e++) {
+        const steps = Object.values(goal.objects).filter((o): o is StepV2 => o.type === 'step'), arrowsNow = Object.values(goal.objects).filter(o => o.type === 'arrow');
+        const kind = random.int(0, 5), step = random.pick(steps);
+        if (kind === 0) { const label = labels.find(value => !steps.some(other => other.label === value)); if (label) step.label = label; }
+        else if (kind === 1) Object.assign(step, random.pick(palette));
+        else if (kind === 2 && steps.length < 4) { const label = labels.find(value => !steps.some(other => other.label === value)); if (label) goal.objects[`n${e}`] = stepV2(`n${e}`, label, 900, 300, { ...random.pick(palette) }); }
+        else if (kind === 3 && steps.length > 1) { delete goal.objects[step.id]; for (const [id, o] of Object.entries(goal.objects)) if (o.type === 'arrow' && (o.from === step.id || o.to === step.id)) delete goal.objects[id]; }
+        else if (kind === 4) { const [from, to] = random.shuffle(steps.map(value => value.id)); if (from && to && !arrowsNow.some(o => o.type === 'arrow' && ((o.from === from && o.to === to) || (o.from === to && o.to === from)))) goal.objects[`g${e}`] = arrow(`g${e}`, from, to); }
+        else if (arrowsNow.length) { const victim = random.pick(arrowsNow); if (victim.type === 'arrow' && random.chance(0.5)) goal.objects[victim.id] = { ...victim, from: victim.to, to: victim.from }; else delete goal.objects[victim.id]; }
+      }
+      let made;
+      try { made = fromStates(start, goal, { worldId: 'minimal-random', taskId: 't' }); } catch { continue; } // identical scenes, ambiguous labels …
+      tasks++;
+      const length = made.oracle.steps.length, analysis = analyseLength(made.world, 't', 0, length);
+      if (analysis.kind !== 'minimal') continue;
+      claimed++;
+      if (length > 3) continue; // a search of depth 3 or more is not bounded enough for a unit test
+      goalStates.set(made.world, made.goal);
+      assert.equal(solvableWithinGoalValues(made.world, length - 1), false, `task ${n}: a solution shorter than the claimed minimal ${length}`);
+      checked++;
+    }
+    // Most random tasks are within the analysis's scope, and most claims are checked.
+    assert.ok(tasks >= 60, `${tasks} tasks`); assert.ok(claimed >= tasks * 0.7, `${claimed} of ${tasks} claimed minimal`); assert.ok(checked >= claimed * 0.8, `${checked} of ${claimed} checked`);
+    assert.ok(performance.now() - started < 120_000, 'bounded runtime');
+  });
+});
+
