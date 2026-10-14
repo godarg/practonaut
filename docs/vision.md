@@ -60,7 +60,7 @@ service, public rankings before scores are sealed.
 
 **External projects that use Practonaut repeatedly.** An *external project* counts when, in public
 and outside this project's own accounts, there is (a) a repository whose workflow, configuration or
-task pack runs Practonaut, or (b) a person or team reporting use in at least two separate weeks
+task pack runs Practonaut on at least two separate dates (visible workflow runs or commits), or (b) a person or team reporting use in at least two separate weeks
 (issue, discussion, post), or (c) published reports or task packs, on at least two separate dates,
 that `report --verify` or `validate` accepts. Each project counts once. Counted from public evidence only (code search,
 issues, discussions), never from telemetry, so every count is a lower bound.

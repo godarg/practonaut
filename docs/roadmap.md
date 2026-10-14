@@ -65,7 +65,9 @@ with a measurement and ends with its acceptance line measured.
   client's own output, and the running list-price total is kept in the report. Budget for the whole
   release: at most 500 model runs (Must 1 grid about 50; per challenge family and round at most 100:
   a small development sample plus 3 agents × 24 held-out instances); a family gets at most two
-  ladder rounds.
+  ladder rounds. Families run in the listed order and first rounds come before second rounds; when
+  the budget is used up, no further round starts, the gate report says so, and a maintainer decides
+  whether to add budget.
 
 ### Must
 
@@ -128,7 +130,9 @@ with a measurement and ends with its acceptance line measured.
    level and "model self-reported"; failures first; per run the trajectory, the goal conditions met
    after each action (checker on prefixes), the final board as the real engine's SVG export when the
    mirror ran (otherwise a schematic labelled as such) — a picture that keeps every goal-relevant
-   attribute (shape, fill, stroke, size, position, frames, groups); the Player's `miniature()` drops
+   attribute (shape, fill, stroke, size, position, frames, and group membership — groups are metadata
+   that an SVG export does not show, so they are drawn as an outline or legend derived from the
+   judged state); the Player's `miniature()` drops
    most of them and may only be used as a labelled topology sketch; board text is untrusted and
    escaped — next to an example target only when one is supplied and checker-validated (otherwise
    "no example target"),
@@ -149,7 +153,7 @@ with a measurement and ends with its acceptance line measured.
    last lost (or "never met"); for timeout, rejected actions, model-only, consistency-checked only,
    unjudged (`checker: null`), empty, two agents and long German names, a run whose report shows that
    state by name with its reason; a correct and an incorrect `restyle-flow` board whose pictures
-   differ; `compare` gives the documented verdicts on
+   differ, and a grouped and an ungrouped board whose pictures differ; `compare` gives the documented verdicts on
    hand-built fixtures (instance regression, improvement, not distinguishable, unjudged runs,
    incomparable); no rate is shown finer than 1/n; axe passes on the report states.
 4. **Headroom: challenge tier** (L, plus ladder rounds). Build at least four candidate families from
