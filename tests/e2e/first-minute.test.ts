@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { TOKEN_HEADER } from '../../src/host/protocol.ts';
 import { headlessShellMegabytes } from '../../src/cli/chromium-download.ts';
-import { scanForHiddenReferences, hiddenReferenceMarkers } from '../support/oracle-scan.ts';
+import { scanForHiddenReferences } from '../support/oracle-scan.ts';
 import { PLAYER_STATES, startPlayer } from '../support/player-states.ts';
 
 const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -118,9 +118,11 @@ test('without Chromium: the Player opens at once, says what is not checked yet, 
     // Nothing the Player received carries a library or bench reference; the scan finds a planted one.
     assert.ok(watched.captured.some(item => item.where === 'GET /player.js') && watched.captured.some(item => item.where === 'event stream'), 'assets and events were captured');
     assert.deepEqual(scanForHiddenReferences(watched.captured), []);
-    const marker = hiddenReferenceMarkers().find(item => item.source.startsWith('restyle-flow: reference steps'))!;
-    const planted = watched.captured.map((item, index) => index === 0 ? { ...item, text: item.text + marker.text } : item);
-    assert.deepEqual(scanForHiddenReferences(planted).map(finding => finding.source), [marker.source]);
+    // Positive control: one more event in the captured stream, a history entry whose action is the
+    // first step of restyle-flow's reference (keys in another order, with baseStep).
+    const leak = `event: changed\ndata: ${JSON.stringify({ type: 'changed', view: { history: [{ actor: { kind: 'human' }, action: { baseStep: 0, params: { fill: 'none', stroke: 'black', shape: 'ellipse', id: 'a' }, name: 'set_style' } }] } })}\n\n`;
+    const planted = watched.captured.map(item => item.where === 'event stream' ? { ...item, text: item.text + leak } : item);
+    assert.deepEqual(scanForHiddenReferences(planted).map(finding => finding.source), ['restyle-flow: reference step set_style', 'restyle-flow: near miss near-3 step set_style', 'restyle-flow: near miss near-4 step set_style']);
     assert.deepEqual(watched.external, [], 'no request left 127.0.0.1');
   } finally {
     await browser?.close();
