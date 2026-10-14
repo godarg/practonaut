@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { limitsWorld, setLanguage, settle, startPlayer } from '../support/player-states.ts';
+import { v2Task, v2World } from '../support/world-v2.ts';
+import type { ErrorClass } from '../../src/world/types.ts';
 
 test('the Player shows changes used and checks left, shares the counters with agents and explains a used-up limit', { timeout: 180_000 }, async () => {
   const s = await startPlayer({ world: limitsWorld(), taskId: 'T1', phase3: false, mirror: 'off' });
@@ -49,3 +51,40 @@ test('a session check limit (--checks) shows in the Player of a task without lim
     assert.equal(await s.page.getByTestId('changes-used').count(), 0, 'no action limit, no count');
   } finally { await s.close(); }
 });
+
+test('the Player\'s New variant button counts like a reset under task limits (review nit a)', { timeout: 120_000 }, async () => {
+  const s = await startPlayer({ world: limitsWorld(), taskId: 'T1', phase3: false, mirror: 'off' });
+  try {
+    const used = s.page.getByTestId('changes-used');
+    await used.waitFor();
+    // Nothing on the board yet: the Player changes the variant without asking; it uses one change.
+    await s.page.getByTestId('new-variant').click();
+    await s.page.waitForFunction(() => /^1 of 3 changes used/.test(document.querySelector('[data-testid=changes-used]')?.textContent ?? ''));
+    assert.equal((await s.post('act', { action: { name: 'move_step', params: { id: 'a', x: 120, y: 100 } } })).ok, true);
+    assert.equal((await s.post('undo')).ok, true);
+    await s.page.waitForFunction(() => /^3 of 3 changes used/.test(document.querySelector('[data-testid=changes-used]')?.textContent ?? ''));
+    const before = await s.observe();
+    await s.page.getByTestId('new-variant').click();
+    await s.page.getByTestId('rejection').waitFor();
+    assert.match(await s.page.getByTestId('rejection').textContent() ?? '', /All changes for this task are used up/);
+    assert.equal((await s.observe()).revision, before.revision, 'the refused variant changed nothing');
+  } finally { await s.close(); }
+});
+
+test('under a check limit the Player shows error explanations only through a check (review S6)', { timeout: 180_000 }, async () => {
+  // A hand-written error class that holds on the start board and after a move (one arrow).
+  const missing: ErrorClass = { id: 'arrow-missing', category: 'accepted_but_violates_goal', when: { op: 'eq', left: { kind: 'count', type: 'arrow', as: 'n', where: { op: 'true' } }, right: { kind: 'literal', value: 1 } }, explanation: { en: 'The arrow to Ship is still missing.', de: 'Der Pfeil zu Versand fehlt noch.' } };
+  const shown = async (limits: { actions?: number; checks?: number }): Promise<boolean> => {
+    const s = await startPlayer({ world: v2World({ tasks: [v2Task({ limits, errorClasses: [missing] })] }), taskId: 'T1', phase3: false, mirror: 'off' });
+    try {
+      await s.page.getByTestId('changes-used').waitFor();
+      assert.equal((await s.post('act', { action: { name: 'move_step', params: { id: 'a', x: 120, y: 100 } } })).ok, true);
+      await s.page.getByTestId('consequence').waitFor();
+      await settle(s.page);
+      return (await s.page.locator('body').innerText()).includes('The arrow to Ship is still missing.');
+    } finally { await s.close(); }
+  };
+  assert.equal(await shown({ actions: 5 }), true, 'without a check limit the Player explains the error after the move');
+  assert.equal(await shown({ actions: 5, checks: 1 }), false, 'with a check limit it does not');
+});
+

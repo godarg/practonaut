@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { HostReply, PublicCheck } from '../../src/host/protocol.ts';
+import type { ErrorClass } from '../../src/world/types.ts';
 import type { CompactView, MutationResult } from '../../src/mcp/replies.ts';
 import { v2Task, v2World } from '../support/world-v2.ts';
 
@@ -56,3 +57,32 @@ test('mcp --checks outside 0–1000 is a usage error', { timeout: 60_000 }, asyn
   assert.equal(result.status, 1);
   assert.match(result.stderr, /--checks must be a whole number from 0 to 1000/);
 });
+
+test('mcp: under a check limit, error classes reach the agent only through a counted check_result (review S6)', { timeout: 120_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-mcp-errors-'));
+  const source = join(dir, 'world'); await mkdir(source);
+  // A hand-written error class that holds on the start board (one arrow).
+  const missing: ErrorClass = { id: 'arrow-missing', category: 'accepted_but_violates_goal', when: { op: 'eq', left: { kind: 'count', type: 'arrow', as: 'n', where: { op: 'true' } }, right: { kind: 'literal', value: 1 } }, explanation: { en: 'The arrow to Ship is still missing.', de: 'Der Pfeil zu Versand fehlt noch.' } };
+  await writeFile(join(source, 'world.json'), JSON.stringify(v2World({ tasks: [v2Task({ limits: { checks: 1 }, errorClasses: [missing] })] })));
+  const transport = new StdioClientTransport({ command: process.execPath, args: [CLI, 'mcp', '--task', source, '--mirror', 'off'], stderr: 'pipe', env: { ...process.env } as Record<string, string> });
+  const client = new Client({ name: 'limits-test', version: '1.0.0' });
+  const call = async <T>(name: string, input: Record<string, unknown>): Promise<HostReply<T>> => {
+    const raw = await client.callTool({ name, arguments: input });
+    return JSON.parse((raw.content as Array<{ type: string; text?: string }>).find(part => part.type === 'text')!.text!) as HostReply<T>;
+  };
+  await client.connect(transport);
+  try {
+    type Explained = { result: PublicCheck | null; errors: Array<{ id: string }> };
+    const observed = await call<CompactView>('observe', {});
+    assert.ok(observed.ok); assert.deepEqual(observed.value.errors, []);
+    const before = await call<Explained>('explain_result', {});
+    assert.ok(before.ok); assert.deepEqual([before.value.result, before.value.errors], [null, []]);
+    const moved = await call<MutationResult>('act', { name: 'move_step', params: { id: 'a', x: 120, y: 100 }, baseStep: 0, expectedRevision: 0 });
+    assert.ok(moved.ok); assert.deepEqual(moved.value.errors, []);
+    const checked = await call<PublicCheck>('check_result', { expectedRevision: moved.value.revision });
+    assert.ok(checked.ok); assert.deepEqual(checked.value.errors.map(error => error.id), ['arrow-missing']);
+    const after = await call<Explained>('explain_result', {});
+    assert.ok(after.ok); assert.deepEqual(after.value.result?.errors.map(error => error.id), ['arrow-missing']); assert.deepEqual(after.value.errors, []);
+  } finally { await client.close(); await rm(dir, { recursive: true, force: true }); }
+});
+

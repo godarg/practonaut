@@ -132,6 +132,9 @@ judged state and the error classes, and the judged state may hold whatever an ag
    only another task starts a new attempt with fresh counters, which a single-task (bench) host
    refuses. The view, every mutation reply and every check carry the
    counts (`limits.actions|checks: { limit, used }`, `checksRemaining`); the Player shows them.
+   While a check limit applies, error classes — evaluated against the board like the goal, so a free
+   partial check otherwise — appear only in a check's result (counted): the view, mutation replies,
+   history entries and `explain_result` outside a check carry none, in the Player and over MCP.
    `--checks <n>` on `bench`, `play`/`serve` and `mcp --task` sets a session check limit; with a
    task limit the smaller one applies. The checker stays end-state-only. The bench's host-side
    mutation log (PADR-0039 decision 2) also records every `check_result` call as a `check` record,

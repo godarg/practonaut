@@ -8,7 +8,7 @@ import { Session } from '../../src/core/session.ts';
 import { oracleDigest } from '../oracles/core-hash.ts';
 import { compactView, mutationResult } from '../../src/mcp/replies.ts';
 import { WorldError } from '../../src/world/schema.ts';
-import type { Action, World } from '../../src/world/types.ts';
+import type { Action, ErrorClass, World } from '../../src/world/types.ts';
 import { v2Task, v2World } from '../support/world-v2.ts';
 
 const move = (x: number): Action => ({ name: 'move_step', params: { id: 'a', x, y: 100 } });
@@ -164,3 +164,38 @@ describe('a new variant under task limits', () => {
     } finally { await single.close(); }
   });
 });
+
+describe('error classes under a check limit', () => {
+  // An error class that holds on the start board (one arrow) and after any move: a hand-written
+  // goal-relative explanation ("the arrow to Ship is still missing").
+  const missing: ErrorClass = { id: 'arrow-missing', category: 'accepted_but_violates_goal',
+    when: { op: 'eq' as const, left: { kind: 'count' as const, type: 'arrow', as: 'n', where: { op: 'true' as const } }, right: { kind: 'literal' as const, value: 1 } },
+    explanation: { en: 'The arrow to Ship is still missing.', de: 'Der Pfeil zu Versand fehlt noch.' } };
+  const world = (limits?: Record<string, number>): World => v2World({ tasks: [v2Task({ errorClasses: [missing], ...(limits ? { limits } : {}) })] });
+  it('appear only in a counted check, never in views, mutation replies, history or explain_result (review S6)', async () => {
+    for (const [label, value, options] of [['task limit', world({ checks: 1 }), {}], ['session --checks', world(), { checks: 2 }]] as const) {
+      const controller = await createPracticeController(value, { seed: 1, taskId: 'T1', mirror: 'off', ...options }, noMirror);
+      try {
+        assert.deepEqual(controller.view().errors, [], `${label}: not in the view`);
+        const moved = await controller.act({ expectedRevision: 0, action: move(150) });
+        assert.ok(moved.ok);
+        assert.deepEqual(moved.value.delta.errors, [], `${label}: not in the mutation reply`);
+        assert.deepEqual(moved.value.view.history.at(-1)!.consequences, [], `${label}: not in the history`);
+        assert.deepEqual(compactView(controller.view(), 'en').errors, [], `${label}: not in what observe and explain_result read`);
+        const checked = await controller.check({ expectedRevision: 1 });
+        assert.ok(checked.ok);
+        assert.deepEqual(checked.value.errors.map(error => error.id), ['arrow-missing'], `${label}: in the counted check`);
+        assert.deepEqual(controller.view().result?.errors.map(error => error.id), ['arrow-missing'], 'the last check keeps its errors');
+        assert.deepEqual(controller.view().errors, []);
+      } finally { await controller.close(); }
+    }
+    // Without a check limit they stay where they were.
+    const free = await createPracticeController(world({ actions: 5 }), { seed: 1, taskId: 'T1', mirror: 'off' }, noMirror);
+    try {
+      assert.deepEqual(free.view().errors.map(error => error.id), ['arrow-missing']);
+      const moved = await free.act({ expectedRevision: 0, action: move(150) });
+      assert.ok(moved.ok); assert.deepEqual(moved.value.delta.errors.map(error => error.id), ["arrow-missing"]);
+    } finally { await free.close(); }
+  });
+});
+

@@ -81,7 +81,10 @@ named error. When the attempt has limits (a task's `limits`, or `--checks` on `p
 view and every mutation delta carry `limits: { actions?: {limit, used}, checks?: {limit, used} }`;
 accepted act, undo, reset and editor changes count as actions, evaluated checks as checks, a refused
 request counts for neither. A new variant of the same task counts like a reset (one change, counts
-kept, refused once the changes are used up); only another task starts fresh counts. Heartbeat contains revision only. Practice does not load a checker bundle.
+kept, refused once the changes are used up); only another task starts fresh counts. While a check
+limit applies, error classes (evaluated against the board like the goal) appear only in a check's
+result: the view's `errors`, every mutation delta's `errors` and history consequences are empty, so
+they cannot serve as a free partial check. Heartbeat contains revision only. Practice does not load a checker bundle.
 Quantified predicates remain whole public conditions so different witnesses cannot incorrectly
 satisfy split fragments. Every result is explicitly end-state-only, not learner attestation.
 

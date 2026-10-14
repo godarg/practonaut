@@ -240,6 +240,10 @@ export async function createPracticeController(input: World, options: PracticeSe
     if (!condition.ok) throw new Error(condition.error.code);
     return condition.value ? [{ id: error.id, explanation: error.explanation }] : [];
   });
+  // Error classes are evaluated against the board like the goal: while a check limit applies they
+  // would be a free partial check, so they appear only in a check's result, which is counted
+  // (PADR-0040). Views, mutation replies, history and explain_result carry none.
+  const visibleConsequences = (candidate: Session = session): Array<{ id: string; explanation: Localized }> => limitsOf(candidate)?.checks ? [] : consequences(candidate);
   const makeView = (candidate = session, overrides: Partial<HostView> = {}, counts: { actions: number; checks: number } = { actions: actionsUsed, checks: checksUsed }): HostView => {
     const selectedTask = candidate.world.tasks.find(value => value.id === candidate.taskId)!;
     const limits = limitsOf(candidate, counts.actions, counts.checks);
@@ -250,7 +254,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
       log: candidate.log, history, actions: candidate.world.actions, rules: candidate.world.rules, mirror: mode,
       mirrorHealth: { status: closed ? 'closed' : mode === 'off' ? 'model-only' : mirror ? 'available' : 'unavailable', recoveries },
-      practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: consequences(candidate), ...(limits ? { limits } : {}), ...overrides,
+      practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: visibleConsequences(candidate), ...(limits ? { limits } : {}), ...overrides,
     });
   };
   const admit = (value: HostView): void => {
@@ -338,7 +342,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       const next = build(context);deadline(context);
       const replay = next.candidate.checkReplay({continue:()=>continues(context)});deadline(context);
       if (!replay.ok) return rejected(reject(replay.error.code, replay.error.message));
-      const candidateConsequences = consequences(next.candidate);
+      const candidateConsequences = visibleConsequences(next.candidate);
       const description = next.action ? actionDescription(next.action, session.state, next.candidate.state) : undefined;
       const projectedHistory = next.reset ? [] : next.action ? [...history, { description: description!, actor: structuredClone(next.actor ?? { kind: 'human' as const }), step: next.candidate.step, action: structuredClone(next.action), hash: next.candidate.hash, effects: next.effects ?? [], consequences: candidateConsequences, ruleIds: next.candidate.world.rules.filter(rule => rule.action === next.action!.name).map(rule => rule.id), mirrorConfirmed: mode === 'required', latencyMs: 999999999 }] : history.slice(0, next.candidate.step);
       // A new task starts at attempt 1; a reset or a new variant of the same task counts on.

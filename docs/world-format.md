@@ -306,9 +306,11 @@ editor change) counts; a refused request does not — and evaluate at most `chec
 beyond a limit is refused with `action_budget_exhausted` or `check_budget_exhausted` and changes
 nothing. Reset and undo give nothing back; a new variant of the same task counts like a reset and
 keeps the counts; only another task starts a new attempt. A session
-started with `--checks <n>` uses the smaller of `n` and the task's own check limit. The checker
-judges the end state only; `report --verify` additionally refuses a bench run whose final history is
-longer than its task's action limit.
+started with `--checks <n>` uses the smaller of `n` and the task's own check limit. While a check
+limit applies, the task's error classes are shown only as part of a check's result (they are
+evaluated against the board like the goal). The checker judges the end state only; `report
+--verify` additionally counts a bench run's accepted changes and checks from the runner's host-side
+log and refuses a run beyond its task's limits.
 
 **Exports.** For world/2 the checker reads any Excalidraw drawing with a tolerant parser
 (`src/checker/scene.ts`): rectangles, ellipses and diamonds are steps (bound text is the label,

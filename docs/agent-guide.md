@@ -166,7 +166,9 @@ mutations beyond the run's action budget with `action_budget_exhausted`.
 `undo` and `reset` reply carry `limits: { "actions": {"limit", "used"}, "checks": {"limit", "used"} }`
 (only the limits that apply), and `check_result` adds `checksRemaining`. Every accepted `act`,
 `undo` and `reset` uses one action, every `check_result` one check; a refused call uses nothing, and
-`reset` gives nothing back (a new variant of the same task counts like a reset). A call beyond a limit is refused with `action_budget_exhausted` or
+`reset` gives nothing back (a new variant of the same task counts like a reset). Under a check
+limit, error explanations come only with a `check_result` (which counts): `observe`, mutation
+replies and `explain_result` carry none of their own. A call beyond a limit is refused with `action_budget_exhausted` or
 `check_budget_exhausted` and changes nothing. The Player shows the same counts; a person and an agent
 on one session share them.
 
