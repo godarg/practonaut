@@ -99,6 +99,9 @@ const en = {
   changedFlips: 'Outcome changed, not in every repeat — not a regression signal', changedDown: '{task} · seed {seed}: passed on the baseline ({bp}/{br}), failed on the candidate ({cp}/{cr})', changedUp: '{task} · seed {seed}: failed on the baseline ({bp}/{br}), passed on the candidate ({cp}/{cr})',
   incomparableTitle: 'Not comparable', incomparableDiffers: 'What differs', incomparableLead: 'These two reports were made under different conditions, so no rate or flip between them would mean anything:', incomparableFix: 'Bench the baseline again with the candidate’s settings, then compare.',
   field_world: 'world content', field_grid: 'grid of tasks and seeds', field_mirror: 'mirror', field_budget: 'action budget', field_isolation: 'isolation level',
+  // JUnit (bench --junit, report --junit)
+  junitRun: 'Run {id}.', junitNote: 'Runner note: {note}',
+  junitGate: 'Every run of this bench is listed. A run that did not pass is not a regression: practonaut compare --fail-on-regression gates on instance regressions against a baseline.',
 } as const;
 
 type Catalog = { readonly [K in keyof typeof en]: string };
@@ -192,6 +195,8 @@ const de: Catalog = {
   changedFlips: 'Ergebnis geändert, nicht in jeder Wiederholung — kein Regressionssignal', changedDown: '{task} · Seed {seed}: bestanden bei der Basis ({bp}/{br}), nicht bestanden beim Kandidaten ({cp}/{cr})', changedUp: '{task} · Seed {seed}: nicht bestanden bei der Basis ({bp}/{br}), bestanden beim Kandidaten ({cp}/{cr})',
   incomparableTitle: 'Nicht vergleichbar', incomparableDiffers: 'Was sich unterscheidet', incomparableLead: 'Diese beiden Berichte entstanden unter verschiedenen Bedingungen; keine Rate und kein Wechsel zwischen ihnen hätte eine Bedeutung:', incomparableFix: 'Die Basis mit den Einstellungen des Kandidaten erneut benchen, dann vergleichen.',
   field_world: 'Inhalt der Welt', field_grid: 'Raster aus Aufgaben und Seeds', field_mirror: 'Spiegelung', field_budget: 'Aktionsbudget', field_isolation: 'Isolationsstufe',
+  junitRun: 'Lauf {id}.', junitNote: 'Hinweis des Runners: {note}',
+  junitGate: 'Jeder Lauf dieser Bench ist aufgeführt. Ein nicht bestandener Lauf ist keine Regression: practonaut compare --fail-on-regression prüft Instanz-Regressionen gegen eine Basis.',
 };
 
 export type Words = Catalog;

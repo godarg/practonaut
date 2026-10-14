@@ -14,11 +14,12 @@ import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/re
 import { loadReportDetails } from '../bench/details.ts';
 import { compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
+import { renderJunit } from '../bench/junit.ts';
 import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--junit'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -56,6 +57,8 @@ export interface BenchArguments {
   tasks: string[] | 'all';
   world?: string; oracles: string[];
   seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; label?: string; out?: string;
+  /** `--junit <file>`: the runs as JUnit XML as well (junit.ts). */
+  junit?: string;
 }
 export function parseBenchArguments(args: string[]): BenchArguments {
   const parsed = flags(args, VALUED);
@@ -90,6 +93,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
     agent: parsed.flags['--agent']!, tasks, ...(world !== undefined ? { world } : {}), oracles, seeds,
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
     maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
+    ...(parsed.flags['--junit'] ? { junit: parsed.flags['--junit'] } : {}),
   };
 }
 
@@ -158,9 +162,12 @@ export async function commandBench(args: string[]): Promise<number> {
   await writeAtomic(out, JSON.stringify(report, null, 2) + '\n');
   // The report's numbers come from the runs; why each failed comes from the bench folder (PADR-0039).
   const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
+  // The JUnit file names the same reasons as the table (unmet conditions from the bench folder).
+  if (options.junit) await writeAtomic(options.junit, renderJunit(report, getCliLanguage(), 'consistency-checked', details));
   process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
   if (report.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
+  if (options.junit) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(options.junit)) }));
   return report.interrupted ? EXIT_INTERRUPTED : 0;
 }
 
@@ -199,10 +206,10 @@ async function verifyReport(report: BenchReport, runs: string): Promise<Verified
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
 }
 
-/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]: validates,
- * optionally re-judges, then renders with the run details from the bench folder. */
+/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>] [--json]:
+ * validates, optionally re-judges, then renders with the run details from the bench folder. */
 export async function commandReport(args: string[]): Promise<number> {
-  const parsed = flags(args, ['--html', '--runs'], ['--json', '--verify']);
+  const parsed = flags(args, ['--html', '--runs', '--junit'], ['--json', '--verify']);
   if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
   const path = parsed.positional[0]!, report = await readReport(path);
   // The bench folder: what --verify re-judges and where the run details come from.
@@ -210,7 +217,7 @@ export async function commandReport(args: string[]): Promise<number> {
   // Without --verify only the report's own arithmetic is checked.
   const verification: Verified = parsed.booleans.has('--verify') ? await verifyReport(report, runs) : { level: 'consistency-checked' };
   const language = getCliLanguage();
-  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
+  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] && !parsed.flags['--junit'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   else {
     process.stdout.write(renderTable(report, language, details, verification.level));
@@ -229,6 +236,11 @@ export async function commandReport(args: string[]): Promise<number> {
   if (html) {
     await writeAtomic(html, renderHtml(report, await readTokensCss(), language, verification.level, details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
+  }
+  const junit = parsed.flags['--junit'];
+  if (junit) {
+    await writeAtomic(junit, renderJunit(report, language, verification.level, details));
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(junit)) }));
   }
   return 0;
 }

@@ -340,8 +340,8 @@ export const CLI_CATALOG = {
     "de": "\nBericht: {path}\nLaufprotokolle und Artefakte: {logs}\nDarstellen: {cli} report <bericht.json> --html <out.html>   Nachrechnen: {cli} report <bericht.json> --verify --runs {logs}\n"
   },
   "reportUsage": {
-    "en": "report needs one bench report: {cli} report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]",
-    "de": "report braucht einen Bench-Bericht: {cli} report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]"
+    "en": "report needs one bench report: {cli} report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--junit <out.xml>] [--card <out>] [--badge <out.svg>] [--json]",
+    "de": "report braucht einen Bench-Bericht: {cli} report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--junit <out.xml>] [--card <out>] [--badge <out.svg>] [--json]"
   },
   "benchInterrupting": {
     "en": "\npractonaut bench: stopping — ending the agent, closing its session, writing a partial report … (press Ctrl+C again to stop at once)\n",
@@ -418,6 +418,10 @@ export const CLI_CATALOG = {
   "reportHtml": {
     "en": "HTML: {path}\n",
     "de": "HTML: {path}\n"
+  },
+  "reportJunit": {
+    "en": "JUnit XML: {path}\n",
+    "de": "JUnit-XML: {path}\n"
   },
   "reportReverifiedWorld": {
     "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",

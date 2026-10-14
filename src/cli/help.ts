@@ -187,7 +187,7 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>] [--label <text>]
+                        [--keep-env <name,…>] [--label <text>] [--junit <out.xml>]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -201,13 +201,15 @@ never reaches the agent. Without a reference a task has no efficiency. After the
 world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
+--junit also writes the runs as JUnit XML for CI test views: one test case per run, a run that did not pass
+as a failure naming its unmet conditions and error classes, a run without a verdict as an error.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>] [--label <Text>]
+                        [--keep-env <Name,…>] [--label <Text>] [--junit <out.xml>]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -222,6 +224,8 @@ Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu 
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
+--junit schreibt die Läufe zusätzlich als JUnit-XML für Testansichten in CI: ein Testfall je Lauf, ein nicht
+bestandener Lauf als failure mit den nicht erfüllten Bedingungen und Fehlerklassen, ein Lauf ohne Urteil als error.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },

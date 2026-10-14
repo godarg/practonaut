@@ -215,7 +215,7 @@ const historyText = (history: ConditionDetail['history'], language: Language): s
   }
 };
 const codeText = (code: string, t: Words): string => (t as unknown as Record<string, string>)[`code_${code}`] ?? '';
-const errorClassesOf = (run: BenchRun): string[] => [...new Set([...(run.checker?.session.errorClasses ?? []), ...(run.checker?.native?.errorClasses ?? [])])];
+export const errorClassesOf = (run: BenchRun): string[] => [...new Set([...(run.checker?.session.errorClasses ?? []), ...(run.checker?.native?.errorClasses ?? [])])];
 /** An error class's explanation: the run's stored checker output, else the bundled library's. */
 function explanationOf(run: BenchRun, id: string, detail: RunDetail | undefined, details: ReportDetails | undefined, language: Language): string | null {
   const stored = detail?.errors.find(error => error.id === id)?.explanation ?? details?.explanations.get(explanationKey(run.taskId, run.seed, id));
@@ -224,8 +224,8 @@ function explanationOf(run: BenchRun, id: string, detail: RunDetail | undefined,
 
 /** Why a run ended as it did, each state by name with its reason (PADR-0039 B.3): one item, one colon.
  * `code` (an action as it was called) follows `why` and precedes `tail`, shown as code. */
-interface State { name: string; why: string; code?: string; tail?: string; list?: string[] }
-function runStates(run: BenchRun, detail: RunDetail | undefined, details: ReportDetails | undefined, report: BenchReport, language: Language): State[] {
+export interface State { name: string; why: string; code?: string; tail?: string; list?: string[] }
+export function runStates(run: BenchRun, detail: RunDetail | undefined, details: ReportDetails | undefined, report: BenchReport, language: Language): State[] {
   const t = TEXT[language], states: State[] = [];
   if (run.status === 'timeout') states.push({ name: t.stateTimeout, why: fill(language, t.stateTimeoutWhy, { timeout: report.settings.timeoutSeconds }) });
   if (run.status === 'agent_failed') states.push({ name: t.stateAgentFailed, why: run.agentExitCode === null ? t.stateAgentNoStart : fill(language, t.stateAgentFailedWhy, { code: run.agentExitCode }) });
