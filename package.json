@@ -1,7 +1,7 @@
 {
   "name": "practonaut",
   "mcpName": "io.github.godarg/practonaut",
-  "version": "0.1.0",
+  "version": "0.2.0-dev.0",
   "private": false,
   "description": "Local practice gym for AI agents on real apps: demonstrate a task once, let any MCP agent practice it, get an independent reproducible score.",
   "license": "Apache-2.0",

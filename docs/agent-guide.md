@@ -64,8 +64,9 @@ do not gain separate mutation budgets.
 ## 2. A real Claude Code client
 
 Use a separately installed and authenticated Claude Code executable. Practonaut neither
-creates that account nor injects a provider API key. For a scored run use
-`practonaut bench --agent claude-code` (section 4). For a manual run with the `.mcp.json` from
+creates that account nor injects a provider API key, and the `bench` preset withholds the keys in
+your environment (a set `ANTHROPIC_API_KEY` switches Claude Code to API billing; for a manual run,
+unset it yourself). For a scored run use `practonaut bench --agent claude-code` (section 4). For a manual run with the `.mcp.json` from
 section 1, restrict the client to the Practonaut tools:
 
 ```bash

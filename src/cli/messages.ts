@@ -319,6 +319,18 @@ export const CLI_CATALOG = {
     "en": "--tasks needs all or a comma-separated list of distinct library task ids",
     "de": "--tasks braucht all oder eine durch Kommas getrennte Liste verschiedener Bibliotheksaufgaben"
   },
+  "benchKeepEnv": {
+    "en": "--keep-env needs comma-separated environment variable names (letters, digits and _)",
+    "de": "--keep-env braucht durch Kommas getrennte Namen von Umgebungsvariablen (Buchstaben, Ziffern und _)"
+  },
+  "benchKeepEnvPreset": {
+    "en": "--keep-env applies only to a preset agent (claude-code); built-in agents and command templates get your environment unchanged",
+    "de": "--keep-env gilt nur für einen voreingestellten Agenten (claude-code); eingebaute Agenten und Befehlsvorlagen bekommen Ihre Umgebung unverändert"
+  },
+  "benchWithheld": {
+    "en": "practonaut bench: the {agent} preset does not pass {names} to the agent (a provider key would switch it from its login to API billing); --keep-env <name> passes one on\n",
+    "de": "practonaut bench: die Voreinstellung {agent} gibt {names} nicht an den Agenten weiter (ein Anbieterschlüssel würde ihn von seiner Anmeldung auf API-Abrechnung umstellen); --keep-env <Name> gibt einen weiter\n"
+  },
   "benchStart": {
     "en": "practonaut bench: {runs} {runs:run|runs} with agent {agent}, {mode}\n",
     "de": "practonaut bench: {runs} {runs:Lauf|Läufe} mit Agent {agent}, {mode}\n"

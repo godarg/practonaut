@@ -1,3 +1,5 @@
+⛔ Decision 8 is amended by [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md): `design:capture` and `design:invariants` are not built until a review needs them. All other decisions remain in force.
+
 # PADR-0020 — Design system v1: Apple-grade language, one shell, enforced by tools
 
 Status: accepted for the local player; **accepted by the maintainer as the binding design baseline on

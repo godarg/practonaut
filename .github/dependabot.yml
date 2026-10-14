@@ -6,6 +6,11 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # playwright (tests) and playwright-core (runtime) share types and the browser build, so one
+      # bumped without the other fails `npm run check`. Dependabot puts a dependency into the first
+      # group that matches, so this group comes before the per-type groups.
+      playwright:
+        patterns: ["playwright", "playwright-core"]
       npm-development:
         dependency-type: development
         update-types: [minor, patch]

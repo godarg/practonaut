@@ -44,15 +44,25 @@ Node version that ships a recent npm. See npm's
 
 ## 3. Cutting a release
 
-1. On a branch: set `version` in `package.json` and both versions in `server.json` (and
-   `npm install --package-lock-only` to update the lockfile), move the `Unreleased` entries in `CHANGELOG.md` into a `## [X.Y.Z] - YYYY-MM-DD`
-   section, open a pull request and merge it when CI is green. `release.yml` finds the section by
-   its version alone (`## [X.Y.Z]`), whatever follows it.
+1. On a branch, set the version in every place that carries it:
 
-   **0.1.0, the first release:** its section is `## [0.1.0] - unreleased` and there is no separate
-   `Unreleased` list (0.1.0 itself has not been published, so changes go straight into its
-   entry). The maintainer replaces `unreleased` with the tag date (`YYYY-MM-DD`) in the commit that
-   is tagged, and starts a new `## [Unreleased]` section above it after the release.
+   | Place | What |
+   |---|---|
+   | `package.json` | `version`; then `npm install --package-lock-only` updates `package-lock.json` |
+   | `server.json` | `version` and `packages[0].version` |
+   | `src/version.ts` | `PACKAGE_VERSION` (what `--version`, MCP `serverInfo`, sessions and bench reports name) |
+   | `src/checker/state.ts` | add the version to the known session writers (`toolVersion`); keep the earlier ones, so their sessions stay readable |
+
+   Tests guard the coupling: `--version` must equal `package.json` (`tests/unit/cli.test.ts`),
+   `npm run check` compares `server.json` with `package.json`, and the checker must accept a session
+   written by the current version (`tests/unit/checker.test.ts`). Then move the `Unreleased`
+   entries in `CHANGELOG.md` into a `## [X.Y.Z] - YYYY-MM-DD` section, open a pull request and merge
+   it when CI is green. `release.yml` finds the section by its version alone (`## [X.Y.Z]`),
+   whatever follows it.
+
+   Between releases `main` carries the next development version, `X.Y.Z-dev.0`, in the same four
+   places, so sessions and reports written from `main` are not mistaken for the release.
+
 2. Run the full local chain on the merged commit (it needs Chromium):
 
    ```bash

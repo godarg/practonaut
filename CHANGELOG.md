@@ -6,12 +6,33 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
+  tokens and billing switches in your environment from the preset agent (`*_API_KEY`,
+  `*_AUTH_TOKEN`, `CLAUDE_CODE_USE_*`, gateway, profile and federation credentials,
+  `ANTHROPIC_CUSTOM_HEADERS`), so Claude Code uses the login it has; a set `ANTHROPIC_API_KEY` used
+  to switch it to API billing without notice. `bench` names what it withheld; `--keep-env <name,…>`
+  passes named variables on
+  ([PADR-0034](docs/adr/0034-preset-agents-get-no-provider-credentials.md)).
+- `main` carries the development version `0.2.0-dev.0`; the checker accepts its sessions, and
+  [docs/release.md](docs/release.md) lists every place a version bump touches.
+
+### Internal
+
+- Dependabot updates `playwright` and `playwright-core` together; CI also runs on Node 24 and 26
+  (separate, non-required job).
+
 ### Documentation
 
 - Vision, roadmap to 1.0 and the product direction
   ([docs/vision.md](docs/vision.md), [docs/roadmap.md](docs/roadmap.md),
   [PADR-0033](docs/adr/0033-product-direction-measurement-you-can-act-on.md)), with a research note
   and the measured baseline of 0.1.0 ([docs/research/landscape-2026-10.md](docs/research/landscape-2026-10.md)).
+- README scope: "no network calls" is about Practonaut's own process; agents get the same task and
+  goal conditions as a person and act through semantic actions, not the GUI.
+- [PADR-0035](docs/adr/0035-no-design-capture-or-invariants-until-needed.md): `design:capture` and
+  `design:invariants`, named in PADR-0020, are not built until a review needs them.
 
 ## [0.1.0] - 2026-10-13
 

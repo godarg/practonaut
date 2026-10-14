@@ -177,24 +177,31 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
     en: `Usage: practonaut bench --agent <oracle|random|claude-code|"command … {mcp_config} …">
                         [--tasks all|<id,id,…>] [--seeds <n>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
+                        [--keep-env <name,…>]
 
 Runs every task × seed (1…n) × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
 configuration) and {prompt}, and is started without a shell (the prompt is also on stdin). oracle plays the
 reference solution, random acts at random; neither uses a language model. Scoring uses only the host's
 history and a separate checker after the agent stops. Defaults: all tasks, 1 seed, 1 repeat, 300 s, 50 actions.
+The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
+CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/1 (schemas/bench.v1.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--tasks all|<id,id,…>] [--seeds <n>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
+                        [--keep-env <Name,…>]
 
 Fährt jede Aufgabe × Seed (1…n) × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
 MCP-Konfiguration) und {prompt} und startet ohne Shell (der Prompt kommt auch über stdin). oracle spielt die
 Referenzlösung, random handelt zufällig; beide ohne Sprachmodell. Bewertet wird nur aus der Host-Historie und
 mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: alle Aufgaben, 1 Seed, 1 Wiederholung, 300 s,
-50 Aktionen. Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
+50 Aktionen. Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
+(*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
+--keep-env gibt genannte weiter.
+Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/1 (schemas/bench.v1.json); siehe docs/benchmarks/README.md.`,
   },
   report: {

@@ -26,6 +26,38 @@ export type AgentSpec =
   | { kind: 'builtin'; name: BuiltinAgent; command: [] }
   | { kind: 'preset' | 'command'; name: string; command: string[] };
 
+/** Exact names a preset withholds besides every `*_API_KEY`, `*_AUTH_TOKEN` and `CLAUDE_CODE_USE_*`:
+ * credentials and headers through which Claude Code authenticates other than with its login
+ * (PADR-0034). */
+const PRESET_WITHHELD = new Set(['AWS_BEARER_TOKEN_BEDROCK', 'ANTHROPIC_PROFILE', 'ANTHROPIC_FEDERATION_RULE_ID', 'ANTHROPIC_IDENTITY_TOKEN',
+  'ANTHROPIC_IDENTITY_TOKEN_FILE', 'ANTHROPIC_CUSTOM_HEADERS', 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR', 'CLAUDE_CODE_GATEWAY_TOKEN',
+  'CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR']);
+
+/** True for a variable a preset does not pass on: provider keys and tokens, every `CLAUDE_CODE_USE_*`
+ * switch (the provider switches, current and future; the preset has no built-in tools, so the
+ * feature switches of that family do nothing there) and the names above. A set ANTHROPIC_API_KEY
+ * silently moves Claude Code from the user's login to API billing. CLAUDE_CODE_OAUTH_TOKEN, the
+ * subscription's own token, passes. Names compare case-insensitively, as Windows treats them. */
+export function withheldFromPreset(name: string): boolean {
+  const upper = name.toUpperCase();
+  return upper.endsWith('_API_KEY') || upper.endsWith('_AUTH_TOKEN') || upper.startsWith('CLAUDE_CODE_USE_') || PRESET_WITHHELD.has(upper);
+}
+
+/** An environment variable name `--keep-env` accepts. */
+export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+
+/** The environment an agent starts with. A preset gets `base` without the variables
+ * `withheldFromPreset` names, except those kept by name; built-ins and command templates get `base`
+ * unchanged (a template is the user's own command, with the credentials it needs). `withheld` lists
+ * the names removed, never their values. */
+export function agentEnvironment(spec: AgentSpec, base: NodeJS.ProcessEnv, keep: readonly string[] = []): { env: NodeJS.ProcessEnv; withheld: string[] } {
+  const env: NodeJS.ProcessEnv = { ...base };
+  if (spec.kind !== 'preset') return { env, withheld: [] };
+  const kept = new Set(keep.map(name => name.toUpperCase())), withheld: string[] = [];
+  for (const name of Object.keys(env)) if (withheldFromPreset(name) && !kept.has(name.toUpperCase())) { delete env[name]; withheld.push(name); }
+  return { env, withheld: withheld.sort() };
+}
+
 /** Split a template like a POSIX shell would split words, with '…' and "…" quoting, but never expand anything. */
 export function splitTemplate(template: string): string[] {
   const words: string[] = []; let current = ''; let quote: '"' | "'" | null = null; let started = false;

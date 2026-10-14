@@ -186,7 +186,8 @@ test("flow checker accepts all hand-authored references and alternatives, reject
   }
 });
 
-test("checker accepts a serialized real Session without trusting its action history", async () => {
+test("checker accepts a Session written by the current version without trusting its action history", async () => {
+  // Release coupling (docs/release.md §3): a version bump without the checker's known writers fails here.
   // Runtime is used only as an integration producer here; checker modules cannot import it.
   const { Session } = await import("../../src/core/session.ts");
   const w = world(); const data = new Session(w, 0, "T1").serialize();

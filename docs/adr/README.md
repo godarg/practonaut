@@ -32,7 +32,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0017](0017-readable-goals-and-workspace-transitions.md) | Exact goal narration and visible workspace transitions | accepted | 2026-10-04 |
 | [PADR-0018](0018-complete-author-source-admission.md) | Complete author sources remain admission authority | accepted | 2026-10-04 |
 | [PADR-0019](0019-native-semantic-object-identifiers.md) | Native semantic object identifiers | accepted | 2026-10-04 |
-| [PADR-0020](0020-design-system-v1.md) | Design system v1: Apple-grade language, one shell, enforced by tools | accepted | 2026-10-07 |
+| [PADR-0020](0020-design-system-v1.md) | Design system v1: Apple-grade language, one shell, enforced by tools | accepted (decision 8 amended by PADR-0035) | 2026-10-07 |
 | [PADR-0022](0022-linear-replay-and-transaction-deadline.md) | Validated replay and one transaction deadline | accepted | 2026-10-09 |
 | [PADR-0023](0023-author-and-practice-capabilities.md) | Separate author and practice capabilities | accepted | 2026-10-09 |
 | [PADR-0024](0024-current-session-and-native-export.md) | Export the confirmed current session and native editor artifact | accepted | 2026-10-09 |
@@ -42,3 +42,5 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0031](0031-public-release-and-trusted-publishing.md) | Public 0.1.0 release: fresh snapshot, npm trusted publishing, manual approval | accepted | 2026-10-12 |
 | [PADR-0032](0032-chromium-sandbox-stays-on.md) | The Chromium sandbox stays on where the system allows it; a browser that does not start falls back or fails by name | accepted (amended: Linux start without the sandbox when the system refuses it) | 2026-10-13 |
 | [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted | 2026-10-14 |
+| [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | accepted | 2026-10-14 |
+| [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | accepted | 2026-10-14 |
