@@ -376,9 +376,11 @@ real `practonaut.bench/1` run on 2026-10-13 with Practonaut 0.1.0 (library 1.1.0
 real mirror, Claude Code 2.1.296 on its subscription; the client reported `claude-opus-5-5`. All
 six runs passed; `insert-between` took three actions where the reference uses four (efficiency
 1.33), the other tasks matched the reference. The report was re-verified (`report --verify`)
-against its run folder when it was written, and the HTML page was rendered in that run; the run
-folder is not in the repository, so a copy of the JSON can only be consistency-checked. One seed,
-two repeats per task: an example of the format, not a measurement of the model.
+against its run folder when it was written; the run folder is not in the repository, so a copy of
+the JSON can only be consistency-checked. The HTML page is rendered from the JSON with the current
+renderer (`practonaut report example-report.json --html example-report.html`, a deterministic local
+render); a bench/1 report binds no run artifacts, so the page says that the per-run details were not
+recorded. One seed, two repeats per task: an example of the format, not a measurement of the model.
 
 Measured the same day with the built-ins (`--tasks all --seeds 2`, real mirror): `oracle` 32 of 32
 passed; `random --max-actions 30` 0 of 32. Re-run them with the commands at the top; the numbers in
