@@ -59,6 +59,7 @@ export function assertSingleAction(before: HostView, final: HostView, events: Ho
   let previous = before, actionRevision: number | undefined, ready = false;
   for (const event of events) {
     if (!('view' in event)) {
+      if (event.type === 'demonstration') { fail('an agent run never carries a demonstration'); continue; }
       if (event.revision !== previous.revision || (event.type === 'rejected' && event.hash !== previous.hash)) fail('event revision or rejection hash differs from the observed prefix');
       continue;
     }

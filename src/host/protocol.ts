@@ -5,6 +5,7 @@ export const HOST_ROUTES = {
   bootstrap: "/api/bootstrap", resume: "/api/resume", observe: "/api/observe", act: "/api/act",
   undo: "/api/undo", reset: "/api/reset", variant: "/api/variant",
   hint: "/api/hint", check: "/api/check", events: "/api/events", tool: "/api/tool.png", export:'/api/export',
+  demonstration: "/api/demonstration", demonstrationStop: "/api/demonstration/stop",
 } as const;
 export const TOKEN_HEADER = "X-Practonaut-Token";
 export type MirrorMode = "required" | "off";
@@ -14,6 +15,7 @@ export const HOST_ERROR_CODES = [
   "bootstrap_used", "token_file_unsafe", "not_found", "method_not_allowed", "session_busy",
   "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "replay_mismatch", "stale_base",
   "E_NETWORK_AVAILABLE", "result_too_large", "diagnostic_limit", "diagnostic_unavailable", "editor_divergence", "author_required", "outcome_unknown", "action_budget_exhausted",
+  "demonstration_running", "demonstration_attempt",
 ] as const;
 export type HostErrorCode = typeof HOST_ERROR_CODES[number] | Failure["code"];
 export interface PublicCondition {
@@ -27,9 +29,10 @@ export interface PublicCheck {
   conditions: ConditionResult[]; errors: Array<{ id: string; explanation: Localized }>;
   mode: "real-engine" | "model-only"; practiceEvidence: boolean;
 }
-/** Who made a change: a person in the Player or the real editor, or an agent through MCP. The
- * client name is what the MCP client declared about itself at `initialize`; it is shown, never trusted. */
-export type Actor = { kind: 'human' } | { kind: 'agent'; client: string };
+/** Who made a change: a person in the Player or the real editor, an agent through MCP, or the
+ * bundled example's demonstration (host-only; no request can claim it). The client name is what the
+ * MCP client declared about itself at `initialize`; it is shown, never trusted. */
+export type Actor = { kind: 'human' } | { kind: 'agent'; client: string } | { kind: 'demonstration' };
 /** Client names shown in the history: letters, digits and a few separators, at most 64 characters. */
 export const ACTOR_CLIENT = /^[\p{L}\p{N}][\p{L}\p{N} ._+\-/@()]{0,63}$/u;
 export interface HistoryItem {
@@ -75,18 +78,44 @@ export interface MutationReply { view: HostView; delta: MutationDelta; mirrorCon
  * reply without the view. The Player omits `reply` and keeps receiving the view. */
 export type MutationDeltaReply = Omit<MutationReply, 'view'>;
 export interface BootstrapRequest { code: string }
-export interface BootstrapReply { token: string; authorToken?: string; view: HostView; engineOrigin?:string; authorEnabled?:boolean }
+/** Why a Player session runs on the model only, and what gets the real engine: set by the CLI that
+ * started the session (`missing`: no Chromium, `start`: Chromium did not start, `off`: `--mirror off`).
+ * `command` is the suggestion in the form the user started the CLI; `megabytes` the download size. */
+export interface ModelOnlyNotice { reason: 'missing' | 'start' | 'off'; command?: string; download?: { name: string; megabytes: number } }
+export type DemonstrationState = 'running' | 'finished' | 'stopped' | 'failed';
+/** The bundled example's demonstration (`src/host/demonstration.ts`): Player-only metadata. */
+export interface DemonstrationStatus {
+  state: DemonstrationState;
+  /** The task and the fresh attempt the demonstration runs in. */
+  taskId: string; attempt: number;
+  /** Planned and committed actions. */
+  total: number; done: number;
+  /** The result check's verdict, once it ran (`finished`). */
+  passed?: boolean;
+  /** Why it ended early (`failed`): the refusal of an action or of the check. */
+  error?: HostErrorCode;
+}
+export interface DemonstrationRequest extends RevisionRequest { confirmed: true }
+/** Present in a session that offers the demonstration: the tasks that have one and its status. */
+export interface DemonstrationInfo { tasks: string[]; status: DemonstrationStatus | null }
+export interface BootstrapReply { token: string; authorToken?: string; view: HostView; engineOrigin?:string; authorEnabled?:boolean; modelOnly?: ModelOnlyNotice; demonstration?: DemonstrationInfo }
 /** Same-session reload metadata, authenticated by the existing header credential. */
-export interface ResumeReply { view: HostView; engineOrigin?: string; authorEnabled?: boolean }
+export interface ResumeReply { view: HostView; engineOrigin?: string; authorEnabled?: boolean; modelOnly?: ModelOnlyNotice; demonstration?: DemonstrationInfo }
 export type HostEvent =
   | { type: "ready" | "changed"; view: HostView }
   | { type: "rejected"; revision: number; hash: string; error: { code: HostErrorCode; message: string } }
-  | { type: "heartbeat"; revision: number };
+  | { type: "heartbeat"; revision: number }
+  | { type: "demonstration"; status: DemonstrationStatus | null };
 
 /** Static shell/assets and bootstrap are public; authenticated API reads/mutations are header-only. */
 export interface ServeOptions { seed?: number; taskId?: string; mirror?: MirrorMode; tokenDirectory?: string;
   /** Task-list facts by task id; defaults to the bundled library's when the world is the library. */
-  taskInfo?: Record<string, { level: 1 | 2 | 3; referenceActions: number }> }
+  taskInfo?: Record<string, { level: 1 | 2 | 3; referenceActions: number }>;
+  /** Offer the bundled example's demonstration (`practonaut` and `play` without a world set it; the
+   * host also checks that the world is that example). */
+  demonstration?: boolean;
+  /** Why this session is model-only, for the Player's banner (set by the CLI with `mirror: "off"`). */
+  modelOnly?: ModelOnlyNotice }
 /** Credentials are runtime-only; callers must never log token or write it to tracked files. */
 export interface RunningHost {
   origin: string; url: string; port: number; token: string; code: string; tokenFile: string;

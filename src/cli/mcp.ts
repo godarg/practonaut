@@ -57,7 +57,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     if (parsed.start) {
       const { world, taskId } = await resolvePracticeSource(parsed.start.task, parsed.start.taskId);
       const paths = await resolvedDataPaths(), seed = parsed.start.seed;
-      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror), mode => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home }));
+      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror), (mode, notice) => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home, ...(notice ? { modelOnly: notice } : {}) }));
       host = started.host; const mirror = started.mirror;
       process.stderr.write(fallbackNotice(mirror));
       // The session credential stays in this process; the one-use watch link goes to stderr only.

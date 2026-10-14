@@ -9,7 +9,8 @@ import { z } from "zod";
 import { parseJsonEntry } from "../package/json.ts";
 import type { World } from "../world/types.ts";
 import { createPracticeSession, type MirrorDiagnostic, type PracticeSessionOptions } from "./session.ts";
-import { ACTOR_CLIENT, HOST_ROUTES, TOKEN_HEADER, type ControllerFactory, type HostErrorCode, type HostEvent, type HostReply, type MutationDeltaReply, type MutationReply, type RunningHost, type ServeOptions } from "./protocol.ts";
+import { ACTOR_CLIENT, HOST_ROUTES, TOKEN_HEADER, type ControllerFactory, type DemonstrationInfo, type HostErrorCode, type HostEvent, type HostReply, type ModelOnlyNotice, type MutationDeltaReply, type MutationReply, type PracticeController, type RunningHost, type ServeOptions } from "./protocol.ts";
+import { demonstrationWorld, withDemonstration, type DemonstrationControl } from './demonstration.ts';
 import { HOST_LIMITS, RequestBudget } from "./limits.ts";
 import { createTokenFile } from "./token-file.ts";
 import { createAuthorController, AuthorHostError } from './author-controller.ts';
@@ -32,6 +33,7 @@ export const HTTP_CAPABILITIES:Readonly<Record<string,'public'|'practice'|'autho
  [HOST_ROUTES.bootstrap]:'public',[HOST_ROUTES.resume]:'practice',[HOST_ROUTES.observe]:'practice',
  [HOST_ROUTES.act]:'practice',[HOST_ROUTES.undo]:'practice',[HOST_ROUTES.reset]:'practice',[HOST_ROUTES.variant]:'practice',
  [HOST_ROUTES.hint]:'practice',[HOST_ROUTES.check]:'practice',[HOST_ROUTES.events]:'practice',[HOST_ROUTES.tool]:'practice',[HOST_ROUTES.export]:'practice',
+ [HOST_ROUTES.demonstration]:'practice',[HOST_ROUTES.demonstrationStop]:'practice',
  [AUTHOR_ROUTES.editor]:'practice',[AUTHOR_ROUTES.scene]:'practice',
  [AUTHOR_ROUTES.observe]:'author',[AUTHOR_ROUTES.start]:'author',[AUTHOR_ROUTES.gesture]:'author',[AUTHOR_ROUTES.stop]:'author',
  [AUTHOR_ROUTES.recording]:'author',[AUTHOR_ROUTES.delete]:'author',[AUTHOR_ROUTES.analyze]:'author',[AUTHOR_ROUTES.confirm]:'author',
@@ -91,6 +93,8 @@ const undoSchema = revisionSchema.extend(replyShape);
 const actSchema = revisionSchema.extend({ action, actor: z.strictObject({ kind: z.literal('agent'), client: z.string().regex(ACTOR_CLIENT) }).optional(), ...replyShape });
 const resetSchema = revisionSchema.extend({ confirmed: z.literal(true), ...replyShape });
 const variantSchema = revisionSchema.extend({ confirmed: z.literal(true), taskId: z.string().min(1).max(128).optional() });
+/** Starting the demonstration replaces the current attempt, so it is confirmed like a reset. */
+const demonstrationSchema = revisionSchema.extend({ confirmed: z.literal(true) });
 const bootstrapSchema = z.strictObject({ code: z.string().min(1).max(128) });
 function withoutView(reply: 'view' | 'delta' | undefined, value: HostReply<MutationReply>): HostReply<MutationReply | MutationDeltaReply> {
   if (reply !== 'delta' || !value.ok) return value;
@@ -111,7 +115,7 @@ function status(code: HostErrorCode): number {
   if (code === "rate_limited" || code === "limit_exceeded" || code === "action_budget_exhausted") return 429;
   if (code === "not_found") return 404;
   if (code === "method_not_allowed") return 405;
-  if (["session_busy", "project_store_busy", "stale_base", "real_tool_disagrees", "replay_mismatch"].includes(code)) return 409;
+  if (["session_busy", "project_store_busy", "stale_base", "real_tool_disagrees", "replay_mismatch", "demonstration_running", "demonstration_attempt"].includes(code)) return 409;
   if (["mirror_timeout", "mirror_unavailable", "diagnostic_unavailable"].includes(code)) return 503;
   if (code === "diagnostic_limit") return 413;
   return 400;
@@ -186,10 +190,17 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   let diagnostics: Awaited<ReturnType<typeof privateDiagnostics>>;
   try { diagnostics = await privateDiagnostics(credential.path, token, () => issued, authorToken); }
   catch { await credential.remove(); throw new DiagnosticError('diagnostic_unavailable'); }
-  let controller;
+  let controller: PracticeController;
   const sessionOptions: PracticeSessionOptions = { ...options, onMirrorDiagnostic: record => diagnostics.write(record), admitView: view => requireReplyBudget({ ok: true, value: { view } }) };
   try { controller = await (options.controllerFactory ?? createPracticeSession)(world, sessionOptions); }
   catch (error) { await diagnostics.discard(); await credential.remove(); throw error; }
+  // The bundled example's demonstration owns the session while it runs; every surface goes through it.
+  let demonstration: DemonstrationControl | undefined;
+  if (options.demonstration && demonstrationWorld(world)) ({ controller, demonstration } = withDemonstration(controller, world));
+  const playerInfo = (): { modelOnly?: ModelOnlyNotice; demonstration?: DemonstrationInfo } => ({
+    ...(options.modelOnly && options.mirror === 'off' ? { modelOnly: structuredClone(options.modelOnly) } : {}),
+    ...(demonstration ? { demonstration: { tasks: demonstration.tasks(), status: demonstration.status() } } : {}),
+  });
   let author: AuthorController | undefined;
   let editorAssets: Awaited<ReturnType<typeof startEditorAssets>> | undefined;
   if (options.phase3) {
@@ -232,7 +243,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
         const current = outstanding;
         if (!current || !equal(supplied, current.code)) throw new HostError("token_invalid", "Bootstrap code is invalid");
         if (Date.now() - current.at >= HOST_LIMITS.bootstrapTtlMs) { outstanding = undefined; throw new HostError("bootstrap_expired", "Bootstrap code has expired"); }
-        const bootstrapReply = { ok: true, value: { token, view: controller.view(), ...(authorToken?{authorToken}:{}), ...(editorAssets ? { engineOrigin: editorAssets.origin, authorEnabled: true } : {}) } };
+        const bootstrapReply = { ok: true, value: { token, view: controller.view(), ...(authorToken?{authorToken}:{}), ...(editorAssets ? { engineOrigin: editorAssets.origin, authorEnabled: true } : {}), ...playerInfo() } };
         requireReplyBudget(bootstrapReply);
         outstanding = undefined; consumed.add(current.code); json(response, 200, bootstrapReply); return;
       }
@@ -253,7 +264,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
       if (url.pathname === HOST_ROUTES.resume) {
         if (request.method !== 'GET') throw new HostError('method_not_allowed', 'Session resume requires GET');
         if (url.searchParams.size) throw new HostError('invalid_request', 'Session resume accepts no query data');
-        const value = { view: controller.view(), ...(editorAssets ? { engineOrigin: editorAssets.origin, authorEnabled: authorAuthority } : {}) };
+        const value = { view: controller.view(), ...(editorAssets ? { engineOrigin: editorAssets.origin, authorEnabled: authorAuthority } : {}), ...playerInfo() };
         requireReplyBudget({ ok: true, value }); json(response, 200, { ok: true, value }); return;
       }
       if (options.phase3 && [AUTHOR_ROUTES.observe, AUTHOR_ROUTES.recording, AUTHOR_ROUTES.scene, AUTHOR_ROUTES.project, AUTHOR_ROUTES.projects].includes(url.pathname as typeof AUTHOR_ROUTES.observe) && request.method === 'GET') {
@@ -273,7 +284,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
         if (url.pathname === HOST_ROUTES.events) {
           if (streams.size >= HOST_LIMITS.sseClients) throw new HostError("limit_exceeded", "SSE client budget exceeded");
           response.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Connection": "keep-alive" }); streams.add(response);
-          response.on("close", () => streams.delete(response)); sendEvent(response, { type: "ready", view: controller.view() }); return;
+          response.on("close", () => streams.delete(response)); sendEvent(response, { type: "ready", view: controller.view() });
+          if (demonstration) sendEvent(response, { type: "demonstration", status: demonstration.status() });
+          return;
         }
         const reply = await controller.png(transactionContext);
         if (!reply.ok) { failure(response, reply.error.code, reply.error.message); return; }
@@ -295,6 +308,14 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
           case HOST_ROUTES.hint: reply = await controller.hint(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.check: reply = await controller.check(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.export: reply = await controller.export(checked(revisionSchema),transactionContext); break;
+          case HOST_ROUTES.demonstration: {
+            if (!demonstration) throw new HostError('not_found', 'This session offers no demonstration');
+            reply = await demonstration.start(checked(demonstrationSchema), transactionContext); break;
+          }
+          case HOST_ROUTES.demonstrationStop: {
+            if (!demonstration) throw new HostError('not_found', 'This session offers no demonstration');
+            checked(z.strictObject({})); reply = demonstration.stop(); break;
+          }
           case AUTHOR_ROUTES.start: {
             const parsed = checked(revisionSchema.extend({ metadata: z.strictObject({ author: z.string().min(1).max(4096), license: z.string().min(1).max(256), consent: z.string().min(1).max(4096), demonstration: z.enum(['scripted', 'human']) }), initial: z.unknown(), fontsReady: z.literal(true) }));
             reply = { ok: true, value: await author!.start(parsed as Parameters<AuthorController['start']>[0]) }; break;
