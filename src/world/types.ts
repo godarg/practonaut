@@ -60,7 +60,11 @@ export interface Task {
   id: string; title: Localized; prompt: Localized; initialState?: State; goal: Predicate; hints: Localized[]; errorClasses: ErrorClass[];
   /** world/2: one plain-language sentence per top-level goal clause (same order as `goal.args`). */
   conditionTexts?: Localized[];
+  /** world/2: set when a generator materialised this task (PADR-0036). Never in a public view. */
+  generatedBy?: GeneratedBy;
 }
+/** Generator id and semantic version, the seed and named parameters of a materialised task. */
+export interface GeneratedBy { id: string; version: string; seed: number; parameters: Record<string, string | number> }
 /** world/1 cases carry insertPosition; world/2 cases carry free text/integer params. Both become {{tokens}}. */
 export interface Variant { id: string; labels: Record<string, string>; insertPosition?: number; params?: Record<string, string | number>; layoutOffset: { x: number; y: number } }
 export interface PrivateWorldSource {
