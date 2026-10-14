@@ -28,6 +28,8 @@ export interface PublicCheck {
   scope: "end-state-only"; hash: string; revision: number; passed: boolean;
   conditions: ConditionResult[]; errors: Array<{ id: string; explanation: Localized }>;
   mode: "real-engine" | "model-only"; practiceEvidence: boolean;
+  /** The check judged the bundled example's demonstration board: never anyone's result, never practice evidence. */
+  demonstration?: true;
 }
 /** Who made a change: a person in the Player or the real editor, an agent through MCP, or the
  * bundled example's demonstration (host-only; no request can claim it). The client name is what the
@@ -53,6 +55,8 @@ export interface HostView {
   actions: ActionDefinition[]; rules: Rule[]; mirror: MirrorMode;
   mirrorHealth: { status: 'available' | 'unavailable' | 'closed' | 'model-only'; recoveries: number };
   practiceEvidence: boolean; attempt: number; hintsOpened: number;
+  /** The attempt is the bundled example's demonstration until a reset or variant replaces it (src/host/demonstration.ts). */
+  demonstration?: true;
   hints: Localized[]; result: PublicCheck | null;
   errors: Array<{ id: string; explanation: Localized }>;
 }

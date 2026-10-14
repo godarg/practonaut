@@ -169,7 +169,9 @@ is a label, not an identity check. In a session of the bundled example a person 
 demonstration: its actions carry `{"kind":"demonstration"}`. While it plays, `act`, `undo`, `reset`
 and `check_result` answer `demonstration_running`; afterwards the attempt stays its own until a
 reset, and `act` and `undo` answer `demonstration_attempt`. Sessions started with `mcp --task` never
-offer it.
+offer it. Until that reset, `observe` (compact or full, with or without history items) and
+`check_result` carry `demonstration: true` and `practiceEvidence: false`: its board and verdict are
+nobody's result.
 Reset applies to their shared attempt. Obtain consent in the surrounding collaboration before
 discarding another person's work; `confirmed: true` expresses that deliberate choice.
 

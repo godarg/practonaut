@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { startHost } from '../../src/host/server.ts';
 import { TOKEN_HEADER, type DemonstrationStatus, type HostEvent, type ModelOnlyNotice, type RunningHost } from '../../src/host/protocol.ts';
 import { validateWorld } from '../../src/world/index.ts';
+import { createBridge } from '../../src/mcp/bridge.ts';
 import type { World } from '../../src/world/types.ts';
 
 const example = async (): Promise<World> => validateWorld(JSON.parse(await readFile('examples/worlds/flow-diagram/world.json', 'utf8')));
@@ -87,6 +88,20 @@ test('the bundled example offers the demonstration: Player metadata, confirmatio
     assert.deepEqual([...new Set(view.history.map((item: { actor: { kind: string } }) => item.actor.kind))], ['demonstration']);
     assert.equal(view.result.passed, true); assert.equal(view.result.practiceEvidence, false, 'model-only is never evidence');
     assert.deepEqual(await post(f.host, '/api/export', { expectedRevision: view.revision }), { status: 409, code: 'demonstration_attempt' });
+    // Player and agent read the same: the attempt and its verdict are the demonstration's, never evidence.
+    assert.equal(view.demonstration, true); assert.equal(view.result.demonstration, true);
+    const resumedView = (await (await fetch(f.host.origin + '/api/resume', { headers: headers(f.host) })).json()).value.view;
+    assert.equal(resumedView.demonstration, true); assert.equal(resumedView.practiceEvidence, false);
+    const bridge = await createBridge({ host: f.host.origin, token: f.host.token });
+    const agentView = await bridge.call('observe', { history: 0 });
+    assert.ok(agentView.ok, JSON.stringify(agentView));
+    const compact = agentView.value as { demonstration?: true; practiceEvidence: boolean; result: { passed: boolean; demonstration?: true } | null; history: { recent: unknown[] } };
+    assert.deepEqual([compact.demonstration, compact.practiceEvidence, compact.result?.passed, compact.result?.demonstration, compact.history.recent.length], [true, false, true, true, 0]);
+    const full = await bridge.call('observe', { detail: 'full' });
+    assert.ok(full.ok); assert.equal((full.value as { demonstration?: true }).demonstration, true);
+    const checked = await bridge.call('check_result', { expectedRevision: view.revision });
+    assert.ok(checked.ok, JSON.stringify(checked));
+    assert.deepEqual([checked.value.passed, checked.value.demonstration, checked.value.practiceEvidence], [true, true, false]);
     assert.deepEqual(await post(f.host, '/api/demonstration/stop', {}), { status: 200, value: statuses.at(-1) }, 'stop after the end changes nothing');
     const released = events(f.host, statuses => statuses.length >= 2);
     assert.equal((await post(f.host, '/api/reset', { expectedRevision: view.revision, confirmed: true })).status, 200);

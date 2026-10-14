@@ -20,7 +20,7 @@
  */
 import { variantIndex, variantTokens } from '../world/variant.ts';
 import type { Action, World } from '../world/types.ts';
-import type { DemonstrationRequest, DemonstrationState, DemonstrationStatus, HostErrorCode, HostEvent, HostReply, HostView, PracticeController, TransactionContext } from './protocol.ts';
+import type { DemonstrationRequest, DemonstrationState, DemonstrationStatus, HostErrorCode, HostEvent, HostReply, HostView, PracticeController, PublicCheck, TransactionContext } from './protocol.ts';
 
 /** The world a demonstration exists for: the example that ships with the package. */
 export const DEMONSTRATION_WORLD = Object.freeze({ id: 'flow-diagram', version: '1.0.0' });
@@ -125,7 +125,20 @@ export function withDemonstration(inner: PracticeController, world: World, optio
     : reject('demonstration_attempt', 'This attempt is a demonstration; reset or choose a variant to start an own attempt');
   const whileRunning = <T>(): HostReply<T> | undefined => status?.state === 'running' ? owned<T>() : undefined;
   /** A reset or variant ends the demonstration's attempt. */
-  const release = <T>(reply: HostReply<T>): HostReply<T> => { if (reply.ok && status !== null) { status = null; emit(); } return reply; };
+  const release = <T>(reply: HostReply<T>): HostReply<T> => { if (reply.ok && status !== null) { status = null; withheld = false; emit(); } return reply; };
+  /** The demonstration's own verdict, when a Stop overtook its final check: never published. */
+  let withheld = false;
+  /** A view of the demonstration's attempt (its task and the attempt it started). */
+  const owns = (view: HostView): boolean => status !== null && view.task.id === status.taskId && view.attempt === status.attempt;
+  /** Every check of the demonstration's attempt says so and is never practice evidence. */
+  const markCheck = (check: PublicCheck): PublicCheck => ({ ...check, demonstration: true, practiceEvidence: false });
+  /** Every view of it, for the Player and for agents alike; a verdict a Stop overtook is left out. */
+  const mark = (view: HostView): HostView => {
+    if (!owns(view)) return view;
+    const overtaken = withheld || (status!.state === 'running' && !!running?.signal.aborted);
+    return { ...view, demonstration: true, practiceEvidence: false, result: overtaken || !view.result ? null : markCheck(view.result) };
+  };
+  const marked = (event: HostEvent): HostEvent => event.type === 'ready' || event.type === 'changed' ? { ...event, view: mark(event.view) } : event;
 
   async function play(plan: Planned[], abort: AbortController): Promise<void> {
     const created: Array<string | undefined> = [];
@@ -143,6 +156,8 @@ export function withDemonstration(inner: PracticeController, world: World, optio
       await pause(pace.check, abort.signal);
       if (abort.signal.aborted || closed) { end('stopped'); return; }
       const checked = await inner.check({ expectedRevision: inner.view().revision });
+      // A Stop accepted while the check was reading the real tool back wins: no verdict is published.
+      if (abort.signal.aborted || closed) { withheld = checked.ok; end('stopped'); return; }
       if (!checked.ok) { end('failed', { error: checked.error.code }); return; }
       end('finished', { passed: checked.value.passed });
     } catch { end('failed', { error: 'invalid_argument' }); }
@@ -160,9 +175,12 @@ export function withDemonstration(inner: PracticeController, world: World, optio
       try { plan = demonstrationPlan(world, before.task.id, before.seed); } catch { return reject('invalid_argument', 'The demonstration does not fit this variant'); }
       if (!plan) return reject('not_found', 'This task has no demonstration');
       // A fresh attempt of its own: the board starts at the task's start and the history is empty.
+      // The status names that attempt before the reset publishes it, so its first view is marked too.
+      const previous = status, previouslyWithheld = withheld;
+      status = { state: 'running', taskId: before.task.id, attempt: before.attempt + 1, total: plan.length, done: 0 }; withheld = false;
       const fresh = await inner.reset({ expectedRevision: request.expectedRevision, confirmed: true }, context);
-      if (!fresh.ok) return fresh;
-      status = { state: 'running', taskId: fresh.value.view.task.id, attempt: fresh.value.view.attempt, total: plan.length, done: 0 };
+      if (!fresh.ok) { status = previous; withheld = previouslyWithheld; return fresh; }
+      status = { ...status, taskId: fresh.value.view.task.id, attempt: fresh.value.view.attempt };
       emit();
       const abort = new AbortController(); running = abort;
       void play(plan, abort);
@@ -175,16 +193,27 @@ export function withDemonstration(inner: PracticeController, world: World, optio
   };
 
   const controller: PracticeController = {
-    view: () => inner.view(),
+    view: () => mark(inner.view()),
     act: async (request, context) => owned() ?? inner.act(request, context),
     undo: async (request, context) => owned() ?? inner.undo(request, context),
     hint: async (request, context) => owned() ?? inner.hint(request, context),
     export: async (request, context) => owned() ?? inner.export(request, context),
     reset: async (request, context) => whileRunning() ?? release(await inner.reset(request, context)),
     variant: async (request, context) => whileRunning() ?? release(await inner.variant(request, context)),
-    check: async (request, context) => whileRunning() ?? inner.check(request, context),
+    check: async (request, context) => {
+      const refused = whileRunning<PublicCheck>(); if (refused) return refused;
+      // A check asked for afterwards replaces a verdict that was withheld; it is published, marked.
+      const before = withheld; withheld = false;
+      const reply = await inner.check(request, context);
+      if (!reply.ok) { withheld = before; return reply; }
+      return owns(inner.view()) ? { ok: true, value: markCheck(reply.value) } : reply;
+    },
     png: async context => whileRunning() ?? inner.png(context),
-    subscribe: listener => { const off = inner.subscribe(listener); listeners.add(listener); return () => { listeners.delete(listener); off(); }; },
+    subscribe: listener => {
+      const forward = (event: HostEvent): void => listener(marked(event));
+      const off = inner.subscribe(forward); listeners.add(listener);
+      return () => { listeners.delete(listener); off(); };
+    },
     ...(inner.editor ? { editor: async (request, context) => owned() ?? inner.editor!(request, context) } satisfies Pick<PracticeController, 'editor'> : {}),
     ...(inner.scene ? { scene: () => inner.scene!() } : {}),
     close: async () => { closed = true; running?.abort(); listeners.clear(); await inner.close(); },

@@ -100,7 +100,9 @@ Player sees each action only once it is committed. Its status (`running`, `finis
 mutation, check and the tool image are refused with `demonstration_running` (409). Afterwards the
 attempt stays the demonstration's until a reset or variant: act, undo, hints, editor input and the
 export are refused with `demonstration_attempt` (409), so its board is never continued or saved as
-anyone's result.
+anyone's result. Every view of that attempt (bootstrap, resume, observe, events) and every check of it
+carries `demonstration: true` and `practiceEvidence: false`, its last result too; a verdict that a Stop
+overtook while the check read the real tool back is never published.
 
 ## Atomic mirror and diagnostics
 

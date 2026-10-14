@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { createPracticeController } from '../../src/host/session.ts';
 import { demonstrationPlan, demonstrationWorld, resolvePlanned, withDemonstration } from '../../src/host/demonstration.ts';
-import type { DemonstrationStatus, HostEvent, HostReply } from '../../src/host/protocol.ts';
+import type { DemonstrationStatus, HostEvent, HostReply, HostView } from '../../src/host/protocol.ts';
 import { publicViewSchema } from '../../src/mcp/bridge.ts';
 import { compactView } from '../../src/mcp/replies.ts';
 import type { PracticeMirror } from '../../src/host/mirror.ts';
@@ -20,7 +20,9 @@ const noPause = async (): Promise<void> => {};
 /** The first seed that selects variant case `index` (the world's own seeded choice). */
 function seedFor(target: World, index: number): number { for (let seed = 0; ; seed++) if (variantIndex(target, seed) === index) return seed; }
 
-function fakeMirror(initial: State, disagreeAt?: number): PracticeMirror & { applied: number } {
+/** Holds the real tool's read-back while `held` is set: the moment a Stop can overtake a check. */
+interface SnapshotHold { held?: Promise<void> | undefined; waiting?: (() => void) | undefined }
+function fakeMirror(initial: State, disagreeAt?: number, hold: SnapshotHold = {}): PracticeMirror & { applied: number } {
   let state = structuredClone(initial);
   return {
     applied: 0,
@@ -32,20 +34,23 @@ function fakeMirror(initial: State, disagreeAt?: number): PracticeMirror & { app
     },
     async replace(next: State) { state = structuredClone(next); return { ok: true as const, state: structuredClone(state), warnings: [] }; },
     async recover(next: State) { state = structuredClone(next); },
-    async snapshot() { return structuredClone(state); }, async png() { return new Uint8Array([137, 80, 78, 71]); }, async close() {},
+    async snapshot() { if (hold.held) { hold.waiting?.(); await hold.held; } return structuredClone(state); }, async png() { return new Uint8Array([137, 80, 78, 71]); }, async close() {},
   };
 }
-async function session(options: { seed?: number; taskId?: string; mirror?: 'off' | 'required'; disagreeAt?: number; pause?: (ms: number, signal: AbortSignal) => Promise<void> } = {}) {
-  const base = await createPracticeController(world(), { seed: options.seed ?? 42, taskId: options.taskId ?? 'T1', mirror: options.mirror ?? 'off' }, async initial => fakeMirror(initial, options.disagreeAt));
+async function session(options: { seed?: number; taskId?: string; mirror?: 'off' | 'required'; disagreeAt?: number; hold?: SnapshotHold; pause?: (ms: number, signal: AbortSignal) => Promise<void> } = {}) {
+  const base = await createPracticeController(world(), { seed: options.seed ?? 42, taskId: options.taskId ?? 'T1', mirror: options.mirror ?? 'off' }, async initial => fakeMirror(initial, options.disagreeAt, options.hold));
   const wrapped = withDemonstration(base, world(), { pause: options.pause ?? noPause });
   const statuses: Array<DemonstrationStatus | null> = [];
+  /** Every view the Player's stream carried, in order. */
+  const views: HostView[] = [];
   let settle: ((status: DemonstrationStatus) => void) | undefined;
   wrapped.controller.subscribe((event: HostEvent) => {
+    if (event.type === 'ready' || event.type === 'changed') views.push(event.view);
     if (event.type !== 'demonstration') return;
     statuses.push(event.status);
     if (event.status && event.status.state !== 'running') settle?.(event.status);
   });
-  return { ...wrapped, statuses, ended: () => new Promise<DemonstrationStatus>(resolve => { const last = statuses.at(-1); if (last && last.state !== 'running') resolve(last); else settle = resolve; }) };
+  return { ...wrapped, statuses, views, ended: () => new Promise<DemonstrationStatus>(resolve => { const last = statuses.at(-1); if (last && last.state !== 'running') resolve(last); else settle = resolve; }) };
 }
 const code = (reply: HostReply<unknown>): string | undefined => reply.ok ? undefined : reply.error.code;
 /** The live board as text: step labels and arrows "from → to" by label. */
@@ -168,6 +173,60 @@ describe('bundled example demonstration', () => {
       assert.equal(parsed.success, true, 'the bridge fails closed on unknown fields; the actor is a known one');
       assert.deepEqual(compactView(s.controller.view(), 'en', 2).history.recent.map(item => item.actor), [{ kind: 'demonstration' }, { kind: 'demonstration' }]);
       assert.equal(publicViewSchema.safeParse({ ...s.controller.view(), history: [{ ...s.controller.view().history[0]!, actor: { kind: 'demonstration', client: 'x' } }] }).success, false);
+    } finally { await s.controller.close(); }
+  });
+
+  it('every view and check of its attempt says it is a demonstration and is never practice evidence, until the attempt is replaced', async () => {
+    const s = await session({ mirror: 'required' });
+    try {
+      const before = s.controller.view();
+      assert.equal(before.demonstration, undefined); assert.equal(before.practiceEvidence, true, 'a mirrored attempt of the person counts');
+      assert.equal((await s.demonstration.start({ expectedRevision: 0, confirmed: true })).ok, true);
+      const ended = await s.ended(); assert.equal(ended.state, 'finished');
+      // What the Player's stream carried from the demonstration's first view on, the fresh board included.
+      const own = s.views.filter(view => view.attempt === ended.attempt);
+      assert.ok(own.length >= 7, `${own.length} views`);
+      for (const view of own) { assert.equal(view.demonstration, true); assert.equal(view.practiceEvidence, false); }
+      const verdicts = own.filter(view => view.result).map(view => view.result!);
+      assert.ok(verdicts.length >= 1);
+      for (const result of verdicts) { assert.equal(result.passed, true); assert.equal(result.demonstration, true); assert.equal(result.practiceEvidence, false); }
+      // observe and check_result: the same, also without any history items to carry the actor.
+      const view = s.controller.view();
+      assert.equal(view.demonstration, true); assert.equal(view.practiceEvidence, false); assert.equal(view.result?.demonstration, true);
+      const compact = compactView(view, 'en', 0);
+      assert.deepEqual([compact.demonstration, compact.practiceEvidence, compact.result?.demonstration, compact.history.recent.length], [true, false, true, 0]);
+      assert.equal(publicViewSchema.safeParse(view).success, true, 'the MCP bridge admits it');
+      const checked = await s.controller.check({ expectedRevision: view.revision });
+      assert.ok(checked.ok); assert.equal(checked.value.passed, true); assert.equal(checked.value.demonstration, true); assert.equal(checked.value.practiceEvidence, false);
+      // An own attempt is a normal one again.
+      assert.equal((await s.controller.reset({ expectedRevision: view.revision, confirmed: true })).ok, true);
+      const after = s.controller.view();
+      assert.equal(after.demonstration, undefined); assert.equal(after.practiceEvidence, true);
+      const own2 = await s.controller.check({ expectedRevision: after.revision });
+      assert.ok(own2.ok); assert.equal(own2.value.demonstration, undefined); assert.equal(own2.value.practiceEvidence, true);
+      assert.equal(s.views.at(-1)?.demonstration, undefined);
+    } finally { await s.controller.close(); }
+  });
+
+  it('a Stop accepted while the final check reads the real tool back ends it stopped, and no verdict is published', async () => {
+    let release!: () => void, reached!: () => void;
+    const hold: SnapshotHold = {};
+    const atCheck = new Promise<void>(resolve => { reached = resolve; });
+    // The pause before the check arms the hold, so the check's own read-back waits.
+    const s = await session({ mirror: 'required', hold, pause: async ms => { if (ms === 800) { hold.held = new Promise<void>(resolve => { release = resolve; }); hold.waiting = reached; } } });
+    try {
+      assert.equal((await s.demonstration.start({ expectedRevision: 0, confirmed: true })).ok, true);
+      await atCheck;
+      assert.equal(s.demonstration.stop().ok, true);
+      hold.held = undefined; release();
+      const ended = await s.ended();
+      assert.deepEqual({ state: ended.state, done: ended.done, passed: ended.passed }, { state: 'stopped', done: 5, passed: undefined });
+      assert.equal(s.controller.view().result, null, 'observe shows no verdict');
+      assert.equal(s.views.filter(view => view.attempt === ended.attempt).some(view => view.result !== null), false, 'the stream never carried it');
+      // A check asked for afterwards is published, marked as the demonstration's.
+      const checked = await s.controller.check({ expectedRevision: s.controller.view().revision });
+      assert.ok(checked.ok); assert.equal(checked.value.demonstration, true);
+      assert.equal(s.controller.view().result?.demonstration, true);
     } finally { await s.controller.close(); }
   });
 

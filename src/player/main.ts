@@ -664,7 +664,10 @@ function historyCard(): HTMLElement {
 function howCheckedCard(): HTMLElement {
   const c = current!;
   const root = card({ title: msg('howChecked'), class: 'inspector-card' });
-  root.append(h('p', { class: 't-subhead' }, evidence(c.practiceEvidence ? 'confirmed' : 'observed', msg(c.practiceEvidence ? 'evidence' : 'noEvidence'))));
+  // How actions are checked follows the real tool, not whether this attempt counts: a demonstration's
+  // attempt is never practice evidence, yet its actions were confirmed when the mirror ran.
+  const mirrored = c.mirrorHealth.status === 'available';
+  root.append(h('p', { class: 't-subhead' }, evidence(mirrored ? 'confirmed' : 'observed', msg(mirrored ? 'evidence' : 'noEvidence'))));
   root.append(button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || locked() }));
   if (toolUrl) root.append(h('img', { class: 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } }));
   const rules = h('div', { class: 'rule-list' });
