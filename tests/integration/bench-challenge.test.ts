@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -56,6 +56,35 @@ test('a generated tight-budget set: oracle passes in exactly the budget, random 
       // Accepted changes (act, undo, reset) never exceed the task's limit; the host refused the rest.
       assert.ok(runResult.acceptedActions + runResult.undos + runResult.resets <= budget, `${runResult.id}: ${runResult.acceptedActions} accepted, budget ${budget}`);
     }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('the gate tool reads, re-verifies and judges five bench folders, and refuses a round below 24 held-out instances by name', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-gate-'));
+  try {
+    const made = run([TOOL, 'generate', 'tight-budget', '--set', 'heldout', '--round', '1', '--seed', '1000000', '--count', '2', '--difficulty', '1', '--out', join(dir, 'set')]);
+    assert.equal(made.status, 0, made.stderr);
+    const args = ((await json(join(dir, 'set', 'instances.json'))).bench.args as string[]).slice(1);
+    const oracle = await bench(['--agent', 'oracle', ...args, '--mirror', 'off']);
+    // Four more reports of the same runs under other agent names: consistent reports whose
+    // artifacts still re-verify (the agent fields are not part of what the artifacts bind).
+    const copies: string[] = [];
+    for (const [index, agent] of [{ kind: 'builtin', name: 'random', command: [], isolation: 'builtin-baseline', model: null, modelSource: 'none', apiKeySource: null },
+      ...['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'].map(model => ({ kind: 'preset', name: 'claude-code', command: ['claude', '-p'], isolation: 'tool-restricted-preset', model, modelSource: 'client-attested', apiKeySource: 'none' }))].entries()) {
+      const copy = join(dir, `agent-${index}`); await cp(oracle.folder, copy, { recursive: true });
+      const report = await json(join(copy, 'report.json')); report.agent = { ...agent, keptEnv: [] };
+      await writeFile(join(copy, 'report.json'), JSON.stringify(report));
+      copies.push(join(copy, 'report.json'));
+    }
+    const gate = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--out', join(dir, 'gate.md')]);
+    assert.equal(gate.status, 2, gate.stderr);
+    assert.match(gate.stderr, /gate_input_invalid: the gate needs at least 24 held-out instances, these reports have 2/);
+    // A report whose artifacts were changed is refused before anything is computed.
+    await writeFile(join(dir, 'agent-1', 'tight-budget-1000000-s1-r1', 'session.json'), '{}');
+    const tampered = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--out', join(dir, 'gate.md')]);
+    assert.equal(tampered.status, 2); assert.match(tampered.stderr, /bench_artifact_changed/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
