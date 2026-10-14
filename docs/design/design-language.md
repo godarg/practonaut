@@ -69,7 +69,7 @@ imperatives.
 | Exercise | Übung | A playable task with a visible goal, checked conditions, feedback and a result. |
 | Project | Projekt | Named local author work: recordings, supported rules, task intent and reviewed examples. It can be saved and resumed. |
 | World | Welt (Übungswelt) | The executable package underlying an exercise. |
-| Demonstration | Vorführung | An explicitly recorded sequence with source and rights. It supplies observations for supported behaviour. |
+| Demonstration | Vorführung | An explicitly recorded sequence with source and rights. It supplies observations for supported behaviour. In Practice the bundled example also plays a scripted demonstration of its task (the task's third hint, once); it is labelled as such and is never anyone's attempt or result. |
 | Task | Aufgabe | What to achieve, in plain words. |
 | Goal | Ziel | The short list of checkable statements about the result. Any result that meets them all counts. |
 | Board | Arbeitsfläche | The area where the objects lie and where you act. |
@@ -458,7 +458,8 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
 - **One filled button.** Exactly one filled (accent) button is visible, chosen by state: "Check
   result" during the work (tinted before the first action and after a failed check until the board
   changes), "New variant" once the result has passed (placed in the Goal card under the verdict;
-  "Check again" becomes secondary).
+  "Check again" becomes secondary), "Start your own attempt" on a demonstration's board (and none while
+  it plays: the one Stop is the way out).
 - **Canvas** (`canvas`): a 28 px card with the SVG board. The coach pill floats at the top (one
   sentence of guidance derived from the state: what a pending preview needs, how many arrow ends
   are loose, otherwise "choose a step or a connection"; on narrow screens, where the palette shows
@@ -490,6 +491,23 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   world consequence ("what this changed") is neutral information (info tone), not an error; danger
   is reserved for "not met", a rejected action and loose ends; "not yet modelled" is the hatched
   unknown banner with a short title and one explanatory sentence.
+- **Model only.** A session without the real tool says so once, above the head and the inspector
+  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" with
+  one sentence on what gets the real engine (the command in the mono voice, the one download named
+  with its size; or why Chromium did not start; or that `--mirror off` was chosen). It stays for the
+  whole session; the quiet line under the board keeps saying that the board shows the model.
+- **Demonstration** (bundled example only). The head offers "Watch a demonstration" as a plain
+  button beside "New variant"; below 48em it takes its own line, in words, never a bare symbol. It
+  asks first only when unsolved own work would be cleared. While it plays the board is its board:
+  the coach counts its actions, the palette offers only the one Stop (Escape too), every other
+  control is disabled, and a **Demonstration** card at the top of the inspector names the three
+  parts of every result as numbered lines with their state in words: actions land on the board,
+  the real Excalidraw confirms each one (evidence mark "confirmed", or "observed" with "model
+  only"), the result check judges the board. A chip says running, finished, stopped or stopped
+  early. History entries carry a "Demonstration" chip. At its end focus moves to the Goal card,
+  whose verdict says it judged the demonstration's board and whose one filled button is "Start your
+  own attempt" (never "New variant": its pass is not the person's). Its board offers no tools and
+  cannot be exported.
 - **Narrow screens.** The board is cropped to its content and drawn with larger labels and thicker
   strokes with a minimum SVG width so labels never fall below 12 CSS px. The drawing may
   scroll inside its labelled horizontal region; the page itself reflows. The tray remains the text

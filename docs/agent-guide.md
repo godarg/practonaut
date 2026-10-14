@@ -165,7 +165,11 @@ Each history entry names who made it (`actor`): `{"kind":"human"}` for the Playe
 editor, `{"kind":"agent","client":"<name>"}` for every `act` through MCP, where `<name>` is the
 `clientInfo.name` your client declared at `initialize` (letters, digits and `._+-/@()`, at most 64
 characters; anything else is shown as `MCP client`). The Player shows it as *Agent · <name>*; it
-is a label, not an identity check.
+is a label, not an identity check. In a session of the bundled example a person can watch a
+demonstration: its actions carry `{"kind":"demonstration"}`. While it plays, `act`, `undo`, `reset`
+and `check_result` answer `demonstration_running`; afterwards the attempt stays its own until a
+reset, and `act` and `undo` answer `demonstration_attempt`. Sessions started with `mcp --task` never
+offer it.
 Reset applies to their shared attempt. Obtain consent in the surrounding collaboration before
 discarding another person's work; `confirmed: true` expresses that deliberate choice.
 

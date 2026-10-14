@@ -32,18 +32,30 @@ npx practonaut play connect        # open one
 The top bar has three views: **Practice** (the task on a diagram board), **Excalidraw** (the same
 task in the real editor) and **Create** (make your own task).
 
+**Watch a demonstration** (next to *New variant*, on the bundled example only) solves the current
+task once while you watch: each action lands on the board, the real Excalidraw confirms it (or the
+card says "model only"), and the result check judges the end. It starts a new attempt, asks first
+if that would clear your own unsolved work, and never counts as your result: its board cannot be
+continued or exported. Stop or Escape ends it; **Start your own attempt** brings the task back to
+its start.
+
 ## 2. Turn on the real Excalidraw engine (optional, once)
+
+Without Chromium the Player opens at once anyway, with a banner **Not yet checked against the real
+Excalidraw** that names the command and the one download it needs. Then:
 
 ```bash
 npx practonaut setup
 ```
 
-This downloads Playwright's Chromium once. With it, every step you or an agent take is also
+This names the download with its size and then fetches it: Playwright's **Chromium headless
+shell** (about 100 MB on macOS, 122 MB on Linux and Windows; nothing is fetched when Playwright's
+cache already has it). With it, every step you or an agent take is also
 applied to a real, pinned Excalidraw 0.18.1 running in the background and read back before it
 counts (the "mirror"). Without it Practonaut runs **model-only**: tasks work, the terminal and the
 Player say so, and results are not checked against the real app. `--mirror required` refuses to
 start without Chromium; `--mirror off` always runs model-only. `setup` ends by naming the folder the
-browser went to and its size (about 550 MB for the browser and its headless shell).
+headless shell went to and its size on disk (195 MB measured on macOS).
 
 ### Chromium does not start
 

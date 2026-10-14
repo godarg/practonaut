@@ -17,8 +17,19 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- **First 60 seconds.** `npx practonaut` without Chromium opens the Player at once with a banner
+  "Not yet checked against the real Excalidraw" that names the one download, the Chromium headless
+  shell, with its size. On the bundled example **Watch a demonstration** solves the current task
+  once: actions land on the board, the real Excalidraw confirms each one (or the session says
+  "model only"), and the result check judges the end. It is labelled as a demonstration, never
+  counts as anyone's result (its board cannot be continued or exported), and Stop or Escape ends
+  it. Never on a library or bench task. Measured with `tools/measure-first-action.ts`.
 
 ### Changed
+
+- **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 100 MB on
+  macOS, 122 MB on Linux and Windows, instead of the full browser as well) and names it with its
+  size before anything is fetched; `doctor` counts a cache with only the headless shell as installed.
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
   tokens and billing switches in your environment from the preset agent (`*_API_KEY`,
