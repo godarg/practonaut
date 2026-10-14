@@ -46,10 +46,10 @@ a banner **Not yet checked against the real Excalidraw** that names the command 
 download it needs. When it is installed, Practonaut first starts Chromium once to check that it
 runs ([PADR-0032](adr/0032-chromium-sandbox-stays-on.md)) and then opens with the real engine; if
 that start fails it opens model-only and says why. Measured from the command to the first action
-of the demonstration on the board (`tools/measure-first-action.ts` at commit fd925db:
+of the demonstration on the board (`tools/measure-first-action.ts` at commit df84e38:
 `npx --package` of the packed package with a warm cache and npm offline, so no registry lookup; a
 fresh browser; the click automated, so no human reaction time; median of 3 on an Apple M4 with a
-load average of about 8): 2.1 s model-only and 2.4 s with the real engine. A first `npx` from the
+load average of about 10): 2.1 s model-only and 2.5 s with the real engine. A first `npx` from the
 registry adds the package download. Then:
 
 ```bash

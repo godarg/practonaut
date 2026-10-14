@@ -21,10 +21,10 @@ All notable changes are recorded here. The format follows
   once, model-only, with a banner "Not yet checked against the real Excalidraw" that names the one
   download, the Chromium headless shell, with its size. With the engine installed, the existing
   start check of Chromium runs first ([PADR-0032](docs/adr/0032-chromium-sandbox-stays-on.md)).
-  From the command to the first demonstrated action: 2.1 s model-only, 2.4 s with the real engine
-  (median of 3 at commit fd925db on an Apple M4: `npx --package <packed tarball>` with a warm npx
+  From the command to the first demonstrated action: 2.1 s model-only, 2.5 s with the real engine
+  (median of 3 at commit df84e38 on an Apple M4: `npx --package <packed tarball>` with a warm npx
   cache and npm offline, so no registry lookup; the click is automated, so no human reaction time;
-  result file `.local/measure-first-action/2026-10-14T23-27-49-754Z-fd925db.json`). On the bundled
+  result file `.local/measure-first-action/2026-10-14T23-34-15-075Z-df84e38.json`). On the bundled
   example **Watch a demonstration** solves the current task
   once: actions land on the board, the real Excalidraw confirms each one (or the session says
   "model only"), and the result check judges the end. It is labelled as a demonstration, never
