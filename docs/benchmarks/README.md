@@ -299,7 +299,7 @@ with `node tools/challenge.ts`, not through the `practonaut` command.
 | Family | What makes it hard | Instances (difficulty 1 / 2 / 3) |
 |---|---|---|
 | `repair` | find 3–5 subtle defects against the goal list: colours, shapes, a misspelled label, a reversed arrow, an arrow end on a look-alike step, a missing or extra arrow, a stray copy, swapped labels, a step in the wrong frame | 3 / 4 / 5 defects on boards of 6–15 steps |
-| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such notes |
+| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such texts (notes; at difficulty 3 one is a frame name) |
 | `long-horizon` | 20–60 required actions among look-alike labels | 20–26 / 30–40 / 45–60 actions |
 | `limited-checks` | build the missing part of a diagram with only `limits.checks` checks | 8–11 / 11–14 / 14–18 actions; 2 / 1 / 1 checks |
 | `tight-budget` | reach the goal within `limits.actions` = the **proven minimal** length: one `set_style` for three attributes, one `reconnect_end` instead of two actions, no undo | 4–6 / 7–9 / 10–13 actions |
@@ -350,4 +350,7 @@ node tools/challenge.ts gate --family repair --round 1 --oracle <oracle/report.j
 are PADR-0040's: headroom (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar
 p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %, every near miss fails, every run
 counts, more than 5 % `infra_error` voids the round, at most 100 model runs per family and round.
+A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
+requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
+total is added to the gate report by hand until the bench records it.
 
