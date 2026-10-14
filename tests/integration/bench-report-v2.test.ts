@@ -80,7 +80,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.ok(runText(failing, 'decision-s1-r1').includes('No action — the agent changed nothing; the checker judged the start board.'), 'empty');
   // Model-only and consistency-checked: in the header line and where they matter.
   const header = plain(failing.slice(0, failing.indexOf('</header>')));
-  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances · consistency-checked, not re-verified · model only \(no mirror\) · template: tools not restricted by Practonaut · model pn-script-model \(self-reported\)/);
+  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances · consistency-checked, not re-verified · model only \(no mirror\) · template: tools not restricted by Practonaut · model pn-script-model \(self-reported, from the command output\)/);
   assert.ok(runText(failing, 'restyle-flow-s1-r1').includes('Schematic of the judged state — not the real Excalidraw. The bench ran model only (no mirror).'), 'model-only picture');
   assert.ok(plain(failing).includes('consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)'));
   assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances · re-verified from the artifacts · model only/);

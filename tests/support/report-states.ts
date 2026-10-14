@@ -69,14 +69,15 @@ async function bench(options: BenchOptions): Promise<Bench> {
   return { report: result.report, directory: result.directory };
 }
 
-/** A task authored from two drawings with long German labels (`tasks from-scenes`, through the CLI). */
+/** A task authored from two drawings with long German labels (`tasks from-scenes`, through the CLI);
+ * repeatable in the same folder (the accessibility tool keeps its output folder between runs). */
 async function germanWorld(dir: string): Promise<{ world: string; taskId: string }> {
   const a = { x: 100, y: 100 }, b = { x: 420, y: 100 };
   const wide = { width: 260, height: 110 };
   const first = 'Rechnungseingangsprüfung', second = 'Zahlungsfreigabeverfahrensdokumentation';
   await writeFile(join(dir, 'start.excalidraw'), scene([box('a', first, a.x, a.y, wide), box('b', second, b.x, b.y, wide)]));
   await writeFile(join(dir, 'goal.excalidraw'), scene([box('a', first, a.x, a.y, wide), box('b', second, b.x, b.y, { ...wide, fill: '#b2f2bb' }), arrow('ab', 'a', 'b', between(a, b, 260, 110))]));
-  const made = spawnSync(process.execPath, [CLI, 'tasks', 'from-scenes', join(dir, 'start.excalidraw'), join(dir, 'goal.excalidraw'), '--out', join(dir, 'german')], { encoding: 'utf8' });
+  const made = spawnSync(process.execPath, [CLI, 'tasks', 'from-scenes', join(dir, 'start.excalidraw'), join(dir, 'goal.excalidraw'), '--out', join(dir, 'german'), '--force'], { encoding: 'utf8' });
   if (made.status !== 0) throw new Error(`from-scenes failed: ${made.stderr}`);
   const world = JSON.parse(await readFile(join(dir, 'german', 'world', 'world.json'), 'utf8')) as { tasks: Array<{ id: string }> };
   return { world: join(dir, 'german', 'world'), taskId: world.tasks[0]!.id };
