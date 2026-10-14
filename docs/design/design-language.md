@@ -697,3 +697,11 @@ between 2026-10-07 and 2026-10-09. Scores rose from 0.66 to 0.89 overall; the fi
 blocker and no major finding, and the maintainer accepted the design as the binding baseline on
 2026-10-09. Manual screen-reader and 200 % zoom checks by a person are still to be done
 ([manual checks](manual-player-checks.md)).
+
+Release 0.2.0 added the bench report v2 and the compare page (§10.5). They were reviewed in two
+independent rounds on rendered captures of every report and compare state, light and dark, at 1280
+and 390 px (round 2 also at 768 px), with German for the longest pages, on 2026-10-14 and
+2026-10-15. Round 1 had 17 findings, round 2 two must-fixes (an unjudged run shown as failed; a
+group outline missing on the engine export) and nine smaller ones; all were fixed and the fixes
+checked on new captures before the change was merged
+([pull request #31](https://github.com/godarg/practonaut/pull/31)).

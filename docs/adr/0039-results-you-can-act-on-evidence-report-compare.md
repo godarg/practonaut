@@ -1,6 +1,6 @@
 # PADR-0039 — Results you can act on: run evidence in the bench folder, report v2, and the rules of `compare`
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 3 · Adds the per-run fields that
+Status: accepted 2026-10-15 after independent review (pull request #31) · Date: 2026-10-14 · Roadmap 0.2.0, Must 3 · Adds the per-run fields that
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) decision 8 left open; uses the call log
 of [PADR-0038](0038-lean-mcp-replies.md) decision 8
 
