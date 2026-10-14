@@ -6,7 +6,7 @@ import { evaluate } from '../predicate/index.ts';
 import { selectVariant } from '../world/variant.ts';
 import { actionTemplates } from '../player/messages.ts';
 import { styleNames } from '../world/style-names.ts';
-import { stateHash } from '../canonical/index.ts';
+import { sha256Hex, stateHash } from '../canonical/index.ts';
 import type { Action, Effect, Localized, Predicate, Task, World, State, Value } from '../world/types.ts';
 import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PracticeLimits, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
 import { TASK_LIMITS } from '../world/schema.ts';
@@ -247,7 +247,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
       task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) })), hintCount: selectedTask.hints.length },
-      tasks: candidate.world.tasks.map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
+      tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
       log: candidate.log, history, actions: candidate.world.actions, rules: candidate.world.rules, mirror: mode,
       mirrorHealth: { status: closed ? 'closed' : mode === 'off' ? 'model-only' : mirror ? 'available' : 'unavailable', recoveries },
       practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: consequences(candidate), ...(limits ? { limits } : {}), ...overrides,
@@ -389,7 +389,8 @@ export async function createPracticeController(input: World, options: PracticeSe
     },context),
     undo: (request,context) => mutate(request, budget => { const candidate = candidateFromLog(budget); const undone = candidate.undo(); if (!undone.ok) throw undone.error; return { candidate }; },context),
     reset: (request: ResetRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Reset needs confirmation'))) : mutate(request, () => ({ candidate: new Session(original, session.seed, session.taskId), reset: true }),context),
-    variant: (request: VariantRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Task or variant change needs confirmation'))) : mutate(request, budget => {
+    variant: (request: VariantRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Task or variant change needs confirmation')))
+      : options.singleTask && request.taskId !== undefined && request.taskId !== session.taskId ? Promise.resolve(rejected(reject('invalid_request', 'This session offers only its own task'))) : mutate(request, budget => {
       let seed = session.seed;
       if (request.taskId === undefined) {
         seed++;
@@ -436,7 +437,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       catch (error) { await recoverMirror(); return reject(error instanceof MirrorFault ? error.code : 'mirror_unavailable', mirror ? 'Real tool image unavailable; mirror restored' : 'Mirror unavailable; restart the session'); }
       finally { busy = false; }
     },
-    export:async(request,suppliedContext)=>{
+    export:async(request,suppliedContext,options)=>{
       const context=contextFor(suppliedContext),invalid=guard<CurrentSessionExport>(request,context);if(invalid)return rejected(invalid);
       if(mode!=='required'||!mirror?.exportNative)return rejected(reject('mirror_unavailable','Native export requires an available real mirror'));
       busy=true;
@@ -450,7 +451,16 @@ export async function createPracticeController(input: World, options: PracticeSe
         deadline(context);if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const replay=session.checkReplay({continue:()=>continues(context)});deadline(context);if(!replay.ok)throw replay.error;
         const data=session.serialize({continue:()=>continues(context)});deadline(context);
-        const value=buildExportEnvelope(data,boundRevision,native);
+        const envelope=buildExportEnvelope(data,boundRevision,native);
+        // The picture is taken from the same confirmed scene and read back again before it is published.
+        let value:CurrentSessionExport=envelope;
+        if(options?.picture){
+          if(!mirror.exportPicture)throw {code:'mirror_unavailable'};
+          const svg=await mirror.exportPicture(context);deadline(context);
+          if(Buffer.byteLength(svg,'utf8')>HOST_LIMITS.replyBytes)throw {code:'result_too_large'};
+          if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
+          value={...envelope,picture:{file:'practonaut.svg',utf8:svg,sha256:sha256Hex(svg)}};
+        }
         if(revision!==boundRevision||session.hash!==boundHash||value.hash!==data.hash||value.seed!==data.seed||value.taskId!==data.taskId||!isDeepStrictEqual(value.world,data.world))throw {code:'replay_mismatch'};
         if(Buffer.byteLength(JSON.stringify({ok:true,value}),'utf8')>HOST_LIMITS.replyBytes-2048)throw {code:'result_too_large'};
         deadline(context);return {ok:true,value};

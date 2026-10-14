@@ -139,9 +139,9 @@ judged state and the error classes, and the judged state may hold whatever an ag
 6. **Bench.** `--checks <n>` (stored as `settings.checks`); task limits apply automatically; bench/2
    gains `settings.checks` and `references.tasks[].minimal` (optional, as PADR-0036 decision 8
    allows before 0.2.0 ships). `--max-actions` stays the bench's outer cap per run.
-7. **Statistics** (`src/bench/stats.ts`, the same functions `wilson` and `mcnemarExact` as Must 3's
-   module): the 95 % Wilson score interval and the exact two-sided McNemar test (binomial on the
-   discordant pairs, p = min(1, 2·P(X ≤ min(b, c))), X ~ Bin(b + c, ½)).
+7. **Statistics** come from `src/bench/stats.ts` of PADR-0039 (Must 3): the 95 % Wilson score
+   interval (`wilson`), the exact two-sided McNemar test on the discordant pairs (`mcnemarExact`,
+   p = min(1, 2·P(X ≤ min(b, c))), X ~ Bin(b + c, ½)) and its exact power (`mcnemarPower`).
 
 ## Gate preregistration (binding for every family and round; roadmap 0.2.0 item 4)
 
@@ -156,17 +156,18 @@ judged state and the error classes, and the judged state may hold whatever an ag
   tuning; **one run per agent per instance** (`--seed-list 1 --repeats 1`), the **instance is the
   unit** (as in `compare`). All five agents (oracle, random, three ladder agents) run the same world,
   tasks, seeds, mirror, timeout, action cap and check settings.
-- **Gate size and power:** the round uses the largest held-out set the 100-run budget allows next to
-  its development runs: **n = min(30, ⌊(100 − development runs) / 3⌋)**, never fewer than 24 (the
-  roadmap's floor; a round that cannot reach 24 does not start). With at most 10 development runs
-  (for example three per ladder agent) that is **30 held-out instances: 90 gate runs + ≤ 10
-  development runs**. The size is fixed before the round by the development runs spent, and the gate
-  tool refuses another. Power, stated so a "does not pass" is read correctly: when the two agents
-  disagree on 20 % of the instances and every disagreement favours the stronger one (a 20-point
-  difference), the exact McNemar test rejects at α = 0.05 only with at least 6 discordant instances,
-  which happens with probability **0.34 at 24 instances** (as measured for `compare`, Must 3),
-  **0.57 at 30** and 0.82 at 39 (39 instances are needed for 80 % power; P(D ≥ 6) for
-  D ~ Bin(n, 0.2), computed exactly). A family that misses discrimination at 30 instances may still
+- **Gate size and power** (decided by the integrator under the maintainer's delegation, before any
+  ladder run): the release has 465 model runs left, and every candidate needs a gate report, so
+  **each of the five families gets one round of 87 model runs: 3 development instances × 3 agents
+  (9 runs) and 26 held-out instances × 3 agents (78 runs)**. Five first rounds use 435 runs and leave
+  30 for the release walkthrough. The gate tool accepts exactly this round (`--dev-runs 9`, 26
+  held-out instances) and refuses any other size; the roadmap's floor of 24 instances stays.
+  Power, stated so a "does not pass" is read correctly: when the two agents disagree on 20 % of the
+  instances and every disagreement favours the stronger one (a 20-point difference), the exact
+  McNemar test rejects at α = 0.05 only with at least 6 discordant instances, which happens with
+  probability **0.34 at 24 instances** (as measured for `compare`, Must 3), **0.42 at 26** (this
+  gate), 0.57 at 30 and 0.82 at 39 (39 instances are needed for 80 % power; P(D ≥ 6) for
+  D ~ Bin(n, 0.2), computed exactly). A family that misses discrimination at 26 instances may still
   separate the agents; the gate does not claim otherwise.
 - **Headroom:** the strongest agent passes between 10 % and 80 % of the instances (both inclusive).
 - **Discrimination:** strongest minus weakest is at least 20 percentage points **and** the exact
@@ -176,11 +177,12 @@ judged state and the error classes, and the judged state may hold whatever an ag
   **voids the round**; a void round is reported and still counts against the budget.
 - **Baselines:** oracle 100 %, random ≤ 5 %, every near miss of every instance fails (bench and the
   separate checker; the gate tool replays each stored near miss and judges it in a checker process).
-- **Budget:** at most 100 model runs per family per round (development runs included), at most two
-  rounds per family, a second round only on new held-out instances, never the first round's.
-  Families run in roadmap order and first rounds come before second rounds. The release budget is
-  500 model runs; when it is used up, no further round starts, the gate report says so, and a
-  maintainer decides about more budget.
+- **Budget:** at most 100 model runs per family per round (development runs included; the round above
+  uses 87), at most two rounds per family, a second round only on new held-out instances, never the
+  first round's. Families run in roadmap order and first rounds come before second rounds. The
+  release budget is 500 model runs; a second round starts only if budget remains after all first
+  rounds. It will not (30 runs remain, fewer than a round), so the gate report of a family that does
+  not pass says "budget exhausted — a maintainer decides on a second round".
 - **Verdict:** a family passes a round when headroom, discrimination, the baselines and the near
   misses hold and the round is not void. Passing families are published; the others stay
   unpublished and are named in their gate reports. Gate reports go to

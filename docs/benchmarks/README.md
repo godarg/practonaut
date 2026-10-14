@@ -2,8 +2,9 @@
 
 Decision records: [PADR-0030](../adr/0030-bench-replaces-unsealed-eval.md) (bench),
 [PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md) (own worlds, report `/2`),
-[PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits, minimal length,
-challenge tier and its gate, §7).
+[PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md) (run evidence, report v2,
+`compare`), [PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits,
+minimal length, challenge tier and its gate, §7).
 
 `practonaut bench` lets any MCP agent practise the bundled Excalidraw task library, or a world of
 your own, and scores it independently: every run gets a fresh session, the agent works only through
@@ -15,6 +16,7 @@ npx practonaut bench --agent oracle --tasks all --seeds 2          # reference s
 npx practonaut bench --agent random --tasks all --seeds 2 --max-actions 30   # random actions: the floor
 npx practonaut bench --agent claude-code --tasks excalidraw/connect,excalidraw/insert-between
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
+npx practonaut compare baseline/report.json candidate/report.json --fail-on-regression
 ```
 
 Your own task, made from two drawings ([authoring guide](../authoring-guide.md) §1):
@@ -51,7 +53,8 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 Refused before any run starts, by name: `--oracle` without `--world`; an oracle file that is not
 one, belongs to another world or to a task that is not benched, or two for one task; an oracle the
 checker does not accept (`bench_oracle_invalid`, exit 2); the `oracle` agent on a task without a
-reference; two task ids that differ only in case; `--seeds` with `--seed-list`.
+reference; two task ids that differ only in case; `--seeds` with `--seed-list`; references whose
+stored form would be larger than the 64 MiB `report --verify` reads (`bench_references_too_large`).
 
 ## 2. Agents
 
@@ -90,8 +93,9 @@ practonaut bench --agent "my-agent --mcp-config {mcp_config} --task-prompt {prom
 ```
 
 `{mcp_config}` is the path of a generated file in the standard `mcpServers` format:
-`{"mcpServers":{"practonaut":{"type":"stdio","command":"<node>","args":["…/main.js","mcp","--host","http://127.0.0.1:<port>","--token-file","<private file>"],"env":{"PRACTONAUT_HOME":"<run folder>/agent"}}}}`.
-It names the session credential's private file, never the credential itself. The agent's data
+`{"mcpServers":{"practonaut":{"type":"stdio","command":"<node>","args":["…/main.js","mcp","--host","http://127.0.0.1:<port>","--token-file","<private file>","--call-log","<run folder>/calls.bridge.jsonl"],"env":{"PRACTONAUT_HOME":"<run folder>/agent"}}}}`.
+It names the session credential's private file, never the credential itself, and the run's call log,
+which lies outside the agent's own folder (§3). The agent's data
 folder and working directory are the run folder's `agent/` subfolder, which starts empty; the
 judged artifacts go into the run folder itself, after the agent has ended (§5).
 
@@ -169,6 +173,21 @@ Aggregates:
 `check_result` is available to agents, exactly like the Check button for a human: it reports the
 public goal conditions as met or unmet. The report counts how often it was called.
 
+**Run evidence** ([PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md)). Each
+run folder also keeps what explains the verdict, each file bound by its SHA-256 in the report:
+
+| File | Written by | Content |
+|---|---|---|
+| `calls.bridge.jsonl` | the agent's bridge (`practonaut mcp --call-log`) | as the bridge wrote it; never changed by the runner |
+| `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
+| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself), accepted or rejected with the host's error code, step and revision afterwards. Refusals for an exhausted budget are kept up to 100 and counted beyond; a rejected action's strings are cut at 256 characters. |
+| `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made; the verdict never depends on it. |
+| `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw` |
+
+Tokens (input, output, cache read, cache creation), turns, cost and model come from the client's own
+stream-json output (`system/init` and its last `result` event) when it writes one, per run and summed
+in the report, labelled self-reported. They are never verified and never part of a score.
+
 ## 4. Isolation and its limits
 
 - Each run has its own host, its own private run folder and a new agent process; the agent's
@@ -180,14 +199,22 @@ public goal conditions as met or unmet. The report counts how often it was calle
   pre-empting the artifacts, not from rewriting a finished bench folder later (see §5).
 - Reference solutions, near misses and checker bundles are not reachable through MCP (tested).
   The agent sees what a human player sees, including the public goal conditions and their formal
-  form (each goal clause written out). An `--oracle` file is not part of the world, is never given to
-  the host, and is copied into the bench folder (`references.json`) only after the last agent has
-  ended (tested with an agent that searches the bench folder and every MCP reply).
-- The agent runs as the same OS user. An agent with file or shell tools could read the task
-  library on disk, including its reference solutions, an author's `oracle.json`, or the
-  `references.json` of a finished bench folder. The `claude-code` preset disables every tool except
-  Practonaut's; for other agents this is the agent author's responsibility, and the report says so
-  (`template-unrestricted`). A model name in the report is what the client said about itself.
+  form (each goal clause written out). An `--oracle` file is not part of the world and is never given
+  to the host. A bench host lists only the run's own task and refuses a change to another task, so a
+  world that holds several instances shows an agent only the one it is on.
+- While the agents of a bench run, its folder holds neither the world package nor the references:
+  the hosts load the world from bytes kept in memory (hashed before the first run), and
+  `world.pnworld` and `references.json` (the action sequences only, no near misses) are written after
+  the last agent has ended. Tested with an agent that searches the whole bench folder and every MCP
+  reply for the reference solution.
+- The agent runs as the same OS user, and a bench is not sealed. An agent with file or shell tools
+  could read your own `--world` folder and `oracle.json`, the task library on disk with its
+  reference solutions, or the folders of finished benches; one that escapes its process group (for
+  example with `setsid`) and outlives its run could read this bench's folder afterwards. Practonaut
+  cannot prevent that without a sealed runner. The `claude-code` preset disables every tool except
+  Practonaut's, so it cannot read files; for other agents this is the agent author's responsibility,
+  and the report says so (`template-unrestricted`). A model name in the report is what the client
+  said about itself.
 - Runs are sequential. Results depend on the agent's provider and model at run time; a bench
   report describes those runs, not the model in general.
 
@@ -211,9 +238,9 @@ outside it is referenced, so it can be moved, archived or handed over:
 
 | Entry | Written | Content |
 |---|---|---|
-| `world.pnworld` | before the first run; every run's host loads the world from these bytes | the public world |
-| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), logs, and the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json` |
-| `references.json` | after the last agent has ended | `practonaut.bench-references/1`: the reference solutions of the referenced tasks |
+| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
+| `world.pnworld` | after the last agent has ended; the runs' hosts loaded the world from the same bytes, hashed before the first run | the public world |
+| `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
 
 `practonaut report` reads `/2` and `/1` reports (from 0.1.0; schema
@@ -237,24 +264,36 @@ Two levels of checking, and the output always says which one ran:
   judged run keeps its committed session (`session.json`), the real-app export
   (`native.excalidraw`, with the mirror) and the checker output (`checker.json`) in its run folder,
   and the report records their SHA-256 (`runs[].artifacts`). For a `/2` report `--verify` judges
-  against the world stored in the bench folder, never the bundled library, so it works on another
-  machine and with a later Practonaut. It checks, and refuses with exit 2 and a named code on the
+  against the world stored in the bench folder, so a moved folder verifies on another machine and
+  with a later Practonaut. It checks, in this order, and refuses with exit 2 and a named code on the
   first difference:
   - `bench_world_changed`: `world.pnworld` is missing, its bytes differ from the bound hash, the
     package reader refuses it, or its id, version, content hash or generator metadata differ from
-    the report's;
-  - `bench_artifact_changed`: a run artifact or `references.json` is missing or differs from its
-    bound hash;
+    the report's; for a library bench whose id and version are those of the library this Practonaut
+    ships, its content hash must be that library's;
+  - `bench_artifact_changed`: `references.json`, a run artifact, a log, the trace or the picture is
+    missing, larger than its limit or differs from its bound hash;
   - `bench_reference_invalid`: a stored reference names another task, has another length than the
-    report says, is not accepted by the checker on the stored world for every seed of the plan, or
-    its `minimal` claim differs from the minimal-length analysis on the stored world;
+    report says, is not accepted by the checker on the stored world for a seed a run used, or its
+    `minimal` claim differs from the minimal-length analysis on the stored world;
   - `bench_report_invalid`: the session's task and seed; `actions` equals the length of the
     session's final history and is within the task's action limit, if it has one; the independent checker, re-run on the session and the export in a
-    separate process, gives the stored checker output and the report's verdicts.
+    separate process, gives the stored checker output and the report's verdicts; the mutation log
+    agrees with the run's counted act, undo and reset calls; the checker re-derives the stored
+    condition trace from the session and the mutation log. The engine's picture cannot be re-derived
+    without the engine: only its hash is checked.
+
+  What the stored world is anchored to, `--verify` says: a library bench of this Practonaut's library
+  version is this Practonaut's library; a library bench of another version, and every own world,
+  only agree with their report. The report output shows the world's content hash (the SHA-256 of
+  its canonical JSON); to know that a handed-over folder holds the world you expect, compare it with
+  `practonaut validate <world.pnworld> --json` (or `pack --json`) on that world.
 
   A `/1` report is re-verified as in 0.1.0: against the library this Practonaut ships (id, version
   and content hash must be equal, every `referenceActions` must equal the library's reference
-  length), then the same per-run checks; every difference is `bench_report_invalid`.
+  length), then the same per-run checks; every difference is `bench_report_invalid`. So
+  re-verifying a stored `/1` report ends with the first change of the bundled library; its
+  consistency check stays.
 
   pass, pass@1, pass^k, mean actions and efficiency then follow from these values. Not
   re-verifiable and labelled *self-reported by the runner*: acceptedActions, rejected actions,
@@ -267,21 +306,94 @@ together (a valid replacement session would then have to solve the task). `/1` r
 artifact hashes (the example below, reports from earlier builds) can only be consistency-checked; a
 `/2` report always binds the artifacts of every judged run.
 
-`--html` writes one static page (design system v1, no script, no external asset) that names the
-verification level and, for `/2`, the isolation level and the world; `--json` prints the schema, the
-summary and `verification`. Text from a report (label, agent name, model, command) is shown with
-control and bidi characters escaped, in the terminal and in HTML.
+**Reading a report.** The first line under the agent's name is the header line: the fraction of
+passed runs (and, with repeats, of passed instances — an instance passes when at least half of its
+runs passed), a 95 % Wilson interval over instances, the verification status, the mirror, the
+isolation level and the model with "self-reported" and where the name came from ("client-attested" for
+the preset's own init event, "from the command output" for a template). The world and its content hash
+follow. A rate is always a fraction; a percentage appears only where n allows it (whole percent from 100
+runs, one decimal from 1000), and the interval is shown in whole percent, rounded outward. Failed runs
+come first, each with:
 
-## 6. Example
+- **why it failed**, every state by name with its reason: timeout, agent failed, not judged (with the
+  runner's note; it counts as not passed), no action, rejected actions with their error codes, two or
+  more MCP clients acting, every unmet goal condition with the action after which it was last lost (or
+  "never met"), every error class with its explanation;
+- the **goal conditions** with their history from the checker's trace;
+- the **board**: the real Excalidraw's export when the mirror ran (reduced to an allowlist of geometry
+  and paint, so board text is shown as text and never interpreted as markup), otherwise a schematic of
+  the judged state, labelled "schematic"; groups, which no export shows, as a dashed outline and a
+  legend; frames as labelled outlines; under it every object of the judged state in words — each label
+  in full (a drawing may cut a long one), shape, line, fill, size, position, frame and group; beside it
+  an **example target** — a schematic of the validated reference's end state for that seed — or "no
+  example target" when the task has none;
+- the **trajectory**: every act, undo and reset in order, accepted or rejected, with the conditions met
+  afterwards and which ones changed;
+- the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
+
+Passed runs follow, collapsed. `report` reads these details from the bench folder (the report's
+folder, or `--runs <bench folder>`); without it, or for a file that differs from its hash, the page
+says what it cannot show and why. `--html` writes one static page (design system v1, no script, no
+external asset, no `data:` URI); `--json` prints the schema, the summary and `verification` (for `/2` with
+the world's content hash and, for a library bench, whether it is this Practonaut's library). Text from a
+report or a bench folder (label, agent name, model, command, board text, action parameters) is shown
+with control and bidi characters escaped, in the terminal and in HTML.
+
+## 6. Comparing two reports
+
+```bash
+npx practonaut compare baseline.json candidate.json [--html compare.html] [--fail-on-regression] [--verify] [--json]
+```
+
+The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md):
+
+- **Comparable or refused.** Both reports must agree on the world content (its hash), the grid (the same
+  tasks and seeds), the mirror, the action budget and the isolation level; otherwise `compare` exits 2
+  with `compare_incomparable` and names every difference. Repeats, timeout, agent, model and version may
+  differ; a different timeout or version is listed as a caveat.
+- **The unit is the instance** (task × seed). The judged repeats of an instance give one outcome per
+  side: passed when at least half of them passed. Repeats are never counted as independent pairs. An
+  instance missing on one side, or without a judged run there, is listed and left out.
+- **Instance regression**: at least three judged repeats on each side, every baseline repeat passed and
+  every candidate repeat failed. `--fail-on-regression` exits 2 (`instance_regression`) when there is
+  one — this is what a CI gate should use. With fewer repeats a flip is listed as "single runs — not a
+  regression signal"; with three or more, an outcome that changed but not in every repeat is listed as
+  "outcome changed, not in every repeat — not a regression signal".
+- **Rate verdict**: the exact two-sided McNemar test on the instances the two disagree on (b passed only
+  on the baseline, c only on the candidate): "improvement" or "decline" at p < 0.05, always with b, c and
+  p; otherwise "not distinguishable at this n".
+- `--verify` re-verifies each report from its own folder first; the output names both reports'
+  verification status.
+
+**How many instances?** To detect a 20-point difference in instance pass rate with the exact test
+above (α = 0.05, the verdict in the candidate's favour), assuming the share ψ of instances on which the
+two disagree. ψ = 0.20 means the candidate passes everything the baseline passes. Computed with
+`src/bench/stats.ts` (exact power; the first n that reaches the target):
+
+| Discordance ψ | baseline only / candidate only | instances for 80 % power | for 90 % power |
+|---|---|---|---|
+| 0.20 | 0.00 / 0.20 | 39 | 45 |
+| 0.30 | 0.05 / 0.25 | 61 | 78 |
+| 0.40 | 0.10 / 0.30 | 84 | 107 |
+| 0.50 | 0.15 / 0.35 | 103 | 135 |
+| 0.60 | 0.20 / 0.40 | 124 | 162 |
+
+The whole 16-task library at one seed is 16 instances: below six discordant instances no difference
+can be significant (2 · 2⁻⁵ = 0.0625). Use more seeds, or rely on instance regressions with three
+repeats, which need no sample of that size to name one instance that broke.
+
+## 7. Example
 
 [`example-report.json`](example-report.json) and [`example-report.html`](example-report.html) are a
 real `practonaut.bench/1` run on 2026-10-13 with Practonaut 0.1.0 (library 1.1.0): `--agent claude-code --tasks excalidraw/connect,excalidraw/insert-between,excalidraw/decision --repeats 2`,
 real mirror, Claude Code 2.1.296 on its subscription; the client reported `claude-opus-5-5`. All
 six runs passed; `insert-between` took three actions where the reference uses four (efficiency
 1.33), the other tasks matched the reference. The report was re-verified (`report --verify`)
-against its run folder when it was written, and the HTML page was rendered in that run; the run
-folder is not in the repository, so a copy of the JSON can only be consistency-checked. One seed,
-two repeats per task: an example of the format, not a measurement of the model.
+against its run folder when it was written; the run folder is not in the repository, so a copy of
+the JSON can only be consistency-checked. The HTML page is rendered from the JSON with the current
+renderer (`practonaut report example-report.json --html example-report.html`, a deterministic local
+render); a bench/1 report binds no run artifacts, so the page says that the per-run details were not
+recorded. One seed, two repeats per task: an example of the format, not a measurement of the model.
 
 Measured the same day with the built-ins (`--tasks all --seeds 2`, real mirror): `oracle` 32 of 32
 passed; `random --max-actions 30` 0 of 32. Re-run them with the commands at the top; the numbers in
@@ -357,24 +469,25 @@ process took 2–3 s on a machine with a load average around 26, and exceeded it
 especially long-horizon ones, on a machine that is not otherwise busy.
 
 **Held-out sets** are generated right before a gate round and not looked at while tuning:
-`node tools/challenge.ts generate <family> --set heldout --round 1 --dev-runs <n> --difficulty <d> --out <dir>`
-draws a random seed base (printed and recorded); round 2 uses a new base, and the gate refuses a
-round that reuses an earlier round's seeds. The size is preregistered: the largest set the budget of
-100 model runs per family and round allows next to the round's development runs,
-min(30, ⌊(100 − development runs) / 3⌋), never fewer than 24 — 30 instances (90 gate runs) with at
-most 10 development runs. Even at 30 the exact McNemar test is not strong: if two agents disagree on
-20 % of the instances, all in one agent's favour, it reaches p < 0.05 with probability 0.57 (0.34 at
-24 instances; 39 are needed for 0.8). A family that fails discrimination may still separate agents.
+`node tools/challenge.ts generate <family> --set heldout --round 1 --dev-runs 9 --difficulty <d> --out <dir>`
+draws a random seed base (printed and recorded); a second round would use a new base, and the gate
+refuses a round that reuses an earlier round's seeds. The round is preregistered in PADR-0040: 3
+development instances × 3 agents (9 model runs) and 26 held-out instances × 3 agents (78 runs), 87
+runs per family; the tool and the gate refuse other sizes. At 26 instances the exact McNemar test is
+not strong: if two agents disagree on 20 % of the instances, all in one agent's favour, it reaches
+p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are needed for 0.8). A family that fails
+discrimination may still separate agents.
 
 **The gate** takes the five bench/2 reports of one round — oracle, random and the three ladder agents
 (`claude-code` with Opus, Sonnet and Haiku, chosen with `ANTHROPIC_MODEL`), all on the same held-out
 world, tasks, seed, mirror, timeout and caps — re-verifies each against its bench folder, replays
-every stored near miss in a checker process, and writes the gate report:
+every near miss of the held-out set (`--set`, whose oracle files must hold exactly the references
+the oracle report used) in a checker process, and writes the gate report:
 
 ```bash
 node tools/challenge.ts gate --family repair --round 1 --oracle <oracle/report.json> --random <random/report.json> \
   --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --strongest <model> --weakest <model> \
-  --dev-runs <n> --out docs/benchmarks/challenge/repair-round1.md   # --dev-runs is required
+  --dev-runs 9 --set <held-out dir> --out docs/benchmarks/challenge/repair-round1.md
 ```
 
 `--strongest` and `--weakest` are the models named from the development runs before the round

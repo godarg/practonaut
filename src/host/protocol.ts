@@ -100,7 +100,10 @@ export interface ServeOptions { seed?: number; taskId?: string; mirror?: MirrorM
   /** `--checks <n>`: a session check limit; with a task's own limit the smaller one applies. */
   checks?: number;
   /** Task-list facts by task id; defaults to the bundled library's when the world is the library. */
-  taskInfo?: Record<string, { level: 1 | 2 | 3; referenceActions: number }> }
+  taskInfo?: Record<string, { level: 1 | 2 | 3; referenceActions: number }>;
+  /** A bench host (PADR-0036): the task list holds only the session's own task, and a change to another
+   * task is refused. The Player's `play` and `serve` keep every task. */
+  singleTask?: boolean }
 /** Credentials are runtime-only; callers must never log token or write it to tracked files. */
 export interface RunningHost {
   origin: string; url: string; port: number; token: string; code: string; tokenFile: string;
@@ -119,7 +122,8 @@ export interface PracticeController {
   hint(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<HostView>>;
   check(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<PublicCheck>>;
   png(context?:TransactionContext): Promise<HostReply<Uint8Array>>;
-  export(request:RevisionRequest,context?:TransactionContext):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
+  /** `options.picture` adds the engine's SVG of the same confirmed scene (in-process callers only). */
+  export(request:RevisionRequest,context?:TransactionContext,options?:{picture?:boolean}):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
   subscribe(listener: (event: HostEvent) => void): () => void;
   editor?(request: import('./author-protocol.ts').EditorGestureRequest,context?:TransactionContext): Promise<HostReply<MutationReply>>;
   scene?(): import('../adapters/excalidraw/raw.ts').RawElement[];

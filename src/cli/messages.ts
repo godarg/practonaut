@@ -363,9 +363,41 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
     "de": "practonaut bench: abgebrochen, bevor der erste Lauf endete; kein Bericht geschrieben (Laufprotokolle: {logs}).\n"
   },
-  "reportRunsNeedsVerify": {
-    "en": "--runs names the run directory for --verify; add --verify",
-    "de": "--runs nennt das Laufverzeichnis für --verify; --verify ergänzen"
+  "compareUsage": {
+    "en": "compare needs two bench reports: {cli} compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]",
+    "de": "compare braucht zwei Bench-Berichte: {cli} compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]"
+  },
+  "compareIncomparable": {
+    "en": "the reports are not comparable (PADR-0039): {differences}. Bench the baseline again with the candidate's settings",
+    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+  },
+  "compareDifference": {
+    "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",
+    "de": "{field} unterscheidet sich ({baseline} bei der Basis, {candidate} beim Kandidaten)"
+  },
+  "compareField_world": {
+    "en": "the world content",
+    "de": "der Inhalt der Welt"
+  },
+  "compareField_grid": {
+    "en": "the grid of tasks and seeds",
+    "de": "das Raster aus Aufgaben und Seeds"
+  },
+  "compareField_mirror": {
+    "en": "the mirror",
+    "de": "die Spiegelung"
+  },
+  "compareField_budget": {
+    "en": "the action budget",
+    "de": "das Aktionsbudget"
+  },
+  "compareField_isolation": {
+    "en": "the isolation level",
+    "de": "die Isolationsstufe"
+  },
+  "compareRegression": {
+    "en": "{n} instance {n:regression|regressions} (passed in every baseline repeat, failed in every candidate repeat): {list}",
+    "de": "{n} {n:Instanz-Regression|Instanz-Regressionen} (bei jeder Wiederholung der Basis bestanden, bei jeder des Kandidaten nicht): {list}"
   },
   "reportTooLarge": {
     "en": "the bench report is larger than {size} MiB",
@@ -388,8 +420,32 @@ export const CLI_CATALOG = {
     "de": "HTML: {path}\n"
   },
   "reportReverifiedWorld": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
-    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
+    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}, Inhalts-Hash {hash}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
+  },
+  "reportWorldOwn": {
+    "en": "The stored world is the bench's own record: to know it is the world you expect, compare its content hash with what {cli} validate <world.pnworld> --json prints for that world.\n",
+    "de": "Die gespeicherte Welt ist die eigene Aufzeichnung des Bench: Ob es die erwartete Welt ist, zeigt der Vergleich ihres Inhalts-Hashs mit der Ausgabe von {cli} validate <welt.pnworld> --json für diese Welt.\n"
+  },
+  "reportLibrarySame": {
+    "en": "The stored world is this Practonaut's bundled library {world} {version} (same content hash).\n",
+    "de": "Die gespeicherte Welt ist die mitgelieferte Bibliothek {world} {version} dieses Practonaut (gleicher Inhalts-Hash).\n"
+  },
+  "reportLibraryOther": {
+    "en": "The stored world names the bundled library {world} {version}, but this Practonaut ships {shipped}: it is not this Practonaut's library. Compare its content hash with that version's library.\n",
+    "de": "Die gespeicherte Welt nennt die mitgelieferte Bibliothek {world} {version}, dieses Practonaut liefert aber {shipped}: Es ist nicht die Bibliothek dieses Practonaut. Ihren Inhalts-Hash mit der Bibliothek jener Version vergleichen.\n"
+  },
+  "verifyLibraryContent": {
+    "en": "the report names the bundled library {world} {version}, but the stored world's content hash {hash} is not that library's ({shipped}): it is not this Practonaut's library",
+    "de": "der Bericht nennt die mitgelieferte Bibliothek {world} {version}, der Inhalts-Hash {hash} der gespeicherten Welt ist aber nicht der dieser Bibliothek ({shipped}): Es ist nicht die Bibliothek dieses Practonaut"
+  },
+  "benchReferencesTooLarge": {
+    "en": "the references of this bench would take {size} bytes, but report --verify reads at most {limit}; bench fewer tasks at once",
+    "de": "die Referenzen dieses Bench würden {size} Bytes belegen, report --verify liest aber höchstens {limit}; weniger Aufgaben auf einmal bewerten"
+  },
+  "packageContentHash": {
+    "en": "content  sha256 {hash} (the world's canonical JSON, as bench reports name it)",
+    "de": "Inhalt  sha256 {hash} (kanonisches JSON der Welt, wie Bench-Berichte sie nennen)"
   },
   "benchSeedsExclusive": {
     "en": "--seeds and --seed-list exclude each other: --seeds <n> runs seeds 1 to n, --seed-list names them",
@@ -507,6 +563,42 @@ export const CLI_CATALOG = {
     "en": "run {id} is not named after its task, seed and repeat ({expected})",
     "de": "der Lauf {id} ist nicht nach Aufgabe, Seed und Wiederholung benannt ({expected})"
   },
+  "verifyMutationsFormat": {
+    "en": "run {run}: mutations.jsonl is not a mutation log",
+    "de": "Lauf {run}: mutations.jsonl ist kein Änderungsprotokoll"
+  },
+  "verifyMutationsCounters": {
+    "en": "run {run}: the mutation log does not agree with the run's counted act, undo and reset calls",
+    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo und reset des Laufs"
+  },
+  "verifyTrace": {
+    "en": "run {run}: the checker does not re-derive the stored condition trace from the session and the mutation log",
+    "de": "Lauf {run}: der Prüfer leitet den gespeicherten Bedingungsverlauf nicht aus Sitzung und Änderungsprotokoll her"
+  },
+  "benchReportBoard": {
+    "en": "run {id} binds a picture of the real engine, but the bench ran without the mirror",
+    "de": "Lauf {id} bindet ein Bild der echten Engine, die Bench lief aber ohne Spiegelung"
+  },
+  "benchReportTraceError": {
+    "en": "run {id}: a condition trace and a trace error must not appear together, and a missing trace needs its error",
+    "de": "Lauf {id}: Bedingungsverlauf und Verlaufsfehler dürfen nicht zusammen stehen, und ein fehlender Verlauf braucht seinen Fehler"
+  },
+  "benchReportTraceWithoutLog": {
+    "en": "run {id} binds a condition trace without the mutation log it is re-derived from",
+    "de": "Lauf {id} bindet einen Bedingungsverlauf ohne das Änderungsprotokoll, aus dem er nachgerechnet wird"
+  },
+  "benchReportMutations": {
+    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo and reset calls",
+    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo und reset"
+  },
+  "benchReportClientTiming": {
+    "en": "run {id}: client timing comes only from Practonaut's own client (built-in agents)",
+    "de": "Lauf {id}: Client-Zeiten stammen nur vom eigenen Client von Practonaut (eingebaute Agenten)"
+  },
+  "benchReportClient": {
+    "en": "run {id}: client figures come only from an external agent's own output, with the source its kind ({kind}) allows",
+    "de": "Lauf {id}: Client-Angaben stammen nur aus der Ausgabe eines externen Agenten, mit der Quelle, die seine Art ({kind}) erlaubt"
+  },
   "benchReportRunReference": {
     "en": "run {id} names a reference of {given} actions; the report's references give {expected}",
     "de": "der Lauf {id} nennt eine Referenz von {given} Aktionen; die Referenzen des Berichts ergeben {expected}"
@@ -570,6 +662,10 @@ export const CLI_CATALOG = {
   "verifyReferenceMinimal": {
     "en": "task {task}: the report says the reference is {given}; the minimal-length analysis on the stored world says {actual}",
     "de": "Aufgabe {task}: laut Bericht ist die Referenz {given}; die Analyse der Minimallänge auf der gespeicherten Welt ergibt {actual}"
+  },
+  "verifyWorldLimits": {
+    "en": "the stored world's task limits differ from those the report names",
+    "de": "die Aufgabenlimits der gespeicherten Welt weichen von denen im Bericht ab"
   },
   "verifyActionLimit": {
     "en": "run {run}: its final history holds {actions} actions, more than the task's action limit of {limit}",

@@ -4,32 +4,27 @@
  * number the verdict uses and the verdict itself. Pure: the caller validates and re-verifies the
  * reports and judges the near misses. Board text never enters the result or the Markdown.
  */
-import { mcnemarExact, wilson } from '../bench/stats.ts';
+import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
 import type { BenchReportV2 } from '../bench/report.ts';
 import { SEED_RANGES } from './build.ts';
 import { FAMILIES, generatorId, type Family } from './families.ts';
 
 /** Preregistered thresholds (roadmap 0.2.0 item 4). */
 export const GATE = Object.freeze({
-  minInstances: 24, maxInstances: 30, ladderAgents: 3, headroomLow: 0.10, headroomHigh: 0.80, minDifference: 0.20, alpha: 0.05,
+  minInstances: 24, ladderAgents: 3, headroomLow: 0.10, headroomHigh: 0.80, minDifference: 0.20, alpha: 0.05,
   maxInfraShare: 0.05, oracle: 1, maxRandom: 0.05, maxModelRunsPerRound: 100, maxRounds: 2, releaseBudget: 500,
+  // The round every family gets (PADR-0040, decided before any ladder run): 3 development instances
+  // × 3 agents and 26 held-out instances × 3 agents, 87 model runs; five first rounds use 435 of the
+  // 465 runs the release had left, so no second round fits.
+  developmentRuns: 9, heldOutInstances: 26, roundRuns: 87, releaseRunsAtPreregistration: 465, families: 5,
 });
-/** The preregistered held-out size for a round: the largest set the 100-run budget allows next to
- * the development runs, at most 30, never fewer than 24 (PADR-0040). */
-export function heldOutSize(developmentRuns: number): number {
-  return Math.min(GATE.maxInstances, Math.floor((GATE.maxModelRunsPerRound - developmentRuns) / GATE.ladderAgents));
+/** The preregistered held-out size for a round with these development runs, or null when the round
+ * does not follow the preregistration (PADR-0040): 9 development runs and 26 held-out instances. */
+export function heldOutSize(developmentRuns: number): number | null {
+  return developmentRuns === GATE.developmentRuns ? GATE.heldOutInstances : null;
 }
-/** Power of the exact McNemar test when the agents disagree on a share `psi` of `n` instances and
- * every disagreement favours the stronger one: P(D ≥ d*) for D ~ Bin(n, psi), d* the fewest
- * one-sided discordant instances with p < alpha. */
-export function mcnemarPowerOneSided(n: number, psi: number, alpha: number = GATE.alpha): number {
-  let needed = 0;
-  while (needed <= n && mcnemarExact(needed, 0).p >= alpha) needed++;
-  let power = 0, term = Math.pow(1 - psi, n);
-  for (let d = 0; d <= n; d++) { if (d >= needed) power += term; term = term * (n - d) / (d + 1) * psi / (1 - psi); }
-  return power;
-}
-
+/** Model runs the release has left once every family had its first round: 465 − 5 × 87 = 30. */
+export const RUNS_AFTER_FIRST_ROUNDS = GATE.releaseRunsAtPreregistration - GATE.families * GATE.roundRuns;
 export class GateInputError extends Error {
   readonly code = 'gate_input_invalid';
   constructor(message: string) { super(message); this.name = 'GateInputError'; }
@@ -125,8 +120,8 @@ export function computeGate(input: GateInput): GateResult {
   if (plan.length < GATE.minInstances) fail(`the gate needs at least ${GATE.minInstances} held-out instances, these reports have ${plan.length}`);
   if (!Number.isSafeInteger(input.developmentRuns) || input.developmentRuns < 0) fail('name the development runs of this round (a whole number)');
   const size = heldOutSize(input.developmentRuns);
-  if (size < GATE.minInstances) fail(`${input.developmentRuns} development runs leave room for only ${size} held-out instances; a round needs ${GATE.minInstances}`);
-  if (plan.length !== size) fail(`with ${input.developmentRuns} development runs the preregistered held-out size is ${size} instances, these reports have ${plan.length}`);
+  if (size === null) fail(`the preregistered round has ${GATE.developmentRuns} development runs (3 instances × 3 agents), not ${input.developmentRuns}`);
+  if (plan.length !== size) fail(`the preregistered held-out size is ${size} instances, these reports have ${plan.length}`);
 
   const oracle = agentResult(input.oracle, 'oracle', plan), random = agentResult(input.random, 'random', plan);
   const ladder = input.ladder.map(report => agentResult(report, 'ladder', plan));
@@ -162,7 +157,7 @@ export function computeGate(input: GateInput): GateResult {
     world: { id: base.environment.world.worldId, version: base.environment.world.version, contentHash: base.environment.world.contentHash }, instances: plan.length,
     settings: { mirror: base.environment.mirror, timeoutSeconds: base.settings.timeoutSeconds, maxActions: base.settings.maxActions, checks: base.settings.checks ?? null },
     practonaut: base.environment.practonaut, dates: [...new Set(reports.map(report => report.createdAt.slice(0, 10)))].sort(),
-    agents: [oracle, random, ...ladder], strongest, weakest, discordant: { strongestOnly, weakestOnly, p }, infraShare, modelRuns: ladderRuns, developmentRuns, power: mcnemarPowerOneSided(plan.length, GATE.minDifference),
+    agents: [oracle, random, ...ladder], strongest, weakest, discordant: { strongestOnly, weakestOnly, p }, infraShare, modelRuns: ladderRuns, developmentRuns, power: mcnemarPower(plan.length, GATE.minDifference, 0, GATE.alpha),
     criteria, verdict, ladderLabel: models.every(model => /^claude/i.test(model!)) ? 'ladder: Claude models only' : null,
     releaseRuns: input.releaseRunsBefore === undefined ? null : input.releaseRunsBefore + modelRuns,
   };
@@ -196,6 +191,7 @@ export function renderGate(result: GateResult): string {
   lines.push(`Discordant instances: the strongest passed and the weakest failed on ${result.discordant.strongestOnly}, the reverse on ${result.discordant.weakestOnly}; two-sided exact McNemar p = ${result.discordant.p.toFixed(4)}.`);
   lines.push(`Model runs in this round: ${result.modelRuns} gate runs and ${result.developmentRuns} development runs.${result.releaseRuns === null ? '' : ` Release total after this round: ${result.releaseRuns} of ${GATE.releaseBudget}.`}`);
   lines.push(`Power at this size: if the two agents disagreed on 20 % of the instances, all in the stronger one's favour, the exact McNemar test would reach p < 0.05 with probability ${result.power.toFixed(2)}; "does not pass" on discrimination is not evidence that the agents are equal.`);
+  if (result.verdict !== 'passes') lines.push(`Second round: budget exhausted — a maintainer decides on a second round. After the five first rounds of ${GATE.roundRuns} model runs each the release has ${RUNS_AFTER_FIRST_ROUNDS} of the ${GATE.releaseRunsAtPreregistration} runs it had left at preregistration, fewer than one round.`);
   lines.push('');
   return lines.join('\n') + '\n';
 }

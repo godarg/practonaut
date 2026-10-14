@@ -18,7 +18,9 @@ import { ReferencesFileSchema, TaskOracleSchema, worldFromPackage } from '../ben
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, type ChallengeSet } from './build.ts';
 import { GENERATOR_VERSION, generatorId, type Family } from './families.ts';
-import { computeGate, renderGate, type GateResult } from './gate.ts';
+import { computeGate, GateInputError, renderGate, type GateResult } from './gate.ts';
+import { libraryWorld } from '../bench/run.ts';
+import { isDeepStrictEqual } from 'node:util';
 
 export const SET_SCHEMA = 'practonaut.challenge-set/1';
 export interface SetMeta { family: Family; set: string; round?: number; difficulty: string; seeds: number[] }
@@ -97,23 +99,42 @@ async function readReport(path: string): Promise<BenchReportV2> {
   return report;
 }
 
-export interface GateFiles { family: Family; round: number; oracle: string; random: string; ladder: string[]; strongest: string; weakest: string; developmentRuns: number; previous?: string[]; releaseRunsBefore?: number }
-/** Reads, validates and re-verifies the five reports against their bench folders, judges the stored
- * near misses, and computes the gate. */
+/** The generated set's oracle sidecars for the gate: each must hold exactly the reference the oracle
+ * report stored (and re-verified) for the stored world, one per benched task. Near misses live only
+ * in the sidecars; `references.json` keeps the reference alone. */
+export async function oraclesForGate(benchFolder: string, oracleReport: BenchReportV2, setDirectory: string): Promise<{ world: World; oracles: TaskOracle[] }> {
+  const stored = ReferencesFileSchema.parse(parseJsonEntry(await readFile(join(benchFolder, BENCH_REFERENCES_FILE)), BENCH_REFERENCES_FILE, 64));
+  const world = await worldFromPackage(await readFile(join(benchFolder, oracleReport.environment.world.package.path)));
+  const oracles: TaskOracle[] = [];
+  for (const entry of stored.references) {
+    const parsed = TaskOracleSchema.safeParse(parseJsonEntry(await readFile(join(setDirectory, 'oracles', `${entry.taskId}.json`)), 'oracle.json', 64));
+    if (!parsed.success) throw new GateInputError(`the set has no valid oracle file for ${entry.taskId}`);
+    const sidecar = parsed.data as TaskOracle;
+    if (sidecar.worldId !== world.id || sidecar.taskId !== entry.taskId || !isDeepStrictEqual(sidecar.steps, entry.steps)) throw new GateInputError(`the set's oracle for ${entry.taskId} is not the reference the oracle report used`);
+    oracles.push(sidecar);
+  }
+  if (oracles.length !== oracleReport.settings.tasks.length) throw new GateInputError('the oracle report does not reference every task of the round');
+  return { world, oracles };
+}
+
+export interface GateFiles { family: Family; round: number; oracle: string; random: string; ladder: string[]; strongest: string; weakest: string; developmentRuns: number; set: string; previous?: string[]; releaseRunsBefore?: number }
+/** Reads, validates and re-verifies the five reports against their bench folders, judges the near
+ * misses of the generated set (whose references must be exactly the ones the oracle report stored),
+ * and computes the gate. */
 export async function gateFromFiles(files: GateFiles): Promise<{ result: GateResult; markdown: string }> {
   const paths = [files.oracle, files.random, ...files.ladder];
   const reports: BenchReportV2[] = [];
   for (const path of paths) {
     const report = await readReport(path);
-    await verifyBenchV2(report, dirname(path));
+    await verifyBenchV2(report, dirname(path), libraryWorld);
     reports.push(report);
   }
   const [oracle, random, ...ladder] = reports as [BenchReportV2, BenchReportV2, ...BenchReportV2[]];
-  // The near misses are those stored with the oracle's references (bound by hash, re-verified above).
-  const folder = dirname(files.oracle);
-  const stored = ReferencesFileSchema.parse(parseJsonEntry(await readFile(join(folder, BENCH_REFERENCES_FILE)), BENCH_REFERENCES_FILE, 64));
-  const world = await worldFromPackage(await readFile(join(folder, oracle.environment.world.package.path)));
-  const nearMisses = await judgeNearMisses(world, stored.references.map(entry => entry.oracle as TaskOracle), oracle.settings.seeds);
+  // Near misses live in the generator's oracle sidecars, not in the bench folder (references.json
+  // keeps only the reference). Each sidecar must hold exactly the reference the oracle report stored
+  // and verified above, for the stored world.
+  const { world, oracles } = await oraclesForGate(dirname(files.oracle), oracle, files.set);
+  const nearMisses = await judgeNearMisses(world, oracles, oracle.settings.seeds);
   const previousSeeds: number[] = [];
   for (const path of files.previous ?? []) previousSeeds.push(...(await readReport(path)).environment.world.generated.map(entry => entry.seed));
   const result = computeGate({

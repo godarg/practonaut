@@ -7,12 +7,14 @@ const EXIT: Text = {
   en: `Exit codes:
   0  success
   1  usage error (bad command, option or path; validate needs a regular file)
-  2  package or source rejected (named code), failed check or rejected bench report
+  2  package or source rejected (named code), failed check, rejected bench report, incomparable reports
+     or (compare --fail-on-regression) an instance regression
   3  environment missing (for example Chromium for --mirror required) or session shutdown failure`,
   de: `Exit-Codes:
   0  Erfolg
   1  Bedienfehler (unbekannter Befehl, Option oder Pfad; validate braucht eine reguläre Datei)
-  2  Paket oder Quelle abgelehnt (benannter Code), nicht bestandene Prüfung oder abgelehnter Bench-Bericht
+  2  Paket oder Quelle abgelehnt (benannter Code), nicht bestandene Prüfung, abgelehnter Bench-Bericht,
+     nicht vergleichbare Berichte oder (compare --fail-on-regression) eine Instanz-Regression
   3  Umgebung fehlt (etwa Chromium für --mirror required) oder Sitzung nicht sauber beendet`,
 };
 
@@ -32,6 +34,7 @@ Practice:
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
   bench --agent <a>  score an agent on the task library or your own world (independent checker)
   report <file>      show a bench report as a table or a static HTML page
+  compare <a> <b>    compare two bench reports instance by instance (instance regressions, McNemar)
   setup              download Chromium once for the real Excalidraw mirror
   doctor             check the environment
 
@@ -63,6 +66,7 @@ Verwendung:
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
   bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
   report <Datei>     Bench-Bericht als Tabelle oder statische HTML-Seite zeigen
+  compare <a> <b>    zwei Bench-Berichte Instanz für Instanz vergleichen (Instanz-Regressionen, McNemar)
   setup              Chromium einmalig für die echte Excalidraw-Spiegelung laden
   doctor             Umgebung prüfen
 
@@ -166,8 +170,8 @@ serves it over stdio until the client closes. The real Excalidraw mirror runs wh
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 With --host and --token-file (both printed by play/serve), attaches to a running session that a person
 can use at the same time. stdout carries JSON-RPC only. --call-log <file> appends one JSON line per tool call
-(tool, result code, result bytes, bridge time) for measurements. --checks <n> (with --task) allows n checks
-per attempt, as play does; a used-up limit is refused with check_budget_exhausted.
+(request id, tool, result code, result bytes, bridge time) for measurements; bench uses it for each run. --checks <n> (with --task) allows
+n checks per attempt, as play does; a used-up limit is refused with check_budget_exhausted.
 Tools: observe, list_actions, act, undo, reset, explain_result, check_result; resource practonaut://task; prompt practise.`,
     de: `Verwendung: practonaut mcp --task <Aufgabe|Welt> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--checks <n>] [--open]
             practonaut mcp --host <http://127.0.0.1:port> --token-file <Pfad>
@@ -179,8 +183,8 @@ ist (--mirror auto). Ein Link zum Mitsehen im Browser (gilt einmal) steht auf st
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 Mit --host und --token-file (beide gibt play/serve aus) bindet an eine laufende Sitzung an, die ein Mensch
 gleichzeitig nutzen kann. stdout trägt nur JSON-RPC. --call-log <Datei> hängt je Werkzeugaufruf eine JSON-Zeile an
-(Werkzeug, Ergebniscode, Ergebnisbytes, Bridge-Zeit), für Messungen. --checks <n> (mit --task) erlaubt n Prüfungen
-je Versuch wie bei play; ein aufgebrauchtes Limit wird mit check_budget_exhausted abgelehnt.
+(Anfrage-ID, Werkzeug, Ergebniscode, Ergebnisbytes, Bridge-Zeit), für Messungen; bench nutzt es für jeden Lauf. --checks <n> (mit --task)
+erlaubt n Prüfungen je Versuch wie bei play; ein aufgebrauchtes Limit wird mit check_budget_exhausted abgelehnt.
 Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result; Ressource practonaut://task; Prompt practise.`,
   },
   bench: {
@@ -198,8 +202,8 @@ history and a separate checker after the agent stops. Defaults: the task library
 --seeds (1), 1 repeat, 300 s, 50 actions.
 --world benches your own world (for example one made with tasks from-scenes); --oracle gives a task's
 reference solution (the oracle.json beside the world), which the checker must pass before any run and which
-never reaches the agent. Without a reference a task has no efficiency. The world and the references are
-stored in the bench folder, so report --verify can re-judge it anywhere.
+never reaches the agent. Without a reference a task has no efficiency. After the last agent has ended, the
+world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
 --checks <n> allows n checks per run. A task's own limits (actions, checks) always apply; --checks can only
 lower its check limit, and --max-actions stays the outer cap on act, undo and reset calls.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
@@ -220,8 +224,8 @@ mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: die Aufgabenbi
 --seeds die Seeds 1…n (1), 1 Wiederholung, 300 s, 50 Aktionen.
 --world bewertet Ihre eigene Welt (zum Beispiel eine aus tasks from-scenes); --oracle gibt die Referenzlösung
 einer Aufgabe (die oracle.json neben der Welt), die der Prüfer vor jedem Lauf bestätigen muss und die den Agenten
-nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Welt und Referenzen werden im Bench-Ordner
-gespeichert, sodass report --verify ihn überall neu beurteilen kann.
+nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Nach dem Ende des letzten Agenten werden Welt und
+Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu beurteilen kann.
 --checks <n> erlaubt n Prüfungen je Lauf. Die eigenen Limits einer Aufgabe (Aktionen, Prüfungen) gelten immer;
 --checks kann ihr Prüflimit nur senken, und --max-actions bleibt die äußere Grenze für act, undo und reset.
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
@@ -231,26 +235,62 @@ Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C be
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },
   report: {
-    en: `Usage: practonaut report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]
+    en: `Usage: practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]
 
 Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and aggregate is re-derived from
 the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
-a static HTML page. Consistency is not proof: a consistently edited file passes. --verify re-judges every run
-from the artifacts in its bench folder (default: the report's folder; else --runs <bench folder>): for /2 the
-stored world and references and every artifact against the hashes the report binds, every reference against
-the stored world, then the independent checker on the session and the native export; a /1 report is re-judged
-against the bundled task library. Any difference: exit 2, with bench_world_changed, bench_artifact_changed,
-bench_reference_invalid or bench_report_invalid.`,
-    de: `Verwendung: practonaut report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]
+a static HTML page. Consistency is not proof: a consistently edited file passes. Rates are fractions with a
+95 % interval; failures come first with why they failed, read from the bench folder (default: the report's
+folder; else --runs <bench folder>): the unmet conditions and the action after which each was last lost,
+error classes, the trajectory, the final board and the call log. --verify re-judges every run from the
+artifacts in that folder: for /2 the stored world (for a library bench of this Practonaut's library version:
+against that library's content), the references and every artifact and log against the hashes the report
+binds, every reference against the stored world, the independent checker on the session and the native
+export, and the condition trace; a /1 report is re-judged against the bundled task library. Any difference:
+exit 2, with bench_world_changed, bench_artifact_changed, bench_reference_invalid or bench_report_invalid. The
+output shows the world's content hash; validate --json prints it for a world package.`,
+    de: `Verwendung: practonaut report <bench.json> [--verify] [--runs <Ordner>] [--html <out.html>] [--json]
 
 Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
 aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
 eine Tabelle oder schreibt eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei
-besteht. --verify beurteilt jeden Lauf aus den Artefakten seines Bench-Ordners neu (Standard: Ordner des Berichts,
-sonst --runs <Bench-Ordner>): bei /2 gespeicherte Welt, Referenzen und jedes Artefakt gegen die gebundenen
-Hashes, jede Referenz gegen die gespeicherte Welt, dann der unabhängige Prüfer auf Sitzung und nativem Export;
-ein /1-Bericht wird gegen die mitgelieferte Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit
-bench_world_changed, bench_artifact_changed, bench_reference_invalid oder bench_report_invalid.`,
+besteht. Raten stehen als Brüche mit 95-%-Intervall; nicht bestandene Läufe kommen zuerst, mit dem Grund aus dem
+Bench-Ordner (Standard: Ordner des Berichts, sonst --runs <Bench-Ordner>): die nicht erfüllten Bedingungen und
+die Aktion, nach der jede zuletzt verloren ging, Fehlerklassen, der Verlauf, die Zeichnung am Ende und das
+Aufrufprotokoll. --verify beurteilt jeden Lauf aus den Artefakten dieses Ordners neu: bei /2 gespeicherte Welt
+(bei einem Bibliotheks-Bench der Bibliotheksversion dieses Practonaut gegen deren Inhalt), Referenzen und jedes
+Artefakt und Protokoll gegen die gebundenen Hashes, jede Referenz gegen die gespeicherte Welt, der unabhängige
+Prüfer auf Sitzung und nativem Export und der Bedingungsverlauf; ein /1-Bericht wird gegen die mitgelieferte
+Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit bench_world_changed, bench_artifact_changed,
+bench_reference_invalid oder bench_report_invalid. Die Ausgabe zeigt den Inhalts-Hash der Welt; validate --json
+gibt ihn für ein Weltpaket aus.`,
+  },
+  compare: {
+    en: `Usage: practonaut compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression]
+                          [--verify] [--json]
+
+Compares two bench reports by the rules of PADR-0039. They must agree on the world content, the grid of tasks
+and seeds, the mirror, the action budget and the isolation level; otherwise compare refuses with exit 2
+(compare_incomparable) and names every difference. The unit is the instance (task × seed): judged repeats give
+one outcome per side (a pass when at least half passed). An instance regression has at least three judged
+repeats on each side, all passed on the baseline and all failed on the candidate; with fewer repeats a flip is
+listed as a single run, never a regression. The rate verdict uses an exact McNemar test on the instances the
+two disagree on: improvement or decline at p < 0.05, otherwise "not distinguishable at this n".
+--fail-on-regression exits 2 (instance_regression) when there is an instance regression. --verify re-verifies
+each report from its own folder first. --html writes a static page.`,
+    de: `Verwendung: practonaut compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression]
+                          [--verify] [--json]
+
+Vergleicht zwei Bench-Berichte nach den Regeln von PADR-0039. Sie müssen im Inhalt der Welt, im Raster aus
+Aufgaben und Seeds, in der Spiegelung, im Aktionsbudget und in der Isolationsstufe übereinstimmen; sonst lehnt
+compare mit Exit 2 ab (compare_incomparable) und nennt jeden Unterschied. Einheit ist die Instanz (Aufgabe × Seed):
+bewertete Wiederholungen ergeben je Seite ein Ergebnis (bestanden, wenn mindestens die Hälfte bestand). Eine
+Instanz-Regression hat auf jeder Seite mindestens drei bewertete Wiederholungen, alle bestanden bei der Basis und
+alle nicht bestanden beim Kandidaten; mit weniger Wiederholungen ist ein Wechsel ein Einzellauf, nie eine
+Regression. Das Urteil über Raten nutzt einen exakten McNemar-Test auf den Instanzen, in denen sich beide
+unterscheiden: Verbesserung oder Verschlechterung bei p < 0,05, sonst „bei diesem n nicht unterscheidbar“.
+--fail-on-regression endet mit Exit 2 (instance_regression), wenn es eine Instanz-Regression gibt. --verify
+rechnet jeden Bericht zuerst aus seinem eigenen Ordner nach. --html schreibt eine statische Seite.`,
   },
   setup: {
     en: `Usage: practonaut setup

@@ -17,6 +17,19 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- **Results you can act on** ([PADR-0039](docs/adr/0039-results-you-can-act-on-evidence-report-compare.md)).
+  Each run folder keeps the bridge's call log (with the bench client's round trip for `oracle` and
+  `random`), the runner's log of every act, undo and reset, the checker's trace of the goal conditions
+  after every accepted mutation, and with the mirror the real Excalidraw's SVG of the final board;
+  tokens, turns and cost come from the client's own output, labelled self-reported. `report --verify`
+  checks and re-derives them. Report pages and the terminal show the fraction with a 95 % Wilson
+  interval (no rate finer than 1/n), failures first with why each failed (unmet conditions with the
+  action after which they were last lost, error classes, states by name), the trajectory, the final
+  board beside an example target, and the call log.
+- **`practonaut compare a.json b.json [--html] [--fail-on-regression] [--verify]`**: refuses
+  incomparable reports by name, aggregates repeats per instance, names instance regressions and gives
+  an exact McNemar verdict ("not distinguishable at this n" when the sample cannot tell).
+- `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 - **Task limits** ([PADR-0040](docs/adr/0040-challenge-tier-generated-families-and-gate.md)): a world/2
   task may limit an attempt's accepted changes (`limits.actions`, undo and reset included) and checks
   (`limits.checks`); the host enforces them for the Player and agents alike
@@ -33,6 +46,9 @@ All notable changes are recorded here. The format follows
   (`node tools/challenge.ts gate`) with Wilson intervals and an exact McNemar test.
 
 ### Changed
+
+- `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
+  works without `--verify` (it names where the run details come from).
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
   tokens and billing switches in your environment from the preset agent (`*_API_KEY`,

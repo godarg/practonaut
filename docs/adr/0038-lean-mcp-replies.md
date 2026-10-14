@@ -82,11 +82,13 @@ documented (checked 2026-10-14); public reports conflict about whether the text 
   also reads `list_actions` once (0.1.0 carried the definitions in every observe). Re-measured
   back-to-back on a loaded machine (load average ~16): 4.2–7.1 ms vs 187–404 ms without the mirror,
   33.2–33.5 ms vs 183–208 ms with it.
-- Measured in 24 real runs (Claude Code 2.1.299, 2026-10-14): Claude Code passes the text part to
-  the model (the JSON once), so the duplicate `structuredContent` costs wire bytes, not model tokens.
-  On six instances measured on both versions the tool-result bytes the model received fell from
-  245,287 to 38,663 (−84 %); the paired grid (six tasks × seeds 1–2 × Opus and Haiku) passed 24 of
-  24 on both versions.
+- Measured in 24 real runs (Claude Code 2.1.299, 2026-10-14): the model received each result's JSON
+  once, so the duplicate `structuredContent` costs wire bytes, not model tokens. Which part Claude
+  Code passed cannot be told apart here, because both are the same JSON; the bring-your-own-tools
+  spike (Should 9) saw Claude Code pass `structuredContent` instead of the text when the two differ —
+  the reason both parts stay complete. On six instances measured on both versions the tool-result
+  bytes the model received fell from 245,287 to 38,663 (−84 %); the paired grid (six tasks × seeds
+  1–2 × Opus and Haiku) passed 24 of 24 on both versions.
 - Clients and scripts that read `value.view` from a mutation reply must read the delta or observe
   again; `observe` with `detail: "full", lang: "both"` returns the old shape. The bench's own
   baselines and the documentation use the new shapes.

@@ -4,6 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fixture, assertOracle, type Fixture } from "../tests/e2e/harness.ts";
 import { TOKEN_HEADER, type HostReply, type MutationReply } from "../src/host/protocol.ts";
 import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, limitsWorld, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { chromium } from "playwright";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { fixtureBenches, reportStates } from "../tests/support/report-states.ts";
 
 // Writes screenshots and results to the ignored .local/player-a11y/; never into the source tree.
 const output = ".local/player-a11y";
@@ -160,6 +164,34 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     assert.deepEqual(modelExport.external, []);
   } finally { await modelExport.close(); }
   console.log(`player:a11y ${stem}: scanned editor, export and create workspaces`);
+}
+// Bench report and compare pages (PADR-0039): every named state from real fixture runs, as the static
+// files `report --html` and `compare --html` write, light and dark, 1280 and 320 px, EN and DE.
+{
+  const fixtures = await fixtureBenches(output + "/report-fixtures", { mirror: true });
+  const states = await reportStates(fixtures);
+  const pages: Array<{ id: string; language: "en" | "de"; file: string }> = [];
+  for (const st of states) for (const language of ["en", "de"] as const) {
+    const file = resolve(output, `${st.id}.${language}.html`);
+    await writeFile(file, await st.html(language));
+    pages.push({ id: st.id, language, file });
+  }
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const theme of ["light", "dark"] as const) for (const width of [1280, 320]) {
+      const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme, reducedMotion: "reduce", serviceWorkers: "block" });
+      const external: string[] = [];
+      await context.route("**/*", async route => { const url = route.request().url(); if (url.startsWith("file:")) await route.continue(); else { external.push(url); await route.abort(); } });
+      const page = await context.newPage();
+      for (const entry of pages) {
+        await page.goto(pathToFileURL(entry.file).href);
+        await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
+      }
+      assert.deepEqual(external, [], "a report page loads nothing");
+      await context.close();
+      console.log(`report:a11y ${theme}-${width}: scanned ${pages.length} report and compare pages`);
+    }
+  } finally { await browser.close(); }
 }
 await writeFile(output + "/measurement.json", JSON.stringify({ date: new Date().toISOString(), tags, ledger, failures, createFindings, createGates: CREATE_GATES, manualVoiceOver: "OPEN", manualZoom200: "OPEN", claimC7: "partial automated evidence, human checks OPEN" }, null, 2) + "\n");
 if (createFindings.length) { console.log(`CREATE (reported, not gating until the create rebuild lands; run with --gate-create): ${createFindings.length} finding(s)`); for (const finding of createFindings) console.log("  " + finding); }

@@ -6,14 +6,14 @@
 //   node tools/challenge.ts verify <dir>
 //   node tools/challenge.ts gate --family <f> --round <k> --oracle <report.json> --random <report.json>
 //                                --ladder <a.json,b.json,c.json> --strongest <model> --weakest <model>
-//                                --dev-runs <n> [--previous <report.json,…>] [--release-runs <n>]
+//                                --dev-runs 9 --set <held-out dir> [--previous <report.json,…>] [--release-runs <n>]
 //                                --out <docs/benchmarks/challenge/<family>-round<k>.md> [--force]
 //
 // Families: repair, injection, long-horizon, limited-checks, tight-budget (roadmap order).
 // Seeds: development 1–999 (default 1…8), throwaway checks 10000–19999 (default 10001…10024),
 // held-out ≥ 1000000 (default: a random base drawn now and printed; generate held-out sets right
 // before a gate round and do not look at them while tuning). A held-out set has the preregistered
-// size min(30, ⌊(100 − development runs) / 3⌋): pass --dev-runs, or --count explicitly.
+// size of 26 instances (with 9 development runs: 3 instances × 3 agents).
 import { randomInt } from 'node:crypto';
 import { lstat, writeFile } from 'node:fs/promises';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
@@ -25,7 +25,7 @@ const usage = `usage:
   node tools/challenge.ts generate <family> --set dev|check|heldout [--round 1|2] [--dev-runs <n>] [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
   node tools/challenge.ts verify <dir>
   node tools/challenge.ts gate --family <f> --round <k> --oracle <report.json> --random <report.json> --ladder <a.json,b.json,c.json>
-                               --strongest <model> --weakest <model> --dev-runs <n> [--previous <report.json,…>] [--release-runs <n>] --out <file.md> [--force]
+                               --strongest <model> --weakest <model> --dev-runs 9 --set <held-out dir> [--previous <report.json,…>] [--release-runs <n>] --out <file.md> [--force]
 families: ${FAMILIES.join(', ')}`;
 const fail = (message: string): never => { process.stderr.write(`challenge: ${message}\n${usage}\n`); process.exit(1); };
 
@@ -61,9 +61,9 @@ async function generate(args: string[]): Promise<void> {
   if (set !== 'heldout' && round !== undefined) fail('--round belongs to held-out sets');
   if (values['--dev-runs'] !== undefined && set !== 'heldout') fail('--dev-runs sizes a held-out set');
   const preregistered = values['--dev-runs'] === undefined ? undefined : heldOutSize(whole(values['--dev-runs'], '--dev-runs'));
-  if (preregistered !== undefined && preregistered < GATE.minInstances) fail(`${values['--dev-runs']} development runs leave room for only ${preregistered} held-out instances; a round needs ${GATE.minInstances}`);
-  if (preregistered !== undefined && values['--count'] !== undefined && whole(values['--count'], '--count') !== preregistered) fail(`with ${values['--dev-runs']} development runs the preregistered held-out size is ${preregistered}`);
-  const count = whole(values['--count'], '--count', set === 'dev' ? 8 : set === 'check' ? 24 : preregistered ?? GATE.maxInstances);
+  if (preregistered === null) fail(`the preregistered round has ${GATE.developmentRuns} development runs (3 instances × 3 agents)`);
+  if (set === 'heldout' && values['--count'] !== undefined && whole(values['--count'], '--count') !== GATE.heldOutInstances) fail(`the preregistered held-out size is ${GATE.heldOutInstances}`);
+  const count = whole(values['--count'], '--count', set === 'dev' ? 8 : set === 'check' ? 24 : GATE.heldOutInstances);
   if (count < 1 || count > 120) fail('--count must be 1 to 120');
   const [low, high] = SEED_RANGES[set];
   const first = values['--seed'] !== undefined ? whole(values['--seed'], '--seed') : set === 'dev' ? 1 : set === 'check' ? 10_001 : randomInt(low, high - count);
@@ -93,7 +93,7 @@ async function verify(args: string[]): Promise<void> {
 }
 
 async function gate(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--family', '--round', '--oracle', '--random', '--ladder', '--strongest', '--weakest', '--dev-runs', '--previous', '--release-runs', '--out'], ['--force']);
+  const { values, flags } = options(args, ['--family', '--round', '--oracle', '--random', '--ladder', '--strongest', '--weakest', '--dev-runs', '--previous', '--release-runs', '--out', '--set'], ['--force']);
   const family = values['--family'] as Family;
   if (!FAMILIES.includes(family)) fail('--family names one family');
   const out = values['--out'] ?? fail('--out is required');
@@ -102,7 +102,7 @@ async function gate(args: string[]): Promise<void> {
   const { result, markdown } = await gateFromFiles({
     family, round: whole(values['--round'], '--round'), oracle: values['--oracle'] ?? fail('--oracle is required'), random: values['--random'] ?? fail('--random is required'), ladder,
     strongest: values['--strongest'] ?? fail('--strongest is required'), weakest: values['--weakest'] ?? fail('--weakest is required'),
-    developmentRuns: whole(values['--dev-runs'], '--dev-runs'),
+    developmentRuns: whole(values['--dev-runs'], '--dev-runs'), set: values['--set'] ?? fail('--set names the generated held-out folder (its oracles/ hold the near misses)'),
     ...(values['--previous'] !== undefined ? { previous: values['--previous'].split(',') } : {}),
     ...(values['--release-runs'] !== undefined ? { releaseRunsBefore: whole(values['--release-runs'], '--release-runs') } : {}),
   });

@@ -2,11 +2,11 @@
 // counted by hand from the outcome tables below.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeGate, heldOutSize, renderGate, GateInputError, type GateInput } from '../../src/challenge/gate.ts';
+import { computeGate, heldOutSize, renderGate, GateInputError, RUNS_AFTER_FIRST_ROUNDS, type GateInput } from '../../src/challenge/gate.ts';
 import { BENCH_SCHEMA_V2, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 
 const hash = (c: string): string => c.repeat(64);
-const N = 30;
+const N = 26;
 const tasks = Array.from({ length: N }, (_, index) => `repair-${1_000_100 + index}`);
 
 function report(agent: 'oracle' | 'random' | string, passes: boolean[], options: { infra?: number[]; missing?: number[]; seeds?: number[]; world?: string; repeats?: number } = {}): BenchReportV2 {
@@ -36,91 +36,97 @@ const first = (k: number): boolean[] => tasks.map((_, index) => index < k);
 const OPUS = 'claude-opus-5-5', SONNET = 'claude-sonnet-5-5', HAIKU = 'claude-haiku-5-5';
 function input(strong: boolean[], middle: boolean[], weak: boolean[], extra: Partial<GateInput> = {}): GateInput {
   return { family: 'repair', round: 1, oracle: report('oracle', first(N)), random: report('random', first(0)), ladder: [report(OPUS, strong), report(SONNET, middle), report(HAIKU, weak)],
-    strongest: OPUS, weakest: HAIKU, nearMisses: { total: 120, passed: 0 }, developmentRuns: 9, ...extra };
+    strongest: OPUS, weakest: HAIKU, nearMisses: { total: 104, passed: 0 }, developmentRuns: 9, ...extra };
 }
 
 test('the hand-built reports are valid bench/2 reports', () => {
-  for (const value of [report('oracle', first(N)), report(OPUS, first(17)), report(HAIKU, first(4), { infra: [20] })]) assert.doesNotThrow(() => validateBenchReportV2(value));
+  for (const value of [report('oracle', first(N)), report(OPUS, first(15)), report(HAIKU, first(4), { infra: [20] })]) assert.doesNotThrow(() => validateBenchReportV2(value));
 });
 
-test('the preregistered held-out size: min(30, ⌊(100 − development runs)/3⌋), never below 24', () => {
-  assert.deepEqual([0, 9, 10, 11, 13, 14, 28, 29].map(heldOutSize), [30, 30, 30, 29, 29, 28, 24, 23]);
+test('the preregistered round: 9 development runs and 26 held-out instances, 87 model runs; nothing else', () => {
+  assert.deepEqual([9, 0, 10, 12].map(heldOutSize), [26, null, null, null]);
+  assert.equal(RUNS_AFTER_FIRST_ROUNDS, 465 - 5 * 87);
+  assert.equal(RUNS_AFTER_FIRST_ROUNDS, 30);
 });
 
-test('a family passes: headroom 17/30, 12 more instances than the weakest, McNemar p = 0.00049', () => {
-  // Strongest passes instances 0–16, weakest 0–4: b = 12 one way, c = 0 the other; p = 2 · (1/2)^12.
-  const result = computeGate(input(first(17), first(12), first(5)));
+test('a family passes: headroom 15/26, 11 more instances than the weakest, McNemar p = 0.00098', () => {
+  // Strongest passes instances 0–14, weakest 0–3: b = 11 one way, c = 0 the other; p = 2 · (1/2)^11.
+  const result = computeGate(input(first(15), first(10), first(4)));
   assert.equal(result.verdict, 'passes');
-  assert.equal(result.instances, 30);
-  assert.deepEqual([result.strongest.passed, result.weakest.passed], [17, 5]);
-  assert.deepEqual([result.discordant.strongestOnly, result.discordant.weakestOnly], [12, 0]);
-  assert.ok(Math.abs(result.discordant.p - 2 / 4096) < 1e-12);
-  assert.equal(result.modelRuns, 90);
+  assert.equal(result.instances, 26);
+  assert.deepEqual([result.strongest.passed, result.weakest.passed], [15, 4]);
+  assert.deepEqual([result.discordant.strongestOnly, result.discordant.weakestOnly], [11, 0]);
+  assert.ok(Math.abs(result.discordant.p - 2 / 2048) < 1e-12);
+  assert.equal(result.modelRuns, 78);
   assert.equal(result.ladderLabel, 'ladder: Claude models only');
   assert.ok(result.criteria.every(criterion => criterion.met));
-  // Wilson interval for 17/30, computed separately (Python, same formula): 0.3920–0.7262.
-  assert.ok(Math.abs(result.strongest.interval.low - 0.3920) < 1e-3 && Math.abs(result.strongest.interval.high - 0.7262) < 1e-3);
-  // Power at 30 instances, P(D ≥ 6) for D ~ Bin(30, 0.2), summed separately: 0.572.
-  assert.ok(Math.abs(result.power - 0.572) < 1e-3);
+  // Wilson interval for 15/26, computed separately (Python, same formula): 0.3895–0.7446.
+  assert.ok(Math.abs(result.strongest.interval.low - 0.3895) < 1e-3 && Math.abs(result.strongest.interval.high - 0.7446) < 1e-3);
+  // Power at 26 instances, P(D ≥ 6) for D ~ Bin(26, 0.2), summed separately: 0.4225.
+  assert.ok(Math.abs(result.power - 0.4225) < 1e-3);
   const markdown = renderGate(result);
   assert.match(markdown, /\*\*Verdict: the family passes this round\.\*\* ladder: Claude models only\./);
-  assert.match(markdown, /\| headroom \| 17\/30 \(56\.7 %\) \| strongest passes 10 %–80 % of the instances \| yes \|/);
-  assert.match(markdown, /\| mcnemar \| b = 12, c = 0, p = 0\.0005 \|/);
-  assert.match(markdown, /\| budget \| 99 model runs \(90 gate \+ 9 development\) \|/);
-  assert.match(markdown, /with probability 0\.57;/);
+  assert.match(markdown, /\| headroom \| 15\/26 \(57\.7 %\) \| strongest passes 10 %–80 % of the instances \| yes \|/);
+  assert.match(markdown, /\| mcnemar \| b = 11, c = 0, p = 0\.0010 \|/);
+  assert.match(markdown, /\| budget \| 87 model runs \(78 gate \+ 9 development\) \|/);
+  assert.match(markdown, /with probability 0\.42;/);
+  assert.doesNotMatch(markdown, /Second round/, 'a passing family needs no second round');
+});
+
+test('a family that does not pass: the report says the budget is exhausted and a maintainer decides', () => {
+  const markdown = renderGate(computeGate(input(first(10), first(8), first(6))));
+  assert.match(markdown, /Second round: budget exhausted — a maintainer decides on a second round\. After the five first rounds of 87 model runs each the release has 30 of the 465 runs/);
 });
 
 test('headroom: the strongest passes 10 % to 80 % of the instances, both ends included', () => {
   const headroom = (k: number): boolean => computeGate(input(first(k), first(1), first(0))).criteria.find(c => c.name === 'headroom')!.met;
-  assert.deepEqual([2, 3, 24, 25].map(headroom), [false, true, true, false], '6.7 %, 10 %, 80 %, 83.3 %');
-  assert.equal(computeGate(input(first(25), first(12), first(5))).verdict, 'does not pass');
+  assert.deepEqual([2, 3, 20, 21].map(headroom), [false, true, true, false], '7.7 %, 11.5 %, 76.9 %, 80.8 %');
+  assert.equal(computeGate(input(first(21), first(12), first(5))).verdict, 'does not pass');
 });
 
 test('discrimination needs 20 points and p < 0.05 on the discordant instances', () => {
-  // 12 vs 7 passes: 16.7 points, b = 5, c = 0 → p = 0.0625: both fail.
-  const small = computeGate(input(first(12), first(9), first(7)));
+  // 10 vs 5 passes: 19.2 points, b = 5, c = 0 → p = 0.0625: both fail.
+  const small = computeGate(input(first(10), first(8), first(5)));
   assert.deepEqual(small.criteria.filter(c => !c.met).map(c => c.name), ['difference', 'mcnemar']);
-  // Crossing outcomes: strongest passes 0–14 (15), weakest 10–17 (8): 7/30 = 23.3 points (met);
-  // b = 10 (0–9), c = 3 (15–17), p = 2 · (1 + 13 + 78 + 286)/8192 = 0.0923 (not met).
-  const weak = tasks.map((_, index) => index >= 10 && index <= 17);
-  const crossing = computeGate(input(first(15), first(9), weak));
-  assert.deepEqual([crossing.discordant.strongestOnly, crossing.discordant.weakestOnly], [10, 3]);
-  assert.ok(Math.abs(crossing.discordant.p - 756 / 8192) < 1e-12);
+  // Crossing outcomes: strongest passes 0–12 (13), weakest 8–14 (7): 6/26 = 23.1 points (met);
+  // b = 8 (0–7), c = 2 (13–14), p = 2 · (1 + 10 + 45)/1024 = 0.1094 (not met).
+  const weak = tasks.map((_, index) => index >= 8 && index <= 14);
+  const crossing = computeGate(input(first(13), first(9), weak));
+  assert.deepEqual([crossing.discordant.strongestOnly, crossing.discordant.weakestOnly], [8, 2]);
+  assert.ok(Math.abs(crossing.discordant.p - 112 / 1024) < 1e-12);
   assert.equal(crossing.criteria.find(c => c.name === 'difference')!.met, true);
   assert.equal(crossing.criteria.find(c => c.name === 'mcnemar')!.met, false);
   assert.equal(crossing.verdict, 'does not pass');
 });
 
 test('every run counts: infra errors and missing runs fail, and more than 5 % of ladder runs voids the round', () => {
-  // Three infra errors for the strongest and two missing runs for the weakest: 5 of 90 = 5.6 % > 5 %.
-  const result = computeGate({ ...input(first(17), first(12), first(5)), ladder: [report(OPUS, first(17), { infra: [0, 1, 2] }), report(SONNET, first(12)), report(HAIKU, first(5), { missing: [28, 29] })] });
-  assert.equal(result.strongest.passed, 14, 'the three infra errors are not passed');
+  // Two infra errors for the strongest and two missing runs for the weakest: 4 of 78 = 5.1 % > 5 %.
+  const result = computeGate({ ...input(first(15), first(10), first(4)), ladder: [report(OPUS, first(15), { infra: [0, 1] }), report(SONNET, first(10)), report(HAIKU, first(4), { missing: [24, 25] })] });
+  assert.equal(result.strongest.passed, 13, 'the two infra errors are not passed');
   assert.equal(result.weakest.missing, 2);
-  assert.ok(Math.abs(result.infraShare - 5 / 90) < 1e-12);
+  assert.ok(Math.abs(result.infraShare - 4 / 78) < 1e-12);
   assert.equal(result.verdict, 'void');
-  // Four of 90 (4.4 %) does not void it.
-  const four = computeGate({ ...input(first(17), first(12), first(5)), ladder: [report(OPUS, first(17), { infra: [0, 1, 2] }), report(SONNET, first(12)), report(HAIKU, first(5), { missing: [29] })] });
-  assert.notEqual(four.verdict, 'void');
+  // Three of 78 (3.8 %) does not void it.
+  const three = computeGate({ ...input(first(15), first(10), first(4)), ladder: [report(OPUS, first(15), { infra: [0, 1] }), report(SONNET, first(10)), report(HAIKU, first(4), { missing: [25] })] });
+  assert.notEqual(three.verdict, 'void');
 });
 
-test('baselines: oracle 100 %, random at most 5 %, every near miss fails, at most 100 model runs', () => {
-  const base = input(first(17), first(12), first(5));
-  assert.equal(computeGate({ ...base, oracle: report('oracle', first(29)) }).criteria.find(c => c.name === 'oracle')!.met, false);
-  assert.equal(computeGate({ ...base, random: report('random', first(1)) }).criteria.find(c => c.name === 'random')!.met, true, '1 of 30 = 3.3 %');
-  assert.equal(computeGate({ ...base, random: report('random', first(2)) }).criteria.find(c => c.name === 'random')!.met, false, '2 of 30 = 6.7 %');
-  assert.equal(computeGate({ ...base, nearMisses: { total: 120, passed: 1 } }).verdict, 'does not pass');
+test('baselines: oracle 100 %, random at most 5 %, every near miss fails', () => {
+  const base = input(first(15), first(10), first(4));
+  assert.equal(computeGate({ ...base, oracle: report('oracle', first(25)) }).criteria.find(c => c.name === 'oracle')!.met, false);
+  assert.equal(computeGate({ ...base, random: report('random', first(1)) }).criteria.find(c => c.name === 'random')!.met, true, '1 of 26 = 3.8 %');
+  assert.equal(computeGate({ ...base, random: report('random', first(2)) }).criteria.find(c => c.name === 'random')!.met, false, '2 of 26 = 7.7 %');
+  assert.equal(computeGate({ ...base, nearMisses: { total: 104, passed: 1 } }).verdict, 'does not pass');
   assert.equal(computeGate({ ...base, nearMisses: { total: 0, passed: 0 } }).verdict, 'does not pass', 'no near miss checked is not "every near miss fails"');
-  assert.equal(computeGate({ ...base, developmentRuns: 10 }).criteria.find(c => c.name === 'budget')!.met, true, '90 + 10 = 100');
 });
 
 test('refuses rounds that break the preregistration', () => {
   const refused = (value: GateInput, message: RegExp): void => assert.throws(() => computeGate(value), (error: unknown) => error instanceof GateInputError && message.test(error.message), message.source);
-  const base = input(first(17), first(12), first(5));
-  refused({ ...base, developmentRuns: 11 }, /preregistered held-out size is 29 instances, these reports have 30/);
-  refused({ ...base, developmentRuns: 29 }, /leave room for only 23 held-out instances/);
+  const base = input(first(15), first(10), first(4));
+  refused({ ...base, developmentRuns: 10 }, /the preregistered round has 9 development runs \(3 instances × 3 agents\), not 10/);
   refused({ ...base, oracle: report('oracle', first(N), { world: 'x' }) }, /different worlds/);
-  refused({ ...base, ladder: [report(OPUS, first(17), { repeats: 2 }), base.ladder[1]!, base.ladder[2]!] }, /one run per agent per instance/);
-  refused({ ...base, ladder: [base.ladder[0]!, report(OPUS, first(12)), base.ladder[2]!] }, /three different models/);
+  refused({ ...base, ladder: [report(OPUS, first(15), { repeats: 2 }), base.ladder[1]!, base.ladder[2]!] }, /one run per agent per instance/);
+  refused({ ...base, ladder: [base.ladder[0]!, report(OPUS, first(10)), base.ladder[2]!] }, /three different models/);
   refused({ ...base, strongest: 'claude-unknown' }, /preregistered/);
   refused({ ...base, weakest: OPUS }, /preregistered/);
   refused({ ...base, oracle: report('oracle', first(N), { seeds: tasks.map((_, index) => index + 1) }) }, /held-out range/);

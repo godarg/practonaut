@@ -4,7 +4,9 @@
 // world and oracle helpers that run before any agent starts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, rm, symlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +15,10 @@ import { BENCH_SCHEMA_V2, ISOLATION_OF, summarize, validateBenchReport, validate
 import { renderHtml, renderTable } from '../../src/bench/render.ts';
 import { clientInit } from '../../src/bench/agents.ts';
 import { parseBenchArguments } from '../../src/cli/bench.ts';
-import { ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, worldContentHash } from '../../src/bench/world.ts';
+import { assertReferencesFit, libraryReferences, ownBenchWorld, ownReferences, readAtMost, readOracleFile, readRegularFile, referencesText, resolveWorldTasks, validateOwnReferences, worldContentHash } from '../../src/bench/world.ts';
+import { libraryAnchor } from '../../src/bench/verify.ts';
+import { oracleDigest } from '../oracles/core-hash.ts';
+import { v2World } from '../support/world-v2.ts';
 import { fromScenes, type TaskOracle } from '../../src/authoring/from-scenes.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { World } from '../../src/world/types.ts';
@@ -80,6 +85,39 @@ test('a consistent /2 report validates; every inconsistent /2 field is refused',
   refused(value => { (value as unknown as Record<string, unknown>).schema = 'practonaut.bench/3'; }, /report does not match practonaut\.bench\/1 or practonaut\.bench\/2/);
 });
 
+test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client timing and client figures follow their rules', () => {
+  /** A command agent's report whose first run carries every evidence field. */
+  const withEvidence = (): BenchReportV2 => {
+    const value = structuredClone(v2Report()), first = value.runs[0]!;
+    first.artifacts = { ...first.artifacts!, trace: hash('7'), board: null };
+    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act, omitted: 0 } };
+    first.client = { source: 'command-output', model: 'some-model', turns: 6, costUsd: 0.05, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 } };
+    return value;
+  };
+  assert.doesNotThrow(() => validateBenchReportV2(withEvidence()));
+  const refused = (mutate: (value: BenchReportV2) => void, message: RegExp): void => {
+    const value = withEvidence(); mutate(value); value.summary = summarize(value.runs, value.settings.repeats);
+    assert.throws(() => validateBenchReport(value), (error: Error & { code?: string }) => error.code === 'bench_report_invalid' && message.test(error.message), message.source);
+  };
+  refused(value => { value.runs[0]!.artifacts!.board = hash('b'); }, /binds a picture of the real engine, but the bench ran without the mirror/);
+  refused(value => { value.runs[0]!.artifacts!.traceError = 'checker_timeout'; }, /trace and a trace error must not appear together/);
+  refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
+  // A trace without the mutation log that re-derives it could never be re-verified: refused outright.
+  refused(value => { delete value.runs[0]!.logs; }, /binds a condition trace without the mutation log it is re-derived from/);
+  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
+  refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
+  refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);
+  // A trace that could not be made, with its error, is valid; so is a run without any evidence (an older /2 report).
+  const failed = withEvidence(); failed.runs[0]!.artifacts!.trace = null; failed.runs[0]!.artifacts!.traceError = 'checker_timeout';
+  assert.doesNotThrow(() => validateBenchReportV2(failed));
+  // The JSON Schema file accepts the evidence fields and refuses an unknown one inside them.
+  const schema = z.fromJSONSchema(JSON.parse(readFileSync(new URL('../../schemas/bench.v2.json', import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
+  const value = JSON.parse(JSON.stringify(withEvidence()));
+  assert.equal(schema.safeParse(value).success, true);
+  value.runs[0].logs.mutations.extra = 1;
+  assert.equal(schema.safeParse(value).success, false);
+});
+
 test('schemas/bench.v2.json, read from the file, accepts a /2 report and rejects extra, missing or /1 fields', () => {
   const read = (file: string) => z.fromJSONSchema(JSON.parse(readFileSync(new URL(`../../schemas/${file}`, import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
   const v2 = read('bench.v2.json'), v1 = read('bench.v1.json');
@@ -100,8 +138,11 @@ test('rendering names label, isolation level, world, generated instances and "no
   const value = v2Report(); value.label = 'nightly \u001b[31m<b>run</b>\u202e';
   const table = renderTable(value), html = renderHtml(value, ':root{}');
   assert.match(table, /^Label: nightly \\u\{001b\}\[31m<b>run<\/b>\\u\{202e\}$/m);
-  assert.match(table, /^Isolation: template: tools not restricted by Practonaut$/m);
+  // The header line names the model, that it is self-reported, and where the name came from.
+  assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported, from the command output\)$/m);
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
+  assert.match(table, /^Content hash \(SHA-256\): d{64}$/m);
+  assert.match(table, /^Practonaut bench  generic$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
   assert.match(table, /efficiency vs reference length 0\.50, over 1 of 2 tasks with a validated reference/);
@@ -109,19 +150,27 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(html, /Label: nightly \\u\{001b\}\[31m&lt;b&gt;run&lt;\/b&gt;\\u\{202e\}/);
   assert.match(html, /<dt>Isolation<\/dt><dd>template: tools not restricted by Practonaut<\/dd>/);
   assert.match(html, /<td>no reference<\/td><td>no reference<\/td>/);
+  assert.match(html, /<dt>Content hash \(SHA-256\)<\/dt><dd>d{64}<\/dd>/);
+  assert.match(html, /model: some-model \(from the command output\)/);
+  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and the agent exit status, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
+  const attested = v2Report(); attested.agent = { ...attested.agent, kind: 'preset', name: 'claude-code', isolation: 'tool-restricted-preset', modelSource: 'client-attested' };
+  assert.match(renderTable(attested), /· model some-model \(self-reported, client-attested\)$/m);
   assert.equal(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/.test(table + html), false);
   for (const [kind, words] of [['builtin', 'built-in baseline: no language model, MCP only'], ['preset', 'tool-restricted preset']] as const) {
     const other = v2Report(); other.agent = { ...other.agent, kind, isolation: ISOLATION_OF[kind], command: kind === 'builtin' ? [] : other.agent.command, model: null, modelSource: 'none', apiKeySource: null };
-    assert.match(renderTable(other), new RegExp(`^Isolation: ${words}$`, 'm'));
+    assert.match(renderTable(other), new RegExp(`^2/4 passed · .* · ${words}${kind === 'builtin' ? '' : ' · model not reported'}$`, 'm'));
   }
   const de = renderTable(value, 'de');
-  assert.match(de, /^Isolation: Vorlage: Werkzeuge nicht von Practonaut eingeschränkt$/m);
+  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /Modell: some-model \(aus der Ausgabe des Befehls\)/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
-  // A /1 report renders as before: no isolation or world line was recorded.
+  // A /1 report did not record its isolation level or a world line; its header line says so.
   const v1 = JSON.parse(readFileSync(new URL('../fixtures/bench/v1/report.json', import.meta.url), 'utf8'));
-  assert.equal(/^Isolation:/m.test(renderTable(validateBenchReport(v1))), false);
+  const old = renderTable(validateBenchReport(v1));
+  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded \(bench\/1\)$/m);
+  assert.equal(/^World:/m.test(old), false);
 });
 
 test('the client init line gives the model and apiKeySource, each only when it is plain text', () => {
@@ -207,6 +256,60 @@ test('own world and oracle files: packed like pack, hostile input refused by nam
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('reads are bounded while they read: a file larger than the limit is refused, never read whole', async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-read-'));
+  try {
+    await writeFile(join(dir, 'twenty'), Buffer.alloc(20, 65));
+    // readAtMost on an open handle, past any size check made at open time.
+    const handle = await open(join(dir, 'twenty'), 'r');
+    try {
+      assert.equal(await readAtMost(handle, 10), null);
+      assert.equal((await readAtMost(handle, 20))?.length, 20);
+    } finally { await handle.close(); }
+    assert.equal((await readRegularFile(join(dir, 'twenty'), 20))?.length, 20);
+    assert.equal(await readRegularFile(join(dir, 'twenty'), 19), null);
+    assert.equal(await readRegularFile(join(dir, 'missing'), 100), null);
+    assert.equal(await readRegularFile(dir, 100), null, 'a folder is not a regular file');
+    if (process.platform !== 'win32') { await symlink(join(dir, 'twenty'), join(dir, 'link')); assert.equal(await readRegularFile(join(dir, 'link'), 100), null, 'a link is not followed'); }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('references.json keeps only what verification needs and must fit what --verify reads', () => {
+  const text = referencesText(libraryReferences(['connect', 'decision']), ['connect', 'decision']);
+  const stored = JSON.parse(text) as { schema: string; references: Array<Record<string, unknown>> };
+  assert.equal(stored.schema, 'practonaut.bench-references/1');
+  assert.deepEqual(stored.references.map(entry => Object.keys(entry).sort()), [['source', 'steps', 'taskId', 'worldId'], ['source', 'steps', 'taskId', 'worldId']]);
+  assert.equal(text.includes('nearMisses'), false, 'near misses stay in the library and the author\'s file');
+  assert.doesNotThrow(() => assertReferencesFit(text));
+  assert.throws(() => assertReferencesFit(text, Buffer.byteLength(text) - 1), (error: Error & { code?: string }) => error.code === 'bench_references_too_large' && new RegExp(`would take ${Buffer.byteLength(text)} bytes, but report --verify reads at most ${Buffer.byteLength(text) - 1}`).test(error.message));
+});
+
+test('a library bench is anchored to this Practonaut\'s library when the id and version are the same', () => {
+  const shipped = { id: 'excalidraw-library', version: '1.1.0', contentHash: 'a'.repeat(64) };
+  assert.deepEqual(libraryAnchor({ worldId: 'excalidraw-library', version: '1.1.0', contentHash: 'a'.repeat(64) }, shipped), { status: 'same' });
+  assert.throws(() => libraryAnchor({ worldId: 'excalidraw-library', version: '1.1.0', contentHash: 'b'.repeat(64) }, shipped),
+    (error: Error & { code?: string }) => error.code === 'bench_world_changed' && /content hash b{64} is not that library's \(a{64}\): it is not this Practonaut's library/.test(error.message));
+  assert.deepEqual(libraryAnchor({ worldId: 'excalidraw-library', version: '1.0.0', contentHash: 'b'.repeat(64) }, shipped), { status: 'other', shipped: { id: 'excalidraw-library', version: '1.1.0' } });
+});
+
+test('pack and validate print the content hash a bench report names, computed independently', async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-hash-'));
+  try {
+    const world = v2World();
+    await mkdir(join(dir, 'src')); await writeFile(join(dir, 'src', 'world.json'), JSON.stringify(world));
+    const cliPath = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
+    const packed = spawnSync(process.execPath, [cliPath, 'pack', join(dir, 'src'), '--out', join(dir, 'w.pnworld'), '--json'], { encoding: 'utf8' });
+    assert.equal(packed.status, 0, packed.stderr);
+    // The expected value comes from the separate hash oracle (tests/oracles), not from src/canonical.
+    const expected = oracleDigest(JSON.parse(JSON.stringify(world)));
+    assert.equal(JSON.parse(packed.stdout).contentHash, expected);
+    const validated = spawnSync(process.execPath, [cliPath, 'validate', join(dir, 'w.pnworld'), '--json'], { encoding: 'utf8' });
+    assert.equal(JSON.parse(validated.stdout).contentHash, expected);
+    assert.match(spawnSync(process.execPath, [cliPath, 'validate', join(dir, 'w.pnworld')], { encoding: 'utf8' }).stdout, new RegExp(`content  sha256 ${expected}`));
+    assert.equal((await ownBenchWorld(join(dir, 'w.pnworld'))).contentHash, expected, 'bench names the same hash');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('efficiency says "minimal length" only when every referenced task is proven minimal (PADR-0040)', () => {
   const all = v2Report([run('Flow', 2, 1, true, 4, 2), run('Flow', 5, 1, true, 2, 2)]);
   all.settings.tasks = ['Flow']; all.references!.tasks[0]!.minimal = true; all.summary = summarize(all.runs, 1);
@@ -214,7 +317,7 @@ test('efficiency says "minimal length" only when every referenced task is proven
   // Hand calculation: (2/4 + 2/2) / 2 = 0.75.
   assert.match(renderTable(all), /efficiency vs minimal length 0\.75  \(1 = as few actions as possible\)/);
   assert.match(renderTable(all), /^Flow .* 2 \(minimal\) +0\.75$/m);
-  assert.match(renderTable(all, 'de'), /Effizienz gegenüber Minimallänge 0\.75/);
+  assert.match(renderTable(all, 'de'), /Effizienz gegenüber Minimallänge 0,75/);
   // Not proven: the plain reference length, as before.
   const reference = structuredClone(all); reference.references!.tasks[0]!.minimal = false;
   assert.match(renderTable(reference), /efficiency vs reference length 0\.75  \(> 1 = fewer actions than the reference solution\)/);
@@ -226,4 +329,17 @@ test('efficiency says "minimal length" only when every referenced task is proven
   mixed.summary = summarize(mixed.runs, 1);
   assert.doesNotThrow(() => validateBenchReportV2(mixed));
   assert.match(renderTable(mixed), /efficiency vs reference length 0\.75, proven minimal for 1 of 2/);
+});
+
+test('task limits and --checks are shown with the report (PADR-0040)', () => {
+  const value = v2Report();
+  value.environment.world.limits = [{ taskId: 'Flow', actions: 3, checks: 1 }];
+  value.settings.checks = 0;
+  assert.doesNotThrow(() => validateBenchReportV2(value));
+  assert.match(renderTable(value), /^Task limits: Flow: at most 3 changes, at most 1 check$/m);
+  assert.match(renderTable(value), /^Checks per run \(--checks\): 0$/m);
+  assert.match(renderTable(value, 'de'), /^Aufgabenlimits: Flow: höchstens 3 Änderungen, höchstens 1 Prüfung$/m);
+  assert.match(renderHtml(value, ':root{}'), /<dt>Task limits<\/dt><dd>Flow: at most 3 changes, at most 1 check<\/dd>/);
+  const plain = v2Report();
+  assert.doesNotMatch(renderTable(plain), /Task limits|--checks/);
 });

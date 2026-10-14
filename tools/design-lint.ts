@@ -41,6 +41,9 @@
 //   unknown-icon       icon('x') / icon: 'x' / IconName literals must exist in ui/icons.ts
 //   stale-hook         a HOOK_CLASSES entry that no code uses, or that CSS now styles
 //   dynamic-class      (warning) a class value that cannot be resolved statically
+// Bench report profile (PADR-0039 B.5): the same CSS rules on src/bench/report.css and the same TS
+// rules on every module that writes report markup (REPORT_SOURCES), with classes checked against
+// report.css. A src/bench module that writes markup but is not in REPORT_SOURCES is a setup error.
 // Output: `file:line rule message` per finding (warnings marked), exit 1 if any error.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -842,6 +845,10 @@ function bundleClasses(files: string[]): Set<string> {
 
 export interface LintRun { findings: Finding[]; files: string[] }
 
+/** Modules that write the bench report and compare pages (static HTML from strings). */
+export const REPORT_SOURCES = ["src/bench/render.ts", "src/bench/render-compare.ts", "src/bench/schematic.ts", "src/bench/svg.ts"];
+export const REPORT_CSS = "src/bench/report.css";
+
 export function lintRepository(root: string = ROOT, only?: string[]): LintRun {
   const findings: Finding[] = [];
   const rel = (p: string): string => relative(root, p).split(sep).join("/") || p;
@@ -866,8 +873,16 @@ export function lintRepository(root: string = ROOT, only?: string[]): LintRun {
   if (galleryBundle.length < 2) findings.push({ file: "src/player/gallery/entry.css", line: 0, rule: "setup", message: "gallery CSS bundle could not be resolved", severity: "error" });
   const classes = { player: bundleClasses(playerBundle), gallery: bundleClasses(galleryBundle) };
 
-  const cssFiles = walk(join(root, "src", "player"), ".css");
-  const tsFiles = walk(join(root, "src", "player"), ".ts");
+  // The bench report renderer: its stylesheet and the modules that write its markup.
+  const reportCss = join(root, REPORT_CSS), benchDirectory = join(root, "src", "bench");
+  const reportSources = REPORT_SOURCES.map(path => join(root, path)).filter(path => existsSync(path));
+  const reportClasses = existsSync(reportCss) ? bundleClasses([reportCss]) : new Set<string>();
+  if (reportSources.length && !existsSync(reportCss)) findings.push({ file: REPORT_CSS, line: 0, rule: "setup", message: "the report renderer exists but its stylesheet is missing", severity: "error" });
+  // Fail closed: a bench module that writes markup outside the profile would escape every rule.
+  for (const file of walk(benchDirectory, ".ts")) if (!REPORT_SOURCES.includes(rel(file)) && /\bclass="|<!doctype/i.test(readFileSync(file, "utf8"))) findings.push({ file: rel(file), line: 0, rule: "setup", message: "writes report markup but is not in REPORT_SOURCES (tools/design-lint.ts); the design rules would not see it", severity: "error" });
+
+  const cssFiles = [...walk(join(root, "src", "player"), ".css"), ...(existsSync(reportCss) ? [reportCss] : [])];
+  const tsFiles = [...walk(join(root, "src", "player"), ".ts"), ...reportSources];
   // Local custom properties: declared in any player CSS, or set from code by a string key.
   const localVars = new Set<string>();
   for (const f of cssFiles) for (const d of parseCss(readFileSync(f, "utf8")).decls) if (d.prop.startsWith("--_")) localVars.add(d.prop);
@@ -881,9 +896,9 @@ export function lintRepository(root: string = ROOT, only?: string[]): LintRun {
     const posix = file.split(sep).join("/");
     if (file.endsWith(".css")) {
       findings.push(...lintCss(text, file, { tokens, localVars }).map(f => ({ ...f, file: rel(f.file) })));
-      if (!selected && ![...playerBundle, ...galleryBundle].includes(resolve(file))) findings.push({ file: rel(file), line: 1, rule: "orphan-css", message: "no bundle imports this stylesheet", severity: "warning" });
+      if (!selected && ![...playerBundle, ...galleryBundle, resolve(reportCss)].includes(resolve(file))) findings.push({ file: rel(file), line: 1, rule: "orphan-css", message: "no bundle imports this stylesheet", severity: "warning" });
     } else if (file.endsWith(".ts")) {
-      const bundle = /\/src\/player\/gallery\//.test(posix) ? classes.gallery : classes.player;
+      const bundle = /\/src\/bench\//.test(posix) ? reportClasses : /\/src\/player\/gallery\//.test(posix) ? classes.gallery : classes.player;
       findings.push(...lintTs(text, file, { tokens, icons, classes: bundle, hooks: HOOK_CLASSES, usedHooks }).map(f => ({ ...f, file: rel(f.file) })));
     }
   }

@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const TOOL = fileURLToPath(new URL('../../tools/challenge.ts', import.meta.url));
+import { generateSet } from '../../src/challenge/build.ts';
+import { oraclesForGate, writeSet } from '../../src/challenge/files.ts';
+import type { BenchReportV2 } from '../../src/bench/report.ts';
 const run = (args: string[]) => spawnSync(process.execPath, args, { encoding: 'utf8', env: process.env });
 type Json = Record<string, any>;
 const json = async (path: string): Promise<Json> => JSON.parse(await readFile(path, 'utf8')) as Json;
@@ -45,9 +48,16 @@ test('a generated tight-budget set: oracle passes in exactly the budget, random 
     }
     assert.deepEqual(oracle.report.references.tasks.map((task: Json) => task.minimal), [true, true]);
     assert.equal(oracle.report.environment.world.generated[0].id, 'challenge-tight-budget');
+    // The report names each task's limits; --verify holds them to the stored world.
+    assert.deepEqual(oracle.report.environment.world.limits, instances.instances.map((value: Json) => ({ taskId: value.taskId, ...value.limits })));
     const verified = run([CLI, 'report', join(oracle.folder, 'report.json'), '--verify']);
     assert.equal(verified.status, 0, verified.stderr);
     assert.match(run([CLI, 'report', join(oracle.folder, 'report.json')]).stdout, /efficiency vs minimal length 1\.00/);
+    assert.match(run([CLI, 'report', join(oracle.folder, 'report.json')]).stdout, /^Task limits: tight-budget-1: at most \d+ changes?; tight-budget-2: at most \d+ changes?$/m);
+    const forged = await json(join(oracle.folder, 'report.json')); forged.environment.world.limits[0].actions += 5;
+    await writeFile(join(dir, 'forged.json'), JSON.stringify(forged));
+    const refused = run([CLI, 'report', join(dir, 'forged.json'), '--verify', '--runs', oracle.folder]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /task limits differ from those the report names.*\[bench_world_changed\]/);
 
     const random = await bench(['--agent', 'random', ...args, '--mirror', 'off']);
     for (const runResult of random.report.runs) {
@@ -59,11 +69,12 @@ test('a generated tight-budget set: oracle passes in exactly the budget, random 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('the gate tool reads, re-verifies and judges five bench folders, and refuses a round below 24 held-out instances by name', { timeout: 300_000 }, async () => {
+test('the gate tool re-verifies all five bench folders: relabelled built-in runs and changed artifacts are refused by name', { timeout: 300_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-gate-'));
   try {
-    const made = run([TOOL, 'generate', 'tight-budget', '--set', 'heldout', '--round', '1', '--seed', '1000000', '--count', '2', '--difficulty', '1', '--out', join(dir, 'set')]);
-    assert.equal(made.status, 0, made.stderr);
+    // A two-instance set in the held-out seed range, written through the library (the tool itself
+    // only writes held-out sets of the preregistered size).
+    await writeSet(generateSet('tight-budget', [1_000_000, 1_000_001], 1, 'r1'), join(dir, 'set'), { family: 'tight-budget', set: 'heldout', round: 1, difficulty: '1', seeds: [1_000_000, 1_000_001] });
     const args = ((await json(join(dir, 'set', 'instances.json'))).bench.args as string[]).slice(1);
     const oracle = await bench(['--agent', 'oracle', ...args, '--mirror', 'off']);
     // Four more reports of the same runs under other agent names: consistent reports whose
@@ -77,14 +88,24 @@ test('the gate tool reads, re-verifies and judges five bench folders, and refuse
       copies.push(join(copy, 'report.json'));
     }
     const gate = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
-      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--out', join(dir, 'gate.md')]);
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--set', join(dir, 'set'), '--out', join(dir, 'gate.md')]);
+    // Oracle runs relabelled as a preset's carry the built-in client's timing: verification refuses them
+    // before any number is computed (the gate's own size and threshold rules are unit-tested).
     assert.equal(gate.status, 2, gate.stderr);
-    assert.match(gate.stderr, /gate_input_invalid: the gate needs at least 24 held-out instances, these reports have 2/);
+    assert.match(gate.stderr, /bench_report_invalid: run tight-budget-1000000-s1-r1: client timing comes only from Practonaut's own client/);
     // A report whose artifacts were changed is refused before anything is computed.
-    await writeFile(join(dir, 'agent-1', 'tight-budget-1000000-s1-r1', 'session.json'), '{}');
+    await writeFile(join(oracle.folder, 'tight-budget-1000000-s1-r1', 'session.json'), '{}');
     const tampered = run([TOOL, 'gate', '--family', 'tight-budget', '--round', '1', '--oracle', join(oracle.folder, 'report.json'), '--random', copies[0]!, '--ladder', copies.slice(1).join(','),
-      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--out', join(dir, 'gate.md')]);
+      '--strongest', 'claude-opus-5-5', '--weakest', 'claude-haiku-5-5', '--dev-runs', '9', '--set', join(dir, 'set'), '--out', join(dir, 'gate.md')]);
     assert.equal(tampered.status, 2); assert.match(tampered.stderr, /bench_artifact_changed/);
+    // The near misses come from the set's oracle files, bound to the references the oracle report used.
+    const report = await json(join(dir, 'agent-0', 'report.json')) as BenchReportV2;
+    const bound = await oraclesForGate(join(dir, 'agent-0'), report, join(dir, 'set'));
+    assert.deepEqual(bound.oracles.map(value => value.taskId), ['tight-budget-1000000', 'tight-budget-1000001']);
+    assert.ok(bound.oracles.every(value => value.nearMisses.length > 0));
+    const sidecar = await json(join(dir, 'set', 'oracles', 'tight-budget-1000000.json')); sidecar.steps = sidecar.steps.slice(1);
+    await writeFile(join(dir, 'set', 'oracles', 'tight-budget-1000000.json'), JSON.stringify(sidecar));
+    await assert.rejects(oraclesForGate(join(dir, 'agent-0'), report, join(dir, 'set')), /the set's oracle for tight-budget-1000000 is not the reference the oracle report used/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

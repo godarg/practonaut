@@ -83,13 +83,19 @@ test('HTML is static and self-contained, escapes report text and never shows sta
   assert.match(html, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-[A-Za-z0-9+/=]+'/);
   assert.equal(html.includes('<script'), false);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-  assert.equal(/\b(?:src|href)=/.test(html), false, 'no external or linked asset');
+  assert.equal(/\bsrc=|href="(?!#run-)/.test(html), false, 'no external or linked asset; links only to the page\'s own run details');
   assert.match(html, /<span class="result pass"><span aria-hidden="true">✓<\/span>pass<\/span>/);
   assert.match(html, /<span class="result fail"><span aria-hidden="true">✗<\/span>fail<\/span>/);
   const table = renderTable(value);
-  assert.match(table, /8 runs, 4 passed \(50\.0 %\), 1 not judged \(infrastructure\), counted as not passed/);
+  // Instances (PADR-0039 B.1): connect s1 [pass, fail] and s2 [pass, pass] pass (at least half),
+  // decision s1 [pass, not judged] passes on its one judged run, decision s2 [fail, fail] fails: 3/4.
+  // Wilson 3/4 by hand: centre (0.75 + 0.4802) / 1.9604 = 0.6275, half 0.3269 → 30.06–95.44 %, shown 30–96 %.
+  assert.match(table, /^4\/8 runs passed · 3\/4 instances passed \(at least half of their runs\) · 95 % interval 30–96 % over 4 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded \(bench\/1\) · model not reported$/m);
+  assert.match(table, /^1 not judged \(infrastructure\), counted as not passed$/m);
   assert.match(table, /^n = 8 runs · 2 seeds · 2 repeats$/m);
-  assert.match(table, /pass@1 0\.50   pass\^1 0\.50   pass\^2 0\.25/);
+  // pass^2 for k = repeats: only connect s2 passed both repeats.
+  assert.match(table, /^all 2 repeats passed on 1\/4 instances$/m);
+  assert.equal(/0\.50   |50\.0 %|pass@1 0/.test(table), false, 'no rate as a decimal or a percentage at n = 8');
   assert.match(table, /efficiency vs reference length 0\.50  \(> 1 = fewer actions than the reference solution\)/);
   assert.match(renderTable(value, 'de'), /Läufe/);
 });
@@ -155,7 +161,7 @@ test('summary cards show each figure once: pass^k only from k = 2, the passed co
   const single = report([run('connect', 1, 1, true), run('decision', 1, 1, true)], 1, ['connect', 'decision'], [1]);
   const one = renderHtml(single, ':root{}');
   assert.deepEqual(cards(one).map(card => card.split('=')[0]), ['pass@1', 'mean actions', 'efficiency vs reference length', 'mean time per run']);
-  assert.match(one, /<dl class="figures n4">/); assert.match(one, /2 of 2 runs passed/);
+  assert.match(one, /<dl class="figures n4">/); assert.match(one, /<dd>2\/2<\/dd><dd class="detail">over all 2 runs<\/dd>/);
   assert.equal(/pass\^1/.test(one), false, 'pass^1 equals pass@1 and is not shown twice');
   const two = renderHtml(fixture(), ':root{}');
   assert.deepEqual(cards(two).map(card => card.split('=')[0]), ['pass@1', 'pass^2', 'mean actions', 'efficiency vs reference length', 'mean time per run']);
