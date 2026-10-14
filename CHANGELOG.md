@@ -35,15 +35,20 @@ All notable changes are recorded here. The format follows
   (`limits.checks`); the host enforces them for the Player and agents alike
   (`action_budget_exhausted`, `check_budget_exhausted`), and the Player, `observe`, every mutation
   reply and `check_result` show what is used. `--checks <n>` on `play`/`serve`, `mcp --task` and
-  `bench` sets a check limit (it can only lower a task's own).
+  `bench` sets a check limit (it can only lower a task's own). A new variant of the same task counts
+  like a reset. While a check limit applies, error explanations come only with a check. `report
+  --verify` counts a run's accepted changes and checks from the runner's host-side log (which now
+  records every `check_result`) and refuses a run beyond its task's limits.
 - **Minimal length.** Where a bounded search is small, `bench` proves that a reference is a minimal
   solution; the report then shows "efficiency vs minimal length", otherwise "vs reference length",
   and `report --verify` recomputes the proof.
 - **Challenge tier candidates** (maintainer tooling, not yet published): seeded generators for five
   families — repair, prompt injection in board content, long horizon with look-alike labels, limited
   checks, tight action budget — that materialise checked world/2 instances with oracle sidecars
-  (`node tools/challenge.ts generate|verify`), and the preregistered ladder gate
-  (`node tools/challenge.ts gate`) with Wilson intervals and an exact McNemar test.
+  (`node tools/challenge.ts generate|verify`), and the preregistered ladder gate: a round
+  declaration frozen from the development runs before the held-out set exists, whose content fixes
+  the held-out seeds (`declare`), and `gate`, which regenerates the held-out set from it and reports
+  Wilson intervals and an exact McNemar test.
 
 ### Changed
 

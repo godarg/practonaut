@@ -475,34 +475,55 @@ process took 2–3 s on a machine with a load average around 26, and exceeded it
 (`checker_timeout`, an `infra_error` in a bench run) at a load average around 50. Run gate rounds,
 especially long-horizon ones, on a machine that is not otherwise busy.
 
-**Held-out sets** are generated right before a gate round and not looked at while tuning:
-`node tools/challenge.ts generate <family> --set heldout --round 1 --dev-runs 9 --difficulty <d> --out <dir>`
-draws a random seed base (printed and recorded); a second round would use a new base, and the gate
-refuses a round that reuses an earlier round's seeds. The round is preregistered in PADR-0040: 3
-development instances × 3 agents (9 model runs) and 26 held-out instances × 3 agents (78 runs), 87
-runs per family; the tool and the gate refuse other sizes. At 26 instances the exact McNemar test is
-not strong: if two agents disagree on 20 % of the instances, all in one agent's favour, it reaches
-p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are needed for 0.8). A family that fails
-discrimination may still separate agents.
-
-**The gate** takes the five bench/2 reports of one round — oracle, random and the three ladder agents
-(`claude-code` with Opus, Sonnet and Haiku, chosen with `ANTHROPIC_MODEL`), all on the same held-out
-world, tasks, seed, mirror, timeout and caps — re-verifies each against its bench folder, replays
-every near miss of the held-out set (`--set`, whose oracle files must hold exactly the references
-the oracle report used) in a checker process, and writes the gate report:
+**A round** (preregistered in PADR-0040) has 3 development instances × 3 agents (9 model runs) and
+26 held-out instances × 3 agents (78 runs), 87 runs per family; the tools refuse other sizes. At 26
+instances the exact McNemar test is not strong: if two agents disagree on 20 % of the instances, all
+in one agent's favour, it reaches p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are
+needed for 0.8). A family that fails discrimination may still separate agents. The ladder is
+`claude-code` with Opus, Sonnet and Haiku (chosen with `ANTHROPIC_MODEL`, identified by the model id
+the client reports in every run); any other model needs `--maintainer-approved <model>`.
 
 ```bash
-node tools/challenge.ts gate --family repair --round 1 --oracle <oracle/report.json> --random <random/report.json> \
-  --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --strongest <model> --weakest <model> \
-  --dev-runs 9 --set <held-out dir> --out docs/benchmarks/challenge/repair-round1.md
+# 1. Development: 3 instances, each ladder model once per instance.
+node tools/challenge.ts generate repair --set dev --seed <s> --count 3 --difficulty <d> --out .local/challenge/repair/dev
+ANTHROPIC_MODEL=<opus id> node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args .local/challenge/repair/dev) --mirror <off|required>
+#    … the same for the Sonnet and Haiku ids.
+# 2. Declaration: freezes the round; commit it before step 3.
+node tools/challenge.ts declare --family repair --round 1 --difficulty <d> \
+  --dev <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --release-runs <model runs used so far> \
+  --out docs/benchmarks/challenge/repair-round-1.declaration.json
+# 3. The held-out set: its 26 seeds follow from the declaration's content.
+node tools/challenge.ts generate repair --set heldout --declaration docs/benchmarks/challenge/repair-round-1.declaration.json --out .local/challenge/repair/heldout
+# 4. Oracle, random and the three ladder models on it (the same arguments; mirror as declared).
+node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args .local/challenge/repair/heldout) --mirror <off|required>
+# 5. The gate.
+node tools/challenge.ts gate --declaration docs/benchmarks/challenge/repair-round-1.declaration.json --set .local/challenge/repair/heldout \
+  --dev <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --oracle <oracle/report.json> --random <random/report.json> \
+  --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --out docs/benchmarks/challenge/repair-round1.md
 ```
 
-`--strongest` and `--weakest` are the models named from the development runs before the round
-(preregistered); `--previous <report.json>` gives round 1's report to a round 2. The verdict rules
-are PADR-0040's: headroom (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar
-p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %, every near miss fails, every run
-counts, more than 5 % `infra_error` voids the round, at most 100 model runs per family and round.
-A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
+`declare` re-verifies the development reports, checks that they ran on exactly the development set
+the generator makes for their seeds and difficulty, one run per instance (`--seed-list 1 --repeats
+1`), every run on the model its report names, and names the strongest (most development passes) and
+the weakest (fewest) agent, ties broken by the capability order Opus > Sonnet > Haiku. The
+declaration records that, each development report's SHA-256, the bench settings, the sizes and the
+release runs before the round (at least 35, plus 87 for every other declaration in the folder;
+more than 500 with the round is refused: "budget exhausted — a maintainer decides on a second
+round"). The held-out seeds are 26 consecutive seeds from 1 000 000 + (the first 12 hex digits of
+the SHA-256 of the declaration's canonical JSON modulo 900 000 000): a changed declaration draws
+other seeds, so commit it first and do not look at the held-out set while tuning.
+
+`gate` regenerates the held-out set from the declaration and refuses a set folder whose world,
+manifest or oracle files differ (the manifest records each oracle file's SHA-256 and near-miss
+count), re-verifies every report against its bench folder, refuses benches of another world, of a
+subset of the tasks, with another seed list than `1`, with repeats or other settings than declared,
+development reports other than the declared files, and ladder runs on another model; it replays
+every regenerated near miss in a checker process and writes the gate report. A round 2 needs
+`--previous <round-1 oracle report.json>` and new seeds. The verdict rules are PADR-0040's: headroom
+(strongest 10–80 %), discrimination (≥ 20 points and exact McNemar p < 0.05 on the discordant
+instances), oracle 100 %, random ≤ 5 %, every near miss fails, every run counts, more than 5 %
+`infra_error`, missing or unattested runs voids the round, at most 100 model runs per family and
+round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
 requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
 total is added to the gate report by hand until the bench records it.
 

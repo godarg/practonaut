@@ -164,14 +164,12 @@ test('a set is one world with one task per seed; seeds are distinct and held-out
   const dir = mkdtempSync(join(tmpdir(), 'practonaut-challenge-'));
   try {
     const tool = (args: string[]) => spawnSync(process.execPath, ['tools/challenge.ts', ...args], { encoding: 'utf8' });
-    const refused = tool(['generate', 'repair', '--set', 'heldout', '--round', '1', '--seed', '5', '--out', join(dir, 'x')]);
-    assert.equal(refused.status, 1); assert.match(refused.stderr, /uses seeds 1000000 to/);
-    // The held-out size is preregistered (PADR-0040): 26 instances with 9 development runs.
-    const size = tool(['generate', 'repair', '--set', 'heldout', '--round', '1', '--count', '24', '--out', join(dir, 'z')]);
-    assert.equal(size.status, 1); assert.match(size.stderr, /the preregistered held-out size is 26/);
-    const runs = tool(['generate', 'repair', '--set', 'heldout', '--round', '1', '--dev-runs', '12', '--out', join(dir, 'w')]);
-    assert.equal(runs.status, 1); assert.match(runs.stderr, /the preregistered round has 9 development runs/);
-    assert.equal(tool(['generate', 'repair', '--set', 'heldout', '--seed', '1000000', '--count', '2', '--out', join(dir, 'y')]).status, 1, 'a held-out set names its round');
+    // A held-out set comes only from a round declaration (PADR-0040), which fixes its seeds.
+    const refused = tool(['generate', 'repair', '--set', 'heldout', '--round', '1', '--seed', '1000000', '--out', join(dir, 'x')]);
+    assert.equal(refused.status, 1); assert.match(refused.stderr, /a held-out set is generated from its round declaration/);
+    const range = tool(['generate', 'repair', '--set', 'check', '--seed', '5', '--out', join(dir, 'y')]);
+    assert.equal(range.status, 1); assert.match(range.stderr, /--set check uses seeds 10000 to 19999/);
+    assert.equal(tool(['generate', 'repair', '--set', 'dev', '--round', '1', '--out', join(dir, 'z')]).status, 1, '--round belongs to held-out sets');
     const made = tool(['generate', 'tight-budget', '--set', 'dev', '--count', '2', '--out', join(dir, 'dev')]);
     assert.equal(made.status, 0, made.stderr);
     const args = tool(['args', join(dir, 'dev')]);

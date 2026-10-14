@@ -1,11 +1,12 @@
 /**
  * File side of the challenge tooling (`node tools/challenge.ts`, PADR-0040): writing a generated set
- * (world folder, oracle sidecars outside it, `instances.json` with the bench arguments), checking a
- * set without any agent (every reference passes, every near miss fails, in separate checker
- * processes), and computing a gate from five bench/2 reports and their bench folders.
+ * (world folder, oracle sidecars outside it, `instances.json` with the bench arguments and every
+ * sidecar's SHA-256), checking a set without any agent (every reference passes, every near miss
+ * fails, in separate checker processes), declaring a round from its development reports, and
+ * computing a gate from the declaration, the development and held-out reports and their bench folders.
  */
-import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { runOracle, type TaskOracle } from '../authoring/from-scenes.ts';
 import { sha256Hex, canonicalJson } from '../canonical/index.ts';
 import { checkInProcess } from '../cli/runtime.ts';
@@ -16,19 +17,25 @@ import { validateBenchReport, isBenchReportV2, BENCH_REFERENCES_FILE, type Bench
 import { verifyBenchV2 } from '../bench/verify.ts';
 import { ReferencesFileSchema, TaskOracleSchema, worldFromPackage } from '../bench/world.ts';
 import type { SessionData, World } from '../world/types.ts';
-import { FAMILY_BENCH, type ChallengeSet } from './build.ts';
-import { generatorId, generatorVersion, type Family } from './families.ts';
-import { computeGate, GateInputError, renderGate, type GateResult } from './gate.ts';
+import { FAMILY_BENCH, SEED_RANGES, generateSet, taskIdOf, worldIdOf, type ChallengeSet } from './build.ts';
+import { DECLARATION_SCHEMA, ROUND, checkLadderAgent, declarationHash, extremes, heldOutSeeds, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration } from './declaration.ts';
+import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
+import { computeGate, GateInputError, renderGate, GATE, type GateResult } from './gate.ts';
 import { libraryWorld } from '../bench/run.ts';
 import { isDeepStrictEqual } from 'node:util';
 
 export const SET_SCHEMA = 'practonaut.challenge-set/1';
-export interface SetMeta { family: Family; set: string; round?: number; difficulty: string; seeds: number[] }
+export interface SetMeta { family: Family; set: string; round?: number; difficulty: string; seeds: number[]; declaration?: string }
+/** Model runs the release had used when the gate was preregistered (500 − 465). */
+export const RELEASE_RUNS_USED_AT_PREREGISTRATION = GATE.releaseBudget - GATE.releaseRunsAtPreregistration;
 
 async function exists(path: string): Promise<boolean> { try { await lstat(path); return true; } catch { return false; } }
+const oracleText = (oracle: TaskOracle): string => JSON.stringify(oracle, null, 2) + '\n';
 
 /** Writes `<out>/world/world.json`, `<out>/oracles/<task>.json` and `<out>/instances.json`. An
- * existing `<out>` is refused unless `force`, which replaces exactly these three entries. */
+ * existing `<out>` is refused unless `force`, which replaces exactly these three entries. The manifest
+ * records each oracle file's SHA-256 and near-miss count (audit P1-2) and, for a held-out set, the
+ * declaration it was derived from. */
 export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, force = false): Promise<{ world: string; oracles: string[]; instances: string }> {
   if (await exists(out)) {
     if (!force) throw new Error(`${out} exists; add --force to replace its world/, oracles/ and instances.json`);
@@ -41,16 +48,19 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   const oraclePaths: string[] = [];
   for (const oracle of set.oracles) {
     const path = join(out, 'oracles', `${oracle.taskId}.json`);
-    await writeFile(path, JSON.stringify(oracle, null, 2) + '\n', { flag: 'wx' });
+    await writeFile(path, oracleText(oracle), { flag: 'wx' });
     oraclePaths.push(path);
   }
   const bench = FAMILY_BENCH[meta.family];
   const args = ['bench', '--world', join(out, 'world'), '--oracle', oraclePaths.join(','), '--seed-list', '1', '--repeats', '1', '--max-actions', String(bench.maxActions), '--timeout', String(bench.timeoutSeconds)];
+  const oracles = new Map(set.oracles.map(oracle => [oracle.taskId, oracle]));
   const instances = {
     schema: SET_SCHEMA, generator: { id: generatorId(meta.family), version: generatorVersion(meta.family) }, practonaut: PACKAGE_VERSION,
-    family: meta.family, set: meta.set, ...(meta.round !== undefined ? { round: meta.round } : {}), difficulty: meta.difficulty, seeds: meta.seeds,
+    family: meta.family, set: meta.set, ...(meta.round !== undefined ? { round: meta.round } : {}), ...(meta.declaration !== undefined ? { declaration: { sha256: meta.declaration } } : {}), difficulty: meta.difficulty, seeds: meta.seeds,
     world: { id: set.world.id, version: set.world.version, contentHash: sha256Hex(canonicalJson(set.world)) },
-    instances: set.instances.map(instance => ({ taskId: instance.taskId, seed: instance.draft.seed, difficulty: instance.draft.difficulty, referenceActions: instance.oracle.steps.length, minimal: instance.minimal, nearMisses: instance.oracle.nearMisses.length, verdictFuel: instance.fuel, ...(instance.task.limits ? { limits: instance.task.limits } : {}), parameters: instance.draft.parameters })),
+    instances: set.instances.map(instance => ({ taskId: instance.taskId, seed: instance.draft.seed, difficulty: instance.draft.difficulty, referenceActions: instance.oracle.steps.length, minimal: instance.minimal,
+      nearMisses: instance.oracle.nearMisses.length, oracle: { sha256: sha256Hex(oracleText(oracles.get(instance.taskId)!)), nearMisses: oracles.get(instance.taskId)!.nearMisses.length },
+      verdictFuel: instance.fuel, ...(instance.task.limits ? { limits: instance.task.limits } : {}), parameters: instance.draft.parameters })),
     bench: { recommended: bench, args },
   };
   const instancesPath = join(out, 'instances.json');
@@ -93,54 +103,157 @@ export async function verifySet(dir: string, seeds: readonly number[] = [1]): Pr
   return { world, instances: world.tasks.length, references: { total: oracles.length * seeds.length, passed }, nearMisses: await judgeNearMisses(world, oracles, seeds) };
 }
 
-async function readReport(path: string): Promise<BenchReportV2> {
-  const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
-  if (!isBenchReportV2(report)) throw new Error(`${path} is a ${report.schema} report; the gate needs practonaut.bench/2`);
-  return report;
+/** A bench/2 report and the SHA-256 of its file. */
+async function readReport(path: string): Promise<{ report: BenchReportV2; sha256: string }> {
+  const bytes = await readFile(path);
+  const report = validateBenchReport(parseJsonEntry(bytes, 'report.json', 64));
+  if (!isBenchReportV2(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report; the gate needs practonaut.bench/2`);
+  return { report, sha256: sha256Hex(bytes) };
+}
+/** Reads, validates and re-verifies a report against its bench folder. */
+async function verifiedReport(path: string): Promise<{ report: BenchReportV2; sha256: string }> {
+  const read = await readReport(path);
+  await verifyBenchV2(read.report, dirname(path), libraryWorld);
+  return read;
+}
+export async function readDeclaration(path: string): Promise<Declaration> {
+  return validateDeclaration(parseJsonEntry(await readFile(path), 'declaration.json', 16));
 }
 
-/** The generated set's oracle sidecars for the gate: each must hold exactly the reference the oracle
- * report stored (and re-verified) for the stored world, one per benched task. Near misses live only
- * in the sidecars; `references.json` keeps the reference alone. */
-export async function oraclesForGate(benchFolder: string, oracleReport: BenchReportV2, setDirectory: string): Promise<{ world: World; oracles: TaskOracle[] }> {
-  const stored = ReferencesFileSchema.parse(parseJsonEntry(await readFile(join(benchFolder, BENCH_REFERENCES_FILE)), BENCH_REFERENCES_FILE, 64));
-  const world = await worldFromPackage(await readFile(join(benchFolder, oracleReport.environment.world.package.path)));
-  const oracles: TaskOracle[] = [];
-  for (const entry of stored.references) {
-    const parsed = TaskOracleSchema.safeParse(parseJsonEntry(await readFile(join(setDirectory, 'oracles', `${entry.taskId}.json`)), 'oracle.json', 64));
-    if (!parsed.success) throw new GateInputError(`the set has no valid oracle file for ${entry.taskId}`);
-    const sidecar = parsed.data as TaskOracle;
-    if (sidecar.worldId !== world.id || sidecar.taskId !== entry.taskId || !isDeepStrictEqual(sidecar.steps, entry.steps)) throw new GateInputError(`the set's oracle for ${entry.taskId} is not the reference the oracle report used`);
-    oracles.push(sidecar);
+export interface DeclareFiles { family: Family; round: number; difficulty: Difficulty | 'mixed'; development: string[]; releaseRunsBefore: number; maintainerApproved?: string[]; out: string }
+/**
+ * A round's declaration from its three development reports (review S4): each re-verified, on the
+ * development set the generator makes for these seeds and difficulty, one run per instance on the
+ * model its report names; ladder order is the capability order (Opus, Sonnet, Haiku) for the three
+ * tiers, else the order given; the outcomes name strongest and weakest. The release runs before this
+ * round must count every other declaration already in the output folder.
+ */
+export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[] }> {
+  const fail = (message: string): never => { throw new DeclarationError(message); };
+  if (files.development.length !== ROUND.agents) fail('name the three development reports (one per ladder model)');
+  const reads: Array<{ report: BenchReportV2; sha256: string }> = [];
+  for (const path of files.development) reads.push(await verifiedReport(path));
+  const approved = files.maintainerApproved ?? [];
+  const models = reads.map(read => read.report.agent.model ?? fail(`${read.report.agent.name}: a development report needs the model its client reported`));
+  // Ladder order: the three tiers by capability, otherwise as given (most capable first).
+  const order = models.every(name => tierOf(name) !== -1) ? [...reads.keys()].sort((a, b) => tierOf(models[a]!) - tierOf(models[b]!)) : [...reads.keys()];
+  const ordered = order.map(index => reads[index]!), ladder = order.map(index => models[index]!);
+  const first = ordered[0]!.report;
+  const seeds = first.settings.tasks.map(task => first.environment.world.generated.find(entry => entry.taskId === task)?.seed ?? fail(`development task ${task} was not generated`));
+  if (seeds.length !== ROUND.developmentInstances) fail(`a development set holds ${ROUND.developmentInstances} instances, not ${seeds.length}`);
+  if (seeds.some(seed => seed < SEED_RANGES.dev[0] || seed > SEED_RANGES.dev[1])) fail(`development seeds lie in ${SEED_RANGES.dev[0]}–${SEED_RANGES.dev[1]}`);
+  // The development set is exactly what the generator makes for these seeds (review S1).
+  const regenerated = generateSet(files.family, seeds, files.difficulty, 'dev');
+  const contentHash = sha256Hex(canonicalJson(regenerated.world));
+  const bench = { mirror: first.environment.mirror, timeoutSeconds: first.settings.timeoutSeconds, maxActions: first.settings.maxActions, checks: first.settings.checks ?? null };
+  const reports = ordered.map(({ report, sha256 }, index) => {
+    const name = ladder[index]!;
+    checkLadderAgent(report, name, approved);
+    if (unattestedRuns(report, name).length) fail(`a development run of ${name} reports no model`);
+    if (report.environment.world.contentHash !== contentHash) fail(`the development report of ${name} was not made on the ${files.family} development set of seeds ${seeds.join(', ')} at difficulty ${files.difficulty} (generator ${generatorVersion(files.family)})`);
+    if (report.settings.tasks.join() !== first.settings.tasks.join() || report.settings.seeds.join() !== '1' || report.settings.repeats !== 1 || report.runs.length !== ROUND.developmentInstances) fail(`the development report of ${name} does not run each development instance once (--seed-list 1 --repeats 1)`);
+    if (report.environment.mirror !== bench.mirror || report.settings.timeoutSeconds !== bench.timeoutSeconds || report.settings.maxActions !== bench.maxActions || (report.settings.checks ?? null) !== bench.checks) fail('the development reports differ in mirror, timeout, action cap or check limit');
+    return { model: name, sha256, passed: first.settings.tasks.map(task => report.runs.some(run => run.taskId === task && run.pass)) };
+  });
+  // Every other declaration in the folder is a round that used (or will use) its runs.
+  const others = (await readdir(dirname(files.out)).catch(() => [] as string[])).filter(name => name.endsWith('.declaration.json') && name !== basename(files.out));
+  const floor = RELEASE_RUNS_USED_AT_PREREGISTRATION + others.length * ROUND.roundRuns;
+  if (files.releaseRunsBefore < floor) fail(`--release-runs ${files.releaseRunsBefore} is below the ${floor} model runs the release has used or declared (${RELEASE_RUNS_USED_AT_PREREGISTRATION} before preregistration, ${others.length} declared round${others.length === 1 ? '' : 's'} of ${ROUND.roundRuns})`);
+  const named = extremes(reports);
+  const declaration = validateDeclaration({
+    schema: DECLARATION_SCHEMA, family: files.family, round: files.round, generator: { id: generatorId(files.family), version: generatorVersion(files.family) }, difficulty: String(files.difficulty),
+    ladder, maintainerApproved: approved, bench,
+    development: { seeds, world: { id: regenerated.world.id, contentHash }, reports, strongest: named.strongest, weakest: named.weakest },
+    heldOut: { instances: ROUND.heldOutInstances },
+    budget: { developmentRuns: ROUND.developmentRuns, heldOutRuns: ROUND.heldOutRuns, roundRuns: ROUND.roundRuns, releaseRunsBefore: files.releaseRunsBefore, releaseBudget: ROUND.releaseBudget },
+  });
+  return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration) };
+}
+
+/** The held-out set a declaration names, generated (`generate --set heldout --declaration`). */
+export function heldOutSet(declaration: Declaration): { set: ChallengeSet; seeds: number[] } {
+  const seeds = heldOutSeeds(declaration);
+  if (declaration.generator.version !== generatorVersion(declaration.family)) throw new DeclarationError(`the declaration names generator ${declaration.generator.version}; this checkout's ${declaration.family} generator is ${generatorVersion(declaration.family)}`);
+  const difficulty = declaration.difficulty === 'mixed' ? 'mixed' : Number(declaration.difficulty) as Difficulty;
+  return { set: generateSet(declaration.family, seeds, difficulty, `r${declaration.round}`), seeds };
+}
+
+/** The held-out set folder against its regeneration (review S1, audit P1-2): the manifest names the
+ * declaration, the seeds and the world; every oracle file has the SHA-256 the manifest records, holds
+ * exactly the regenerated reference and near misses, and has at least one near miss. */
+async function checkSetFolder(directory: string, declaration: Declaration, regenerated: ChallengeSet, seeds: readonly number[]): Promise<void> {
+  const fail = (message: string): never => { throw new GateInputError(`the held-out set: ${message}`); };
+  const manifest = parseJsonEntry(await readFile(join(directory, 'instances.json')), 'instances.json', 64) as {
+    schema?: unknown; family?: unknown; round?: unknown; declaration?: { sha256?: unknown }; seeds?: unknown; world?: { contentHash?: unknown };
+    instances?: Array<{ taskId?: unknown; oracle?: { sha256?: unknown; nearMisses?: unknown } }>;
+  };
+  if (manifest.schema !== SET_SCHEMA || manifest.family !== declaration.family || manifest.round !== declaration.round) fail(`instances.json is not the ${declaration.family} round ${declaration.round} set`);
+  if (manifest.declaration?.sha256 !== declarationHash(declaration)) fail('instances.json was not generated from this declaration');
+  if (!isDeepStrictEqual(manifest.seeds, [...seeds])) fail('instances.json names other seeds than the declaration derives');
+  if (manifest.world?.contentHash !== sha256Hex(canonicalJson(regenerated.world))) fail('its world is not the one the generator makes from the declaration');
+  // The world folder itself, not only the manifest: a hand-edited world.json is refused here, and a
+  // bench of one is refused by the report's content hash.
+  const worldBytes = await readFile(join(directory, 'world', 'world.json')).catch(() => fail('world/world.json is missing'));
+  if (canonicalJson(parseJsonEntry(worldBytes, 'world.json', 64)) !== canonicalJson(regenerated.world)) fail('world/world.json is not the world the generator makes from the declaration');
+  const listed = (manifest.instances ?? []).map(entry => entry.taskId);
+  if (!isDeepStrictEqual(listed, regenerated.world.tasks.map(task => task.id))) fail('instances.json does not list exactly the regenerated tasks');
+  for (const [index, entry] of (manifest.instances ?? []).entries()) {
+    const oracle = regenerated.oracles[index]!;
+    const bytes = await readFile(join(directory, 'oracles', `${oracle.taskId}.json`)).catch(() => fail(`oracles/${oracle.taskId}.json is missing`));
+    if (sha256Hex(bytes) !== entry.oracle?.sha256) fail(`oracles/${oracle.taskId}.json does not match the SHA-256 instances.json records`);
+    if (!isDeepStrictEqual(parseJsonEntry(bytes, 'oracle.json', 64), JSON.parse(oracleText(oracle)))) fail(`oracles/${oracle.taskId}.json is not the regenerated reference and near misses`);
+    if (entry.oracle?.nearMisses !== oracle.nearMisses.length || oracle.nearMisses.length < 1) fail(`${oracle.taskId} needs its ${oracle.nearMisses.length} near misses (at least one)`);
   }
-  if (oracles.length !== oracleReport.settings.tasks.length) throw new GateInputError('the oracle report does not reference every task of the round');
-  return { world, oracles };
 }
 
-export interface GateFiles { family: Family; round: number; oracle: string; random: string; ladder: string[]; strongest: string; weakest: string; developmentRuns: number; set: string; previous?: string[]; releaseRunsBefore?: number }
-/** Reads, validates and re-verifies the five reports against their bench folders, judges the near
- * misses of the generated set (whose references must be exactly the ones the oracle report stored),
- * and computes the gate. */
+export interface GateFiles {
+  declaration: string; set: string;
+  development: string[]; oracle: string; random: string; ladder: string[];
+  /** The oracle report of each earlier round's held-out set (required from round 2). */
+  previous?: string[]; maintainerApproved?: string[];
+}
+/**
+ * Reads the declaration; regenerates its held-out set and checks the set folder against it; reads,
+ * validates and re-verifies the development and held-out reports (each development report must be
+ * the file the declaration hashed); checks that the oracle report's stored references are the
+ * regenerated ones; judges every regenerated near miss in a separate checker process; and computes
+ * the gate.
+ */
 export async function gateFromFiles(files: GateFiles): Promise<{ result: GateResult; markdown: string }> {
-  const paths = [files.oracle, files.random, ...files.ladder];
-  const reports: BenchReportV2[] = [];
-  for (const path of paths) {
-    const report = await readReport(path);
-    await verifyBenchV2(report, dirname(path), libraryWorld);
-    reports.push(report);
+  const fail = (message: string): never => { throw new GateInputError(message); };
+  const declaration = await readDeclaration(files.declaration).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
+  const { set, seeds } = (() => { try { return heldOutSet(declaration); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } })();
+  await checkSetFolder(files.set, declaration, set, seeds);
+  if (files.development.length !== ROUND.agents || files.ladder.length !== ROUND.agents) fail('name one development and one held-out report per ladder model (--dev and --ladder, three each)');
+  const byModel = async (paths: readonly string[], label: string): Promise<Array<{ report: BenchReportV2; sha256: string }>> => {
+    const reads: Array<{ report: BenchReportV2; sha256: string }> = [];
+    for (const path of paths) reads.push(await verifiedReport(path));
+    return declaration.ladder.map(name => reads.find(read => read.report.agent.model === name) ?? fail(`no ${label} report of ${name}`));
+  };
+  const development = await byModel(files.development, 'development');
+  for (const [index, read] of development.entries()) if (read.sha256 !== declaration.development.reports[index]!.sha256) fail(`the development report of ${declaration.ladder[index]} is not the file the declaration names`);
+  const oracle = await verifiedReport(files.oracle), random = await verifiedReport(files.random);
+  const ladder = await byModel(files.ladder, 'held-out');
+  // The oracle report played the regenerated references.
+  const stored = ReferencesFileSchema.parse(parseJsonEntry(await readFile(join(dirname(files.oracle), BENCH_REFERENCES_FILE)), BENCH_REFERENCES_FILE, 64));
+  for (const oracleEntry of set.oracles) {
+    const reference = stored.references.find(entry => entry.taskId === oracleEntry.taskId);
+    if (!reference || !isDeepStrictEqual(reference.steps, oracleEntry.steps)) fail(`the oracle report's reference for ${oracleEntry.taskId} is not the regenerated one`);
   }
-  const [oracle, random, ...ladder] = reports as [BenchReportV2, BenchReportV2, ...BenchReportV2[]];
-  // Near misses live in the generator's oracle sidecars, not in the bench folder (references.json
-  // keeps only the reference). Each sidecar must hold exactly the reference the oracle report stored
-  // and verified above, for the stored world.
-  const { world, oracles } = await oraclesForGate(dirname(files.oracle), oracle, files.set);
-  const nearMisses = await judgeNearMisses(world, oracles, oracle.settings.seeds);
-  const previousSeeds: number[] = [];
-  for (const path of files.previous ?? []) previousSeeds.push(...(await readReport(path)).environment.world.generated.map(entry => entry.seed));
+  const world = await worldFromPackage(await readFile(join(dirname(files.oracle), oracle.report.environment.world.package.path)));
+  const nearMisses = await judgeNearMisses(world, set.oracles, [1]);
+  const previous = [];
+  for (const path of files.previous ?? []) {
+    const { report } = await verifiedReport(path);
+    const match = /^challenge-[a-z-]+-r(\d)$/.exec(report.environment.world.worldId);
+    if (!match || report.environment.world.worldId !== worldIdOf(declaration.family, `r${match[1]}`)) fail(`${basename(path)} is not a held-out report of ${declaration.family}`);
+    previous.push({ round: Number(match![1]), seeds: report.environment.world.generated.map(entry => entry.seed) });
+  }
   const result = computeGate({
-    family: files.family, round: files.round, oracle, random, ladder, strongest: files.strongest, weakest: files.weakest, nearMisses: { total: nearMisses.total, passed: nearMisses.passed },
-    developmentRuns: files.developmentRuns, ...(previousSeeds.length ? { previousSeeds } : {}),
-    ...(files.releaseRunsBefore !== undefined ? { releaseRunsBefore: files.releaseRunsBefore } : {}),
+    declaration, tasks: seeds.map(seed => taskIdOf(declaration.family, seed)), seeds, worldContentHash: sha256Hex(canonicalJson(set.world)),
+    development: development.map(read => read.report), oracle: oracle.report, random: random.report, ladder: ladder.map(read => read.report),
+    nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
+    previous, maintainerApproved: files.maintainerApproved ?? [],
   });
   return { result, markdown: renderGate(result) };
 }
