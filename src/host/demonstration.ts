@@ -128,6 +128,14 @@ export function withDemonstration(inner: PracticeController, world: World, optio
   const release = <T>(reply: HostReply<T>): HostReply<T> => { if (reply.ok && status !== null) { status = null; withheld = false; emit(); } return reply; };
   /** The demonstration's own verdict, when a Stop overtook its final check: never published. */
   let withheld = false;
+  /** The number the person's next own attempt gets: the demonstration never uses up one of theirs
+   * (the attempt it replaced counts only if the person had acted or opened a hint in it). */
+  let resumeAttempt = 1;
+  /** A reset or variant of the demonstration's attempt on the same task continues the person's count. */
+  const continuing = <T extends { taskId?: string; attempt?: number }>(request: T): T => {
+    if (status === null || (request.taskId !== undefined && request.taskId !== status.taskId)) return request;
+    return { ...request, attempt: resumeAttempt };
+  };
   /** A view of the demonstration's attempt (its task and the attempt it started). */
   const owns = (view: HostView): boolean => status !== null && view.task.id === status.taskId && view.attempt === status.attempt;
   /** Every check of the demonstration's attempt says so and is never practice evidence. */
@@ -176,10 +184,11 @@ export function withDemonstration(inner: PracticeController, world: World, optio
       if (!plan) return reject('not_found', 'This task has no demonstration');
       // A fresh attempt of its own: the board starts at the task's start and the history is empty.
       // The status names that attempt before the reset publishes it, so its first view is marked too.
-      const previous = status, previouslyWithheld = withheld;
+      const previous = status, previouslyWithheld = withheld, previousResume = resumeAttempt;
+      if (previous === null) resumeAttempt = before.attempt + (before.step || before.hintsOpened ? 1 : 0);
       status = { state: 'running', taskId: before.task.id, attempt: before.attempt + 1, total: plan.length, done: 0 }; withheld = false;
       const fresh = await inner.reset({ expectedRevision: request.expectedRevision, confirmed: true }, context);
-      if (!fresh.ok) { status = previous; withheld = previouslyWithheld; return fresh; }
+      if (!fresh.ok) { status = previous; withheld = previouslyWithheld; resumeAttempt = previousResume; return fresh; }
       status = { ...status, taskId: fresh.value.view.task.id, attempt: fresh.value.view.attempt };
       emit();
       const abort = new AbortController(); running = abort;
@@ -198,8 +207,8 @@ export function withDemonstration(inner: PracticeController, world: World, optio
     undo: async (request, context) => owned() ?? inner.undo(request, context),
     hint: async (request, context) => owned() ?? inner.hint(request, context),
     export: async (request, context) => owned() ?? inner.export(request, context),
-    reset: async (request, context) => whileRunning() ?? release(await inner.reset(request, context)),
-    variant: async (request, context) => whileRunning() ?? release(await inner.variant(request, context)),
+    reset: async (request, context) => whileRunning() ?? release(await inner.reset(continuing(request), context)),
+    variant: async (request, context) => whileRunning() ?? release(await inner.variant(continuing(request), context)),
     check: async (request, context) => {
       const refused = whileRunning<PublicCheck>(); if (refused) return refused;
       // A check asked for afterwards replaces a verdict that was withheld; it is published, marked.

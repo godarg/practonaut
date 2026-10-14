@@ -72,6 +72,8 @@ test('the bundled example offers the demonstration: Player metadata, confirmatio
       assert.deepEqual(await post(f.host, '/api/demonstration', body), { status: 400, code: 'invalid_request' }, JSON.stringify(body));
     assert.deepEqual(await post(f.host, '/api/demonstration', { expectedRevision: 7, confirmed: true }), { status: 409, code: 'stale_base' });
     assert.deepEqual(await post(f.host, '/api/demonstration/stop', { now: true }), { status: 400, code: 'invalid_request' });
+    // No request can set the next attempt number (only the demonstration does, inside the host).
+    for (const route of ['/api/reset', '/api/variant']) assert.deepEqual(await post(f.host, route, { expectedRevision: 0, confirmed: true, attempt: 1 }), { status: 400, code: 'invalid_request' }, route);
     // No request can claim the demonstration's actor.
     assert.deepEqual(await post(f.host, '/api/act', { expectedRevision: 0, action: { name: 'add_step', params: { frameId: 'flow-frame', label: 'x', x: 0, y: 0, width: 180, height: 100, fontFamily: 3 } }, actor: { kind: 'demonstration' } }), { status: 400, code: 'invalid_request' });
     assert.equal(await revision(f.host), 0, 'every refusal left the session unchanged');

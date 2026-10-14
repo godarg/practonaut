@@ -230,6 +230,32 @@ describe('bundled example demonstration', () => {
     } finally { await s.controller.close(); }
   });
 
+  it('never uses up one of the person\'s attempt numbers', async () => {
+    // A fresh first attempt, untouched: the person's first own attempt after the demonstration is still 1.
+    const fresh = await session();
+    try {
+      assert.equal(fresh.controller.view().attempt, 1);
+      assert.equal((await fresh.demonstration.start({ expectedRevision: 0, confirmed: true })).ok, true); await fresh.ended();
+      assert.equal((await fresh.controller.reset({ expectedRevision: fresh.controller.view().revision, confirmed: true })).ok, true);
+      assert.equal(fresh.controller.view().attempt, 1);
+    } finally { await fresh.controller.close(); }
+    // An attempt with work in it counts once; two demonstrations in a row and a new variant change nothing about that.
+    const worked = await session({ taskId: 'T3' });
+    try {
+      assert.equal((await worked.controller.act({ expectedRevision: 0, action: { name: 'move_step', params: { id: 'a', x: 60, y: 160 } } })).ok, true);
+      for (let round = 0; round < 2; round++) {
+        assert.equal((await worked.demonstration.start({ expectedRevision: worked.controller.view().revision, confirmed: true })).ok, true);
+        for (let i = 0; i < 100 && worked.demonstration.status()?.state === 'running'; i++) await new Promise(resolve => setImmediate(resolve));
+      }
+      assert.equal((await worked.controller.variant({ expectedRevision: worked.controller.view().revision, confirmed: true })).ok, true);
+      assert.equal(worked.controller.view().attempt, 2);
+      // From then on the count goes on as before.
+      assert.equal((await worked.controller.act({ expectedRevision: worked.controller.view().revision, action: { name: 'move_step', params: { id: 'a', x: 80, y: 160 } } })).ok, true);
+      assert.equal((await worked.controller.reset({ expectedRevision: worked.controller.view().revision, confirmed: true })).ok, true);
+      assert.equal(worked.controller.view().attempt, 3);
+    } finally { await worked.controller.close(); }
+  });
+
   it('exists for the bundled example only, and its actions resolve created ids in order', async () => {
     assert.equal(demonstrationWorld(world()), true);
     assert.equal(demonstrationWorld(validateWorld({ ...structuredClone(raw), version: '1.0.1' } as never)), false, 'a changed example is not the one the scripts were written for');

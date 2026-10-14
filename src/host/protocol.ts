@@ -64,8 +64,10 @@ export interface RevisionRequest { expectedRevision: number }
 /** Internal monotonic deadline, set at HTTP admission and never taken from wire input. */
 export interface TransactionContext { deadline:number }
 export interface ActRequest extends RevisionRequest { action: Action; actor?: Actor }
-export interface ResetRequest extends RevisionRequest { confirmed: true }
-export interface VariantRequest extends RevisionRequest { confirmed: true; taskId?: string }
+/** `attempt`: the number the new attempt gets, set only by the host's demonstration (its own
+ * attempt never counts); no HTTP request can carry it. */
+export interface ResetRequest extends RevisionRequest { confirmed: true; attempt?: number }
+export interface VariantRequest extends RevisionRequest { confirmed: true; taskId?: string; attempt?: number }
 export type HostReply<T> = { ok: true; value: T } | { ok: false; error: { code: HostErrorCode; message: string; details?: Record<string, string | number | boolean | null> } };
 /** What one mutation changed (see `mutationDelta`): public data, sized by the change, not the board. */
 export interface MutationDelta {
