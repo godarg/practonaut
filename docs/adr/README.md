@@ -44,3 +44,4 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted | 2026-10-14 |
 | [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | accepted | 2026-10-14 |
 | [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | accepted | 2026-10-14 |
+| [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) | Bench report v2: any world, the world stored with the runs, isolation level, optional reference; generated instances are materialised | proposed | 2026-10-14 |
