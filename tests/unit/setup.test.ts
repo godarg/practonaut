@@ -14,12 +14,12 @@ test('the named download size belongs to the pinned Playwright and its headless 
   assert.equal(HEADLESS_SHELL.playwright, pinned.version, 'sizes measured for another Playwright: re-measure the CDN archives');
   assert.equal(HEADLESS_SHELL.browserVersion, browsers.browsers.find(entry => entry.name === 'chromium-headless-shell')?.browserVersion);
   // Hand-summed archive sizes (headless shell + ffmpeg), rounded to whole MB.
-  assert.equal(headlessShellMegabytes('darwin', 'arm64'), 100);
-  assert.equal(headlessShellMegabytes('linux', 'x64'), 122);
-  assert.equal(headlessShellMegabytes('win32', 'x64'), 122);
+  assert.equal(headlessShellMegabytes('darwin', 'arm64'), 105);
+  assert.equal(headlessShellMegabytes('linux', 'x64'), 128);
+  assert.equal(headlessShellMegabytes('win32', 'x64'), 125);
   // An unknown platform is told the largest measured size, never less.
-  assert.equal(headlessShellMegabytes('freebsd', 'x64'), 122);
-  assert.deepEqual(headlessShellDownload('darwin', 'x64'), { name: 'Chromium headless shell', size: 105 });
+  assert.equal(headlessShellMegabytes('freebsd', 'x64'), 128);
+  assert.deepEqual(headlessShellDownload('darwin', 'x64'), { name: 'Chromium headless shell', size: 111 });
 });
 
 test('doctor counts a cache with only the headless shell as installed, and a headed Chromium alone as missing', async () => {

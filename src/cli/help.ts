@@ -246,12 +246,12 @@ bench_world_changed, bench_artifact_changed, bench_reference_invalid oder bench_
     en: `Usage: practonaut setup
 
 Downloads the one thing the real Excalidraw mirror needs, Playwright's pinned Chromium headless shell
-(about 100 to 125 MB depending on the platform; the exact size is printed first), or reuses its cache.
+(about 105 to 130 MB depending on the platform; the exact size is printed first), or reuses its cache.
 Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.`,
     de: `Verwendung: practonaut setup
 
 Lädt das Einzige, was die echte Excalidraw-Spiegelung braucht: Playwrights gepinnte Chromium Headless Shell
-(etwa 100 bis 125 MB je nach Plattform; die genaue Größe steht vorher da), oder nutzt den Cache.
+(etwa 105 bis 130 MB je nach Plattform; die genaue Größe steht vorher da), oder nutzt den Cache.
 Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.`,
   },
   doctor: {

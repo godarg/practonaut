@@ -27,8 +27,8 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 
-- **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 100 MB on
-  macOS, 122 MB on Linux and Windows, instead of the full browser as well) and names it with its
+- **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 105 MB on
+  macOS, 125 to 128 MB on Linux and Windows, instead of the full browser as well) and names it with its
   size before anything is fetched; `doctor` counts a cache with only the headless shell as installed.
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,

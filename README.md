@@ -26,7 +26,7 @@ Requires Node.js 22.18 or newer (macOS, Linux or Windows).
 
 ```bash
 npx practonaut                 # opens the example task in your browser at once
-npx practonaut setup           # once: the Chromium headless shell for the real Excalidraw engine (about 100–125 MB)
+npx practonaut setup           # once: the Chromium headless shell for the real Excalidraw engine (about 105–130 MB)
 ```
 
 **Watch a demonstration** in the Player solves the example task once: actions land on the board,

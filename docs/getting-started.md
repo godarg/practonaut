@@ -49,13 +49,13 @@ npx practonaut setup
 ```
 
 This names the download with its size and then fetches it: Playwright's **Chromium headless
-shell** (about 100 MB on macOS, 122 MB on Linux and Windows; nothing is fetched when Playwright's
+shell** (about 105 MB on macOS, 125 to 128 MB on Linux and Windows; nothing is fetched when Playwright's
 cache already has it). With it, every step you or an agent take is also
 applied to a real, pinned Excalidraw 0.18.1 running in the background and read back before it
 counts (the "mirror"). Without it Practonaut runs **model-only**: tasks work, the terminal and the
 Player say so, and results are not checked against the real app. `--mirror required` refuses to
 start without Chromium; `--mirror off` always runs model-only. `setup` ends by naming the folder the
-headless shell went to and its size on disk (195 MB measured on macOS).
+headless shell went to and its size on disk (203 MB measured on macOS).
 
 ### Chromium does not start
 

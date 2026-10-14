@@ -48,7 +48,7 @@ export function demonstrationGate(): DemonstrationGate {
   };
 }
 /** What `npx practonaut` without Chromium tells the Player. */
-export const MISSING_CHROMIUM: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup", download: { name: "Chromium headless shell", megabytes: 100 } };
+export const MISSING_CHROMIUM: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup", download: { name: "Chromium headless shell", megabytes: 105 } };
 
 export interface PlayerSession {
   localDirectory: string; host: RunningHost; browser: Browser; context: BrowserContext; page: Page; cdp: CDPSession;
