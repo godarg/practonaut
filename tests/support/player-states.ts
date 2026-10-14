@@ -16,6 +16,8 @@ import { launchBrowser } from "./browser.ts";
 import { startHost } from "../../src/host/server.ts";
 import { validateWorld } from "../../src/world/schema.ts";
 import { TOKEN_HEADER, type HostReply, type HostView, type RunningHost } from "../../src/host/protocol.ts";
+import type { World } from "../../src/world/types.ts";
+import { v2Task, v2World } from "./world-v2.ts";
 
 export type Theme = "light" | "dark";
 export type Language = "en" | "de";
@@ -30,10 +32,10 @@ export interface PlayerSession {
 }
 
 /** Host with the editor and the create flow (phase3), Chromium with reduced motion, offline. */
-export async function startPlayer(options: { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off' } = {}): Promise<PlayerSession> {
+export async function startPlayer(options: { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off'; world?: World; taskId?: string; checks?: number } = {}): Promise<PlayerSession> {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "pn-design-"));
-  const world = validateWorld(JSON.parse(readFileSync("examples/worlds/flow-diagram/world.json", "utf8")));
-  const host = await startHost(world, { phase3: options.phase3??true,mirror:options.mirror??'required',taskId: "T3", seed: 42, localDirectory: directory, tokenDirectory: join(directory, "credentials"), requireOffline: process.env.PN_REQUIRE_OFFLINE === "1" });
+  const world = options.world ?? validateWorld(JSON.parse(readFileSync("examples/worlds/flow-diagram/world.json", "utf8")));
+  const host = await startHost(world, { phase3: options.phase3??true,mirror:options.mirror??'required',taskId: options.taskId ?? "T3", seed: 42, localDirectory: directory, tokenDirectory: join(directory, "credentials"), requireOffline: process.env.PN_REQUIRE_OFFLINE === "1", ...(options.checks !== undefined ? { checks: options.checks } : {}) });
   const browser = options.browser ?? await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: options.width ?? 1280, height: options.height ?? 900 }, colorScheme: options.theme ?? "light", reducedMotion: "reduce", serviceWorkers: "block" });
   const external: string[] = [];
@@ -638,6 +640,28 @@ function createState(index: number): StateDef {
 PLAYER_STATES.push(createState(0));
 /** Create states that change the author project; run them after the others, in this order. */
 export const CREATE_PROGRESS_STATES: StateDef[] = CREATE_STEPS.slice(1).map((_, i) => createState(i + 1));
+/** A world/2 task with both limits (PADR-0040): three changes and two checks per attempt. */
+export const limitsWorld = (): World => v2World({ tasks: [v2Task({ limits: { actions: 3, checks: 2 } })] });
+/** Task limits in the Player: what remains is shown, and a used-up check limit turns Check off.
+ * Needs `startPlayer({ world: limitsWorld(), taskId: 'T1', phase3: false })`. */
+export const LIMIT_STATES: StateDef[] = [
+  { id: 'practice-limits', label: 'Limited attempt: changes used and checks left', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+    if (!(await s.observe()).limits) throw new Error('limit states need a task with limits');
+    await s.page.getByTestId('checks-left').waitFor();
+  } },
+  { id: 'practice-checks-left', label: 'One change and one failed check used', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+    await act(s, { name: 'move_step', params: { id: 'a', x: 120, y: 100 } });
+    await s.page.getByTestId('check').click();
+    await s.page.waitForFunction(() => /1/.test(document.querySelector('[data-testid=checks-left]')?.textContent ?? ''));
+  } },
+  { id: 'practice-limits-used', label: 'Every change and check of the attempt used', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+    await act(s, { name: 'move_step', params: { id: 'a', x: 140, y: 100 } });
+    await act(s, { name: 'connect', params: { from: 'b', to: 'c' } });
+    await s.page.getByTestId('check').click();
+    await s.page.waitForFunction(() => (document.querySelector('[data-testid=check]') as HTMLButtonElement | null)?.disabled === true);
+  } },
+];
+
 export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',label:'Model-only host refuses the native/session pair',workspace:'board',view:'[data-testid=export-panel]',async enter(s){
   if((await s.observe()).mirror!=='off')throw new Error('model-only state requires a real model-only host');
   await s.page.getByTestId('export-model-only').waitFor();
