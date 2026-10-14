@@ -171,7 +171,7 @@ if [ $RC -eq 0 ] && grep -q "^1/1 passed · 95 % interval" "$TMP/bench.out"; the
 # The report was written elsewhere with --out: --runs names its bench folder for the run details.
 FIRST="$(ls -td "$PRACTONAUT_HOME"/bench/*/ | head -n 1)"
 "$BIN" report "$TMP/bench.json" --runs "$FIRST" --html "$TMP/bench.html" >/dev/null; RC=$?
-if [ $RC -eq 0 ] && grep -q -- "--pn-color-bg" "$TMP/bench.html" && grep -q "\.sch-step{" "$TMP/bench.html" && grep -q 'class="schematic"' "$TMP/bench.html"; then ok "installed report --html inlines the design tokens and the report stylesheet and draws the board"; else fail "installed report --html -> exit $RC"; fi
+if [ $RC -eq 0 ] && grep -q -- "--pn-color-bg" "$TMP/bench.html" && grep -q "\.sch-step{" "$TMP/bench.html" && grep -q 'class="schematic pw-' "$TMP/bench.html"; then ok "installed report --html inlines the design tokens and the report stylesheet and draws the board"; else fail "installed report --html -> exit $RC"; fi
 "$BIN" compare "$TMP/bench.json" "$TMP/bench.json" --fail-on-regression >"$TMP/compare.out"; RC=$?
 if [ $RC -eq 0 ] && grep -q "not distinguishable at this n" "$TMP/compare.out"; then ok "installed compare (a report against itself: no regression)"; else cat "$TMP/compare.out" >&2; fail "installed compare -> exit $RC"; fi
 "$BIN" bench --agent random --world "$TMP/flow.pnworld" --tasks T3 --mirror off --max-actions 3 >"$TMP/own.out" 2>"$TMP/own.err"; RC=$?
