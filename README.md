@@ -74,6 +74,7 @@ npx practonaut bench --agent "my-agent --mcp {mcp_config} --prompt {prompt}"   #
 npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json   # your own task
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify     # re-judge from the run files
+npx practonaut compare before/report.json after/report.json --fail-on-regression   # did a change break an instance?
 ```
 
 Each run gets its own session and data folder; the agent reaches the session only through the
@@ -90,6 +91,15 @@ checker on the session and the real-app export kept in the bench folder, whose S
 records, against the world and reference solutions stored in that folder (so a moved folder still
 verifies), re-derives each run's actions and reference length, and refuses any difference by name; host calls and times are marked as reported by the runner. Nothing is
 signed: whoever can write the bench folder can replace those files too.
+
+A report says why a run failed, not only that it did: rates as fractions with a 95 % interval, failed
+runs first, each unmet goal condition with the action after which it was last lost (judged by the
+checker after every action), error classes with their explanation, the trajectory, the final board —
+the real Excalidraw's own export, or a schematic labelled as such — beside an example target, the
+call log and the tokens, turns and cost the client reports about itself. `compare` puts two reports
+side by side instance by instance: it refuses reports that are not comparable, names instance
+regressions (three repeats a side, all passed before, all failed after) and says "not
+distinguishable at this n" when an exact McNemar test cannot tell the two apart.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bench-report-dark.png">

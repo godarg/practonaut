@@ -85,6 +85,39 @@ test('a consistent /2 report validates; every inconsistent /2 field is refused',
   refused(value => { (value as unknown as Record<string, unknown>).schema = 'practonaut.bench/3'; }, /report does not match practonaut\.bench\/1 or practonaut\.bench\/2/);
 });
 
+test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client timing and client figures follow their rules', () => {
+  /** A command agent's report whose first run carries every evidence field. */
+  const withEvidence = (): BenchReportV2 => {
+    const value = structuredClone(v2Report()), first = value.runs[0]!;
+    first.artifacts = { ...first.artifacts!, trace: hash('7'), board: null };
+    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act, omitted: 0 } };
+    first.client = { source: 'command-output', model: 'some-model', turns: 6, costUsd: 0.05, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 } };
+    return value;
+  };
+  assert.doesNotThrow(() => validateBenchReportV2(withEvidence()));
+  const refused = (mutate: (value: BenchReportV2) => void, message: RegExp): void => {
+    const value = withEvidence(); mutate(value); value.summary = summarize(value.runs, value.settings.repeats);
+    assert.throws(() => validateBenchReport(value), (error: Error & { code?: string }) => error.code === 'bench_report_invalid' && message.test(error.message), message.source);
+  };
+  refused(value => { value.runs[0]!.artifacts!.board = hash('b'); }, /binds a picture of the real engine, but the bench ran without the mirror/);
+  refused(value => { value.runs[0]!.artifacts!.traceError = 'checker_timeout'; }, /trace and a trace error must not appear together/);
+  refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
+  // A trace without the mutation log that re-derives it could never be re-verified: refused outright.
+  refused(value => { delete value.runs[0]!.logs; }, /binds a condition trace without the mutation log it is re-derived from/);
+  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
+  refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
+  refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);
+  // A trace that could not be made, with its error, is valid; so is a run without any evidence (an older /2 report).
+  const failed = withEvidence(); failed.runs[0]!.artifacts!.trace = null; failed.runs[0]!.artifacts!.traceError = 'checker_timeout';
+  assert.doesNotThrow(() => validateBenchReportV2(failed));
+  // The JSON Schema file accepts the evidence fields and refuses an unknown one inside them.
+  const schema = z.fromJSONSchema(JSON.parse(readFileSync(new URL('../../schemas/bench.v2.json', import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
+  const value = JSON.parse(JSON.stringify(withEvidence()));
+  assert.equal(schema.safeParse(value).success, true);
+  value.runs[0].logs.mutations.extra = 1;
+  assert.equal(schema.safeParse(value).success, false);
+});
+
 test('schemas/bench.v2.json, read from the file, accepts a /2 report and rejects extra, missing or /1 fields', () => {
   const read = (file: string) => z.fromJSONSchema(JSON.parse(readFileSync(new URL(`../../schemas/${file}`, import.meta.url), 'utf8')) as Parameters<typeof z.fromJSONSchema>[0]);
   const v2 = read('bench.v2.json'), v1 = read('bench.v1.json');
@@ -105,10 +138,11 @@ test('rendering names label, isolation level, world, generated instances and "no
   const value = v2Report(); value.label = 'nightly \u001b[31m<b>run</b>\u202e';
   const table = renderTable(value), html = renderHtml(value, ':root{}');
   assert.match(table, /^Label: nightly \\u\{001b\}\[31m<b>run<\/b>\\u\{202e\}$/m);
-  assert.match(table, /^Isolation: template: tools not restricted by Practonaut$/m);
+  // The header line names the model, that it is self-reported, and where the name came from.
+  assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported, from the command output\)$/m);
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
   assert.match(table, /^Content hash \(SHA-256\): d{64}$/m);
-  assert.match(table, /^Practonaut bench  generic  model some-model \(from the command output\)  /m);
+  assert.match(table, /^Practonaut bench  generic$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
   assert.match(table, /efficiency vs reference 0\.50, over 1 of 2 tasks with a validated reference/);
@@ -118,23 +152,25 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(html, /<td>no reference<\/td><td>no reference<\/td>/);
   assert.match(html, /<dt>Content hash \(SHA-256\)<\/dt><dd>d{64}<\/dd>/);
   assert.match(html, /model: some-model \(from the command output\)/);
-  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and the agent exit status, and what the client said about itself \(model, API key source\)/);
+  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and the agent exit status, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
   const attested = v2Report(); attested.agent = { ...attested.agent, kind: 'preset', name: 'claude-code', isolation: 'tool-restricted-preset', modelSource: 'client-attested' };
-  assert.match(renderTable(attested), /model some-model \(client-attested\)/);
+  assert.match(renderTable(attested), /· model some-model \(self-reported, client-attested\)$/m);
   assert.equal(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/.test(table + html), false);
   for (const [kind, words] of [['builtin', 'built-in baseline: no language model, MCP only'], ['preset', 'tool-restricted preset']] as const) {
     const other = v2Report(); other.agent = { ...other.agent, kind, isolation: ISOLATION_OF[kind], command: kind === 'builtin' ? [] : other.agent.command, model: null, modelSource: 'none', apiKeySource: null };
-    assert.match(renderTable(other), new RegExp(`^Isolation: ${words}$`, 'm'));
+    assert.match(renderTable(other), new RegExp(`^2/4 passed · .* · ${words}${kind === 'builtin' ? '' : ' · model not reported'}$`, 'm'));
   }
   const de = renderTable(value, 'de');
-  assert.match(de, /^Isolation: Vorlage: Werkzeuge nicht von Practonaut eingeschränkt$/m);
+  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
-  assert.match(de, /Modell some-model \(aus der Ausgabe des Befehls\)/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /Modell: some-model \(aus der Ausgabe des Befehls\)/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
-  // A /1 report renders as before: no isolation or world line was recorded.
+  // A /1 report did not record its isolation level or a world line; its header line says so.
   const v1 = JSON.parse(readFileSync(new URL('../fixtures/bench/v1/report.json', import.meta.url), 'utf8'));
-  assert.equal(/^Isolation:/m.test(renderTable(validateBenchReport(v1))), false);
+  const old = renderTable(validateBenchReport(v1));
+  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded \(bench\/1\)$/m);
+  assert.equal(/^World:/m.test(old), false);
 });
 
 test('the client init line gives the model and apiKeySource, each only when it is plain text', () => {

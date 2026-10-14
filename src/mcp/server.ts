@@ -9,12 +9,18 @@ import { inputProblems, MCP_INSTRUCTIONS, MCP_TOOL_NAMES, PRACTISE_PROMPT, TOOL_
 import type { CompactView } from "./replies.ts";
 import type { ActionDefinition } from "../world/types.ts";
 
-/** One line per `tools/call`, when `practonaut mcp --call-log <file>` asks for it: the tool (or
- * "unknown"), its result code, the bytes of the result exactly as sent (every content part,
- * `structuredContent` and what the SDK adds) and the bridge's own processing time, from the request
- * reaching this process to its reply being sent. The client's round trip is not visible here. Names
- * and numbers only: no arguments, no reply content. */
-export interface CallLogEntry { tool: string; code: string; resultBytes: number; bridgeMs: number }
+/** One line per `tools/call`, when `practonaut mcp --call-log <file>` asks for it: the JSON-RPC
+ * request id (so a client can join its own round trip, PADR-0039; null when it is not a plain number
+ * or short name), the tool (or "unknown"), its result code, the bytes of the result exactly as sent
+ * (every content part, `structuredContent` and what the SDK adds) and the bridge's own processing
+ * time, from the request reaching this process to its reply being sent. The client's round trip is
+ * not visible here. Names and numbers only: no arguments, no reply content. */
+export interface CallLogEntry { id: number | string | null; tool: string; code: string; resultBytes: number; bridgeMs: number }
+/** A request id as the call log keeps it: a safe integer or a short plain name, else null. */
+export function loggedRequestId(id: unknown): number | string | null {
+  if (typeof id === "number") return Number.isSafeInteger(id) ? id : null;
+  return typeof id === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(id) ? id : null;
+}
 export interface McpServerOptions { actions?: readonly ActionDefinition[] }
 function appendCallLog(path: string, entry: CallLogEntry): void {
   try { appendFileSync(path, JSON.stringify(entry) + "\n", { mode: 0o600 }); } catch { /* The log is a measurement aid; a failed write never fails the call. */ }
@@ -98,7 +104,7 @@ export function startMcpStdio(bridge: McpBridge, options: { transport?: StdioSer
         let code = "ok";
         if (error) code = typeof error.message === "string" && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "rpc_error";
         else if (result?.isError) { const parsed = result.structuredContent ?? (() => { try { return JSON.parse(result.content?.[0]?.text ?? "{}") as { error?: { code?: unknown } }; } catch { return {}; } })(); code = typeof parsed.error?.code === "string" ? parsed.error.code : "error"; }
-        appendCallLog(path, { tool: call.tool, code, resultBytes: Buffer.byteLength(JSON.stringify(result ?? error ?? null)), bridgeMs: Math.round((performance.now() - call.started) * 10) / 10 });
+        appendCallLog(path, { id: loggedRequestId(id), tool: call.tool, code, resultBytes: Buffer.byteLength(JSON.stringify(result ?? error ?? null)), bridgeMs: Math.round((performance.now() - call.started) * 10) / 10 });
       }
       return send(message);
     };

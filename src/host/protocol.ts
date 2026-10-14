@@ -108,7 +108,8 @@ export interface PracticeController {
   hint(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<HostView>>;
   check(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<PublicCheck>>;
   png(context?:TransactionContext): Promise<HostReply<Uint8Array>>;
-  export(request:RevisionRequest,context?:TransactionContext):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
+  /** `options.picture` adds the engine's SVG of the same confirmed scene (in-process callers only). */
+  export(request:RevisionRequest,context?:TransactionContext,options?:{picture?:boolean}):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
   subscribe(listener: (event: HostEvent) => void): () => void;
   editor?(request: import('./author-protocol.ts').EditorGestureRequest,context?:TransactionContext): Promise<HostReply<MutationReply>>;
   scene?(): import('../adapters/excalidraw/raw.ts').RawElement[];

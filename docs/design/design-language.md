@@ -558,6 +558,19 @@ or hidden by the layout: where the embedded editor would cut its own controls (E
 "Swipe sideways…" and a persistent scrollbar, because a phone-width editor would draw the steps too
 small to read; the object list is the complete text route (product-recovery, "Editor width").
 
+### 10.5 Bench report and compare (static pages)
+
+The pages `report --html` and `compare --html` write: one static file each, tokens plus
+`src/bench/report.css` in one hashed style, no script, no external asset, no `data:` URI; linted by the
+report profile of `design:lint`. The reader's next action: find the run that failed and see why. So the
+header line carries the fraction, the 95 % interval, verification, mirror and isolation level; failed
+runs come first and open (`<details>`), passed runs collapsed; each run shows its states by name, the
+goal conditions with ✓/✗ and words, the board and an example target side by side (stacked below 60 rem),
+the trajectory and call log in scroll regions. The board is the real engine's export or a schematic in
+the content tokens, always captioned with which one it is; groups appear as a dashed outline and a
+legend. Rates are fractions (PADR-0039 B.2). Long names wrap anywhere; drawings and wide tables scroll
+inside their own region, the page never scrolls sideways.
+
 ## 11. States
 
 Every surface defines these states. A screen without them is not finished.

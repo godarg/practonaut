@@ -18,6 +18,9 @@ export interface CurrentSessionExport extends ExportRouting {
  schema:'practonaut.export/1';revision:number;hash:string;
  session:{file:'practonaut-session.json';utf8:string;sha256:string};
  native:{file:'practonaut.excalidraw';utf8:string;sha256:string};
+ /** Only when an in-process caller asked for it (the bench, PADR-0039): the real engine's SVG
+  * export of the same confirmed scene. The HTTP route never asks for it. */
+ picture?:{file:'practonaut.svg';utf8:string;sha256:string};
 }
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const schema=z.strictObject({schema:z.literal('practonaut.export-pair/1'),revision:z.number().int().nonnegative().safe(),hash,
