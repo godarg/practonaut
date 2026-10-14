@@ -15,6 +15,7 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import { TOKEN_HEADER } from '../../src/host/protocol.ts';
 import { headlessShellMegabytes } from '../../src/cli/chromium-download.ts';
 import { scanForHiddenReferences, hiddenReferenceMarkers } from '../support/oracle-scan.ts';
+import { PLAYER_STATES, startPlayer } from '../support/player-states.ts';
 
 const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 
@@ -126,6 +127,17 @@ test('without Chromium: the Player opens at once, says what is not checked yet, 
     assert.equal(await started.stop(), 0);
     await rm(empty, { recursive: true, force: true });
   }
+});
+
+test('in the real editor the demonstration\'s board refuses an edit and says why in words, not a code', { timeout: 180_000 }, async () => {
+  const s = await startPlayer();
+  try {
+    await PLAYER_STATES.find(state => state.id === 'editor-demonstration')!.enter(s);
+    const status = await s.page.getByTestId('phase3-status').innerText();
+    assert.match(status, /This board belongs to the demonstration\. Start your own attempt to work on it\./);
+    assert.doesNotMatch(status, /demonstration_attempt/);
+    assert.equal((await s.observe()).history.every(item => item.actor.kind === 'demonstration'), true, 'the edit did not land');
+  } finally { await s.close(); }
 });
 
 test('with the real engine: no banner, and the real Excalidraw confirms every demonstrated action before the verdict', { timeout: 180_000 }, async () => {

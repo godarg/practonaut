@@ -493,6 +493,17 @@ export const PLAYER_STATES: StateDef[] = [
     await moreToolsState(s);
   } },
   ...NATIVE_SPREADSHEET_PROBES.map(probe=>({id:'editor-spreadsheet-preview-range-'+probe.rangeIndex,label:'Native spreadsheet preview, original range '+probe.rangeIndex,workspace:'editor' as const,view:'[data-testid=real-editor]',reenterOnViewportChange:true,nativeFixture:{textSha256:createHash('sha256').update(spreadsheetFixture(probe.rangeIndex)).digest('hex'),rangeIndex:probe.rangeIndex,codepoints:probe.codepoints,originalFontSha256:probe.sourceSha256,rangeManifestSha256:NATIVE_SPREADSHEET_MANIFEST_SHA,glyphUsage:'UNBEKANNT' as const},async enter(session:PlayerSession){await spreadsheetState(session,probe.rangeIndex);}})),
+  // Last of the editor states: it leaves the demonstration's attempt behind (the next state's baseline resets it).
+  { id: "editor-demonstration", label: "Excalidraw workspace on the demonstration's board: an edit is refused and says why", workspace: "editor", async enter(s) {
+    await practiceBaseline(s); await demonstrate(s, "finished");
+    await mode(s.page, "editor");
+    await wide(s.page, async () => {
+      const frame = await editorFrame(s.page);
+      const p = await editorPoint(s.page, frame, "a"); await s.page.mouse.click(p.x, p.y);
+      await frame.getByTestId("color-top-pick-#e03131").click();
+      await s.page.locator('[data-testid="phase3-status"].error').filter({ hasText: /demonstration|Vorführung/ }).waitFor({ timeout: 15_000 });
+    });
+  } },
 ];
 
 /**
