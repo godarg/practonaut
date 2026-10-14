@@ -28,13 +28,15 @@ import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import { StdioMcpClient, type McpServerEntry } from './mcp-client.ts';
 import { runOracle, runRandom } from './baselines.ts';
-import { agentArguments, BENCH_PROMPT, clientAttestedModel, displayCommand, type AgentSpec } from './agents.ts';
+import { agentArguments, agentEnvironment, BENCH_PROMPT, clientAttestedModel, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
 import { BENCH_SCHEMA, derivedPass, summarize, validateBenchReport, type BenchReport, type BenchRun } from './report.ts';
 
 export interface BenchOptions {
   agent: AgentSpec; tasks: string[]; seeds: number[]; repeats: number;
   timeoutSeconds: number; maxActions: number; mirrorRequested: 'auto' | 'required' | 'off'; mirror: MirrorMode;
+  /** Variables a preset agent gets although `withheldFromPreset` names them (`--keep-env`). */
+  keepEnv?: readonly string[];
   /** Progress lines (stderr in the CLI). */
   progress?: (line: string) => void;
   /** Aborted on Ctrl+C, SIGTERM or SIGHUP: the running agent is stopped, its session closed, and the
@@ -204,7 +206,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       const configPath = join(agentDirectory, 'mcp.json');
       await writeFile(configPath, JSON.stringify({ mcpServers: { practonaut: { type: 'stdio', ...entry } } }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
       // The agent's data folder is its own subdirectory, not the run directory the artifacts go to.
-      const env: NodeJS.ProcessEnv = { ...process.env, PRACTONAUT_HOME: agentDirectory };
+      // A preset gets no provider API keys or billing switches unless kept by name (PADR-0034).
+      const env: NodeJS.ProcessEnv = { ...agentEnvironment(options.agent, process.env, options.keepEnv).env, PRACTONAUT_HOME: agentDirectory };
       for (const name of ['PRACTONAUT_HOST', 'PRACTONAUT_TOKEN_FILE', 'PRACTONAUT_SESSION_TOKEN']) delete env[name];
       const started = performance.now(), deadlineMs = options.timeoutSeconds * 1000;
       if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, library, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });

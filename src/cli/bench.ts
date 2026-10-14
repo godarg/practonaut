@@ -5,7 +5,7 @@ import { RuntimeError } from './runtime.ts';
 import { fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
-import { AgentTemplateError, resolveAgent } from '../bench/agents.ts';
+import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
 import { verifyBenchArtifacts } from '../bench/verify.ts';
 import { BenchReportError, validateBenchReport } from '../bench/report.ts';
@@ -13,7 +13,7 @@ import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--repeats', '--timeout', '--max-actions', '--mirror', '--out'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -36,7 +36,7 @@ function positiveInteger(raw: string | undefined, fallback: number, option: stri
   return Number(raw);
 }
 
-export interface BenchArguments { agent: string; tasks: string[]; seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; out?: string }
+export interface BenchArguments { agent: string; tasks: string[]; seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; out?: string }
 export function parseBenchArguments(args: string[]): BenchArguments {
   const parsed = flags(args, VALUED);
   if (parsed.positional.length || !parsed.flags['--agent']) throw new RuntimeError('usage', cliText('benchUsage'));
@@ -48,10 +48,12 @@ export function parseBenchArguments(args: string[]): BenchArguments {
   const seeds = positiveInteger(parsed.flags['--seeds'], 1, '--seeds', 1000);
   const mirror = parsed.flags['--mirror'] ?? 'auto';
   if (mirror !== 'auto' && mirror !== 'required' && mirror !== 'off') throw new RuntimeError('usage', cliText('mirrorUsage'));
+  const keepEnv = parsed.flags['--keep-env'] === undefined ? [] : parsed.flags['--keep-env'].split(',').map(value => value.trim());
+  if (keepEnv.some(name => !ENV_NAME.test(name))) throw new RuntimeError('usage', cliText('benchKeepEnv'));
   return {
     agent: parsed.flags['--agent']!, tasks, seeds: Array.from({ length: seeds }, (_, index) => index + 1),
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
-    maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
+    maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
   };
 }
 
@@ -66,6 +68,10 @@ export async function commandBench(args: string[]): Promise<number> {
   const options = parseBenchArguments(args);
   let agent;
   try { agent = resolveAgent(options.agent); } catch (error) { if (error instanceof AgentTemplateError) throw new RuntimeError('usage', error.message); throw error; }
+  if (options.keepEnv.length && agent.kind !== 'preset') throw new RuntimeError('usage', cliText('benchKeepEnvPreset'));
+  // Names only, never values: what the preset agent will not get (PADR-0034).
+  const { withheld } = agentEnvironment(agent, process.env, options.keepEnv);
+  if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.join(', ') }));
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
   process.stderr.write(cliText('benchStart', { runs: options.tasks.length * options.seeds.length * options.repeats, agent: agent.name, mode: mirror.mode === 'required' ? 'real-engine' : cliText('modelOnly') }));
@@ -84,7 +90,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {

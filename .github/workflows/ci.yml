@@ -93,6 +93,43 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           node --import ./tests/support/test-home.ts --test --test-reporter=spec tests/integration/browser-start.test.ts
 
+  # Newer Node lines, outside the required checks: their names stay `test (<os>)` and `secret scan`
+  # (the ruleset is a maintainer setting). Node 22 remains the supported minimum.
+  node:
+    name: node ${{ matrix.node }} (ubuntu-latest)
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24', '26']
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Cache Playwright Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check
+      - if: ${{ !cancelled() }}
+        run: npm test
+      - if: ${{ !cancelled() }}
+        run: npm run build
+      - if: ${{ !cancelled() }}
+        run: npm run test:integration
+      - if: ${{ !cancelled() }}
+        run: npm run test:mcp
+      - if: ${{ !cancelled() }}
+        run: npm run test:pack
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest

@@ -46,7 +46,8 @@ Hostile fixtures are generated at test time by an independent, permissive zip wr
 | Platform | Status |
 |---|---|
 | macOS arm64, Node 22 | development target, all layers measured locally |
-| Ubuntu, macOS, Windows (Node 22) | CI (`.github/workflows/ci.yml`): check, unit, build, integration, MCP and pack on all three; demo, adapter, e2e and a11y on Ubuntu. Platform branches are also unit-tested with a simulated platform (`tests/unit/platform.test.ts`). The CI workflow has not run on GitHub yet; Linux and Windows were not tried by hand. |
+| Ubuntu, macOS, Windows (Node 22) | CI (`.github/workflows/ci.yml`, required checks `test (<os>)`): check, unit, build, integration, MCP and pack on all three; demo, adapter, e2e and a11y on Ubuntu. Platform branches are also unit-tested with a simulated platform (`tests/unit/platform.test.ts`). Linux and Windows were not tried by hand. |
+| Ubuntu, Node 24 and 26 | CI job `node <version> (ubuntu-latest)`, not a required check: check, unit, build, integration, MCP and pack. |
 
 ## Evaluator rules for worlds
 

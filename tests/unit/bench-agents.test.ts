@@ -2,7 +2,7 @@
 // contracts, and the bench/mcp argument parsers.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentArguments, AGENT_PRESETS, clientAttestedModel, displayCommand, resolveAgent, spawnable, splitTemplate, windowsResolve } from '../../src/bench/agents.ts';
+import { agentArguments, agentEnvironment, AGENT_PRESETS, clientAttestedModel, displayCommand, resolveAgent, spawnable, splitTemplate, windowsResolve } from '../../src/bench/agents.ts';
 import { randomParameter, seededRandom } from '../../src/bench/baselines.ts';
 import { parseBenchArguments } from '../../src/cli/bench.ts';
 import { parseMcpArguments } from '../../src/cli/mcp.ts';
@@ -34,6 +34,30 @@ test('the claude-code preset limits Claude Code to the strict Practonaut MCP con
   assert.deepEqual(displayCommand(['run', `${home}/x/{mcp_config}`, `${home}else`], home), ['run', '~/x/{mcp_config}', `${home}else`]);
 });
 
+test('preset environment: provider keys and billing switches are withheld unless kept by name; built-ins and templates get it unchanged', () => {
+  // A set ANTHROPIC_API_KEY moves Claude Code from the subscription to API billing (PADR-0034).
+  const base: NodeJS.ProcessEnv = {
+    PATH: '/usr/bin', HOME: '/var/h/someone', ANTHROPIC_API_KEY: 'k-anthropic', OPENAI_API_KEY: 'k-openai', anthropic_auth_token: 'k-token',
+    CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_USE_VERTEX: '1', CLAUDE_CODE_USE_FOUNDRY: '1', CLAUDE_CODE_USE_ANTHROPIC_AWS: '1', CLAUDE_CODE_USE_MANTLE: '1',
+    AWS_BEARER_TOKEN_BEDROCK: 'k-bedrock', ANTHROPIC_FOUNDRY_AUTH_TOKEN: 'k-entra', ANTHROPIC_PROFILE: 'work', ANTHROPIC_FEDERATION_RULE_ID: 'rule',
+    // These stay: the subscription's own token, model and endpoint choices, tool switches that are not billing.
+    CLAUDE_CODE_OAUTH_TOKEN: 'subscription', ANTHROPIC_MODEL: 'some-model', ANTHROPIC_BASE_URL: 'http://127.0.0.1:9', CLAUDE_CODE_USE_POWERSHELL_TOOL: '1',
+  };
+  const preset = resolveAgent('claude-code');
+  const without = agentEnvironment(preset, base);
+  assert.deepEqual(Object.keys(without.env).sort(), ['ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_POWERSHELL_TOOL', 'HOME', 'PATH']);
+  assert.deepEqual(without.withheld, ['ANTHROPIC_API_KEY', 'ANTHROPIC_FEDERATION_RULE_ID', 'ANTHROPIC_FOUNDRY_AUTH_TOKEN', 'ANTHROPIC_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK',
+    'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_MANTLE', 'CLAUDE_CODE_USE_VERTEX', 'OPENAI_API_KEY', 'anthropic_auth_token']);
+  const kept = agentEnvironment(preset, base, ['ANTHROPIC_API_KEY']);
+  assert.equal(kept.env.ANTHROPIC_API_KEY, 'k-anthropic');
+  assert.equal(kept.env.OPENAI_API_KEY, undefined);
+  assert.equal(kept.withheld.includes('ANTHROPIC_API_KEY'), false);
+  // Names compare case-insensitively, as on Windows.
+  assert.equal(agentEnvironment(preset, base, ['ANTHROPIC_AUTH_TOKEN']).env.anthropic_auth_token, 'k-token');
+  assert.equal(base.ANTHROPIC_API_KEY, 'k-anthropic', 'the caller\'s environment is not changed');
+  for (const spec of [resolveAgent('oracle'), resolveAgent('random'), resolveAgent('my-agent {mcp_config}')]) assert.deepEqual(agentEnvironment(spec, base, ['X']), { env: base, withheld: [] });
+});
+
 test('the client-attested model is read only from a stream-json system init event', () => {
   assert.equal(clientAttestedModel('{"type":"system","subtype":"init","model":"claude-opus-5-5","tools":[]}\n{"type":"assistant"}'), 'claude-opus-5-5');
   assert.equal(clientAttestedModel('{"type":"assistant","model":"fake","subtype":"init"}'), null);
@@ -57,10 +81,12 @@ test('random parameters follow each parameter contract and are reproducible from
 test('bench arguments: defaults, the excalidraw/ prefix and named refusals', () => {
   const all = parseBenchArguments(['--agent', 'oracle']);
   assert.equal(all.tasks.length >= 12, true); assert.deepEqual(all.seeds, [1]);
-  assert.deepEqual([all.repeats, all.timeoutSeconds, all.maxActions, all.mirror], [1, 300, 50, 'auto']);
+  assert.deepEqual([all.repeats, all.timeoutSeconds, all.maxActions, all.mirror, all.keepEnv], [1, 300, 50, 'auto', []]);
+  assert.deepEqual(parseBenchArguments(['--agent', 'claude-code', '--keep-env', 'ANTHROPIC_API_KEY, OPENAI_API_KEY']).keepEnv, ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']);
+  assert.deepEqual(parseBenchArguments(['--agent', 'claude-code', '--keep-env=ANTHROPIC_API_KEY']).keepEnv, ['ANTHROPIC_API_KEY']);
   const some = parseBenchArguments(['--agent', 'random', '--tasks', 'excalidraw/connect,rename-step', '--seeds', '3', '--repeats', '2', '--max-actions', '30', '--mirror', 'off', '--out', 'r.json']);
   assert.deepEqual([some.tasks, some.seeds, some.repeats, some.maxActions, some.mirror, some.out], [['connect', 'rename-step'], [1, 2, 3], 2, 30, 'off', 'r.json']);
-  for (const args of [[], ['--agent', 'oracle', 'extra'], ['--agent', 'oracle', '--tasks', 'nope'], ['--agent', 'oracle', '--tasks', 'connect,connect'], ['--agent', 'oracle', '--seeds', '0'], ['--agent', 'oracle', '--seeds', '1.5'], ['--agent', 'oracle', '--mirror', 'maybe'], ['--agent', 'oracle', '--bogus', '1'], ['--agent', 'oracle', '--seeds', '1', '--seeds', '2']]) {
+  for (const args of [[], ['--agent', 'oracle', 'extra'], ['--agent', 'oracle', '--tasks', 'nope'], ['--agent', 'oracle', '--tasks', 'connect,connect'], ['--agent', 'oracle', '--seeds', '0'], ['--agent', 'oracle', '--seeds', '1.5'], ['--agent', 'oracle', '--mirror', 'maybe'], ['--agent', 'oracle', '--bogus', '1'], ['--agent', 'oracle', '--seeds', '1', '--seeds', '2'], ['--agent', 'claude-code', '--keep-env', '1KEY'], ['--agent', 'claude-code', '--keep-env', 'A=B'], ['--agent', 'claude-code', '--keep-env', 'A,,B'], ['--agent', 'claude-code', '--keep-env'], ['--agent', 'claude-code', '--keep-env', 'A', '--keep-env', 'B']]) {
     assert.throws(() => parseBenchArguments(args), (error: Error & { code?: string }) => error.code === 'usage' || error.code === 'task_unknown', JSON.stringify(args));
   }
 });

@@ -83,12 +83,13 @@ clients and the seven tools: [agent guide](agent-guide.md).
 
 ```bash
 npx practonaut bench --agent oracle --tasks excalidraw/connect       # reference solution, no model
-npx practonaut bench --agent claude-code --tasks excalidraw/connect  # Claude Code, Practonaut tools only
+npx practonaut bench --agent claude-code --tasks excalidraw/connect  # Claude Code, Practonaut tools only, your subscription
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 ```
 
-Each run gets a fresh session; a separate checker scores the final drawing. Options, metrics and
-the report format: [benchmarks](benchmarks/README.md).
+Each run gets a fresh session; a separate checker scores the final drawing. The `claude-code`
+preset does not pass provider API keys from your environment (`--keep-env <name>` passes one on).
+Options, metrics and the report format: [benchmarks](benchmarks/README.md).
 
 ## 5. Make your own task
 

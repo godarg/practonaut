@@ -29,6 +29,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 | `--max-actions <n>` | 50 | mutation budget per run (act, undo, reset); further ones are refused by the host with `action_budget_exhausted` |
 | `--mirror auto\|required\|off` | `auto` | real Excalidraw mirror (`auto` uses it when Chromium is installed) |
 | `--out <file>` | `~/.practonaut/bench/<id>/report.json` | report path; run logs stay in `~/.practonaut/bench/<id>/` |
+| `--keep-env <names>` | none | comma-separated variables a preset agent gets although it withholds them (§2); refused for other agents |
 
 ## 2. Agents
 
@@ -37,8 +38,16 @@ variant labels; `random` picks a random action with random values that fit each 
 contract (ids from the current objects), until the action budget or the timeout. Both start the
 same `practonaut mcp` bridge an external agent gets and speak MCP to it.
 
-**Preset `claude-code`.** Uses an installed, logged-in Claude Code CLI (its own subscription; no
-API key is injected) with only the Practonaut tools:
+**Preset `claude-code`.** Uses an installed, logged-in Claude Code CLI with only the Practonaut tools,
+on the subscription it is logged in with
+([PADR-0034](../adr/0034-preset-agents-get-no-provider-credentials.md)). A provider key in the
+environment would silently switch Claude Code to API billing (in `-p` mode a set `ANTHROPIC_API_KEY`
+always wins over the login), so the preset does not pass on any variable whose name ends in
+`_API_KEY` or `_AUTH_TOKEN`, nor `CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY`, `_ANTHROPIC_AWS`,
+`_MANTLE`, `AWS_BEARER_TOKEN_BEDROCK`, `ANTHROPIC_PROFILE` or `ANTHROPIC_FEDERATION_RULE_ID`.
+`bench` names the variables it withheld on stderr (names only). `CLAUDE_CODE_OAUTH_TOKEN`, the
+subscription's own token from `claude setup-token`, passes. To bill through a key on purpose, name it:
+`--keep-env ANTHROPIC_API_KEY`. Built-ins and command templates get your environment unchanged.
 
 ```text
 claude -p --output-format stream-json --verbose --no-session-persistence --tools '' \

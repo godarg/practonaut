@@ -3,7 +3,7 @@
   "name": "io.github.godarg/practonaut",
   "title": "Practonaut",
   "description": "Local practice gym for AI agents on real apps: practice Excalidraw tasks, get a reproducible score.",
-  "version": "0.1.0",
+  "version": "0.2.0-dev.0",
   "repository": {
     "url": "https://github.com/godarg/practonaut",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "practonaut",
-      "version": "0.1.0",
+      "version": "0.2.0-dev.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

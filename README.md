@@ -75,15 +75,19 @@ npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify     # re-judge from the run files
 ```
 
-Each run gets its own session and data folder; the agent sees only the Practonaut MCP tools and the
-same public task a person sees. Scores come from the host's history and a separate checker, never
-from what the agent says: pass@1, pass^k, actions, efficiency against the reference solution. The JSON
-report has a schema. `report` checks that every pass and every number follows from the verdicts in
-the file — consistency, not proof: a file edited consistently still passes, and `report` says
-"consistency-checked, not re-verified". `report --verify` re-runs the checker on the session and the
-real-app export kept in the bench folder, whose SHA-256 the report records, re-derives each run's
-actions and reference length and the library's content hash, and refuses any difference; host calls
-and times are marked as reported by the runner. Nothing is signed: whoever can write the bench folder can replace those files too.
+Each run gets its own session and data folder; the agent reaches the session only through the
+Practonaut MCP tools and gets the same public task a person gets. The `claude-code` preset runs on
+your Claude subscription: it does not pass provider keys, tokens or billing switches from your
+environment to Claude Code (a set `ANTHROPIC_API_KEY` would silently switch it to API billing);
+`--keep-env ANTHROPIC_API_KEY` passes one on on purpose. Scores come from the host's history and a
+separate checker, never from what the agent says: pass@1, pass^k, actions, efficiency against the
+reference solution. The JSON report has a schema. `report` checks that every pass and every number
+follows from the verdicts in the file — consistency, not proof: a file edited consistently still
+passes, and `report` says "consistency-checked, not re-verified". `report --verify` re-runs the
+checker on the session and the real-app export kept in the bench folder, whose SHA-256 the report
+records, re-derives each run's actions and reference length and the library's content hash, and
+refuses any difference; host calls and times are marked as reported by the runner. Nothing is
+signed: whoever can write the bench folder can replace those files too.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bench-report-dark.png">
@@ -131,10 +135,10 @@ solution and near misses. List them with `npx practonaut tasks list`; open one w
    own interpreter, reads the real Excalidraw export with its own parser, and evaluates the goal.
    It first makes sure an empty, an unchanged and a wrong submission all fail.
 
-The agent sees what a person sees in the Player: the task text and the public goal conditions — one
-sentence per condition plus its formal form, which is the goal predicate written out. The reference
-solution, the near misses and held-out checker data never reach it over MCP. The agent gets the same
-Check button a person has.
+An agent gets the same task and the same public goal conditions as a person in the Player — one
+sentence per condition plus its formal form, which is the goal predicate written out — and the same
+Check button. It acts through Practonaut's semantic actions over MCP, not through the GUI. The
+reference solution, the near misses and held-out checker data never reach it over MCP.
 
 ## Limits
 
@@ -158,8 +162,9 @@ Check button a person has.
 - Node.js ≥ 22.18 and npm.
 - Optional: `npx practonaut setup` downloads Playwright's Chromium once for the real
   engine. Nothing is downloaded on install; the package has no install script.
-- Local data lives in `~/.practonaut` (or `PRACTONAUT_HOME`). No telemetry, no account, no network
-  calls while practising. An agent you connect talks to its own model provider.
+- Local data lives in `~/.practonaut` (or `PRACTONAUT_HOME`). No telemetry, no account. Practonaut's
+  own process makes no network calls while practising (`npx` fetches the package and `setup` fetches
+  Chromium, each once); an agent you connect talks to its own model provider.
 
 ## Documentation
 
