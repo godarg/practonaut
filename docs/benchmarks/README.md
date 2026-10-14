@@ -304,15 +304,17 @@ template). A rate is always a fraction; a percentage appears only where n allows
 the interval is shown in whole percent, rounded outward. Failed runs, and runs whose agent did not end
 normally, come first and open, each with:
 
-- **why it failed**, every state by name with its reason: timed out, agent failed, not judged (it
-  counts as not passed), no action, rejected actions with what each refusal means, two or more MCP
-  clients acting, every unmet goal condition with the action after which it was last lost (or "never
-  met"), every error class with the first sentence of its explanation;
-- the **goal conditions** with their history from the checker's trace;
+- **why it failed**, every state by name with its reason: timed out, agent failed, no action, rejected
+  actions with what each refusal means, two or more MCP clients acting, every unmet goal condition with
+  the trajectory entry (#n) after which it was last lost (or "never met"), every error class with the
+  first sentence of its explanation; a run that was not judged has **no verdict** (a dashed ring, never
+  the fail mark) and counts as not passed;
+- the **goal conditions**, numbered as the trajectory names them, with their history from the
+  checker's trace;
 - the **board**: the real Excalidraw's export when the mirror ran (reduced to an allowlist of geometry
   and paint, so board text is shown as text and never interpreted as markup; `--verify` checks only its
   hash), otherwise a schematic of the judged state, labelled "schematic"; groups, which no export
-  shows, as a tinted outline and a legend; frames as labelled outlines; under it every object in words
+  shows, as a tinted outline (laid over the export too, from the judged state) and a legend; frames as labelled outlines; under it every object in words
   — each label in full (a drawing may cut a long one), shape, line, fill, size, position, frame and
   group; below it an **example target** — a schematic of the validated reference's end state for that
   seed, with its own object list — or "no example target" when the task has none. The two pictures

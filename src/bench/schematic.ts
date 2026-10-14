@@ -63,18 +63,17 @@ export function framesOf(state: State): FrameLegend[] {
 
 /** Wraps a label into at most three lines for a box `width` board units wide (display only; the legend
  * under the picture keeps it in full). Lines break at spaces, so punctuation stays with its word; a
- * word longer than a line is split into even pieces, each but the last ending in a hyphen. */
+ * word longer than a line is split into even pieces. A label is data: no hyphen is ever drawn into it. */
 export function lines(label: string, width: number, size: number): string[] {
   const budget = Math.max(4, Math.floor((width - 16) / (size * 0.6)));
   const out: string[] = []; let line = '';
   for (const word of label.split(/\s+/).filter(Boolean)) {
-    // Each piece but the last carries a hyphen, so it may hold one character less than a line.
-    const chars = [...word], count = chars.length > budget ? Math.ceil(chars.length / (budget - 1)) : 1, size = Math.ceil(chars.length / count);
-    const pieces = count < 2 ? [word] : Array.from({ length: count }, (_, index) => chars.slice(index * size, (index + 1) * size).join('')).filter(Boolean).map((piece, index, all) => index < all.length - 1 ? `${piece}-` : piece);
+    const chars = [...word], count = Math.ceil(chars.length / budget), size = Math.ceil(chars.length / count);
+    const pieces = count < 2 ? [word] : Array.from({ length: count }, (_, index) => chars.slice(index * size, (index + 1) * size).join('')).filter(Boolean);
     for (const piece of pieces) { if (line && [...`${line} ${piece}`].length > budget) { out.push(line); line = piece; } else line = line ? `${line} ${piece}` : piece; }
   }
   if (line) out.push(line);
-  if (out.length > 3) { out.length = 3; out[2] = [...out[2]!].slice(0, Math.max(1, budget - 1)).join('').replace(/-$/, '') + '…'; }
+  if (out.length > 3) { out.length = 3; out[2] = [...out[2]!].slice(0, Math.max(1, budget - 1)).join('') + '…'; }
   return out.length ? out : [''];
 }
 
@@ -122,19 +121,30 @@ export function schematicBounds(state: State): Box {
   return freeArrows(state).length ? { ...box, height: box.height + 70 } : box;
 }
 
+/** The group outlines of a judged state, as SVG to lay over a picture in the same viewBox (an export
+ * shows no groups): outline only, so the drawing under it stays visible. */
+export function groupOutlines(state: State, words: { group: string }): string {
+  const groups = new Map<string, Step[]>();
+  for (const step of live(state).steps) if (isStepV2(step) && step.groupId !== null) groups.set(step.groupId, [...(groups.get(step.groupId) ?? []), step]);
+  return [...groups.values()].map((members, index) => {
+    const box = around(members, 16, 40)!;
+    return `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}" rx="10" class="sch-group-outline"/><text x="${n(box.x + 12)}" y="${n(box.y + 27)}" class="sch-group-label">${xml(`${words.group} ${index + 1}`)}</text>`;
+  }).join('');
+}
+
 /**
  * The schematic as inline SVG markup. `prefix` keeps marker ids unique on a page; `label` is the
  * accessible name; `words` names groups and loose ends in the report's language; `viewBox` (the union
  * with the picture it is shown beside) keeps a pair at one scale.
  */
-export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box }): string {
+export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean }): string {
   const { steps, frames, arrows } = live(state);
   const byId = new Map(steps.map(step => [step.id, step]));
   const parts: string[] = [];
   const frameBoxes = frames.flatMap(frame => { const box = around(steps.filter(step => step.frameId === frame.id), 28, 56); return box ? [{ frame, box }] : []; });
   const groups = new Map<string, Step[]>();
   for (const step of steps) if (isStepV2(step) && step.groupId !== null) groups.set(step.groupId, [...(groups.get(step.groupId) ?? []), step]);
-  const groupBoxes = [...groups.values()].map((members, index) => ({ name: `${options.words.group} ${index + 1}`, box: around(members, 16, 40)! }));
+  const groupBoxes = options.groups === false ? [] : [...groups.values()].map((members, index) => ({ name: `${options.words.group} ${index + 1}`, box: around(members, 16, 40)! }));
   const own = schematicBounds(state), view = options.viewBox ?? own;
   parts.push(`<defs><marker id="${options.prefix}-tip" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 1 1.5 L 9 5 L 1 8.5 z" class="sch-tip"/></marker></defs>`);
   for (const { frame, box } of frameBoxes) {
@@ -146,10 +156,27 @@ export function schematicSvg(state: State, options: { prefix: string; label: str
     parts.push(`<text x="${n(box.x + 12)}" y="${n(box.y + 27)}" class="sch-group-label">${xml(name)}</text>`);
   }
   const centre = (step: Step): [number, number] => [step.x + step.width / 2, step.y + step.height / 2];
+
+  // Where a line from inside a step leaves its shape: the rectangle's, ellipse's or diamond's outline
+  // around the line's own point (an offset line is moved sideways with its point).
   const edge = (step: Step, from: [number, number], to: [number, number], gap: number): [number, number] => {
     const dx = to[0] - from[0], dy = to[1] - from[1], length = Math.hypot(dx, dy);
     if (!length) return from;
-    const scale = 1 / Math.max(Math.abs(dx) / (step.width / 2), Math.abs(dy) / (step.height / 2));
+    const shape = isStepV2(step) ? step.shape : 'rectangle', c = centre(step), hw = step.width / 2, hh = step.height / 2;
+    // Solve for the scale s at which from + s·d lies on the outline (centred at c).
+    const ox = from[0] - c[0], oy = from[1] - c[1];
+    let scale: number;
+    if (shape === 'ellipse') {
+      const a = (dx / hw) ** 2 + (dy / hh) ** 2, b = 2 * ((ox * dx) / hw ** 2 + (oy * dy) / hh ** 2), k = (ox / hw) ** 2 + (oy / hh) ** 2 - 1;
+      scale = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * k))) / (2 * a);
+    } else if (shape === 'diamond') {
+      // The diamond is four half-planes sx·x/hw + sy·y/hh ≤ 1; the ray leaves at the first one it meets.
+      scale = Infinity;
+      for (const sx of [1, -1]) for (const sy of [1, -1]) {
+        const towards = (sx * dx) / hw + (sy * dy) / hh;
+        if (towards > 0) scale = Math.min(scale, (1 - (sx * ox) / hw - (sy * oy) / hh) / towards);
+      }
+    } else scale = Math.min(dx ? ((Math.sign(dx) * hw) - ox) / dx : Infinity, dy ? ((Math.sign(dy) * hh) - oy) / dy : Infinity);
     return [from[0] + dx * scale + (dx / length) * gap, from[1] + dy * scale + (dy / length) * gap];
   };
   const ring = (point: [number, number]): string => `<circle cx="${n(point[0])}" cy="${n(point[1])}" r="8" class="sch-loose"/><text x="${n(point[0])}" y="${n(point[1] - 16)}" text-anchor="middle" class="sch-loose-label">${xml(options.words.loose)}</text>`;

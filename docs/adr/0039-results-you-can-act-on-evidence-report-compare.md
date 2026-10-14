@@ -122,9 +122,11 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    rounded outward. pass^k is shown for k = repeats as "all k repeats passed on m of I instances";
    the intermediate values stay in the JSON.
 3. **Failures first.** Failed runs come before passed runs, each with: its status and reason in words
-   (timed out, agent failed, not judged, no action taken, rejected actions with what each refusal
-   means, several MCP clients acting); every unmet condition with its sentence and formal form and
-   the action after which it was last lost, or "never met"; the error classes with the first
+   (timed out, agent failed, no action taken, rejected actions with what each refusal means, several
+   MCP clients acting; a run that was not judged has no verdict: it shows the unknown mark, never the
+   fail mark, and counts as not passed); every unmet condition with its sentence and formal form and
+   the trajectory entry (#n) after which it was last lost, or "never met", the goal conditions
+   numbered as the trajectory names them; the error classes with the first
    sentence of their explanation in the report's language (the rest coaches a learner); the
    trajectory (every mutation with its outcome — "accepted (revision n)" or the refusal in words —
    and the conditions met afterwards); the final board; the example target or "no example target";
@@ -142,7 +144,9 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    re-escaped), so board text is never markup. Without the mirror, or when `board.svg` is missing or
    unreadable: a schematic drawn from the judged session state with shape, fill, stroke, size,
    position and frames, labelled "schematic". Groups come from the judged state: a solid tinted
-   outline in the schematic and a legend under either picture; under either picture, too, every
+   outline in the schematic, the same outline laid over an export (which shows no groups, so the
+   caption says where the outline comes from), and a legend under either picture; under either
+   picture, too, every
    object in words with each goal-relevant attribute and its label in full (a drawing may cut a long
    label). An **example target** is shown only when the
    report binds a validated reference for the task (`references.json`, checked by the checker before

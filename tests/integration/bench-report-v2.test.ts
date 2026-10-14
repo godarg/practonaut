@@ -35,7 +35,7 @@ function runText(html: string, runId: string): string {
 const normalPath = (html: string): string => html.replace(/<details class="tech">[\s\S]*?<\/details>/g, '');
 /** The first sentence of a library explanation (the factual part; the rest coaches a learner). */
 const firstOf = (text: string): string => text.split(/(?<=[.!?])\s+(?=\p{Lu})/u)[0]!;
-const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<span class="data">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fixtures: Fixtures, dir: string;
 test.before(async () => {
@@ -64,16 +64,16 @@ test('every checker error class: a failed run names it with its explanation, the
   const chain = runText(html, 'close-chain-s1-r1');
   [...'abcd'].forEach((id, index) => {
     const sentence = `One rectangle “${label('close-chain', id)}” in the default style.`;
-    assert.ok(chain.includes(`Not met: ${sentence} (last lost after action ${index + 1}, rename_step(id: “${label('close-chain', id)}”, label: “Wrong ${index + 1}”))`), sentence);
+    assert.ok(chain.includes(`Not met: ${sentence} (last lost after #${index + 1}, rename_step(id: “${label('close-chain', id)}”, label: “Wrong ${index + 1}”))`), sentence);
   });
   assert.ok(chain.includes('Not met: The drawing has exactly 3 arrows. (never met)'));
   // The trajectory names each accepted action's revision (never a "step", which is a box here).
   for (const revision of [1, 2, 3, 4]) assert.ok(chain.includes(`accepted (revision ${revision})`), `revision ${revision}`);
   // connect: a→b (1), a refused end (2), b→a by the second client (3): one arrow too many since action 3.
-  assert.ok(runText(html, 'connect-s1-r1').includes(`Not met: The drawing has exactly 1 arrow. (last lost after action 3, connect(from: “${label('connect', 'b')}”, to: “${label('connect', 'a')}”))`));
+  assert.ok(runText(html, 'connect-s1-r1').includes(`Not met: The drawing has exactly 1 arrow. (last lost after #3, connect(from: “${label('connect', 'b')}”, to: “${label('connect', 'a')}”))`));
   // add-step: deleting b loses its arrow at action 1; the third step was never there.
   const added = runText(html, 'add-step-s1-r1');
-  assert.ok(added.includes(`Not met: One arrow from “${label('add-step', 'a')}” to “${label('add-step', 'b')}”. (last lost after action 1, delete_step(id: “${label('add-step', 'b')}”))`));
+  assert.ok(added.includes(`Not met: One arrow from “${label('add-step', 'a')}” to “${label('add-step', 'b')}”. (last lost after #1, delete_step(id: “${label('add-step', 'b')}”))`));
   assert.ok(added.includes('Not met: The drawing has exactly 3 steps. (never met)'));
   // Failures first: every failed run's details come before every passed run's.
   const solved = await reportPage(fixtures.solved, 'en', 're-verified');
@@ -84,7 +84,12 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   const failing = await reportPage(fixtures.failing, 'en');
   const connect = runText(failing, 'connect-s1-r1');
   assert.ok(connect.includes('Rejected actions: 1 of 3 act calls were refused by the host. the action did not fit the board at that moment (1 ×)'), 'rejected actions');
-  assert.ok(connect.includes('Two agents: 2 MCP clients changed this board: practonaut-bench, second-agent. Every change counts for this run.'), 'two agents');
+  assert.ok(connect.includes('Two agents: 2 MCP clients changed this board (practonaut-bench, second-agent); every change counts for this run.'), 'two agents');
+  // One colon per reason: none of the states names its reason with a second colon (code aside).
+  for (const item of failing.matchAll(/<ul class="reasons">([\s\S]*?)<\/ul><h3>/g)) for (const li of item[1]!.split('<li>').slice(1)) assert.ok(plain(li.replace(/<code>[\s\S]*?<\/code>/g, '')).split(':').length <= 2, plain(li));
+  // The goal conditions are numbered: the trajectory's "now met" and "lost" name them by these numbers.
+  assert.match(connect, /^.*Goal conditions 1 Met: /);
+  assert.ok(runText(failing, 'close-chain-s1-r1').includes('lost: 6, 9'), 'the trajectory names conditions by number');
   assert.ok(connect.includes('Self-reported by the client: model pn-script-model · 5 turns · 12,300 input and 340 output tokens · cost 0.0123 USD.'), 'client figures');
   assert.ok(connect.includes('client timing unavailable'), 'a template has no client timing');
   assert.ok(runText(failing, 'decision-s1-r1').includes('No action: the agent changed nothing; the checker judged the start board.'), 'empty');
@@ -100,7 +105,10 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances re-verified from the artifacts model only/);
   assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 2 s, the run’s time limit; the board it left was judged.'), 'timeout');
   const unjudgedPage = await reportPage(fixtures.unjudged, 'en'), unjudged = runText(unjudgedPage, 'connect-s1-r1');
-  assert.ok(unjudged.includes('Not judged: the run could not be judged, so it counts as not passed: an infrastructure fault never raises a score.'), 'unjudged');
+  assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score.'), 'unjudged');
+  // No verdict is not a failure: the unknown mark (a dashed ring) and the words, in the table and on the card.
+  assert.equal((unjudgedPage.match(/<span class="result unknown"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray/g) ?? []).length, 2);
+  assert.ok(unjudged.includes('Why there is no verdict') && !unjudged.includes('Why it failed'));
   // The runner's note (it names the fault) is under Technical details, not in the reason.
   assert.ok(unjudged.includes(`Runner note ${fixtures.unjudged.report.runs[0]!.note}`)); assert.equal(runText(normalPath(unjudgedPage), 'connect-s1-r1').includes(fixtures.unjudged.report.runs[0]!.note!), false);
   assert.equal(fixtures.unjudged.report.runs[0]!.checker, null);
@@ -112,6 +120,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   // It passed, but its agent did not end normally: its card is open and the header says so.
   assert.ok(crashedPage.includes(`<details class="run" id="run-${crashed.id}" open>`), 'an agent that failed opens its card');
   assert.ok(plain(crashedPage.slice(0, crashedPage.indexOf('</header>'))).includes('1 run did not complete normally (1 agent failed); its card is open below.'));
+  assert.ok(crashedPage.includes(`<a href="#run-${crashed.id}">its card is open below.</a>`), 'the note links the card');
   assert.equal((await reportPage(fixtures.solved, 'en')).includes(' open>'), false, 'passing runs that ended normally stay closed');
   // Long German names, in German: the authored labels, the agent's long label and the task without a reference.
   const german = await reportPage(fixtures.german, 'de'), germanRun = runText(german, fixtures.german.report.runs[0]!.id);
@@ -123,6 +132,10 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   // every card says in a line what it cannot show, and error classes keep their explanation (the
   // report's world is the bundled library).
   const noFolder = await reportPage({ report: fixtures.failing.report, directory: null }, 'en');
+  // The banner sits right under the header, before the summary; the header links every run that did not pass.
+  assert.ok(noFolder.indexOf('Run details are partial') > noFolder.indexOf('</header>') && noFolder.indexOf('Run details are partial') < noFolder.indexOf('<section aria-labelledby="summary">'));
+  const jump = noFolder.slice(noFolder.indexOf('<nav class="jump"'), noFolder.indexOf('</nav>'));
+  assert.deepEqual([...jump.matchAll(/href="#run-([^"]+)"/g)].map(match => match[1]), fixtures.failing.report.runs.filter(run => !run.pass).map(run => run.id));
   assert.ok(plain(noFolder).includes('Run details are partial The bench folder was not found next to the report. Shown: each run’s result, how it ended and its error classes.'));
   assert.ok(plain(noFolder).includes('To show them: practonaut report <report.json> --runs <bench folder>'));
   assert.equal((noFolder.match(/Conditions, board, trajectory and calls need the bench folder\./g) ?? []).length, fixtures.failing.report.runs.length);
@@ -174,6 +187,18 @@ test('pictures: correct and incorrect restyle-flow differ, grouped and ungrouped
   }
   // Excalidraw's own background rectangle is left out of its export (the frame's canvas shows instead).
   assert.equal(board(engineRight, 'restyle-flow-s1-r1').includes('fill="#ffffff"'), false);
+  // Groups appear on both pictures of a pair: the export shows none, so the judged state's outline is laid
+  // over it (in the shared viewBox) and the caption says where it comes from.
+  const groupRun = engineRight.slice(engineRight.indexOf('id="run-group-s1-r1"'), engineRight.indexOf('</details>', engineRight.indexOf('id="run-group-s1-r1"')));
+  const pictureAt = groupRun.indexOf('<svg viewBox'), exported = groupRun.slice(pictureAt, groupRun.indexOf('</svg>', pictureAt) + 6);
+  assert.match(exported, /class="engine-board pw-\d+"[\s\S]*<rect [^>]*class="sch-group-outline"\/><text [^>]*class="sch-group-label">Group 1<\/text><\/svg>$/);
+  assert.ok(plain(groupRun).includes('The group outline is drawn from the judged state: an export shows no groups.'));
+  assert.match(groupRun.slice(groupRun.indexOf('Example target')), /class="sch-group"/);
+  // A pair that scrolls opens where the first difference lies: the wrong fill of "Done" is at the right.
+  const wrongPair = engineWrong.slice(engineWrong.indexOf('id="run-restyle-flow-s1-r1"'), engineWrong.indexOf('</details>', engineWrong.indexOf('id="run-restyle-flow-s1-r1"')));
+  assert.equal((wrongPair.match(/<div class="board-scroll overflows-phone from-end"/g) ?? []).length, 2, 'both frames of the pair open at the right end');
+  // The runs table (twelve columns) stacks below 60rem; its error-class column is capped.
+  assert.match(wrong, /<div class="scroll stack-many" role="region" aria-labelledby="runs"/); assert.match(wrong, /<th scope="col" class="text capped">error classes<\/th>/);
 });
 
 test('a bench folder that was changed or crafted removes an explanation, never fools or breaks the page', { timeout: 120_000 }, async () => {
@@ -201,13 +226,13 @@ test('a forged condition trace bound by its hash is never shown as history', { t
   const report = structuredClone(fixtures.failing.report), run = report.runs.find(entry => entry.taskId === 'connect')!;
   const original = JSON.parse(await readFile(join(copy, run.id, 'trace.json'), 'utf8')) as { points: Array<{ seq: number; met: string }> };
   const before = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
-  assert.ok(before.includes('last lost after action 3'), 'the genuine trace gives the history');
+  assert.ok(before.includes('last lost after #3'), 'the genuine trace gives the history');
   // Every condition met after a mutation the log does not have (seq 999): bound by a recomputed hash.
   const forged = { ...original, points: [...original.points, { seq: 999, step: 9, met: '11111' }] };
   const text = JSON.stringify(forged) + '\n'; await writeFile(join(copy, run.id, 'trace.json'), text);
   run.artifacts!.trace = createHash('sha256').update(text).digest('hex');
   const page = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
-  assert.equal(page.includes('last lost after action') || page.includes('met since action'), false, 'no history from a forged trace');
+  assert.equal(page.includes('last lost after #') || page.includes('met since #'), false, 'no history from a forged trace');
   assert.ok(page.includes('The conditions cannot be shown: the file cannot be read'));
   // And --verify refuses it by name.
   await writeFile(join(copy, 'report.json'), JSON.stringify(report));

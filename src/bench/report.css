@@ -22,6 +22,11 @@ section{margin-top:var(--pn-space-12)}
 a{color:var(--pn-color-accent-text)}
 a:focus-visible,summary:focus-visible,.scroll:focus-visible,.board-scroll:focus-visible{outline:var(--pn-focus-width) solid var(--pn-color-focus);outline-offset:var(--pn-focus-offset)}
 code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:none;overflow-wrap:anywhere}
+/* Data inside prose (a quoted label, a task id) is never hyphenated. */
+.data{hyphens:none}
+/* The way to the failed runs, right under the headline. */
+.jump{margin:var(--pn-space-3) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.jump-title{font-weight:var(--pn-weight-semibold);color:var(--pn-color-text)}
 
 /* Chip: a small fact, never an action. */
 .chips{display:flex;flex-wrap:wrap;gap:var(--pn-space-2);margin:var(--pn-space-3) 0 0;padding:0;list-style:none}
@@ -43,6 +48,8 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:n
 .status-icon.pass{color:var(--pn-color-success-icon)}
 .status-icon.fail{color:var(--pn-color-danger-icon)}
 .status-icon.unknown{color:var(--pn-color-unknown-icon)}
+.result.unknown{align-items:flex-start;color:var(--pn-color-unknown-fg);white-space:normal}
+.result.unknown .status-icon{margin-top:var(--pn-nudge)}
 .result{display:inline-flex;align-items:center;gap:var(--pn-space-1);font-weight:var(--pn-weight-semibold);white-space:nowrap}
 .result.pass{color:var(--pn-color-success-fg)}
 .result.fail{color:var(--pn-color-danger-fg)}
@@ -61,7 +68,9 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:n
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;vertical-align:top;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
 tbody tr:last-child td{border-bottom:0}
-th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold);color:var(--pn-color-text-secondary);white-space:normal}
+th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold);color:var(--pn-color-text-secondary);white-space:normal;hyphens:manual}
+/* A column of lists (error classes) wraps at this width instead of widening the table. */
+th.capped{width:12rem}
 td.text,th.text{text-align:left;white-space:normal;hyphens:none}
 td.text code{overflow-wrap:anywhere}
 /* Below 40rem a table becomes one block per row, two cells side by side, each under its column's name;
@@ -74,6 +83,16 @@ td.text code{overflow-wrap:anywhere}
   .stack td,.stack td.text{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0}
   .stack td.wide{grid-column:1/-1}
   .stack td::before{content:attr(data-label);display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+}
+/* A table with many columns (the runs) stacks the same way already below 60rem. */
+@media (max-width:60rem){
+  .stack-many table,.stack-many tbody{display:block;width:100%}
+  .stack-many thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .stack-many tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:var(--pn-space-2) var(--pn-space-4);padding:var(--pn-space-3) var(--pn-space-4);border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
+  .stack-many tbody tr:last-child{border-bottom:0}
+  .stack-many td,.stack-many td.text{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0}
+  .stack-many td.wide{grid-column:1/-1}
+  .stack-many td::before{content:attr(data-label);display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 }
 
 /* Settings and technical details. */
@@ -105,6 +124,8 @@ td.text code{overflow-wrap:anywhere}
 .conditions{margin:0;padding:0;list-style:none;display:grid;gap:var(--pn-space-2)}
 .condition{display:flex;align-items:flex-start;gap:var(--pn-space-2);min-width:0}
 .condition .status-icon{margin-top:var(--pn-nudge)}
+/* The trajectory names conditions by these numbers. */
+.condition-number{min-width:var(--pn-space-5);flex:none;text-align:right;color:var(--pn-color-text-secondary);font-variant-numeric:tabular-nums}
 .condition>div,.flips li>span{min-width:0}
 .condition-status{font-weight:var(--pn-weight-semibold)}
 .condition-status.pass{color:var(--pn-color-success-fg)}
@@ -130,6 +151,12 @@ td.text code{overflow-wrap:anywhere}
   .board-scroll.overflows-phone{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
 }
 .board-scroll.fits{mask-image:none}
+/* A pair whose first difference lies at the right end opens there: both frames scroll from the right
+   (the drawing itself stays left to right), and the fade moves to the left edge. */
+.board-scroll.from-end{direction:rtl}
+.board-scroll.from-end>svg{direction:ltr}
+.board-scroll.overflows-desktop.from-end{mask-image:linear-gradient(to left,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+@media (max-width:48rem){.board-scroll.overflows-phone.from-end{mask-image:linear-gradient(to left,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}}
 .legend{margin-top:var(--pn-space-2);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .legend-title{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold)}
 
@@ -137,6 +164,7 @@ td.text code{overflow-wrap:anywhere}
    which the content tokens of the schematic reproduce, so a pair shows one palette. Its text keeps
    Excalidraw's monospace look, like the schematic's step labels. */
 .engine-board text{font-family:var(--pn-font-mono)}
+.engine-board .sch-group-label{font-family:var(--pn-font-sans)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board{filter:invert(93%) hue-rotate(180deg)}}
 :root[data-theme="dark"] .engine-board{filter:invert(93%) hue-rotate(180deg)}
 
@@ -145,8 +173,10 @@ td.text code{overflow-wrap:anywhere}
 .sch-frame{fill:var(--pn-color-frame-bg);stroke:var(--pn-color-object-border);stroke-width:1.5}
 .sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
 .sch-group{fill:var(--pn-color-accent-tint);stroke:var(--pn-color-accent);stroke-width:1.5}
+/* The judged state's group outline laid over an export (outline only: the drawing stays visible). */
+.sch-group-outline{fill:var(--pn-color-accent);fill-opacity:0.08;stroke:var(--pn-color-accent);stroke-width:1.5}
 .sch-group-label{fill:var(--pn-color-accent-text);font:var(--pn-weight-semibold) var(--pn-text-title3) var(--pn-font-sans)}
-.sch-step{fill:var(--pn-color-object-bg);stroke:var(--pn-color-object-border);stroke-width:2}
+.sch-step{fill:none;stroke:var(--pn-color-object-border);stroke-width:2}
 .sch-fill-red{fill:var(--pn-color-content-fill-red)}
 .sch-fill-green{fill:var(--pn-color-content-fill-green)}
 .sch-fill-blue{fill:var(--pn-color-content-fill-blue)}

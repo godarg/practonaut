@@ -10,7 +10,7 @@ import { isBenchReportV2, type BenchReport } from './report.ts';
 import { isolationOf, type Comparison, type Difference, type InstancePair } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
-import { banner, chips, escapeHtml as esc, modelHeadline, page, stackedTable, statusIcon, type Verification } from './render.ts';
+import { banner, chips, escapeHtml as esc, modelHeadline, page, prose, stackedTable, statusIcon, type Verification } from './render.ts';
 import { readableText } from '../cli/output.ts';
 
 /** One side: its report, how it was verified and the name it goes by (label or file name). */
@@ -42,9 +42,17 @@ function sideFacts(input: CompareInput, t: Words, language: Language): string[] 
   const isolation = { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[isolationOf(report)];
   return [report.agent.name, ...(isBenchReportV2(report) && report.label !== undefined ? [report.label] : []), model, report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff, isolation, input.verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.createdAt.slice(0, 10)];
 }
+/** The side of a flip that had no verdict at all (every run unjudged), if any: it did not fail, it was
+ * not judged, and it counts as not passed. */
+const noVerdictSide = (pair: InstancePair): 'baseline' | 'candidate' | null => {
+  const down = pair.flip === 'single-down' || pair.flip === 'changed-down', up = pair.flip === 'single-up' || pair.flip === 'changed-up';
+  return down && pair.candidate!.judged === 0 ? 'candidate' : up && pair.baseline!.judged === 0 ? 'baseline' : null;
+};
 const flipLine = (pair: InstancePair, language: Language): string => {
   const t = TEXT[language], b = pair.baseline!, c = pair.candidate!;
-  const values = { task: pair.taskId, seed: pair.seed, bp: b.passed, bn: b.judged, br: b.repeats, cp: c.passed, cn: c.judged, cr: c.repeats };
+  const values = { task: pair.taskId, seed: pair.seed, bp: b.passed, bn: b.judged, br: b.repeats, bu: b.unjudged, cp: c.passed, cn: c.judged, cr: c.repeats, cu: c.unjudged };
+  const missing = noVerdictSide(pair);
+  if (missing) return fill(language, missing === 'candidate' ? t.noVerdictDown : t.noVerdictUp, values);
   const line = { regression: t.regressionLine, fix: t.fixLine, 'single-down': t.singleDown, 'single-up': t.singleUp, 'changed-down': t.changedDown, 'changed-up': t.changedUp }[pair.flip ?? 'single-up'];
   return fill(language, line, values);
 };
@@ -69,9 +77,11 @@ export function renderCompareTable(baseline: CompareInput, candidate: CompareInp
   lines.push(`${t.regressions}:${comparison.regressions.length ? '' : ` ${regressionText(comparison, language)}`}`);
   for (const pair of comparison.regressions) lines.push(readableText(`  ✗ ${flipLine(pair, language)}`));
   if (comparison.fixes.length) { lines.push(`${t.fixes}:`); for (const pair of comparison.fixes) lines.push(readableText(`  ✓ ${flipLine(pair, language)}`)); }
-  if (comparison.changedFlips.length) { lines.push(`${t.changedFlips}:`); for (const pair of comparison.changedFlips) lines.push(readableText(`  ${flipLine(pair, language)}`)); }
-  if (comparison.singleFlips.length) { lines.push(`${t.singleFlips}:`); for (const pair of comparison.singleFlips) lines.push(readableText(`  ${flipLine(pair, language)}`)); }
-  if (comparison.withUnjudged.length) { lines.push(`${t.unjudgedHeading}:`); for (const pair of comparison.withUnjudged) for (const line of unjudgedLines(pair, language)) lines.push(readableText(`  ${line}`)); }
+  // A flip that rests on a side without any verdict is listed with the runs not judged ("?"), as on the page.
+  const changed = comparison.changedFlips.filter(pair => !noVerdictSide(pair)), single = comparison.singleFlips.filter(pair => !noVerdictSide(pair));
+  if (changed.length) { lines.push(`${t.changedFlips}:`); for (const pair of changed) lines.push(readableText(`  ${flipLine(pair, language)}`)); }
+  if (single.length) { lines.push(`${t.singleFlips}:`); for (const pair of single) lines.push(readableText(`  ${flipLine(pair, language)}`)); }
+  if (comparison.withUnjudged.length) { lines.push(`${t.unjudgedHeading}:`); for (const pair of comparison.withUnjudged) for (const line of noVerdictSide(pair) ? [flipLine(pair, language)] : unjudgedLines(pair, language)) lines.push(readableText(`  ? ${line}`)); }
   if (comparison.notCompared.length) { lines.push(`${t.notCompared}:`); for (const pair of comparison.notCompared) lines.push(readableText(`  ${notComparedLine(pair, language)}`)); }
   if (comparison.incomplete.length) lines.push(`${t.incompleteTitle}: ${fill(language, t.incompleteBody, { n: comparison.incomplete.length })}`);
   if (comparison.caveats.length) { lines.push(`${t.caveats}:`); for (const caveat of comparison.caveats) lines.push(readableText(`  ${caveatLine(caveat, language)}`)); }
@@ -79,25 +89,39 @@ export function renderCompareTable(baseline: CompareInput, candidate: CompareInp
   return lines.join('\n') + '\n';
 }
 
-/** An instance's outcome on one side: pass or fail with passed/all repeats, and its unjudged runs. */
+/** An instance's outcome on one side: pass or fail with passed/all repeats, and its unjudged runs; no
+ * verdict at all when none of its runs was judged. */
 const outcome = (aggregate: InstancePair['baseline'], t: Words, language: Language): string => {
   if (aggregate === null) return t.outcomeMissing;
+  if (aggregate.repeats > 0 && aggregate.judged === 0) return fill(language, t.outcomeNoVerdict, { u: aggregate.unjudged, n: aggregate.repeats });
   const shown = fill(language, aggregate.outcome === 'pass' ? t.outcomePass : t.outcomeFail, { p: aggregate.passed, n: aggregate.repeats });
   return aggregate.unjudged ? fill(language, t.outcomeUnjudged, { outcome: shown, u: aggregate.unjudged }) : shown;
 };
-const list = (items: string[], mark?: 'pass' | 'fail'): string => `<ul class="flips">${items.map(item => `<li>${mark ? statusIcon(mark) : ''}<span>${esc(item)}</span></li>`).join('')}</ul>`;
+/** The same outcome as a table cell: its status mark (pass, fail, or the unknown mark) beside the words. */
+const outcomeCell = (aggregate: InstancePair['baseline'], t: Words, language: Language): string => {
+  const kind = aggregate === null ? null : aggregate.judged === 0 ? 'unknown' : aggregate.outcome === 'pass' ? 'pass' : 'fail';
+  return `<span class="outcome">${kind ? statusIcon(kind) : ''}${esc(outcome(aggregate, t, language))}</span>`;
+};
+type Mark = 'pass' | 'fail' | 'unknown' | undefined;
+// (A list item may carry its own mark: [text, mark].)
+const list = (items: ReadonlyArray<string | [string, Mark]>, mark?: Mark, ids: readonly string[] = []): string => `<ul class="flips">${items.map(item => { const [text, own] = typeof item === 'string' ? [item, mark] : item; return `<li>${own ? statusIcon(own) : ''}<span>${prose(text, ids)}</span></li>`; }).join('')}</ul>`;
 const side = (title: string, input: CompareInput, rate: Comparison['baseline'], t: Words, language: Language): string => `<div class="figure"><dt>${esc(title)}</dt><dd>${esc(rate.instances ? rateText(rate.passed, rate.instances, language) : t.none)}</dd><dd class="detail">${esc(sideText(rate, language))}</dd><dd class="detail">${chips(title, sideFacts(input, t, language))}</dd></div>`;
 
 export function renderCompareHtml(baseline: CompareInput, candidate: CompareInput, comparison: Comparison, tokensCss: string, language: Language = 'en'): string {
   const t = TEXT[language];
-  const flipWord = (pair: InstancePair): string => pair.flip === 'regression' ? t.flipRegression : pair.flip === 'fix' ? t.flipFix : pair.flip === 'changed-down' || pair.flip === 'changed-up' ? t.flipChanged : pair.flip ? t.flipSingle : t.flipNone;
-  const rows = comparison.pairs.map(pair => [`<code>${esc(pair.taskId)}</code> · ${pair.seed}`, esc(outcome(pair.baseline, t, language)), esc(outcome(pair.candidate, t, language)), esc(pair.kind === 'paired' ? flipWord(pair) : notComparedLine(pair, language))]);
+  const flipWord = (pair: InstancePair): string => noVerdictSide(pair) ? t.flipNoVerdict : pair.flip === 'regression' ? t.flipRegression : pair.flip === 'fix' ? t.flipFix : pair.flip === 'changed-down' || pair.flip === 'changed-up' ? t.flipChanged : pair.flip ? t.flipSingle : t.flipNone;
+  const rows = comparison.pairs.map(pair => [`<code>${esc(pair.taskId)}</code> · ${pair.seed}`, outcomeCell(pair.baseline, t, language), outcomeCell(pair.candidate, t, language), esc(pair.kind === 'paired' ? flipWord(pair) : notComparedLine(pair, language))]);
+  const ids = comparison.pairs.map(pair => pair.taskId);
+  // A flip that rests on a side without any verdict is not a change of outcome: it is listed with the
+  // runs not judged, under the unknown mark (it did not fail; it was not judged).
+  const flips = (pairs: readonly InstancePair[]): string[] => pairs.filter(pair => !noVerdictSide(pair)).map(pair => flipLine(pair, language));
+  const unjudged = comparison.withUnjudged.flatMap(pair => noVerdictSide(pair) ? [flipLine(pair, language)] : unjudgedLines(pair, language));
   const sections: string[] = [];
-  if (comparison.fixes.length) sections.push(`<h3>${esc(t.fixes)}</h3>${list(comparison.fixes.map(pair => flipLine(pair, language)), 'pass')}`);
-  if (comparison.changedFlips.length) sections.push(`<h3>${esc(t.changedFlips)}</h3>${list(comparison.changedFlips.map(pair => flipLine(pair, language)))}`);
-  if (comparison.singleFlips.length) sections.push(`<h3>${esc(t.singleFlips)}</h3>${list(comparison.singleFlips.map(pair => flipLine(pair, language)))}`);
-  if (comparison.withUnjudged.length) sections.push(`<h3>${esc(t.unjudgedHeading)}</h3>${list(comparison.withUnjudged.flatMap(pair => unjudgedLines(pair, language)))}`);
-  if (comparison.notCompared.length) sections.push(`<h3>${esc(t.notCompared)}</h3>${list(comparison.notCompared.map(pair => notComparedLine(pair, language)))}`);
+  if (comparison.fixes.length) sections.push(`<h3>${esc(t.fixes)}</h3>${list(comparison.fixes.map(pair => flipLine(pair, language)), 'pass', ids)}`);
+  if (flips(comparison.changedFlips).length) sections.push(`<h3>${esc(t.changedFlips)}</h3>${list(flips(comparison.changedFlips), undefined, ids)}`);
+  if (flips(comparison.singleFlips).length) sections.push(`<h3>${esc(t.singleFlips)}</h3>${list(flips(comparison.singleFlips), undefined, ids)}`);
+  if (unjudged.length) sections.push(`<h3>${esc(t.unjudgedHeading)}</h3>${list(unjudged, 'unknown', ids)}`);
+  if (comparison.notCompared.length) sections.push(`<h3>${esc(t.notCompared)}</h3>${list(comparison.notCompared.map(pair => notComparedLine(pair, language)), undefined, ids)}`);
   const body = `<header>
 <p class="eyebrow">${esc(t.compareTitle)}</p>
 <h1>${esc(heading(baseline, candidate, language))}</h1>
@@ -106,7 +130,7 @@ export function renderCompareHtml(baseline: CompareInput, candidate: CompareInpu
 </header>
 ${comparison.incomplete.length ? banner('warning', t.incompleteTitle, `<p>${esc(fill(language, t.incompleteBody, { n: comparison.incomplete.length }))}</p>`) : ''}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides">${side(t.baseline, baseline, comparison.baseline, t, language)}${side(t.candidate, candidate, comparison.candidate, t, language)}</dl></section>
-<section aria-labelledby="regressions"><h2 id="regressions">${esc(t.regressions)}</h2>${comparison.regressions.length ? list(comparison.regressions.map(pair => flipLine(pair, language)), 'fail') : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
+<section aria-labelledby="regressions"><h2 id="regressions">${esc(t.regressions)}</h2>${comparison.regressions.length ? list(comparison.regressions.map(pair => flipLine(pair, language)), 'fail', ids) : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
 <section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn }], rows)}</section>
 ${comparison.caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${list(comparison.caveats.map(caveat => caveatLine(caveat, language)))}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${esc(t.compareRules)}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);

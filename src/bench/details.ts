@@ -26,7 +26,7 @@ import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFil
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -60,6 +60,11 @@ export interface RunDetail {
   targetObjects: BoardObject[];
   /** Whether the pictures (one shared width) are wider than a phone or a desktop column. */
   overflow: 'none' | 'narrow' | 'wide';
+  /** The first object where the final board and the target differ lies in the right half of the
+   * shared viewBox: a picture that scrolls opens at that end. */
+  fromEnd: boolean;
+  /** The export carries the judged state's group outline (it shows no groups of its own). */
+  groupOverlay: boolean;
   calls: CallSummary | null; callsMissing: Missing | null;
   /** Distinct MCP client names that changed the board (from the mutation log). */
   clients: string[];
@@ -217,6 +222,31 @@ function sceneBounds(text: string): Box | null {
   return Number.isFinite(left) ? { x: left, y: top, width: right - left, height: bottom - top } : null;
 }
 
+/** The x centre of the first object (target reading order, then extra objects of the final board)
+ * that differs between the final board and the target, by label: missing, another shape, line, fill,
+ * frame or group, a size off by more than 8 or a place off by more than 40 units; arrows by their ends.
+ * Null when the two agree on every object. */
+export function firstDifference(final: State, target: State): number | null {
+  const objects = (state: State): { steps: Map<string, Extract<BoardObject, { kind: 'step' }>>; arrows: Set<string>; order: Array<Extract<BoardObject, { kind: 'step' }>> } => {
+    const all = boardObjects(state), steps = all.filter((object): object is Extract<BoardObject, { kind: 'step' }> => object.kind === 'step');
+    return { steps: new Map(steps.map(step => [step.label, step])), arrows: new Set(all.flatMap(object => object.kind === 'arrow' ? [`${object.from}\u0000${object.to}`] : [])), order: steps };
+  };
+  const a = objects(final), b = objects(target);
+  const centre = (step: { x: number; width: number }): number => step.x + step.width / 2;
+  const differs = (one: Extract<BoardObject, { kind: 'step' }>, two: Extract<BoardObject, { kind: 'step' }>): boolean =>
+    one.shape !== two.shape || one.stroke !== two.stroke || one.fill !== two.fill || one.frame !== two.frame || (one.group === null) !== (two.group === null)
+    || Math.abs(one.width - two.width) > 8 || Math.abs(one.height - two.height) > 8 || Math.abs(one.x - two.x) > 40 || Math.abs(one.y - two.y) > 40;
+  for (const step of b.order) { const mine = a.steps.get(step.label); if (!mine || differs(mine, step)) return centre(step); }
+  for (const step of a.order) if (!b.steps.has(step.label)) return centre(step);
+  const middle = (key: string, steps: Map<string, { x: number; width: number }>): number | null => {
+    const [from, to] = key.split('\u0000'), ends = [from, to].flatMap(label => { const step = label ? steps.get(label) : undefined; return step ? [centre(step)] : []; });
+    return ends.length ? ends.reduce((sum, value) => sum + value, 0) / ends.length : null;
+  };
+  for (const key of b.arrows) if (!a.arrows.has(key)) { const x = middle(key, b.steps); if (x !== null) return x; }
+  for (const key of a.arrows) if (!b.arrows.has(key)) { const x = middle(key, a.steps); if (x !== null) return x; }
+  return null;
+}
+
 /** Reads the details of every run from `folder` (the bench folder); `null` folder: none given. */
 export async function loadReportDetails(report: BenchReport, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
   const runs = new Map<string, RunDetail>();
@@ -227,7 +257,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
   for (const [index, run] of report.runs.entries()) {
-    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', calls: null, callsMissing: null, clients: [], rejected: [] };
+    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', fromEnd: false, groupOverlay: false, calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
@@ -320,12 +350,21 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
     if (targetBox && (!engine || engine.box)) finalView = targetView = unionBox(finalBox, targetBox);
     else if (targetBox) { const width = Math.max(finalBox.width, targetBox.width), height = Math.max(finalBox.height, targetBox.height); finalView = { ...finalBox, width, height }; targetView = { ...targetBox, width, height }; }
     // Ids inside the pictures are unique on the page by the run's position, whatever its id's length.
+    // Groups are drawn the same way on both pictures: an export shows none, so the judged state's group
+    // outline is laid over it when the two share coordinates; when they cannot, neither picture draws
+    // groups (the legend under each still names them).
+    const placed = !engine || engine.box !== null;
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
-      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
+      const overlay = engine.box ? groupOutlines(state, words) : '';
+      detail.groupOverlay = overlay !== '';
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
     } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView! }); detail.targetObjects = boardObjects(target); }
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed }); detail.targetObjects = boardObjects(target); }
     detail.overflow = pictureOverflow(finalView.width);
+    // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
+    const difference = target && placed ? firstDifference(state, target) : null;
+    detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;
   }
   return { folder: 'read', runs, explanations };
 }
