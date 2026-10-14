@@ -60,7 +60,20 @@ export interface ActRequest extends RevisionRequest { action: Action; actor?: Ac
 export interface ResetRequest extends RevisionRequest { confirmed: true }
 export interface VariantRequest extends RevisionRequest { confirmed: true; taskId?: string }
 export type HostReply<T> = { ok: true; value: T } | { ok: false; error: { code: HostErrorCode; message: string; details?: Record<string, string | number | boolean | null> } };
-export interface MutationReply { view: HostView; mirrorConfirmed: boolean; latencyMs: number }
+/** What one mutation changed (see `mutationDelta`): public data, sized by the change, not the board. */
+export interface MutationDelta {
+  step: number; revision: number; hash: string;
+  /** Objects that differ after the mutation, as they are now; a deleted object keeps its tombstone. */
+  changed: Record<string, State['objects'][string]>;
+  created: string[]; removed: string[]; effects: Effect[];
+  errors: Array<{ id: string; explanation: Localized }>;
+  /** Set when the changed objects were too large to send (DELTA_LIMIT_BYTES): observe instead. */
+  changedOmitted?: true;
+}
+export interface MutationReply { view: HostView; delta: MutationDelta; mirrorConfirmed: boolean; latencyMs: number }
+/** The HTTP reply to a mutation that asked for `reply: "delta"` (the MCP bridge does): the same
+ * reply without the view. The Player omits `reply` and keeps receiving the view. */
+export type MutationDeltaReply = Omit<MutationReply, 'view'>;
 export interface BootstrapRequest { code: string }
 export interface BootstrapReply { token: string; authorToken?: string; view: HostView; engineOrigin?:string; authorEnabled?:boolean }
 /** Same-session reload metadata, authenticated by the existing header credential. */

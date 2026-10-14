@@ -18,8 +18,27 @@ All notable changes are recorded here. The format follows
 - `main` carries the development version `0.2.0-dev.0`; the checker accepts its sessions, and
   [docs/release.md](docs/release.md) lists every place a version bump touches.
 
+- **Lean agent surface** ([PADR-0038](docs/adr/0038-lean-mcp-replies.md)). `observe` is compact by
+  default (task with goal conditions, live objects, step, revision, recent history, last check) and
+  takes `detail`, `lang` and `history`; `act`, `undo` and `reset` answer with what changed instead
+  of the whole view; one language unless asked for both; every result also as `structuredContent`;
+  refused inputs name the path and what it expects; `stale_base` names the current step and
+  revision; tool annotations; the task as resource `practonaut://task` and a `practise` prompt;
+  `practonaut mcp --call-log`. Bench agents no longer see reference lengths. Measured against 0.1.0
+  on `excalidraw/connect`: an `act` result 866 bytes instead of up to 63 KB, client round trip
+  10.4 ms instead of 133.7 ms (33.6 ms instead of 150.0 ms with the mirror); oracle episodes on the
+  six hardest tasks −79 % result bytes. Scripts that read `value.view` from a mutation reply must
+  use the delta or `observe` with `detail: "full", lang: "both"`. The `random` baseline now draws
+  ids from the live objects of the compact view only (0.1.0 also drew deleted ones), so its floor
+  can differ slightly from 0.1.0 reports.
+- **Faster transactions** ([PADR-0037](docs/adr/0037-fork-the-committed-session-for-candidates.md)):
+  a candidate forks the committed session instead of being rebuilt from the log, and the world is
+  validated once and frozen; the replay checks before every result check and publication stay.
+
 ### Internal
 
+- `tools/measure-agent-surface.ts`: the versioned measurement tool for the agent surface (client
+  round trip, full result bytes, oracle episodes) against a published version or the local build.
 - Dependabot updates `playwright` and `playwright-core` together; CI also runs on Node 24 and 26
   (separate, non-required job).
 

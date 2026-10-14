@@ -87,12 +87,30 @@ describe("atomic deterministic core", () => {
   });
   it("state, world, result and log cannot mutate Session through exposed aliases", () => {
     const w = world(); const s = new Session(w, 0, "T1"); const initialHash = s.hash;
-    w.initialState.objects.a!.deleted = true; s.state.objects.a!.deleted = true; s.world.initialState.objects.a!.deleted = true;
+    w.initialState.objects.a!.deleted = true; s.state.objects.a!.deleted = true;
+    // The world is shared, not copied per read (PADR-0037): it is frozen, so writing to it throws.
+    assert.throws(() => { s.world.initialState.objects.a!.deleted = true; }, TypeError);
+    assert.equal(s.world.initialState.objects.a!.deleted, false);
     assert.equal(s.hash, initialHash);
     const action = add(); const result = s.act(action); assert.equal(result.ok, true); const hash = s.hash;
     if (result.ok) Object.values(result.state.objects)[0]!.deleted = true;
     action.params.label = "mutated"; s.log[0]!.action.params.label = "mutated";
     assert.equal(s.hash, hash); assert.equal(s.checkReplay().ok, true);
+  });
+  it("a fork is an independent session at the same step that shares only the frozen world", () => {
+    const s = new Session(world(), 3, "T1"); must(s, add());
+    const fork = s.fork();
+    assert.equal(fork.hash, s.hash); assert.equal(fork.step, s.step); assert.deepEqual(fork.log, s.log); assert.equal(fork.world, s.world);
+    must(fork, { name: "rename_step", params: { id: "a", label: "Fork only" } });
+    const original = s.state.objects.a!.type === "step" ? s.state.objects.a!.label : "";
+    assert.notEqual(fork.hash, s.hash); assert.equal(s.step, 1); assert.notEqual(original, "Fork only");
+    // The fork's history replays, and acting on the original afterwards does not reach the fork.
+    assert.equal(fork.checkReplay().ok, true); must(s, { name: "rename_step", params: { id: "a", label: "Original only" } });
+    assert.equal(fork.state.objects.a!.type === "step" && fork.state.objects.a!.label, "Fork only");
+    // A fork and a fresh Session given the same actions agree byte for byte (state, hash, log).
+    const rebuilt = new Session(world(), 3, "T1"); for (const entry of fork.log) must(rebuilt, entry.action);
+    assert.equal(rebuilt.hash, fork.hash); assert.deepEqual(rebuilt.log, fork.log);
+    assert.equal(fork.undo().ok, true); assert.equal(fork.step, 1); assert.equal(fork.hash, s.log[0]!.hash);
   });
   it("replay rejects tampered step hashes, altered logs, skipped actions and unknown effects", () => {
     const s = new Session(world(), 1, "T1"); must(s, add()); must(s, { name: "rename_step", params: { id: "a", label: "Changed" } });

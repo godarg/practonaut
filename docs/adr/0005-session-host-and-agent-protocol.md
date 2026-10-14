@@ -1,4 +1,4 @@
-⛔ The evaluation-setup part is superseded by [PADR-0030](0030-bench-replaces-unsealed-eval.md) (`practonaut bench`); the sealed-setup proposal below is not an available feature. The host and transport decisions remain in force.
+⛔ The evaluation-setup part is superseded by [PADR-0030](0030-bench-replaces-unsealed-eval.md) (`practonaut bench`); the sealed-setup proposal below is not an available feature. The MCP reply shapes are changed by [PADR-0038](0038-lean-mcp-replies.md). The host and transport decisions remain in force.
 
 # PADR-0005 — One session host; loopback HTTP for the player, MCP over stdio for agents
 

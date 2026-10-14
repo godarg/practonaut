@@ -200,7 +200,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions); };
     let outcome: AgentOutcome; let checker: BenchRun['checker'] = null; let artifacts: BenchRun['artifacts']; let wallMs = 0; let finalActions = 0;
     try {
-      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory });
+      // No task-list facts for bench agents: the reference length of any task is not theirs to see.
+      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory, taskInfo: {} });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile], env: { PRACTONAUT_HOME: agentDirectory } };
       const configPath = join(agentDirectory, 'mcp.json');

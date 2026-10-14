@@ -148,9 +148,10 @@ Agent clients: anything that speaks MCP over stdio; HTTP transport later behind 
 
 [PADR-0014](adr/0014-player-bundle-and-transactions.md) fixes the revisioned HTTP/SSE
 contract. The host serializes mutations; a request carries the observed revision so stale tabs
-cannot replay a discarded branch. A candidate Session replays the committed prefix, computes
-the proposed action and confirms coverage. Only exact adapter read-back and integrity agreement
-commits it. Undo/reset/variant replace both committed scenes atomically. Timeout or crash kills
+cannot replay a discarded branch. A candidate Session forks the committed one (sharing its
+once-validated, frozen world; [PADR-0037](adr/0037-fork-the-committed-session-for-candidates.md)),
+computes the proposed action and confirms coverage; its full history is replayed before it can be
+published. Only exact adapter read-back and integrity agreement commits it. Undo/reset/variant replace both committed scenes atomically. Timeout or crash kills
 the stale engine before recovery. Rejected steps preserve state, log and hash. The latency
 target is 2 seconds and each mirror operation has a 5-second deadline.
 

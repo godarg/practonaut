@@ -18,7 +18,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0002](0002-language-runtime-and-tooling.md) | TypeScript on Node.js, npm, built-in test runner | accepted | 2026-10-03 |
 | [PADR-0003](0003-world-package-format.md) | World packages are data-only zip archives with a hashed manifest | accepted | 2026-10-03 |
 | [PADR-0004](0004-runtime-semantics.md) | Pure deterministic runtime with atomic actions and explicit unknowns | accepted | 2026-10-03 |
-| [PADR-0005](0005-session-host-and-agent-protocol.md) | One session host; loopback HTTP for the player, MCP over stdio for agents | accepted (evaluation part superseded by PADR-0030) | 2026-10-03 |
+| [PADR-0005](0005-session-host-and-agent-protocol.md) | One session host; loopback HTTP for the player, MCP over stdio for agents | accepted (evaluation part superseded by PADR-0030; MCP reply shapes changed by PADR-0038) | 2026-10-03 |
 | [PADR-0006](0006-pilot-application-and-workflow.md) | Pilot application and first workflow | accepted | 2026-10-03 |
 | [PADR-0007](0007-adapter-contract.md) | Application adapters are trusted project code behind a capability contract | accepted | 2026-10-03 |
 | [PADR-0008](0008-authoring-and-model-providers.md) | Authoring may use language models; frozen worlds never do | accepted | 2026-10-03 |
@@ -33,7 +33,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0018](0018-complete-author-source-admission.md) | Complete author sources remain admission authority | accepted | 2026-10-04 |
 | [PADR-0019](0019-native-semantic-object-identifiers.md) | Native semantic object identifiers | accepted | 2026-10-04 |
 | [PADR-0020](0020-design-system-v1.md) | Design system v1: Apple-grade language, one shell, enforced by tools | accepted (decision 8 amended by PADR-0035) | 2026-10-07 |
-| [PADR-0022](0022-linear-replay-and-transaction-deadline.md) | Validated replay and one transaction deadline | accepted | 2026-10-09 |
+| [PADR-0022](0022-linear-replay-and-transaction-deadline.md) | Validated replay and one transaction deadline | accepted (refined by PADR-0037) | 2026-10-09 |
 | [PADR-0023](0023-author-and-practice-capabilities.md) | Separate author and practice capabilities | accepted | 2026-10-09 |
 | [PADR-0024](0024-current-session-and-native-export.md) | Export the confirmed current session and native editor artifact | accepted | 2026-10-09 |
 | [PADR-0025](0025-no-optional-mermaid-converter-in-pilot.md) | Omit the optional Mermaid converter from the pilot bundle | accepted | 2026-10-09 |
@@ -44,3 +44,5 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted | 2026-10-14 |
 | [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | accepted | 2026-10-14 |
 | [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | accepted | 2026-10-14 |
+| [PADR-0037](0037-fork-the-committed-session-for-candidates.md) | Transaction candidates fork the committed session; the world is validated once | accepted | 2026-10-14 |
+| [PADR-0038](0038-lean-mcp-replies.md) | Lean MCP replies: compact observe, mutation deltas, one language by default | accepted | 2026-10-14 |

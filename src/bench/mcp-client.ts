@@ -65,7 +65,8 @@ export class StdioMcpClient {
   }
   /** Calls one Practonaut tool and returns its JSON reply (`{ok, value}` or `{ok:false, error}`). */
   async call<T>(name: string, input: object): Promise<HostReply<T>> {
-    const result = await this.request('tools/call', { name, arguments: input }) as { content?: Array<{ type: string; text?: string }> };
+    const result = await this.request('tools/call', { name, arguments: input }) as { content?: Array<{ type: string; text?: string }>; structuredContent?: unknown };
+    if (result.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent as HostReply<T>;
     const text = result.content?.find(part => part.type === 'text')?.text;
     if (typeof text !== 'string') throw new McpClientError('mcp_protocol', `tool ${name} returned no text`);
     return JSON.parse(text) as HostReply<T>;

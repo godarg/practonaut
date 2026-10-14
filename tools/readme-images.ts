@@ -63,14 +63,12 @@ async function playerShot(browser: Browser, theme: "light" | "dark"): Promise<vo
     const { world, library } = loadLibrary();
     const oracle = library.tasks.find(task => task.id === TASK)!.oracle.steps;
     const tokens = variantTokens(world.variants.cases[variantIndex(world, 1)]!);
-    type View = { revision: number; step: number; state: { objects: Record<string, unknown> } };
-    let view = await call<View>("observe", {});
+    let view = await call<{ revision: number; step: number }>("observe", {});
     const created: string[] = [];
     for (const [index, step] of oracle.slice(0, -1).entries()) {
       const params = Object.fromEntries(Object.entries(step.params).map(([key, value]) => [key, value !== null && typeof value === "object" ? created[(value as { created: number }).created] ?? "" : typeof value === "string" ? substituteTokens(value, tokens) : value]));
-      const before = new Set(Object.keys(view.state.objects));
-      view = (await call<{ view: View }>("act", { name: step.name, params, baseStep: view.step, expectedRevision: view.revision })).view;
-      created[index] = Object.keys(view.state.objects).find(id => !before.has(id)) ?? "";
+      const reply = await call<{ revision: number; step: number; created: string[] }>("act", { name: step.name, params, baseStep: view.step, expectedRevision: view.revision });
+      view = reply; created[index] = reply.created[0] ?? "";
     }
     await call("check_result", { expectedRevision: view.revision });
     await page.locator(".history-entry").nth(oracle.length - 2).waitFor();

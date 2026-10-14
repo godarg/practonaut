@@ -16,8 +16,10 @@ import { inlineOptionValues } from './options.ts';
 export interface McpArguments {
   attach?: { host?: string; tokenFile?: string };
   start?: { task: string; taskId?: string; seed: number; mirror: MirrorChoice; open: boolean };
+  /** `--call-log <file>`: one JSON line per tool call (tool, result code, result bytes, bridge time). */
+  callLog?: string;
 }
-const VALUED = ['--host', '--token-file', '--task', '--task-id', '--seed', '--mirror'];
+const VALUED = ['--host', '--token-file', '--task', '--task-id', '--seed', '--mirror', '--call-log'];
 export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = process.env): McpArguments {
   const args = inlineOptionValues(given, VALUED);
   const flags: Record<string, string> = {}; let open = false;
@@ -30,6 +32,7 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
   }
   const attachFlags = '--host' in flags || '--token-file' in flags, startFlags = ['--task', '--task-id', '--seed', '--mirror'].some(key => key in flags) || open;
   if (attachFlags && startFlags) throw new McpConfigurationError('invalid_request');
+  const callLog = flags['--call-log'] === undefined ? {} : { callLog: flags['--call-log'] };
   if (startFlags) {
     const task = flags['--task'];
     if (!task) throw new RuntimeError('usage', cliText('mcpUsage'));
@@ -37,11 +40,11 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
     if (!/^-?\d+$/.test(seedText) || !Number.isSafeInteger(Number(seedText))) throw new RuntimeError('usage', cliText('seedUsage'));
     const mirror = flags['--mirror'] ?? 'auto';
     if (mirror !== 'auto' && mirror !== 'required' && mirror !== 'off') throw new RuntimeError('usage', cliText('mirrorUsage'));
-    return { start: { task, seed: Number(seedText), mirror, open, ...(flags['--task-id'] ? { taskId: flags['--task-id'] } : {}) } };
+    return { start: { task, seed: Number(seedText), mirror, open, ...(flags['--task-id'] ? { taskId: flags['--task-id'] } : {}) }, ...callLog };
   }
   const host = flags['--host'] ?? env.PRACTONAUT_HOST, tokenFile = flags['--token-file'] ?? env.PRACTONAUT_TOKEN_FILE;
   if (!host) throw new RuntimeError('usage', cliText('mcpUsage'));
-  return { attach: { host, ...(tokenFile === undefined ? {} : { tokenFile }) } };
+  return { attach: { host, ...(tokenFile === undefined ? {} : { tokenFile }) }, ...callLog };
 }
 
 /** stdout is exclusively JSON-RPC. Credentials may be inherited, never supplied in argv. In
@@ -69,7 +72,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     // The act tool lists exactly the session world's actions; without a host reply the generic
     // vocabulary stays and the host still rejects anything its world does not define.
     const listed = await bridge.call("list_actions", {});
-    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined) });
+    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined), ...(listed.ok ? { actions: listed.value } : {}), ...(parsed.callLog ? { callLog: parsed.callLog } : {}) });
     let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined;
     if (parsed.start?.open && host) {
       try {

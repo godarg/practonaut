@@ -55,17 +55,20 @@ same-user instrumentation can inspect them, so this is no OS secrecy or sealed-e
 
 Canonical TypeScript definitions are `src/host/protocol.ts`. JSON replies are
 `{ok:true,value:…}` or `{ok:false,error:{code,message,details?}}`. Every mutation carries the
-observed `expectedRevision`; stale tabs receive `stale_base`. Revision increases independently
-of the core action count and hash (hints also change revision).
+observed `expectedRevision`; stale tabs receive `stale_base` with the current `step` and
+`revision` in `details`. Revision increases independently of the core action count and hash (hints
+also change revision). A mutation reply carries the new view and the `delta` (changed objects as
+they are now, created and removed ids, effects, error explanations); with `reply:"delta"` in the
+request (the MCP bridge sends it, PADR-0038) the view is left out.
 
 | Method/route | Input | Result |
 |---|---|---|
 | POST `/api/bootstrap` | `{code}` | token and initial public view; code consumed once |
 | GET `/api/resume` | token header; no query | current public view and local editor address; no new token or state mutation |
 | GET `/api/observe` | token header | state/hash/log/history, task/public conditions, rules/provenance, hints, mirror mode |
-| POST `/api/act` | revision, `{action:{name,params}}` and optional `actor:{kind:"agent",client}` (set by the MCP bridge; absent = a person) | atomic action, new view (history entry with its actor), mirror confirmation and measured latency |
-| POST `/api/undo` | revision | last committed action removed in core and mirror |
-| POST `/api/reset` | revision, `confirmed:true` | original task state, hints/history cleared, new attempt |
+| POST `/api/act` | revision, `{action:{name,params}}`, optional `actor:{kind:"agent",client}` (set by the MCP bridge; absent = a person), optional `reply:"delta"` | atomic action, new view (history entry with its actor), delta, mirror confirmation and measured latency |
+| POST `/api/undo` | revision, optional `reply:"delta"` | last committed action removed in core and mirror |
+| POST `/api/reset` | revision, `confirmed:true`, optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
 | POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed |
 | POST `/api/hint` | revision | next public hint, never hidden data |
 | POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict |

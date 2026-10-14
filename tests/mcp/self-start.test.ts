@@ -7,7 +7,8 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { loadLibrary } from '../../src/library/index.ts';
 import { MCP_INSTRUCTIONS, MCP_TOOL_NAMES, TOOL_DESCRIPTIONS } from '../../src/mcp/contracts.ts';
-import type { HostReply, HostView, MutationReply, PublicCheck } from '../../src/host/protocol.ts';
+import type { HostReply, HostView, PublicCheck } from '../../src/host/protocol.ts';
+import type { MutationResult } from '../../src/mcp/replies.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 
@@ -30,18 +31,18 @@ test('mcp --task excalidraw/connect: self-started session, real mirror, observe 
     const act = tools.find(tool => tool.name === 'act')!.inputSchema as unknown as { properties: { name: { enum: string[] } } };
     assert.equal(act.properties.name.enum.length, 13, 'world/2 vocabulary from the library world');
 
-    const observed = await call<HostView>('observe', {}); assert.equal(observed.ok, true);
+    const observed = await call<HostView>('observe', { detail: 'full', lang: 'both' }); assert.equal(observed.ok, true);
     const view = (observed as { value: HostView }).value;
     assert.deepEqual([view.task.id, view.seed, view.mirror, view.practiceEvidence], ['connect', 7, 'required', true]);
     // The library oracle for connect, with ids from the observed state (no variant label is involved).
     const step = loadLibrary().library.tasks.find(task => task.id === 'connect')!.oracle.steps[0]!;
     const unchecked = await call<PublicCheck>('check_result', { expectedRevision: view.revision });
     assert.equal(unchecked.ok && unchecked.value.passed, false, 'the start state does not pass');
-    const acted = await call<MutationReply>('act', { name: step.name, params: step.params, baseStep: view.step, expectedRevision: view.revision });
+    const acted = await call<MutationResult>('act', { name: step.name, params: step.params, baseStep: view.step, expectedRevision: view.revision });
     assert.equal(acted.ok, true, JSON.stringify(acted));
-    const after = (acted as { value: MutationReply }).value;
-    assert.equal(after.mirrorConfirmed, true);
-    const checked = await call<PublicCheck>('check_result', { expectedRevision: after.view.revision });
+    const after = (acted as { value: MutationResult }).value;
+    assert.equal(after.mirrorConfirmed, true); assert.equal(after.created.length, 1, 'connect creates one arrow');
+    const checked = await call<PublicCheck>('check_result', { expectedRevision: after.revision });
     assert.equal(checked.ok, true); assert.equal((checked as { value: PublicCheck }).value.passed, true);
     assert.equal((checked as { value: PublicCheck }).value.mode, 'real-engine');
 

@@ -85,7 +85,8 @@ try {
     assert.equal(reply.ok, true);
     return reply.value;
   };
-  let view = await call('observe');
+  const full = () => call('observe', { detail: 'full', lang: 'both' });
+  let view = await full();
   const hashes = [view.hash];
   for (const action of [
     { name: 'reconnect_end', params: { id: 'ab', end: 'end', target: 'c' } },
@@ -94,7 +95,7 @@ try {
   ]) {
     const reply = await call('act', { ...action, baseStep: view.step, expectedRevision: view.revision });
     assert.equal(reply.mirrorConfirmed, true);
-    view = reply.view; hashes.push(view.hash);
+    view = await full(); assert.equal(view.revision, reply.revision); hashes.push(view.hash);
   }
   await page.locator('[data-object-id="b"]').waitFor({ state: 'detached' });
   const response = page.waitForResponse(r => r.url() === origin + '/api/check' && r.request().method() === 'POST');

@@ -17,7 +17,7 @@ test('placed private author/bundle canaries stay out of all seven tools in both 
   let visibleHits=0;
   for(const modern of [true,false]){
    const sdk=await sdkClient(host,modern);try{
-    const outputs:unknown[]=[await sdk.client.listTools(),await sdk.client.listResources(),await sdk.client.listPrompts()];
+    const outputs:unknown[]=[await sdk.client.listTools(),await sdk.client.listResources(),await sdk.client.listPrompts(),await sdk.client.readResource({uri:'practonaut://task'}),await sdk.client.getPrompt({name:'practise'}),await sdk.call('observe',{detail:'full',lang:'both'})];
     const obs=await sdk.call('observe',{});assert.equal(obs.ok,true);if(!obs.ok)throw Error('observe refused');outputs.push(obs);
     outputs.push(await sdk.call('list_actions',{}));
     outputs.push(await sdk.call('act',{name:'rename_step',params:{id:'a',label:'Reviewed'},baseStep:obs.value.step,expectedRevision:obs.value.revision}));
