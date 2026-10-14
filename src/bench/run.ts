@@ -7,8 +7,9 @@
  * in a private file). Its output is opaque: the score comes from the host's history and from the
  * independent checker, started as a separate process after the agent ends.
  *
- * The public world is stored in the bench folder before the first run and every host loads it from
- * those bytes; the references are written there only after the last agent has ended (PADR-0036).
+ * Every host loads the public world from its package bytes, which are hashed before the first run and
+ * kept in memory; the world and the references are written to the bench folder only after the last
+ * agent has ended (PADR-0036), so no agent finds them there while it runs.
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -35,7 +36,7 @@ import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
-import { libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
+import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
 
 export interface BenchOptions {
@@ -114,14 +115,16 @@ async function writeRunArtifact(directory: string, name: string, text: string | 
   catch (error) { await rm(temporary, { force: true }); throw error; }
 }
 
-/** Stores the public world in the bench folder and loads it back from the stored bytes: the hosts
- * run exactly the world that `report --verify` will judge against. */
-async function storeWorld(directory: string, prepared: BenchWorld): Promise<{ world: World; sha256: string }> {
-  await writeRunArtifact(directory, BENCH_WORLD_FILE, prepared.bytes);
-  const bytes = await readFile(join(directory, BENCH_WORLD_FILE));
-  const world = await worldFromPackage(bytes);
-  if (worldContentHash(world) !== prepared.contentHash) throw new Error('the stored world differs from the world prepared for the bench');
-  return { world, sha256: sha256Hex(bytes) };
+/** The world the hosts run, loaded from the package bytes whose hash the report binds. */
+async function benchedWorld(prepared: BenchWorld): Promise<{ world: World; bytes: Buffer; sha256: string }> {
+  const bytes = Buffer.from(prepared.bytes), world = await worldFromPackage(bytes);
+  if (worldContentHash(world) !== prepared.contentHash) throw new Error('the world package differs from the world prepared for the bench');
+  return { world, bytes, sha256: sha256Hex(bytes) };
+}
+/** Writes the world after the runs and reads it back: the stored bytes must be the bound ones. */
+async function storeWorld(directory: string, bytes: Buffer, sha256: string): Promise<void> {
+  await writeRunArtifact(directory, BENCH_WORLD_FILE, bytes);
+  if (sha256Hex(await readFile(join(directory, BENCH_WORLD_FILE))) !== sha256) throw new Error('the stored world differs from the world the runs used');
 }
 
 /** A run note never spells out a local path: every absolute path is cut to its last component. */
@@ -184,7 +187,7 @@ async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, 
   } finally { await stdout.close(); await stderr.close(); }
 }
 
-async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; oracle: TaskOracle | undefined; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
+async function runBuiltin(spec: Extract<AgentSpec, { kind: 'builtin' }>, entry: McpServerEntry, context: { cwd: string; env: NodeJS.ProcessEnv; world: World; seed: number; oracle: Pick<TaskOracle, 'steps'> | undefined; maxActions: number; deadlineMs: number; randomSeed: number; signal?: AbortSignal }): Promise<AgentOutcome> {
   let client: StdioMcpClient | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     client = await StdioMcpClient.start(entry, { cwd: context.cwd, env: context.env });
@@ -215,10 +218,13 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
   for (const task of options.tasks) if (!prepared.world.tasks.some(value => value.id === task)) throw new Error(`unknown task ${task} in world ${prepared.world.id}`);
   for (const taskId of references.keys()) if (!options.tasks.includes(taskId)) throw new Error(`reference for task ${taskId}, which is not benched`);
   if (options.agent.kind === 'builtin' && options.agent.name === 'oracle') for (const task of options.tasks) if (!references.has(task)) throw new Error(`the oracle agent needs a reference for task ${task}`);
+  // Refused before the first run: references that `report --verify` would not read back.
+  const referencesFile = references.size ? referencesText(references, options.tasks) : null;
+  if (referencesFile !== null) assertReferencesFit(referencesFile);
+  // The hosts load the world from these bytes; they reach the bench folder only after the runs.
+  const { world, bytes: worldBytes, sha256: worldSha256 } = await benchedWorld(prepared);
   const paths = await resolvedDataPaths(), id = benchId(), directory = join(paths.home, 'bench', id);
   await ensurePrivateDirectory(directory);
-  // The hosts load the world from the stored bytes, so `report --verify` judges the same world.
-  const { world, sha256: worldSha256 } = await storeWorld(directory, prepared);
   const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
   const runs: BenchRunV2[] = []; let interrupted = false;
   let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null };
@@ -232,8 +238,9 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions); };
     let outcome: AgentOutcome; let checker: BenchRunV2['checker'] = null; let artifacts: BenchRunV2['artifacts']; let wallMs = 0; let finalActions = 0;
     try {
-      // No task-list facts for bench agents: the reference length of any task is not theirs to see.
-      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, tokenDirectory: join(home, 'host'), controllerFactory: factory, taskInfo: {} });
+      // A bench host publishes only the run's own task (and refuses a change to another one), without
+      // task-list facts: no reference length of any task is the agent's to see.
+      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, singleTask: true, taskInfo: {}, tokenDirectory: join(home, 'host'), controllerFactory: factory });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile], env: { PRACTONAUT_HOME: agentDirectory } };
       const configPath = join(agentDirectory, 'mcp.json');
@@ -245,7 +252,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       const started = performance.now(), deadlineMs = options.timeoutSeconds * 1000;
       // The oracle baseline plays the reference through MCP actions; the reference itself never
       // reaches the host, the bridge or the agent's folder.
-      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, oracle: reference?.oracle, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
+      if (options.agent.kind === 'builtin') outcome = await runBuiltin(options.agent, entry, { cwd: agentDirectory, env, world, seed: item.seed, oracle: reference, maxActions: options.maxActions, deadlineMs, randomSeed: (item.seed * 1_000_003 + item.repeat * 7919 + index) >>> 0, ...(options.signal ? { signal: options.signal } : {}) });
       else {
         outcome = await runExternal(agentArguments(options.agent.command, { mcpConfig: configPath, prompt: BENCH_PROMPT }), agentDirectory, env, home, deadlineMs, options.signal);
         // A preset and a command template keep the model and apiKeySource their output reports.
@@ -283,19 +290,19 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRunV2['status'], pass: false,
       actions: finalActions, acceptedActions: counters.accepted, rejectedActions: counters.rejected, undos: counters.undos, resets: counters.resets,
       toolCalls: { observe: counters.observe, act: counters.act, undo: counters.undoCalls, reset: counters.resetCalls, check: counters.check, total: counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check },
-      wallMs, referenceActions: reference ? reference.oracle.steps.length : null, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
+      wallMs, referenceActions: reference ? reference.steps.length : null, checker, agentExitCode: outcome.exitCode, ...(outcome.note ? { note: scrubPaths(outcome.note.replaceAll(homedir(), '~')).slice(0, 256) } : {}), ...(artifacts ? { artifacts } : {}),
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
   if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
-  // Every agent of this bench has ended: only now do the references enter the bench folder.
+  // Every agent of this bench has ended: only now do the world and the references enter the bench folder.
+  await storeWorld(directory, worldBytes, worldSha256);
   let referencesBinding: BenchReportV2['references'] = null;
-  if (references.size) {
-    const text = referencesText(references, options.tasks);
-    await writeRunArtifact(directory, BENCH_REFERENCES_FILE, text);
-    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(text), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.oracle.steps.length }] : []; }) };
+  if (referencesFile !== null) {
+    await writeRunArtifact(directory, BENCH_REFERENCES_FILE, referencesFile);
+    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(referencesFile), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.steps.length }] : []; }) };
   }
   const generated = options.tasks.flatMap(taskId => { const by = world.tasks.find(task => task.id === taskId)?.generatedBy; return by ? [{ taskId, ...by }] : []; });
   const model = options.agent.kind === 'builtin' ? null : client.model;

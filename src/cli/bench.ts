@@ -7,7 +7,7 @@ import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
-import { verifyBenchArtifacts, verifyBenchV2 } from '../bench/verify.ts';
+import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
 import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
@@ -188,19 +188,28 @@ export async function commandReport(args: string[]): Promise<number> {
   }
   // Without --verify only the report's own arithmetic is checked; --verify re-judges the run artifacts:
   // a /2 report against the world stored in its bench folder, a /1 report against the bundled library.
-  let verification: { level: 'consistency-checked' } | { level: 're-verified'; reverified: number; unjudged: number; references?: number; world?: { id: string; version: string } } = { level: 'consistency-checked' };
+  let verification: { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult) = { level: 'consistency-checked' };
+  let stored: VerificationResultV2 | undefined;
   if (parsed.booleans.has('--verify')) {
     const runs = parsed.flags['--runs'] ?? dirname(path);
-    try { verification = { level: 're-verified', ...(isBenchReportV2(report) ? await verifyBenchV2(report, runs) : await verifyBenchArtifacts(report, runs, await libraryWorld())) }; }
-    catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
+    try {
+      if (isBenchReportV2(report)) { stored = await verifyBenchV2(report, runs, libraryWorld); verification = { level: 're-verified', ...stored }; }
+      else verification = { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+    } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
   }
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   else {
     process.stdout.write(renderTable(report, getCliLanguage()));
-    process.stdout.write(verification.level === 're-verified'
-      ? verification.world ? cliText('reportReverifiedWorld', { world: safeText(verification.world.id), version: safeText(verification.world.version), runs: verification.reverified, unjudged: verification.unjudged, references: verification.references ?? 0 })
-        : cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged })
-      : cliText('reportConsistencyOnly'));
+    if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
+    else if (stored === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
+    else {
+      const world = { world: safeText(stored.world.id), version: safeText(stored.world.version) };
+      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: stored.world.contentHash, runs: stored.reverified, unjudged: stored.unjudged, references: stored.references }));
+      // What the stored world is anchored to: this Practonaut's library, or only the bench's own record.
+      process.stdout.write(stored.library === undefined ? cliText('reportWorldOwn')
+        : stored.library.status === 'same' ? cliText('reportLibrarySame', world)
+        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${stored.library.shipped.id} ${stored.library.shipped.version}`) }));
+    }
   }
   const html = parsed.flags['--html'];
   if (html) {
