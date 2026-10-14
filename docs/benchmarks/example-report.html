@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-6q1dFgndN8DI4tzmG2wcaCUjlo08nr43fnzAxxlpmH0='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-OITayqn335diCN2eBFkAqzt/z6A18k3CPQgKo0fDGf8='; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Practonaut bench: claude-code</title>
 <style>/*
@@ -394,82 +394,151 @@
 }
 /* Bench report and compare pages (PADR-0039 B.5): one static page, design system v1, values from
    design/tokens.css only. Linted by `npm run design:lint` (report profile). The page is inlined with
-   tokens.css into one hashed <style>; no script, no external asset. Status is spelled out in words;
-   colour only repeats it. */
+   tokens.css into one hashed <style>; no script, no external asset. The kit's pieces (chip, banner,
+   status marks, card, disclosure chevron, heading roles) are reproduced here, since the page loads no
+   other stylesheet. Status is spelled out in words and shaped; colour only repeats it. */
 *,*::before,*::after{box-sizing:border-box}
 html{color-scheme:light dark}
 body{margin:0;background:var(--pn-color-bg);color:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead)}
-.page{max-width:var(--pn-page-max);margin:0 auto;padding:var(--pn-space-10) var(--pn-gutter) var(--pn-space-16)}
+/* Long words break with a hyphen in the page's language; a word is split only when it cannot fit a line,
+   so punctuation stays with its word. */
+.page{max-width:var(--pn-page-max);margin:0 auto;padding:var(--pn-space-10) var(--pn-gutter) var(--pn-space-16);hyphens:auto;overflow-wrap:break-word}
 .eyebrow{margin:0 0 var(--pn-space-2);font-size:var(--pn-text-caption);line-height:var(--pn-leading-caption);letter-spacing:var(--pn-tracking-eyebrow);text-transform:uppercase;color:var(--pn-color-text-secondary)}
-h1{margin:0;font-size:var(--pn-text-title1);line-height:var(--pn-leading-title1);font-weight:var(--pn-weight-bold);overflow-wrap:anywhere}
-h2{margin:0 0 var(--pn-space-3);font-size:var(--pn-text-title3);line-height:var(--pn-leading-title3);font-weight:var(--pn-weight-semibold)}
-h3{margin:var(--pn-space-6) 0 var(--pn-space-2);font-size:var(--pn-text-body);line-height:var(--pn-leading-body);font-weight:var(--pn-weight-semibold)}
-.headline{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-body);line-height:var(--pn-leading-body);font-weight:var(--pn-weight-medium);overflow-wrap:anywhere}
-.meta{margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);overflow-wrap:anywhere}
-section{margin-top:var(--pn-space-10)}
+h1{margin:0;font-size:var(--pn-text-title1);line-height:var(--pn-leading-title1);letter-spacing:var(--pn-tracking-title1);font-weight:var(--pn-weight-bold);hyphens:manual}
+h2{margin:0 0 var(--pn-space-4);font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);letter-spacing:var(--pn-tracking-title2);font-weight:var(--pn-weight-semibold)}
+h3{margin:var(--pn-space-6) 0 var(--pn-space-2);font-size:var(--pn-text-body);line-height:var(--pn-leading-body);letter-spacing:var(--pn-tracking-body);font-weight:var(--pn-weight-semibold)}
+.headline{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-title3);line-height:var(--pn-leading-title3);letter-spacing:var(--pn-tracking-title3);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums}
+.verdict{margin:var(--pn-space-2) 0 0;max-width:var(--pn-measure);font-size:var(--pn-text-body);line-height:var(--pn-leading-body)}
+.lead{margin:0;font-size:var(--pn-text-body);line-height:var(--pn-leading-body)}
+.meta{margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.note{max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+section{margin-top:var(--pn-space-12)}
 a{color:var(--pn-color-accent-text)}
-a:focus-visible,summary:focus-visible,.scroll:focus-visible{outline:var(--pn-focus-width) solid var(--pn-color-focus);outline-offset:var(--pn-focus-offset)}
+a:focus-visible,summary:focus-visible,.scroll:focus-visible,.board-scroll:focus-visible{outline:var(--pn-focus-width) solid var(--pn-color-focus);outline-offset:var(--pn-focus-offset)}
+code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:none;overflow-wrap:anywhere}
+
+/* Chip: a small fact, never an action. */
+.chips{display:flex;flex-wrap:wrap;gap:var(--pn-space-2);margin:var(--pn-space-3) 0 0;padding:0;list-style:none}
+.chip{display:inline-flex;align-items:center;min-height:var(--pn-space-6);max-width:100%;padding:0 var(--pn-space-2);border-radius:var(--pn-radius-full);background:var(--pn-color-fill);color:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-caption)/var(--pn-leading-caption) var(--pn-font-sans);letter-spacing:var(--pn-tracking-caption)}
+
+/* Banner: a statement about the situation, with tone. Unknown carries the hatch (something is not known here). */
+.banner{--_bg:var(--pn-color-fill);--_fg:var(--pn-color-text);--_icon:var(--pn-color-text-secondary);display:flex;align-items:flex-start;gap:var(--pn-space-3);margin:var(--pn-space-3) 0;padding:var(--pn-space-3) var(--pn-space-4);border-radius:var(--pn-radius-md);background:var(--_bg);color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead)}
+.banner.neutral{--_bg:var(--pn-color-fill)}
+.banner.warning{--_bg:var(--pn-color-warning-bg);--_fg:var(--pn-color-warning-fg);--_icon:var(--pn-color-warning-icon)}
+.banner.unknown{--_bg:var(--pn-color-unknown-bg);--_fg:var(--pn-color-unknown-fg);--_icon:var(--pn-color-unknown-icon);position:relative;overflow:clip;padding-left:var(--pn-space-6)}
+.banner.unknown::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--pn-space-2);background:var(--pn-pattern-unmodeled)}
+.banner-icon{width:var(--pn-icon-md);height:var(--pn-icon-md);flex:none;margin-top:var(--pn-nudge);fill:none;stroke:var(--_icon);stroke-width:var(--pn-stroke-icon);stroke-linecap:round;stroke-linejoin:round}
+.banner-body{display:grid;gap:var(--pn-space-2);min-width:0}
+.banner-body p{margin:0}
+.banner-title{font-weight:var(--pn-weight-semibold);color:var(--_fg)}
+
+/* Status marks: shape first, colour second, always beside a word. */
+.status-icon{width:var(--pn-icon-md);height:var(--pn-icon-md);flex:none;fill:none;stroke:currentColor;stroke-width:var(--pn-stroke-icon);stroke-linecap:round;stroke-linejoin:round}
+.status-icon.pass{color:var(--pn-color-success-icon)}
+.status-icon.fail{color:var(--pn-color-danger-icon)}
+.status-icon.unknown{color:var(--pn-color-unknown-icon)}
+.result{display:inline-flex;align-items:center;gap:var(--pn-space-1);font-weight:var(--pn-weight-semibold);white-space:nowrap}
+.result.pass{color:var(--pn-color-success-fg)}
+.result.fail{color:var(--pn-color-danger-fg)}
+.outcome{display:inline-flex;align-items:flex-start;gap:var(--pn-space-1)}
+
+/* Cards: summary figures, tables and run panels. */
 .figures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pn-space-3);margin:0}
 .figures.n5 .figure:first-child{grid-column:1/-1}
 @media (min-width:40rem){.figures.n4{grid-template-columns:repeat(4,minmax(0,1fr))}.figures.n5{grid-template-columns:repeat(6,minmax(0,1fr))}.figures.n5 .figure{grid-column:span 2}.figures.n5 .figure:nth-child(-n+2){grid-column:span 3}}
 @media (min-width:60rem){.figures.n5{grid-template-columns:repeat(5,minmax(0,1fr))}.figures.n5 .figure,.figures.n5 .figure:nth-child(-n+2){grid-column:auto}}
-.figure{background:var(--pn-color-surface);border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);padding:var(--pn-space-3) var(--pn-space-4);min-width:0}
+.figure{background:var(--pn-color-surface);border-radius:var(--pn-radius-lg);box-shadow:var(--pn-shadow-raised);padding:var(--pn-space-4) var(--pn-space-5);min-width:0}
 .figure dt{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);color:var(--pn-color-text-secondary)}
-.figure dd{margin:var(--pn-space-1) 0 0;font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.figure dd{margin:var(--pn-space-1) 0 0;font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums}
 .figure dd.detail{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-regular);color:var(--pn-color-text-secondary)}
-.scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-surface)}
+.scroll{overflow-x:auto;border-radius:var(--pn-radius-lg);background:var(--pn-color-surface);box-shadow:var(--pn-shadow-raised)}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
-th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
-th:first-child,td:first-child{text-align:left}
+th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;vertical-align:top;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
 tbody tr:last-child td{border-bottom:0}
-th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold);color:var(--pn-color-text-secondary)}
-td.text,th.text{text-align:left}
-td.wrap{white-space:normal;overflow-wrap:anywhere;min-width:12rem}
-.result{display:inline-flex;align-items:center;gap:var(--pn-space-1);font-weight:var(--pn-weight-semibold)}
-.result.pass{color:var(--pn-color-success-fg)}
-.result.fail{color:var(--pn-color-danger-fg)}
-code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);overflow-wrap:anywhere}
-.settings{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:var(--pn-space-1) var(--pn-space-4);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
-.settings dt{color:var(--pn-color-text-secondary)}
-.settings dd{margin:0;overflow-wrap:anywhere;min-width:0}
-@media (max-width:30rem){.settings{grid-template-columns:minmax(0,1fr)}.settings dd{margin-bottom:var(--pn-space-2)}}
-.command{padding:var(--pn-space-2) var(--pn-space-3)}
-.command code{white-space:pre}
-.note{max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold);color:var(--pn-color-text-secondary);white-space:normal}
+td.text,th.text{text-align:left;white-space:normal;hyphens:none}
+td.text code{overflow-wrap:anywhere}
+/* Below 40rem a table becomes one block per row, two cells side by side, each under its column's name;
+   a cell with long text (an action, error classes) takes the whole row. */
+@media (max-width:40rem){
+  .stack table,.stack tbody{display:block;width:100%}
+  .stack thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .stack tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pn-space-2) var(--pn-space-4);padding:var(--pn-space-3) var(--pn-space-4);border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
+  .stack tbody tr:last-child{border-bottom:0}
+  .stack td,.stack td.text{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0}
+  .stack td.wide{grid-column:1/-1}
+  .stack td::before{content:attr(data-label);display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+}
 
-/* Run details: one disclosure per run, failures first and open. */
-.run{margin-top:var(--pn-space-3);background:var(--pn-color-surface);border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md)}
-.run>summary{cursor:pointer;padding:var(--pn-space-3) var(--pn-space-4);border-radius:var(--pn-radius-md);font-weight:var(--pn-weight-medium);overflow-wrap:anywhere}
-.run-body{padding:0 var(--pn-space-4) var(--pn-space-4);min-width:0}
-.run-body>h3:first-child{margin-top:var(--pn-space-2)}
-.reasons,.conditions,.legend{margin:0;padding-left:var(--pn-space-5);display:grid;gap:var(--pn-space-2)}
-.reasons li,.conditions li,.legend li{overflow-wrap:anywhere;min-width:0}
+/* Settings and technical details. */
+.settings{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--pn-space-1) var(--pn-space-4);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.settings dt{color:var(--pn-color-text-secondary)}
+.settings dd{margin:0;min-width:0}
+@media (max-width:30rem){.settings{grid-template-columns:minmax(0,1fr)}.settings dd{margin-bottom:var(--pn-space-2)}}
+.tech{margin-top:var(--pn-space-4)}
+.tech>summary{display:inline-flex;align-items:center;gap:var(--pn-space-2);min-height:var(--pn-control-sm);cursor:pointer;list-style:none;border-radius:var(--pn-radius-sm);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-medium);color:var(--pn-color-accent-text)}
+.tech .settings{margin-top:var(--pn-space-2)}
+
+/* Run details: one card per run, failures and runs that did not end normally first and open. The
+   disclosure shows the kit's chevron, never the browser's triangle. */
+.run{margin-top:var(--pn-space-3);background:var(--pn-color-surface);border-radius:var(--pn-radius-lg);box-shadow:var(--pn-shadow-raised)}
+.run>summary{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--pn-space-1) var(--pn-space-3);padding:var(--pn-space-4) var(--pn-space-5);cursor:pointer;list-style:none;border-radius:var(--pn-radius-lg)}
+.run-meta{grid-column:2}
+.run>summary::-webkit-details-marker,.tech>summary::-webkit-details-marker{display:none}
+.run>summary::before,.tech>summary::before{content:"";width:0.4375rem;height:0.4375rem;flex:none;margin:0 var(--pn-space-1);border:solid currentColor;border-width:0 var(--pn-stroke-strong) var(--pn-stroke-strong) 0;rotate:-45deg;transition:rotate var(--pn-duration-base) var(--pn-ease-spring)}
+.run>summary::before{color:var(--pn-color-text-secondary)}
+.run[open]>summary::before,.tech[open]>summary::before{rotate:45deg}
+.run-title{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pn-space-1) var(--pn-space-3);font-size:var(--pn-text-body);line-height:var(--pn-leading-body);font-weight:var(--pn-weight-semibold);min-width:0}
+.run-meta{color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.run-body{padding:0 var(--pn-space-5) var(--pn-space-5);min-width:0}
+.run-body>h3:first-child{margin-top:var(--pn-space-1)}
+.reasons,.legend{margin:0;padding-left:var(--pn-space-5);display:grid;gap:var(--pn-space-2)}
+.reasons li,.legend li{min-width:0}
 .state{font-weight:var(--pn-weight-semibold)}
 .sublist{margin:var(--pn-space-1) 0 0;padding-left:var(--pn-space-5)}
+.conditions{margin:0;padding:0;list-style:none;display:grid;gap:var(--pn-space-2)}
+.condition{display:flex;align-items:flex-start;gap:var(--pn-space-2);min-width:0}
+.condition .status-icon{margin-top:var(--pn-nudge)}
 .condition-status{font-weight:var(--pn-weight-semibold)}
-.condition-status.met{color:var(--pn-color-success-fg)}
-.condition-status.unmet{color:var(--pn-color-danger-fg)}
+.condition-status.pass{color:var(--pn-color-success-fg)}
+.condition-status.fail{color:var(--pn-color-danger-fg)}
+.condition-status.unknown{color:var(--pn-color-unknown-fg)}
 .formal{display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .history{color:var(--pn-color-text-secondary)}
-.boards{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-4)}
-@media (min-width:60rem){.boards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Boards: the final board above the example target, one column, one shared scale. A picture is never
+   drawn below 0.6 px per board unit (20-unit text at 12 px) nor above 1 px per unit; past the column
+   its frame scrolls, with a faded edge and a line that says so. */
+.boards{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-6)}
 .board-figure{margin:0;min-width:0}
-.board-figure figcaption{margin-top:var(--pn-space-2);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);overflow-wrap:anywhere}
-.board-figure .figure-title{display:block;color:var(--pn-color-text);font-weight:var(--pn-weight-semibold)}
-.board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-sm);background:var(--pn-color-canvas)}
-.board-scroll .schematic,.board-scroll .engine-board{display:block;width:100%;min-width:30rem;height:auto}
-.no-picture{margin:0;padding:var(--pn-space-4);border:var(--pn-stroke-hairline) dashed var(--pn-color-separator-strong);border-radius:var(--pn-radius-sm);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.board-figure figcaption{margin-bottom:var(--pn-space-2);max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.board-figure .figure-title{display:block;color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-semibold)}
+.board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-canvas)}
+.schematic,.engine-board{display:block;width:100%;height:auto;margin:0 auto}
+.scroll-hint{display:none;margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.scroll-hint.overflows-desktop{display:block}
+.board-scroll.overflows-desktop{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+@media (max-width:48rem){
+  .scroll-hint.overflows-phone{display:block}
+  .board-scroll.overflows-phone{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+}
+.board-scroll.fits{mask-image:none}
 .legend{margin-top:var(--pn-space-2);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .legend-title{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold)}
 
-/* The real engine's export keeps its own paint attributes; only its text font follows the page. */
+/* The real engine's export keeps its own paint; in dark mode it gets Excalidraw's own dark-mode filter,
+   which the content tokens of the schematic reproduce, so a pair shows one palette. Its text keeps
+   Excalidraw's monospace look, like the schematic's step labels. */
 .engine-board text{font-family:var(--pn-font-mono)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board{filter:invert(93%) hue-rotate(180deg)}}
+:root[data-theme="dark"] .engine-board{filter:invert(93%) hue-rotate(180deg)}
 
-/* Schematic of a judged state: content tokens carry Excalidraw's own palette. */
+/* Schematic of a judged state: content tokens carry Excalidraw's own palette; corners are sharp and
+   arrows black, as Excalidraw draws them here. */
 .sch-frame{fill:var(--pn-color-frame-bg);stroke:var(--pn-color-object-border);stroke-width:1.5}
-.sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-body) var(--pn-font-sans)}
-.sch-group{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:8 6}
-.sch-group-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-semibold) var(--pn-text-subhead) var(--pn-font-sans)}
+.sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+.sch-group{fill:var(--pn-color-accent-tint);stroke:var(--pn-color-accent);stroke-width:1.5}
+.sch-group-label{fill:var(--pn-color-accent-text);font:var(--pn-weight-semibold) var(--pn-text-title3) var(--pn-font-sans)}
 .sch-step{fill:var(--pn-color-object-bg);stroke:var(--pn-color-object-border);stroke-width:2}
 .sch-fill-red{fill:var(--pn-color-content-fill-red)}
 .sch-fill-green{fill:var(--pn-color-content-fill-green)}
@@ -480,19 +549,83 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);overflow-
 .sch-line-green{stroke:var(--pn-color-content-line-green)}
 .sch-line-blue{stroke:var(--pn-color-content-line-blue)}
 .sch-line-orange{stroke:var(--pn-color-content-line-orange)}
-.sch-label{fill:var(--pn-color-text);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+.sch-label{fill:var(--pn-color-text);font:var(--pn-weight-regular) var(--pn-text-title3) var(--pn-font-mono)}
 .sch-label--on-fill{fill:var(--pn-color-content-text)}
-.sch-edge{stroke:var(--pn-color-line);stroke-width:2.5;fill:none;stroke-linecap:round}
-.sch-tip{fill:var(--pn-color-line)}
+.sch-edge{stroke:var(--pn-color-content-line-black);stroke-width:2;fill:none;stroke-linecap:round}
+.sch-tip{fill:var(--pn-color-content-line-black)}
 .sch-loose{fill:var(--pn-color-canvas);stroke:var(--pn-color-danger-icon);stroke-width:2.5}
-.sch-loose-label{fill:var(--pn-color-danger-fg);font:var(--pn-weight-medium) var(--pn-text-footnote) var(--pn-font-sans)}
+.sch-loose-label{fill:var(--pn-color-danger-fg);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
 
 /* compare */
-.verdict{margin:0;font-size:var(--pn-text-body);line-height:var(--pn-leading-body);font-weight:var(--pn-weight-semibold);overflow-wrap:anywhere}
-.sides{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-3);margin:var(--pn-space-4) 0 0}
+.sides{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-3);margin:0}
 @media (min-width:40rem){.sides{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.flips{margin:0;padding-left:var(--pn-space-5);display:grid;gap:var(--pn-space-1)}
-.flips li{overflow-wrap:anywhere}
+.flips{margin:0;padding:0;list-style:none;display:grid;gap:var(--pn-space-2)}
+.flips li{display:flex;align-items:flex-start;gap:var(--pn-space-2);min-width:0}
+.flips .status-icon{margin-top:var(--pn-nudge)}
+
+@media (prefers-reduced-motion:reduce){.run>summary::before,.tech>summary::before{transition:none}}
+@media (forced-colors:active){.chip,.banner,.figure,.scroll,.run{border:var(--pn-stroke-hairline) solid CanvasText}}
+
+/* Picture sizes by viewBox width (schematic.ts pictureSizeClass): pw-k is k × 100 board units wide,
+   at least 0.6 px and at most 1 px per unit. */
+.pw-3{min-width:11.25rem;max-width:18.75rem}
+.pw-4{min-width:15rem;max-width:25rem}
+.pw-5{min-width:18.75rem;max-width:31.25rem}
+.pw-6{min-width:22.5rem;max-width:37.5rem}
+.pw-7{min-width:26.25rem;max-width:43.75rem}
+.pw-8{min-width:30rem;max-width:50rem}
+.pw-9{min-width:33.75rem;max-width:56.25rem}
+.pw-10{min-width:37.5rem;max-width:62.5rem}
+.pw-11{min-width:41.25rem;max-width:68.75rem}
+.pw-12{min-width:45rem;max-width:75rem}
+.pw-13{min-width:48.75rem;max-width:81.25rem}
+.pw-14{min-width:52.5rem;max-width:87.5rem}
+.pw-15{min-width:56.25rem;max-width:93.75rem}
+.pw-16{min-width:60rem;max-width:100rem}
+.pw-17{min-width:63.75rem;max-width:106.25rem}
+.pw-18{min-width:67.5rem;max-width:112.5rem}
+.pw-19{min-width:71.25rem;max-width:118.75rem}
+.pw-20{min-width:75rem;max-width:125rem}
+.pw-21{min-width:78.75rem;max-width:131.25rem}
+.pw-22{min-width:82.5rem;max-width:137.5rem}
+.pw-23{min-width:86.25rem;max-width:143.75rem}
+.pw-24{min-width:90rem;max-width:150rem}
+.pw-25{min-width:93.75rem;max-width:156.25rem}
+.pw-26{min-width:97.5rem;max-width:162.5rem}
+.pw-27{min-width:101.25rem;max-width:168.75rem}
+.pw-28{min-width:105rem;max-width:175rem}
+.pw-29{min-width:108.75rem;max-width:181.25rem}
+.pw-30{min-width:112.5rem;max-width:187.5rem}
+.pw-31{min-width:116.25rem;max-width:193.75rem}
+.pw-32{min-width:120rem;max-width:200rem}
+.pw-33{min-width:123.75rem;max-width:206.25rem}
+.pw-34{min-width:127.5rem;max-width:212.5rem}
+.pw-35{min-width:131.25rem;max-width:218.75rem}
+.pw-36{min-width:135rem;max-width:225rem}
+.pw-37{min-width:138.75rem;max-width:231.25rem}
+.pw-38{min-width:142.5rem;max-width:237.5rem}
+.pw-39{min-width:146.25rem;max-width:243.75rem}
+.pw-40{min-width:150rem;max-width:250rem}
+.pw-41{min-width:153.75rem;max-width:256.25rem}
+.pw-42{min-width:157.5rem;max-width:262.5rem}
+.pw-43{min-width:161.25rem;max-width:268.75rem}
+.pw-44{min-width:165rem;max-width:275rem}
+.pw-45{min-width:168.75rem;max-width:281.25rem}
+.pw-46{min-width:172.5rem;max-width:287.5rem}
+.pw-47{min-width:176.25rem;max-width:293.75rem}
+.pw-48{min-width:180rem;max-width:300rem}
+.pw-49{min-width:183.75rem;max-width:306.25rem}
+.pw-50{min-width:187.5rem;max-width:312.5rem}
+.pw-51{min-width:191.25rem;max-width:318.75rem}
+.pw-52{min-width:195rem;max-width:325rem}
+.pw-53{min-width:198.75rem;max-width:331.25rem}
+.pw-54{min-width:202.5rem;max-width:337.5rem}
+.pw-55{min-width:206.25rem;max-width:343.75rem}
+.pw-56{min-width:210rem;max-width:350rem}
+.pw-57{min-width:213.75rem;max-width:356.25rem}
+.pw-58{min-width:217.5rem;max-width:362.5rem}
+.pw-59{min-width:221.25rem;max-width:368.75rem}
+.pw-60{min-width:225rem;max-width:375rem}
 </style>
 </head>
 <body>
@@ -500,21 +633,22 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);overflow-
 <header>
 <p class="eyebrow">Practonaut bench</p>
 <h1>claude-code</h1>
-<p class="headline">6/6 runs passed · 3/3 instances passed (at least half of their runs) · 95 % interval 43–100 % over 3 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded (bench/1) · model claude-opus-5-5 (self-reported, client-attested)</p>
-<p class="meta">2026-10-13 · n = 6 runs · 1 seed · 2 repeats · model: claude-opus-5-5 (client-attested)</p>
+<p class="headline">6/6 runs passed · 3/3 instances passed (at least half of all their runs) · 95 % interval 43–100 % over 3 instances</p>
+<ul class="chips" aria-label="How these runs were made"><li class="chip">consistency-checked, not re-verified</li><li class="chip">real Excalidraw mirror</li><li class="chip">isolation not recorded (bench/1)</li><li class="chip">model claude-opus-5-5 (self-reported, client-attested)</li><li class="chip">2026-10-13</li></ul>
+<p class="meta">n = 6 runs · 1 seed · 2 repeats</p>
 </header>
-<section aria-labelledby="summary"><h2 id="summary">Summary</h2><dl class="figures n5"><div class="figure"><dt>pass@1</dt><dd>6/6</dd><dd class="detail">over all 6 runs</dd></div><div class="figure"><dt>pass^2</dt><dd>3/3</dd><dd class="detail">all 2 repeats passed on 3/3 instances</dd></div><div class="figure"><dt>mean actions</dt><dd>3.3</dd><dd class="detail">when passed: 3.3</dd></div><div class="figure"><dt>efficiency vs reference</dt><dd>1.11</dd><dd class="detail">&gt; 1 = fewer actions than the reference solution</dd></div><div class="figure"><dt>mean time per run</dt><dd>14.5 s</dd></div></dl></section>
-<section aria-labelledby="by-task"><h2 id="by-task">By task</h2><div class="scroll" role="region" aria-labelledby="by-task" tabindex="0"><table><thead><tr><th scope="col">task</th><th scope="col">runs</th><th scope="col">passed</th><th scope="col">actions</th><th scope="col">reference</th><th scope="col">efficiency vs reference</th></tr></thead><tbody><tr><td><code>connect</code></td><td>2</td><td>2/2</td><td>1.0</td><td>1</td><td>1.00</td></tr><tr><td><code>insert-between</code></td><td>2</td><td>2/2</td><td>3.0</td><td>4</td><td>1.33</td></tr><tr><td><code>decision</code></td><td>2</td><td>2/2</td><td>6.0</td><td>6</td><td>1.00</td></tr></tbody></table></div></section>
-<section aria-labelledby="runs"><h2 id="runs">Runs, failures first</h2><div class="scroll" role="region" aria-labelledby="runs" tabindex="0"><table><thead><tr><th scope="col">task</th><th scope="col">seed</th><th scope="col">repeat</th><th scope="col" class="text">result</th><th scope="col">actions</th><th scope="col">rejected</th><th scope="col">undo</th><th scope="col">reset</th><th scope="col">host calls</th><th scope="col">time</th><th scope="col" class="text">agent exit</th><th scope="col" class="text">error classes</th></tr></thead><tbody><tr><td><a href="#run-connect-s1-r1"><code>connect</code></a></td><td>1</td><td>1</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>1</td><td>0</td><td>0</td><td>0</td><td>4</td><td>8.8 s</td><td class="text">completed</td><td class="text">—</td></tr><tr><td><a href="#run-connect-s1-r2"><code>connect</code></a></td><td>1</td><td>2</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>1</td><td>0</td><td>0</td><td>0</td><td>4</td><td>10.9 s</td><td class="text">completed</td><td class="text">—</td></tr><tr><td><a href="#run-insert-between-s1-r1"><code>insert-between</code></a></td><td>1</td><td>1</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>3</td><td>0</td><td>0</td><td>0</td><td>6</td><td>13.9 s</td><td class="text">completed</td><td class="text">—</td></tr><tr><td><a href="#run-insert-between-s1-r2"><code>insert-between</code></a></td><td>1</td><td>2</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>3</td><td>0</td><td>0</td><td>0</td><td>6</td><td>12.9 s</td><td class="text">completed</td><td class="text">—</td></tr><tr><td><a href="#run-decision-s1-r1"><code>decision</code></a></td><td>1</td><td>1</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>6</td><td>0</td><td>0</td><td>0</td><td>9</td><td>20.8 s</td><td class="text">completed</td><td class="text">—</td></tr><tr><td><a href="#run-decision-s1-r2"><code>decision</code></a></td><td>1</td><td>2</td><td class="text"><span class="result pass"><span aria-hidden="true">✓</span>pass</span></td><td>6</td><td>0</td><td>0</td><td>0</td><td>9</td><td>19.6 s</td><td class="text">completed</td><td class="text">—</td></tr></tbody></table></div></section>
-<section aria-labelledby="details"><h2 id="details">Run details</h2><details class="run" id="run-connect-s1-r1"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>connect · seed 1 · repeat 1</span> · 1 action</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details><details class="run" id="run-connect-s1-r2"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>connect · seed 1 · repeat 2</span> · 1 action</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details><details class="run" id="run-insert-between-s1-r1"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>insert-between · seed 1 · repeat 1</span> · 3 actions</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details><details class="run" id="run-insert-between-s1-r2"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>insert-between · seed 1 · repeat 2</span> · 3 actions</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details><details class="run" id="run-decision-s1-r1"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>decision · seed 1 · repeat 1</span> · 6 actions</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details><details class="run" id="run-decision-s1-r2"><summary><span class="result pass"><span aria-hidden="true">✓</span>pass</span> <span>decision · seed 1 · repeat 2</span> · 6 actions</summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none</p></div></details></section>
+<section aria-labelledby="summary"><h2 id="summary">Summary</h2><dl class="figures n5"><div class="figure"><dt>pass@1</dt><dd>6/6</dd><dd class="detail">6 runs counted</dd></div><div class="figure"><dt>pass^2</dt><dd>3/3</dd><dd class="detail">all 2 repeats passed on 3/3 instances</dd></div><div class="figure"><dt>mean actions</dt><dd>3.3</dd><dd class="detail">when passed: 3.3</dd></div><div class="figure"><dt>efficiency vs reference</dt><dd>1.11</dd><dd class="detail">&gt; 1 = fewer actions than the reference solution</dd></div><div class="figure"><dt>mean time per run</dt><dd>14.5 s</dd></div></dl></section>
+<section aria-labelledby="by-task"><h2 id="by-task">By task</h2><div class="scroll stack" role="region" aria-labelledby="by-task" tabindex="0"><table><thead><tr><th scope="col" class="text">task</th><th scope="col">runs</th><th scope="col">passed</th><th scope="col">actions</th><th scope="col">reference</th><th scope="col">efficiency vs reference</th></tr></thead><tbody><tr><td data-label="task" class="text"><code>connect</code></td><td data-label="runs">2</td><td data-label="passed">2/2</td><td data-label="actions">1.0</td><td data-label="reference">1</td><td data-label="efficiency vs reference">1.00</td></tr><tr><td data-label="task" class="text"><code>insert-between</code></td><td data-label="runs">2</td><td data-label="passed">2/2</td><td data-label="actions">3.0</td><td data-label="reference">4</td><td data-label="efficiency vs reference">1.33</td></tr><tr><td data-label="task" class="text"><code>decision</code></td><td data-label="runs">2</td><td data-label="passed">2/2</td><td data-label="actions">6.0</td><td data-label="reference">6</td><td data-label="efficiency vs reference">1.00</td></tr></tbody></table></div></section>
+<section aria-labelledby="runs"><h2 id="runs">Runs, failures first</h2><div class="scroll stack" role="region" aria-labelledby="runs" tabindex="0"><table><thead><tr><th scope="col" class="text">result</th><th scope="col" class="text">task</th><th scope="col">seed</th><th scope="col">repeat</th><th scope="col" class="text">agent end</th><th scope="col">actions</th><th scope="col">rejected</th><th scope="col">undo</th><th scope="col">reset</th><th scope="col">host calls</th><th scope="col">time</th><th scope="col" class="text">error classes</th></tr></thead><tbody><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-connect-s1-r1"><code>connect</code></a></td><td data-label="seed">1</td><td data-label="repeat">1</td><td data-label="agent end" class="text">completed</td><td data-label="actions">1</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">4</td><td data-label="time">8.8 s</td><td data-label="error classes" class="text wide">—</td></tr><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-connect-s1-r2"><code>connect</code></a></td><td data-label="seed">1</td><td data-label="repeat">2</td><td data-label="agent end" class="text">completed</td><td data-label="actions">1</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">4</td><td data-label="time">10.9 s</td><td data-label="error classes" class="text wide">—</td></tr><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-insert-between-s1-r1"><code>insert-between</code></a></td><td data-label="seed">1</td><td data-label="repeat">1</td><td data-label="agent end" class="text">completed</td><td data-label="actions">3</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">6</td><td data-label="time">13.9 s</td><td data-label="error classes" class="text wide">—</td></tr><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-insert-between-s1-r2"><code>insert-between</code></a></td><td data-label="seed">1</td><td data-label="repeat">2</td><td data-label="agent end" class="text">completed</td><td data-label="actions">3</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">6</td><td data-label="time">12.9 s</td><td data-label="error classes" class="text wide">—</td></tr><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-decision-s1-r1"><code>decision</code></a></td><td data-label="seed">1</td><td data-label="repeat">1</td><td data-label="agent end" class="text">completed</td><td data-label="actions">6</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">9</td><td data-label="time">20.8 s</td><td data-label="error classes" class="text wide">—</td></tr><tr><td data-label="result" class="text"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span></td><td data-label="task" class="text"><a href="#run-decision-s1-r2"><code>decision</code></a></td><td data-label="seed">1</td><td data-label="repeat">2</td><td data-label="agent end" class="text">completed</td><td data-label="actions">6</td><td data-label="rejected">0</td><td data-label="undo">0</td><td data-label="reset">0</td><td data-label="host calls">9</td><td data-label="time">19.6 s</td><td data-label="error classes" class="text wide">—</td></tr></tbody></table></div></section>
+<section aria-labelledby="details"><h2 id="details">Run details</h2><details class="run" id="run-connect-s1-r1"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>connect · seed 1 · repeat 1</span></span><span class="run-meta">1 action · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>connect-s1-r1</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details><details class="run" id="run-connect-s1-r2"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>connect · seed 1 · repeat 2</span></span><span class="run-meta">1 action · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>connect-s1-r2</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details><details class="run" id="run-insert-between-s1-r1"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>insert-between · seed 1 · repeat 1</span></span><span class="run-meta">3 actions · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>insert-between-s1-r1</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details><details class="run" id="run-insert-between-s1-r2"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>insert-between · seed 1 · repeat 2</span></span><span class="run-meta">3 actions · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>insert-between-s1-r2</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details><details class="run" id="run-decision-s1-r1"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>decision · seed 1 · repeat 1</span></span><span class="run-meta">6 actions · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>decision-s1-r1</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details><details class="run" id="run-decision-s1-r2"><summary><span class="run-title"><span class="result pass"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass</span><span>decision · seed 1 · repeat 2</span></span><span class="run-meta">6 actions · completed</span></summary><div class="run-body"><h3>Goal conditions</h3><p class="note">The conditions cannot be shown: not recorded in this report.</p><h3>Trajectory</h3><p class="note">No trajectory: not recorded in this report.</p><h3>Tool calls</h3><p class="note">No call log: the agent’s bridge wrote none.</p><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Run id</dt><dd><code>decision-s1-r2</code></dd><dt>Run status</dt><dd><code>completed</code></dd><dt>Agent exit code</dt><dd><code>0</code></dd></dl></details></div></details></section>
 <section aria-labelledby="settings"><h2 id="settings">Settings</h2><dl class="settings">
 <dt>Agent</dt><dd>claude-code (preset)</dd>
-<dt>Command</dt><dd><div class="scroll command" role="region" aria-label="Command" tabindex="0"><code>claude -p --output-format stream-json --verbose --no-session-persistence --tools &#39;&#39; --allowedTools mcp__practonaut__* --strict-mcp-config --mcp-config {mcp_config} --setting-sources &#39;&#39; --disable-slash-commands --no-chrome {prompt}</code></div></dd>
-<dt>runs</dt><dd>3 tasks × 1 seed × 2 repeats, timeout 300 s, at most 50 act, undo or reset calls per run</dd>
+<dt>Runs</dt><dd>3 tasks × 1 seed × 2 repeats, timeout 300 s, at most 50 act, undo or reset calls per run</dd>
 <dt>Verification</dt><dd>consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)</dd>
-<dt>Isolation</dt><dd>not recorded (bench/1)</dd>
-<dt>Environment</dt><dd>Practonaut 0.1.0 · Excalidraw 0.18.1 · Node v22.22.3 · darwin 27.0.0 arm64 · excalidraw-library 1.1.0</dd>
-</dl><p class="note">How this is scored: after the agent stops, a separate checker process judges the host’s final session (its history replayed independently) and, with the mirror, the real Excalidraw export. The agent’s own output is never read for scoring. A model name is what the client reported about itself and is not verified. Rates are shown as fractions; a percentage appears only from 100 runs. The interval is a 95 % Wilson score interval over instances (task × seed).</p><p class="note">Not re-checked by report --verify: what the runner counted while the agent worked (rejected, undo, reset, host calls, time) and the agent exit status, what the client said about itself (model, API key source, tokens, turns, cost), and the call log the agent’s own bridge wrote.</p></section>
+<dt>Isolation</dt><dd>isolation not recorded (bench/1)</dd>
+<dt>World</dt><dd>excalidraw-library 1.1.0</dd>
+<dt>Environment</dt><dd>Practonaut 0.1.0 · Excalidraw 0.18.1 · Node v22.22.3 · darwin 27.0.0 arm64</dd>
+</dl><details class="tech"><summary>Technical details</summary><dl class="settings"><dt>Command</dt><dd><code>claude -p --output-format stream-json --verbose --no-session-persistence --tools &#39;&#39; --allowedTools mcp__practonaut__* --strict-mcp-config --mcp-config {mcp_config} --setting-sources &#39;&#39; --disable-slash-commands --no-chrome {prompt}</code></dd><dt>World content hash (SHA-256)</dt><dd><code>6f46bc08e6a612235d29a0aa06eed3324952ad16897b0b042fc4e08ca80c33da</code></dd></dl></details><p class="note">How this is scored: after the agent stops, a separate checker process judges the host’s final session (its history replayed independently) and, with the mirror, the real Excalidraw export. The agent’s own output is never read for scoring. A model name is what the client reported about itself and is not verified. Rates are shown as fractions; a percentage appears only from 100 runs. The interval is a 95 % Wilson score interval over instances (task × seed).</p><p class="note">Not re-checked by report --verify: what the runner counted while the agent worked (rejected, undo, reset, host calls, time) and how the agent ended, what the client said about itself (model, API key source, tokens, turns, cost), and the call log the agent’s own bridge wrote.</p></section>
 </main>
 </body>
 </html>

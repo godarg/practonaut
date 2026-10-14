@@ -562,14 +562,20 @@ small to read; the object list is the complete text route (product-recovery, "Ed
 
 The pages `report --html` and `compare --html` write: one static file each, tokens plus
 `src/bench/report.css` in one hashed style, no script, no external asset, no `data:` URI; linted by the
-report profile of `design:lint`. The reader's next action: find the run that failed and see why. So the
-header line carries the fraction, the 95 % interval, verification, mirror and isolation level; failed
-runs come first and open (`<details>`), passed runs collapsed; each run shows its states by name, the
-goal conditions with ✓/✗ and words, the board and an example target side by side (stacked below 60 rem),
-the trajectory and call log in scroll regions. The board is the real engine's export or a schematic in
-the content tokens, always captioned with which one it is; groups appear as a dashed outline and a
-legend. Rates are fractions (PADR-0039 B.2). Long names wrap anywhere; drawings and wide tables scroll
-inside their own region, the page never scrolls sideways.
+report profile of `design:lint`, which reproduces the kit it needs (chip, banner, filled status marks,
+card radius and shadow, the disclosure chevron, Title 2 sections). The reader's next action: find the
+run that failed and see why. So the headline carries the fraction and the 95 % interval; verification,
+mirror, isolation and the self-reported model follow as chips. Failed runs and runs whose agent did not
+end normally come first and open (`<details>` with the kit's chevron), passed runs collapsed; each run
+shows its states by name (one item, one colon), the goal conditions with status marks and words, the
+board above an example target, the trajectory and call log; identifiers, codes and hashes fold under
+"Technical details". The board is the real engine's export or a schematic in the content tokens, always
+captioned with which one it is; the pair shares one viewBox (one scale), its text is never drawn below
+12 px (a wider board scrolls in its frame, with a faded edge and a line that says so), and in dark mode
+the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
+solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
+Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.
+Below 40 rem tables stack into one block per row; the page never scrolls sideways.
 
 ## 11. States
 
