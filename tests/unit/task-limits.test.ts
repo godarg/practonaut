@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createPracticeController } from '../../src/host/session.ts';
 import { checkState } from '../../src/checker/index.ts';
+import { Session } from '../../src/core/session.ts';
+import { oracleDigest } from '../oracles/core-hash.ts';
 import { compactView, mutationResult } from '../../src/mcp/replies.ts';
 import { WorldError } from '../../src/world/schema.ts';
 import type { Action, World } from '../../src/world/types.ts';
@@ -22,6 +24,17 @@ describe('task limits in world/2', () => {
     assert.equal(v2World().tasks[0]!.limits, undefined);
     for (const bad of [{}, { actions: 0 }, { actions: 1001 }, { checks: -1 }, { checks: 1001 }, { actions: 2.5 }, { actions: 2, extra: 1 }])
       assert.throws(() => limited(bad as Record<string, number>), WorldError, JSON.stringify(bad));
+  });
+
+  it('do not change transitions: replay hashes equal the independent hash oracle on a hand-written state', () => {
+    // Hand-written successor of v2Start after move_step a → (120, 100); hashed by tests/oracles.
+    const expected = structuredClone(v2World().initialState);
+    (expected.objects.a as { x: number }).x = 120;
+    for (const world of [v2World(), limited({ actions: 1, checks: 0 })]) {
+      const session = new Session(world, 7, 'T1');
+      assert.equal(session.act(move(120)).ok, true);
+      assert.equal(session.hash, oracleDigest(expected));
+    }
   });
 
   it('do not change the checker verdict (the checker judges the end state only)', () => {
