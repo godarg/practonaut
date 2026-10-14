@@ -73,9 +73,9 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);overflow-
 
 /* Schematic of a judged state: content tokens carry Excalidraw's own palette. */
 .sch-frame{fill:var(--pn-color-frame-bg);stroke:var(--pn-color-object-border);stroke-width:1.5}
-.sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-subhead) var(--pn-font-sans)}
+.sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-body) var(--pn-font-sans)}
 .sch-group{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:8 6}
-.sch-group-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-semibold) var(--pn-text-footnote) var(--pn-font-sans)}
+.sch-group-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-semibold) var(--pn-text-subhead) var(--pn-font-sans)}
 .sch-step{fill:var(--pn-color-object-bg);stroke:var(--pn-color-object-border);stroke-width:2}
 .sch-fill-red{fill:var(--pn-color-content-fill-red)}
 .sch-fill-green{fill:var(--pn-color-content-fill-green)}

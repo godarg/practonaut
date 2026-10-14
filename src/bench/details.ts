@@ -17,9 +17,11 @@ import { runOracle, type TaskOracle } from '../authoring/from-scenes.ts';
 import { Session } from '../core/session.ts';
 import { publicConditions } from '../host/session.ts';
 import { parseJsonEntry } from '../package/json.ts';
+import { LIMITS } from '../package/limits.ts';
 import { evaluate } from '../predicate/index.ts';
 import { generateVariant } from '../world/variant.ts';
-import type { Action, Localized, SessionData, State, World } from '../world/types.ts';
+import { validateState } from '../world/schema.ts';
+import { worldEra, type Action, type Localized, type SessionData, type State, type World } from '../world/types.ts';
 import { libraryReferences, MAX_REFERENCES_BYTES, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
@@ -150,7 +152,7 @@ async function boundWorld(report: BenchReport, folder: string): Promise<{ world:
     const library = await libraryWorld();
     return library.contentHash === report.environment.library.contentHash ? { world: library.world } : { problem: 'world-changed' };
   }
-  const bytes = await bounded(join(folder, BENCH_WORLD_FILE), 512 * 1024 * 1024);
+  const bytes = await bounded(join(folder, BENCH_WORLD_FILE), LIMITS.maxArchiveBytes);
   if (bytes === null) return { problem: 'missing' };
   if (sha256Hex(bytes) !== report.environment.world.package.sha256) return { problem: 'world-changed' };
   try {
@@ -179,7 +181,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
   if ('problem' in found) return { folder: found.problem, runs };
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
-  for (const run of report.runs) {
+  for (const [index, run] of report.runs.entries()) {
     const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], target: null, targetMissing: null, calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
@@ -216,7 +218,8 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
     if (!run.checker || !run.artifacts) { detail.conditionsMissing = 'not-judged'; continue; }
     const session = await bound(folder, run.id, ARTIFACT.session, run.artifacts.session);
     let state: State | null = null;
-    if ('text' in session) { try { state = (parseJsonEntry(Buffer.from(session.text), ARTIFACT.session, 64) as SessionData).state; } catch { state = null; } }
+    // The judged state, validated again before anything is drawn from it.
+    if ('text' in session) { try { state = validateState((parseJsonEntry(Buffer.from(session.text), ARTIFACT.session, 64) as SessionData).state, worldEra(world)); } catch { state = null; } }
     const checker = await bound(folder, run.id, ARTIFACT.checker, run.artifacts.checker);
     if ('text' in checker) {
       try {
@@ -234,11 +237,12 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       return { id: condition.id, text: condition.text, formal: condition.formalText ?? null, met: evaluated.ok ? evaluated.value : null, history: { kind: 'unknown' } };
     });
     detail.groups = groupsOf(state, words.group); detail.frames = framesOf(state);
-    const schematic = (reason: PictureReason): Picture => ({ kind: 'schematic', reason, markup: schematicSvg(state!, { prefix: `${run.id}-final`, label: words.finalBoard, words }) });
+    // Ids inside the pictures are unique on the page by the run's position, whatever its id's length.
+    const schematic = (reason: PictureReason): Picture => ({ kind: 'schematic', reason, markup: schematicSvg(state!, { prefix: `run${index}-final`, label: words.finalBoard, words }) });
     const board = v2?.artifacts?.board;
     if (typeof board === 'string') {
       const read = await bound(folder, run.id, RUN_EVIDENCE.board, board, MAX_SVG_BYTES);
-      if ('text' in read) { try { detail.picture = { kind: 'engine', markup: engineSvgMarkup(read.text, { prefix: `${run.id}-engine`, label: words.finalBoard, classes: 'engine-board' }) }; } catch { detail.picture = schematic('picture-unreadable'); } }
+      if ('text' in read) { try { detail.picture = { kind: 'engine', markup: engineSvgMarkup(read.text, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board' }) }; } catch { detail.picture = schematic('picture-unreadable'); } }
       else detail.picture = schematic(read.missing === 'changed' ? 'picture-changed' : 'no-picture');
     } else detail.picture = schematic(mirror === 'required' ? 'no-picture' : 'model-only');
     // Example target: the validated reference's end state for this seed, as a schematic.
@@ -247,7 +251,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
     else if (!oracle) detail.targetMissing = 'no-reference';
     else {
       const played = runOracle(world, run.seed, run.taskId, oracle.steps);
-      if (played.ok) detail.target = schematicSvg(played.session.state, { prefix: `${run.id}-target`, label: words.target, words });
+      if (played.ok) detail.target = schematicSvg(played.session.state, { prefix: `run${index}-target`, label: words.target, words });
       else detail.targetMissing = 'unreadable';
     }
   }

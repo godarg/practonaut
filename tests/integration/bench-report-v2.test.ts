@@ -8,7 +8,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -128,6 +129,26 @@ test('pictures: correct and incorrect restyle-flow differ, grouped and ungrouped
   for (const id of ['a', 'b', 'c']) assert.ok(board(engineRight, 'restyle-flow-s1-r1').includes(`>${label('restyle-flow', id)}</text>`), id);
   // The example target is the checked reference's end state for this seed.
   assert.ok(plain(correct).includes('Example target One board that meets every condition: a schematic of the checked reference solution for this seed.'));
+});
+
+test('a bench folder that was changed or crafted removes an explanation, never fools or breaks the page', { timeout: 120_000 }, async () => {
+  const copy = join(dir, 'crafted'); await cp(fixtures.engine!.failing.directory, copy, { recursive: true });
+  const report = structuredClone(fixtures.engine!.failing.report), run = report.runs.find(entry => entry.taskId === 'restyle-flow')!;
+  // A changed picture: not shown; the schematic of the judged state says why.
+  await writeFile(join(copy, run.id, 'board.svg'), '<svg viewBox="0 0 1 1"><text>Forged board</text></svg>');
+  let page = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
+  assert.ok(page.includes('The real Excalidraw’s picture differs from the hash the report binds.') && !page.includes('Forged board'));
+  // A crafted picture bound by its hash: reduced to the allowlist, its script and handler gone.
+  const crafted = '<svg viewBox="0 0 10 10" onload="alert(1)"><script>alert(2)</script><text x="1" y="5">&lt;img src=x onerror=alert(3)&gt;</text></svg>';
+  await writeFile(join(copy, run.id, 'board.svg'), crafted); run.artifacts!.board = createHash('sha256').update(crafted).digest('hex');
+  const html = await reportPage({ report, directory: copy }, 'en');
+  assert.equal(/<script|onload|onerror=alert\(3\)>/.test(html), false); assert.ok(html.includes('&lt;img src=x onerror=alert(3)&gt;'));
+  // A session whose state is not a state, bound by its hash: the conditions say they cannot be read.
+  const session = JSON.parse(await readFile(join(copy, run.id, 'session.json'), 'utf8')) as { state: { objects: Record<string, { label: unknown }> } };
+  for (const object of Object.values(session.state.objects)) object.label = { not: 'a label' };
+  const text = JSON.stringify(session); await writeFile(join(copy, run.id, 'session.json'), text); run.artifacts!.session = createHash('sha256').update(text).digest('hex');
+  page = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
+  assert.ok(page.includes('The conditions cannot be shown: the file cannot be read'), page.slice(0, 400));
 });
 
 test('CLI: report renders details from the bench folder, --runs names it without --verify, and the HTML has one hashed style and no script', { timeout: 300_000 }, async () => {
