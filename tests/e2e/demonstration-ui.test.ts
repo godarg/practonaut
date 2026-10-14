@@ -95,6 +95,14 @@ test('asking first, stopping early, and the board fitting the canvas at 1280', {
     await PLAYER_STATES.find(state => state.id === 'editor-demonstration')!.enter(s);
     assert.match(await s.page.getByTestId('phase3-status').innerText(), /^Not applied\n/);
   });
+  // F7: the first task's demonstration (what a first `npx practonaut` shows) leaves a board that fits too.
+  await withPlayer({ browser }, async s => {
+    const reply = await s.post('variant', { confirmed: true, taskId: 'T1' }); assert.equal(reply.ok, true, JSON.stringify(reply));
+    await s.page.reload(); await s.page.getByTestId('board').waitFor();
+    await demonstrate(s, 'finished'); await settle(s.page);
+    assert.equal(await s.page.locator('.board-scroll').evaluate(node => node.scrollWidth - node.clientWidth), 0, 'no sideways scroll after the T1 demonstration');
+    assert.equal(await s.page.getByTestId('board-scroll-hint').isHidden(), true);
+  });
   // F7: where the board is wider than its canvas, the hint does not assume a touch screen.
   await withPlayer({ browser, width: 820 }, async s => {
     await practiceBaseline(s);

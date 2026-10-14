@@ -49,9 +49,9 @@ const box = { width: 180, height: 100, fontFamily: 3 } as const;
 const SCRIPTS: Readonly<Record<string, Script>> = Object.freeze({
   // "Create {{first}}, {{middle}} and {{last}}. Bind one arrow from {{first}} to {{middle}} and one from {{middle}} to {{last}}."
   T1: token => [
-    { name: 'add_step', params: { frameId: 'flow-frame', label: token('first'), x: 20, y: 120, ...box } },
-    { name: 'add_step', params: { frameId: 'flow-frame', label: token('middle'), x: 260, y: 120, ...box } },
-    { name: 'add_step', params: { frameId: 'flow-frame', label: token('last'), x: 500, y: 120, ...box } },
+    { name: 'add_step', params: { frameId: 'flow-frame', label: token('first'), x: 40, y: 120, ...box } },
+    { name: 'add_step', params: { frameId: 'flow-frame', label: token('middle'), x: 280, y: 120, ...box } },
+    { name: 'add_step', params: { frameId: 'flow-frame', label: token('last'), x: 520, y: 120, ...box } },
     { name: 'connect', params: { frameId: 'flow-frame', from: { created: 0 }, to: { created: 1 } } },
     { name: 'connect', params: { frameId: 'flow-frame', from: { created: 1 }, to: { created: 2 } } },
   ],
