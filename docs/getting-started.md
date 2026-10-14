@@ -55,7 +55,8 @@ npx practonaut setup
 ```
 
 This names the download with its size and then fetches it: Playwright's **Chromium headless
-shell** (about 105 MB on macOS, 125 to 128 MB on Linux and Windows; nothing is fetched when Playwright's
+shell** (about 105 MB on Apple silicon Macs, 111 MB on Intel Macs, 126 to 128 MB on Linux and
+Windows; nothing is fetched when Playwright's
 cache already has it). With it, every step you or an agent take is also
 applied to a real, pinned Excalidraw 0.18.1 running in the background and read back before it
 counts (the "mirror"). Without it Practonaut runs **model-only**: tasks work, the terminal and the

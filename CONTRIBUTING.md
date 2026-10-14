@@ -72,6 +72,12 @@ separately), the adapter mapping with read-back in `src/adapters/excalidraw/`, a
 independently derived golden hash, and a conformance test against the real engine (at least three
 repetitions, plus a wrong prediction that must be detected).
 
+**A Playwright update.** `practonaut setup` names the headless-shell download with its size per
+platform. After a Playwright bump (Dependabot opens one), run `node tools/measure-headless-shell.ts
+--write`: it reads Playwright's own download list for every platform and the CDN's archive sizes
+and rewrites the table in `src/cli/chromium-download.ts`. `tests/unit/setup.test.ts` fails until
+then and names the command.
+
 **An application adapter.** Read the [adapter guide](docs/adapter-guide.md), then open an
 **Adapter request** issue with the answers to its spike questions before writing code.
 

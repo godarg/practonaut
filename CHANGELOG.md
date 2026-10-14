@@ -32,8 +32,10 @@ All notable changes are recorded here. The format follows
 ### Changed
 
 - **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 105 MB on
-  macOS, 125 to 128 MB on Linux and Windows, instead of the full browser as well) and names it with its
-  size before anything is fetched; `doctor` counts a cache with only the headless shell as installed.
+  Apple silicon Macs, 111 MB on Intel Macs, 126 to 128 MB on Linux and Windows, instead of the full
+  browser as well) and names it with its size before anything is fetched; `doctor` counts a cache
+  with only the headless shell as installed. After a Playwright update,
+  `node tools/measure-headless-shell.ts --write` measures the sizes again.
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
   tokens and billing switches in your environment from the preset agent (`*_API_KEY`,

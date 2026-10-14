@@ -11,12 +11,13 @@ test('the named download size belongs to the pinned Playwright and its headless 
   // The sizes were measured for one Playwright pin; a dependency update has to measure them again.
   const pinned = JSON.parse(await readFile(new URL('../../node_modules/playwright-core/package.json', import.meta.url), 'utf8')) as { version: string };
   const browsers = JSON.parse(await readFile(new URL('../../node_modules/playwright-core/browsers.json', import.meta.url), 'utf8')) as { browsers: Array<{ name: string; browserVersion?: string }> };
-  assert.equal(HEADLESS_SHELL.playwright, pinned.version, 'sizes measured for another Playwright: re-measure the CDN archives');
+  assert.equal(HEADLESS_SHELL.playwright, pinned.version, `the headless-shell sizes were measured for Playwright ${HEADLESS_SHELL.playwright}, the pin is ${pinned.version}: run node tools/measure-headless-shell.ts --write`);
   assert.equal(HEADLESS_SHELL.browserVersion, browsers.browsers.find(entry => entry.name === 'chromium-headless-shell')?.browserVersion);
-  // Hand-summed archive sizes (headless shell + ffmpeg), rounded to whole MB.
+  // Hand-summed archive sizes (headless shell + ffmpeg, plus winldd on Windows), rounded to whole MB.
   assert.equal(headlessShellMegabytes('darwin', 'arm64'), 105);
   assert.equal(headlessShellMegabytes('linux', 'x64'), 128);
-  assert.equal(headlessShellMegabytes('win32', 'x64'), 125);
+  // Windows also fetches Playwright's winldd.
+  assert.equal(headlessShellMegabytes('win32', 'x64'), 126);
   // An unknown platform is told the largest measured size, never less.
   assert.equal(headlessShellMegabytes('freebsd', 'x64'), 128);
   assert.deepEqual(headlessShellDownload('darwin', 'x64'), { name: 'Chromium headless shell', size: 111 });
@@ -79,8 +80,8 @@ test('setup explicitly provisions Chromium and propagates installer failure at t
     assert.match(green.stdout, /installer-boundary:\["install","--only-shell","chromium","--dry-run"\]/);
     assert.match(green.stdout, /installer-boundary:\["install","--only-shell","chromium"\]/);
     assert.doesNotMatch(green.stderr, /WARNING: It looks like you are running/, 'no Playwright npx warning box under npx practonaut');
-    // The size on disk in decimal megabytes, like the download size before it.
-    assert.match(green.stdout, /setup: the Chromium headless shell is ready in .+ \(100 MB on disk\)/);
+    // The size on disk in decimal megabytes, like the download size before it, of the shell's own folder.
+    assert.match(green.stdout, /setup: the Chromium headless shell is ready in .+chromium_headless_shell-1248 \(100 MB on disk\)/);
     const failed = run(7);
     assert.equal(failed.status, 3, failed.stdout + failed.stderr);
     assert.doesNotMatch(failed.stdout, /provisioning completed/);

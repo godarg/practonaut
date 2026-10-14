@@ -58,6 +58,7 @@ async function installedHeadlessShell(): Promise<{ directory: string; bytes: num
     for (const entry of await readdir(shell, { recursive: true, withFileTypes: true })) {
       if (entry.isFile()) bytes += (await lstat(join(entry.parentPath, entry.name)).catch(() => ({ size: 0 }))).size;
     }
-    return { directory: dirname(revision), bytes };
+    // The folder the size is of: the headless shell itself, not the whole Playwright cache.
+    return { directory: shell, bytes };
   } catch { return undefined; }
 }
