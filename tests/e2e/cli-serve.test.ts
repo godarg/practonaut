@@ -92,7 +92,7 @@ for (const mirror of ['auto', 'off'] as const) {
       assert.equal(result.passed, true);
       assert.equal(result.mode === 'real-engine', mirror === 'auto');
       // A session started with --mirror off says so, and how to get the real engine instead.
-      if (mirror === 'off') assert.match(await page.getByTestId('model-only-banner').innerText(), /Not yet checked against the real Excalidraw[\s\S]*started with --mirror off[\s\S]*Start Practonaut without it/, 'the Player names the remedy');
+      if (mirror === 'off') assert.match(await page.getByTestId('model-only-banner').innerText(), /Not yet checked against the real Excalidraw[\s\S]*started with --mirror off[\s\S]*Start Practonaut without that option/, 'the Player names the remedy');
       else assert.equal(await page.getByTestId('model-only-banner').count(), 0);
 
       // The used code is refused, before and after a new link was issued.

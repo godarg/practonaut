@@ -14,16 +14,16 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { TOKEN_HEADER } from '../../src/host/protocol.ts';
 import { headlessShellMegabytes } from '../../src/cli/chromium-download.ts';
-import { scanForHiddenReferences } from '../support/oracle-scan.ts';
+import { distinctive, hiddenReferences, matchesStep, scanForHiddenReferences } from '../support/oracle-scan.ts';
 import { PLAYER_STATES, startPlayer } from '../support/player-states.ts';
 
 const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 
 interface Started { child: ChildProcessWithoutNullStreams; url: string; tokenFile: string; output(): string; startedAt: number; stop(): Promise<number | null> }
 /** `practonaut --no-open`, exactly as `npx practonaut` starts it, minus the browser launch. */
-async function practonaut(env: NodeJS.ProcessEnv): Promise<Started> {
+async function practonaut(env: NodeJS.ProcessEnv, args: string[] = []): Promise<Started> {
   const startedAt = performance.now();
-  const child = spawn(process.execPath, [main, '--no-open'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [main, ...args, '--no-open'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.on('data', data => { stdout += String(data); }); child.stderr.on('data', data => { stderr += String(data); });
   const deadline = Date.now() + 60_000;
@@ -87,13 +87,12 @@ test('without Chromium: the Player opens at once, says what is not checked yet, 
     assert.equal(await steps(page).count(), 3);
     assert.equal(await page.getByTestId('connection-list').getByRole('button').count(), 2);
     assert.deepEqual(await page.getByTestId('history-actor').allInnerTexts(), Array(5).fill('Demonstration'));
-    assert.equal(await page.getByTestId('demo-actions').innerText().then(text => text.includes('5 of 5 actions on the board')), true);
+    assert.match(await page.getByTestId('demo-actions').innerText(), /Actions on the board\s+5 of 5/);
     // Confirmation state: this session has no real tool, and says so instead of claiming it.
-    assert.match(await page.getByTestId('demo-mirror').innerText(), /Model only: not checked in the real Excalidraw/);
+    assert.match(await page.getByTestId('demo-mirror').innerText(), /Check in the real Excalidraw\s+Not checked in this session/);
     // The result check's verdict, labelled as the demonstration's.
     assert.match(await page.getByTestId('demo-check').innerText(), /All conditions met\./);
-    assert.match(await page.locator('.verdict.pass').innerText(), /All conditions met\./);
-    assert.equal(await page.getByTestId('demo-verdict-note').count(), 1);
+    assert.equal(await page.locator('.verdict.pass').innerText(), 'The demonstration’s board meets all conditions.');
     assert.equal(await page.getByTestId('export-prepare').isDisabled(), true, 'its board cannot be saved as a result (here the session cannot export at all)');
     assert.equal(await page.getByTestId('goal-new-variant').count(), 0, 'its pass is not the person\'s pass');
 
@@ -119,10 +118,15 @@ test('without Chromium: the Player opens at once, says what is not checked yet, 
     assert.ok(watched.captured.some(item => item.where === 'GET /player.js') && watched.captured.some(item => item.where === 'event stream'), 'assets and events were captured');
     assert.deepEqual(scanForHiddenReferences(watched.captured), []);
     // Positive control: one more event in the captured stream, a history entry whose action is the
-    // first step of restyle-flow's reference (keys in another order, with baseStep).
-    const leak = `event: changed\ndata: ${JSON.stringify({ type: 'changed', view: { history: [{ actor: { kind: 'human' }, action: { baseStep: 0, params: { fill: 'none', stroke: 'black', shape: 'ellipse', id: 'a' }, name: 'set_style' } }] } })}\n\n`;
+    // first step of restyle-flow's reference as library.json has it (keys reversed, with baseStep).
+    const references = hiddenReferences(), first = references.patterns.find(pattern => pattern.task === 'restyle-flow' && pattern.list === 'reference')!.steps[0]!;
+    const action = { baseStep: 0, params: Object.fromEntries(Object.entries(first.params).reverse()), name: first.name };
+    const leak = `event: changed\ndata: ${JSON.stringify({ type: 'changed', view: { history: [{ actor: { kind: 'human' }, action }] } })}\n\n`;
     const planted = watched.captured.map(item => item.where === 'event stream' ? { ...item, text: item.text + leak } : item);
-    assert.deepEqual(scanForHiddenReferences(planted).map(finding => finding.source), ['restyle-flow: reference step set_style', 'restyle-flow: near miss near-3 step set_style', 'restyle-flow: near miss near-4 step set_style']);
+    // Every list (reference or near miss, of any task) that has this very step is named.
+    const expected = references.patterns.filter(pattern => pattern.steps.some(step => distinctive(step) && matchesStep(action, step, references.labels))).map(pattern => `${pattern.task}: ${pattern.list} step ${first.name}`);
+    assert.ok(expected.includes('restyle-flow: reference step set_style'), expected.join('; '));
+    assert.deepEqual(scanForHiddenReferences(planted, references).map(finding => finding.source).sort(), expected.sort());
     assert.deepEqual(watched.external, [], 'no request left 127.0.0.1');
   } finally {
     await browser?.close();
@@ -154,7 +158,7 @@ test('with the real engine: no banner, and the real Excalidraw confirms every de
     const firstAction = await watch(page, started.startedAt);
     console.log(`first demonstration action ${Math.round(firstAction)} ms after the command (real engine, source CLI)`);
     await page.getByTestId('demonstration').and(page.locator('[data-state=finished]')).waitFor({ timeout: 60_000 });
-    assert.match(await page.getByTestId('demo-mirror').innerText(), /5 of 5 confirmed in the real Excalidraw/);
+    assert.match(await page.getByTestId('demo-mirror').innerText(), /Check in the real Excalidraw\s+5 confirmed/);
     assert.match(await page.getByTestId('demo-check').innerText(), /All conditions met\./);
     assert.equal(await page.getByTestId('export-demonstration').count(), 1, 'its board cannot be saved as a result');
     assert.equal(await page.getByTestId('export-prepare').isDisabled(), true);
@@ -168,5 +172,35 @@ test('with the real engine: no banner, and the real Excalidraw confirms every de
   } finally {
     await browser?.close();
     assert.equal(await started.stop(), 0);
+  }
+});
+
+test('a library task opened in the Player: no reference in anything it receives, and no demonstration', { timeout: 180_000 }, async () => {
+  const empty = await mkdtemp(join(await realpath(tmpdir()), 'pn-no-browsers-'));
+  // restyle-flow: the library task whose reference the scanner's positive controls use.
+  const started = await practonaut({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: empty }, ['play', 'restyle-flow']);
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const watched = await open(browser, started);
+    const { page } = watched;
+    assert.equal(await page.getByTestId('demo-start').count(), 0, 'no demonstration is offered');
+    // The Player's own check of the start board, as a person would press it.
+    const checked = page.waitForResponse(response => response.url().endsWith('/api/check'));
+    await page.getByTestId('check').click(); await checked; await page.locator('.verdict').waitFor();
+    const token = (await readFile(started.tokenFile, 'utf8')).trim(), origin = new URL(started.url).origin;
+    const observed = await (await fetch(origin + '/api/observe', { headers: { [TOKEN_HEADER]: token } })).text();
+    // The route exists on every host, the demonstration only on the bundled example's.
+    const refused = await fetch(origin + '/api/demonstration', { method: 'POST', headers: { [TOKEN_HEADER]: token, 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: JSON.parse(observed).value.revision, confirmed: true }) });
+    assert.equal(refused.status, 404); assert.equal((await refused.json()).error.code, 'not_found');
+    await watched.done();
+    const captured = [...watched.captured, { where: 'GET /api/observe (agent side)', text: observed }];
+    for (const where of ['POST /api/bootstrap', 'POST /api/check', 'event stream']) assert.ok(captured.some(item => item.where === where), `captured ${where}`);
+    assert.deepEqual(scanForHiddenReferences(captured), []);
+    assert.deepEqual(watched.external, []);
+  } finally {
+    await browser?.close();
+    assert.equal(await started.stop(), 0);
+    await rm(empty, { recursive: true, force: true });
   }
 });

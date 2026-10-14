@@ -5,6 +5,7 @@ import { catalogs } from './messages.ts';
 import type { Language, Message } from './messages.ts';
 import { clearTabSession, readTabSession, writeTabSession } from './tab-session.ts';
 import { banner, button, card, chip, disclosure, evidence, h, icon, listPicker, openSheet, segmented, selectField, statusIcon, textField } from './ui/components.ts';
+import { stepList } from './ui/stepper.ts';
 import { counted } from './plural.ts';
 import { drawBoard } from './ui/board-art.ts';
 import type { SceneArrow, SceneStep } from './ui/board-art.ts';
@@ -353,14 +354,17 @@ function confirmationDialog(options: { title: Message; titleText?: string; expla
   });
 }
 function resetDialog(): void {
+  // The demonstration's board is not the person's work: nothing to lose, nothing to ask.
+  if (demoAttempt()) { ownAttempt(); return; }
   confirmationDialog({ title: 'resetTitle', explanation: 'resetExplanation', confirm: 'resetConfirm', confirmId: 'reset-confirm', cancelId: 'reset-cancel', returnId: 'reset', accept: () => { void mutate('reset', { confirmed: true }, 'resetDone'); } });
 }
 function changeAttempt(taskId?: string): void {
   if (!current || working || document.querySelector('dialog[open]')) return;
   if (taskId !== undefined && taskId === current.task.id) return;
   const accept = (): void => { void mutate('variant', { confirmed: true, ...(taskId === undefined ? {} : { taskId }) }, taskId === undefined ? 'variantDone' : 'taskDone'); };
-  // Ask only when unsolved work would be lost: actions on the board that no passing check covers.
-  if (!current.step || solvedNow()) { accept(); return; }
+  // Ask only when unsolved work would be lost: actions on the board that no passing check covers
+  // (the demonstration's board is not the person's work).
+  if (!current.step || solvedNow() || demoAttempt()) { accept(); return; }
   const target = taskId === undefined ? undefined : current.tasks.find(item => item.id === taskId);
   confirmationDialog({ title: taskId === undefined ? 'variantChangeTitle' : 'taskChangeTitle', ...(target ? { titleText: msg('taskChangeTitle').replace('{task}', text(target.title)) } : {}), explanation: taskId === undefined ? 'variantChangeExplanation' : 'taskChangeExplanation', confirm: taskId === undefined ? 'variantChangeConfirm' : 'taskChangeConfirm', confirmId: 'change-confirm', cancelId: 'change-cancel', returnId: taskId === undefined ? 'new-variant' : 'task-picker', accept, destructive: false });
 }
@@ -403,7 +407,7 @@ async function startDemonstration(): Promise<void> {
   if (!demo || demo.attempt !== reply.value.attempt || demo.taskId !== reply.value.taskId) demo = reply.value;
   // A verdict of the attempt before is gone; one the demonstration already reached (events can be faster) stays.
   if (lastCheck && current && (lastCheck.hash !== current.hash || lastCheck.revision !== current.revision)) lastCheck = undefined;
-  showFormal = false; selected = '';
+  showFormal = false; selected = ''; previousDemoObjects = new Set(Object.keys(current!.state.objects));
   // The whole board in view while it plays (narrow screens scroll to it), the one way out focused.
   render(); document.querySelector('.canvas')?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   document.querySelector<HTMLElement>('[data-testid="demo-stop"]')?.focus({ preventScroll: true });
@@ -417,20 +421,43 @@ async function stopDemonstration(): Promise<void> {
 }
 /** The demonstration's board is not the person's: a fresh attempt on the same task and variant. */
 function ownAttempt(): void { void mutate('reset', { confirmed: true }, 'demoOwnAttemptDone'); }
-/** What the demonstration just did, for the live region; at its end the focus goes to the Goal card. */
+/** The live object the last demonstrated action touched: what it created, else what it named. */
+function lastTouched(): string {
+  const last = current?.history.filter(item => item.actor.kind === 'demonstration').at(-1);
+  if (!last || !current) return '';
+  const live = (id: unknown): id is string => typeof id === 'string' && !!current!.state.objects[id] && !current!.state.objects[id]!.deleted;
+  const created = last.effects.map(effect => effect.id).filter(id => live(id) && !previousDemoObjects.has(id));
+  return created[0] ?? [last.action.params.id, last.action.params.target, last.action.params.to].find(live) ?? '';
+}
+/** Objects on the board before the latest demonstrated action, to tell what it created. */
+let previousDemoObjects = new Set<string>();
+/** What the demonstration just did, for the live region and the board's selection ring. */
 function demonstrationChanged(previous: DemonstrationStatus | null): void {
   const d = demo;
   if (!d || !current || !demoAttempt()) return;
   const total = String(d.total);
   if (d.state === 'running' && d.done > (previous?.state === 'running' && previous.attempt === d.attempt ? previous.done : 0)) {
     const last = current.history.filter(item => item.actor.kind === 'demonstration').at(-1);
+    // The object it touched keeps the selection ring until the next action (design §10.2).
+    selected = lastTouched(); previousDemoObjects = new Set(Object.keys(current.state.objects));
     say(`${msg('demoAnnounceAction').replace('{n}', String(d.done)).replace('{total}', total)} ${last ? text(last.description) : ''} ${msg(last?.mirrorConfirmed ? 'demoAnnounceConfirmed' : 'demoAnnounceModel')}`);
     return;
   }
   if (d.state === 'running' || previous?.state !== 'running') return;
-  if (d.state === 'finished') { freshVerdict = true; say(`${msg('demoAnnounceFinished')} ${msg(d.passed ? 'passed' : 'failed')}`); }
+  selected = '';
+  if (d.state === 'finished') { freshVerdict = true; say(`${msg('demoAnnounceFinished')} ${msg(d.passed ? 'demoPassed' : 'demoNotPassed')}`); }
   else if (d.state === 'stopped') say(msg('demoAnnounceStopped').replace('{n}', String(d.done)).replace('{total}', total));
-  else say(`${msg('demoAnnounceFailed')} ${msg(d.error && Object.hasOwn(catalogs.en, d.error) ? d.error as Message : 'genericError')}`);
+  else say(msg('demoFailedText'));
+}
+/** At its end the Demonstration card comes into view from its title (the inspector scrolls on its
+ * own on wide screens, the page on narrow ones) and takes the focus. */
+function revealDemonstration(): void {
+  const card = document.querySelector<HTMLElement>('[data-testid="demonstration"]');
+  if (!card) return;
+  card.focus({ preventScroll: true });
+  const side = card.closest<HTMLElement>('.practice-inspector');
+  if (side && side.scrollHeight > side.clientHeight && getComputedStyle(side).overflowY !== 'visible') side.scrollTop += card.getBoundingClientRect().top - side.getBoundingClientRect().top - parseFloat(getComputedStyle(side).paddingTop);
+  else window.scrollBy({ top: card.getBoundingClientRect().top - bar.getBoundingClientRect().bottom, behavior: 'instant' });
 }
 
 // ---------- Board drawing ----------
@@ -473,7 +500,7 @@ function palette(): HTMLElement | undefined {
   // While the demonstration plays, the one way out sits where the tools are; afterwards its board
   // offers no tools (the next step, an own attempt, is in the Goal card).
   if (demoAttempt()) return demoRunning() ? h('div', { class: 'practice-palette pn-floating', attrs: { role: 'group', 'aria-label': msg('demoTitle') } },
-    button({ label: msg('demoStop'), title: msg('demoStopTitle'), icon: 'stop', variant: 'tool', class: 'pn-btn--keep-label', testid: 'demo-stop', onClick: () => { void stopDemonstration(); } })) : undefined;
+    button({ label: msg('demoStop'), title: msg('demoStopTitle'), icon: 'stop', kbd: 'Esc', variant: 'tool', class: 'pn-btn--keep-label', testid: 'demo-stop', onClick: () => { void stopDemonstration(); } })) : undefined;
   const visible = paletteVisibility();
   const group = (name: string, ...children: Node[]): HTMLElement => h('div', { class: 'practice-palette__group', attrs: { 'data-palette': name, hidden: !visible[name] || undefined } }, ...children);
   const root = h('div', { class: 'practice-palette pn-floating', attrs: { role: 'group', 'aria-label': msg('board') } });
@@ -559,14 +586,17 @@ function primaryOwner(): 'demo' | 'variant' | 'check' { return demoAttempt() ? '
 function practiceHead(): HTMLElement {
   const c = current!;
   const head = h('section', { class: 'practice-head', attrs: { 'aria-labelledby': 'task-title' } });
-  head.append(h('p', { class: 't-eyebrow', text: msg('task') }), h('h1', { class: 'practice-head__title', id: 'task-title', text: text(c.task.title) }), h('p', { class: 'practice-head__prompt', text: text(c.task.prompt) }));
+  // The attempt line sits beside "Task", so a long title never pushes it onto a line of its own; on
+  // the demonstration's board it says whose board it is and counts no attempt of the person.
+  const meta = demoAttempt() ? msg('demoHeadMeta').replace('{actions}', actionCount(c.step)) : `${msg('attempt')} ${c.attempt} · ${actionCount(c.step)}`;
+  head.append(h('div', { class: 'practice-head__top' }, h('p', { class: 't-eyebrow', text: msg('task') }), h('span', { class: 'practice-head__meta t-footnote t-secondary t-tabular', testid: 'head-meta', text: meta })),
+    h('h1', { class: 'practice-head__title', id: 'task-title', text: text(c.task.title) }), h('p', { class: 'practice-head__prompt', text: text(c.task.prompt) }));
   const controls = h('div', { class: 'practice-head__controls' });
   // One step: choosing a task switches to it (a dialog asks only when unsolved work would be lost).
   controls.append(listPicker({ id: 'task-picker', testid: 'task-picker', label: msg('taskSelect'), value: c.task.id, currentWord: msg('taskCurrent'), disabled: locked(), items: c.tasks.map(item => ({ value: item.id, label: text(item.title), ...(item.level && item.referenceActions ? { detail: actionCount(item.referenceActions), meter: { value: item.level, max: 3, label: msg('taskDifficulty').replace('{n}', String(item.level)) } } : {}) })), onPick: id => changeAttempt(id) }));
   controls.append(button({ label: msg('newVariant'), title: msg('newVariant'), icon: 'shuffle', variant: 'plain', testid: 'new-variant', disabled: locked(), onClick: () => changeAttempt() }));
   // The bundled example can show its task solved once; never offered on its own board.
   if (demoTasks.includes(c.task.id) && !demoAttempt()) controls.append(button({ label: msg('demoWatch'), title: msg('demoWatch'), icon: 'play', variant: 'plain', class: 'practice-head__demo', testid: 'demo-start', disabled: working, onClick: watchDemonstration }));
-  controls.append(h('span', { class: 'practice-head__meta t-footnote t-secondary t-tabular', text: `${msg('attempt')} ${c.attempt} · ${actionCount(c.step)}` }));
   // While an agent works on the session, the head says so: the last change and who made it.
   const last = c.history.at(-1);
   if (last?.actor.kind === 'agent') controls.append(h('span', { class: 'practice-head__actor t-footnote', testid: 'head-actor' }, chip(msg('actorAgent').replace('{client}', last.actor.client), { tone: 'accent' }), h('span', { class: 't-secondary', text: msg('lastChange') })));
@@ -593,7 +623,7 @@ function goalCard(): HTMLElement {
   const result = tagged(card({ title: msg('conditions'), titleId: 'result-title', class: 'inspector-card' }), 'check-result'); result.tabIndex = -1;
   const kind = !lastCheck || stale ? 'unknown' : lastCheck.passed ? 'pass' : 'fail';
   const verdictIcon = stale ? icon('warning') : statusIcon(lastCheck?.passed ? 'met' : 'unmet');
-  const verdict = lastCheck ? h('div', { class: `verdict ${kind}${stale ? ' stale' : ''}${freshVerdict && matches ? ' is-new' : ''}`, attrs: { role: 'status' } }, verdictIcon, h('p', { text: msg(stale ? 'stale' : lastCheck.passed ? 'passed' : 'failed') })) : undefined;
+  const verdict = lastCheck ? h('div', { class: `verdict ${kind}${stale ? ' stale' : ''}${freshVerdict && matches ? ' is-new' : ''}`, attrs: { role: 'status' } }, verdictIcon, h('p', { text: msg(stale ? 'stale' : demoAttempt() ? (lastCheck.passed ? 'demoPassed' : 'demoNotPassed') : lastCheck.passed ? 'passed' : 'failed') })) : undefined;
   const arriving = freshVerdict && matches;
   const goals = h('ul', { class: `goal-list${arriving ? ' is-new' : ''}` });
   // A world without sentences for its goal (world/1) states it in the prompt: those sentences are the visible lines, the formula stays behind the switch.
@@ -616,12 +646,11 @@ function goalCard(): HTMLElement {
   const facts = failedNow ? h('p', { class: 'goal-note', text: msg('factsOnBoard').replace('{facts}', boardFacts()) }) : undefined;
   const checkButton = button({ label: owner === 'variant' || (owner === 'demo' && matches) ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: locked() });
   const formalSwitch = hasFormal ? button({ label: msg(showFormal ? 'formalHide' : 'formalShow'), icon: showFormal ? 'chevronUp' : 'chevronDown', variant: 'plain', size: 'sm', class: 'goal-formal-switch', testid: 'formal-switch', pressed: showFormal, onClick: () => { showFormal = !showFormal; render(); document.querySelector<HTMLElement>('[data-testid="formal-switch"]')?.focus(); } }) : undefined;
-  // A verdict on the demonstration's board says whose board it judged.
-  const whose = owner === 'demo' && verdict ? h('p', { class: 'goal-note', testid: 'demo-verdict-note', text: msg('demoVerdictNote') }) : undefined;
-  result.append(...(verdict ? [verdict] : []), ...(whose ? [whose] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
+  result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
   if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
   if (owner === 'demo' && !demoRunning()) result.append(button({ label: msg('demoOwnAttempt'), icon: 'reset', variant: 'primary', size: 'lg', block: true, testid: 'demo-own-attempt', disabled: working, onClick: ownAttempt }));
-  result.append(checkButton);
+  // The demonstration's board is not the person's to check: no Check while it is its board.
+  if (owner !== 'demo') result.append(checkButton);
   return result;
 }
 function hintsCard(): HTMLElement {
@@ -653,7 +682,7 @@ function historyCard(): HTMLElement {
       : item.actor.kind === 'demonstration' ? chip(msg('actorDemonstration'), { icon: 'play', testid: 'history-actor' }) : chip(msg('actorYou'), { testid: 'history-actor' });
     const body = h('div', { class: 'history-entry__body' }, h('p', { class: 'history-entry__head' }, actor, h('span', { text: text(item.description) })));
     for (const consequence of item.consequences) body.append(h('p', { class: 'history-entry__consequence' }, h('span', { class: 'history-entry__then', text: `${msg('atMoment')} ` }), text(consequence.explanation)));
-    if (showRuleOrigins) body.append(h('p', { class: 'rule-origin', testid: 'history-rule-origin', text: `${msg('provenance')} ${item.ruleIds.join(', ')} · ${msg(item.mirrorConfirmed ? 'origin' : 'modelOnly')}` }));
+    if (showRuleOrigins) body.append(h('p', { class: 'rule-origin', testid: 'history-rule-origin', text: `${msg('provenance')} ${item.ruleIds.join(', ')} · ${msg(item.mirrorConfirmed ? 'origin' : 'notChecked')}` }));
     list.append(h('li', { class: `history-entry${grew && index === c.history.length - 1 ? ' is-new' : ''}`, testid: 'history-entry' }, h('span', { class: 'history-entry__index', text: String(index + 1), attrs: { 'aria-hidden': 'true' } }), body));
   });
   // One switch for the rule and origin of every entry, instead of a link under each one.
@@ -663,7 +692,7 @@ function historyCard(): HTMLElement {
 }
 function howCheckedCard(): HTMLElement {
   const c = current!;
-  const root = card({ title: msg('howChecked'), class: 'inspector-card' });
+  const root = card({ title: msg('howChecked'), class: 'inspector-card', testid: 'how-checked' });
   // How actions are checked follows the real tool, not whether this attempt counts: a demonstration's
   // attempt is never practice evidence, yet its actions were confirmed when the mirror ran.
   const mirrored = c.mirrorHealth.status === 'available';
@@ -686,18 +715,22 @@ function demonstrationCard(): HTMLElement {
   // Machine-readable state for tests; people read it in the chip and the three lines.
   root.dataset.state = d.state; root.dataset.done = String(d.done);
   const count = (key: Message, n: number, total: number): string => msg(key).replace('{n}', String(n)).replace('{total}', String(total));
-  const row = (index: number, title: Message, detail: HTMLElement, testid: string): HTMLElement => h('li', { class: 'demo-row', testid },
-    h('span', { class: 'demo-row__index', text: String(index), attrs: { 'aria-hidden': 'true' } }), h('div', { class: 'demo-row__body' }, h('p', { class: 'demo-row__title', text: msg(title) }), detail));
-  const mirrored = c.mirror === 'required';
-  const mirror = !mirrored ? evidence('observed', msg('demoMirrorOff')) : done.length ? evidence('confirmed', count('demoMirrorCount', confirmed, done.length)) : h('span', { text: msg('demoMirrorNone') });
+  // Three numbered parts of every result, titled as nouns that are true in every session; each
+  // line says what happened (the step list's marker never carries it alone).
+  const running = d.state === 'running', mirrored = c.mirror === 'required', complete = d.done >= d.total;
+  const mirror = !mirrored ? evidence('observed', msg('demoMirrorOff')) : done.length ? evidence('confirmed', msg('demoMirrorCount').replace('{n}', String(confirmed))) : h('span', { text: msg('demoMirrorNone') });
   const verdict = d.state === 'finished' && d.passed !== undefined
-    ? h('span', { class: 'demo-row__verdict' }, statusIcon(d.passed ? 'met' : 'unmet'), h('span', { text: msg(d.passed ? 'passed' : 'failed') }))
-    : h('span', { class: 'demo-row__verdict' }, statusIcon('pending'), h('span', { text: msg(d.state === 'running' ? 'demoCheckPending' : 'demoCheckSkipped') }));
-  root.append(h('p', { class: 't-subhead t-secondary', text: msg('demoIntro') }), h('ol', { class: 'demo-rows' },
-    row(1, 'demoRowActions', h('p', { class: 'demo-row__detail t-tabular', text: count('demoRowActionsCount', d.done, d.total) }), 'demo-actions'),
-    row(2, 'demoRowMirror', h('p', { class: 'demo-row__detail' }, mirror), 'demo-mirror'),
-    row(3, 'demoRowCheck', h('p', { class: 'demo-row__detail' }, verdict), 'demo-check')));
-  if (d.state === 'failed') root.append(banner({ tone: 'danger', title: msg('demoAnnounceFailed'), text: msg(d.error && Object.hasOwn(catalogs.en, d.error) ? d.error as Message : 'genericError'), testid: 'demo-failed' }));
+    ? h('span', { class: 'demo-state' }, statusIcon(d.passed ? 'met' : 'unmet'), h('span', { text: msg(d.passed ? 'passed' : 'failed') }))
+    : h('span', { class: 'demo-state' }, statusIcon('pending'), h('span', { text: msg(running ? 'demoCheckPending' : 'demoCheckSkipped') }));
+  root.tabIndex = -1;
+  root.append(h('p', { class: 't-subhead t-secondary', text: msg('demoIntro') }), stepList({ labelledBy: 'demo-title' }, [
+    { title: msg('demoRowActions'), detail: count('demoRowActionsCount', d.done, d.total), state: complete ? 'done' : running ? 'current' : 'upcoming', testid: 'demo-actions' },
+    { title: msg('demoRowMirror'), detail: mirror, state: mirrored && complete && confirmed === done.length ? 'done' : mirrored && running && done.length ? 'current' : 'upcoming', testid: 'demo-mirror' },
+    { title: msg('demoRowCheck'), detail: verdict, state: d.state === 'finished' ? 'done' : running && complete ? 'current' : 'upcoming', testid: 'demo-check' },
+  ]));
+  // Stopped early: a sentence for people; the refusal's code one disclosure deeper.
+  if (d.state === 'failed') root.append(banner({ tone: 'danger', text: msg('demoFailedText'), testid: 'demo-failed' },
+    disclosure({ summary: msg('technicalDetails') }, h('p', { class: 'rule-origin', text: d.error ?? 'unknown' }))));
   return root;
 }
 function inviteCard(): HTMLElement {
@@ -826,7 +859,7 @@ async function events(signal: AbortSignal = eventLifetime.signal): Promise<void>
             if (!working) {
               render();
               // The Stop button is gone at the end: the focus follows to the verdict and the next step.
-              if (demo && demo.state !== 'running' && previous?.state === 'running' && followed) document.querySelector<HTMLElement>('[data-testid="check-result"]')?.focus();
+              if (demo && demo.state !== 'running' && previous?.state === 'running' && followed) revealDemonstration();
             }
           }
         }
@@ -845,7 +878,7 @@ async function events(signal: AbortSignal = eventLifetime.signal): Promise<void>
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && pending) { event.preventDefault(); cancelPreview(); }
   // Escape stops a playing demonstration from anywhere but an open sheet.
-  else if (event.key === 'Escape' && demoRunning() && !document.querySelector('dialog[open]')) { event.preventDefault(); void stopDemonstration(); }
+  else if (event.key === 'Escape' && demoRunning() && !document.querySelector('dialog[open]') && (phase3?.mode() ?? 'board') !== 'author') { event.preventDefault(); void stopDemonstration(); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); if (!working && !document.querySelector('dialog[open]') && !document.querySelector<HTMLElement>('.native-editor-scroll')?.inert && current?.step && !demoAttempt()) void mutate('undo', {}, 'undoDone'); }
 });
 render();

@@ -429,6 +429,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Icon | `icon()` | 24-unit grid, 1.75 stroke, round caps, `currentColor`, always `aria-hidden`. A new icon is drawn in `icons.ts` and shown in the gallery. |
 | Key cap | `<kbd>` | Shows a keyboard shortcut next to its action. |
 | Stepper | `stepper()`, `step()` (`ui/stepper.ts`) | Vertical, numbered list of steps for a guided flow. Each step is a native `<details>` card with a marker (number, check when done, ring when current), a one-line summary when collapsed and a connecting line. Only the current step is open; the others stay editable. At most one filled button per open step. |
+| Step list | `stepList()` (`ui/stepper.ts`) | Static, numbered list of the parts of something that runs by itself (the demonstration): the stepper's marker grammar (number, ring when current, check when done) with a noun title and one line that says the state in words, so the marker never carries it alone. Not interactive; nothing opens. Shown in the gallery running and ended. |
 | Miniature diagram | `miniature()` (`ui/miniature.ts`) | Small read-only SVG of a process (steps with wrapped labels, arrows, loose ends as rings), used for before/after, the prepared case and examples. Always paired with a text alternative; never interactive. |
 | Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens. Player and gallery draw the same scene; behaviour is attached through `decorate`. |
 
@@ -495,19 +496,27 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" with
   one sentence on what gets the real engine (the command in the mono voice, the one download named
   with its size; or why Chromium did not start; or that `--mirror off` was chosen). It stays for the
-  whole session; the quiet line under the board keeps saying that the board shows the model.
+  whole session. One wording family everywhere: the banner, the line under the board ("This is a
+  practice model. In this session the real Excalidraw does not check it.") and "How this is checked"
+  say the same thing in plain words, never "mirrored" or "evidence".
 - **Demonstration** (bundled example only). The head offers "Watch a demonstration" as a plain
-  button beside "New variant"; below 48em it takes its own line, in words, never a bare symbol. It
-  asks first only when unsolved own work would be cleared. While it plays the board is its board:
-  the coach counts its actions, the palette offers only the one Stop (Escape too), every other
-  control is disabled, and a **Demonstration** card at the top of the inspector names the three
-  parts of every result as numbered lines with their state in words: actions land on the board,
-  the real Excalidraw confirms each one (evidence mark "confirmed", or "observed" with "model
-  only"), the result check judges the board. A chip says running, finished, stopped or stopped
-  early. History entries carry a "Demonstration" chip. At its end focus moves to the Goal card,
-  whose verdict says it judged the demonstration's board and whose one filled button is "Start your
-  own attempt" (never "New variant": its pass is not the person's). Its board offers no tools and
-  cannot be exported.
+  button beside "New variant"; below 48em it takes its own line, in words, flush with the text
+  above, never a bare symbol. It asks first only when unsolved own work would be cleared ("clears
+  the board and solves this task once"). While it plays the board is its board: the head line
+  beside "Task" reads "Demonstration · n actions" (it never uses up one of the person's attempt
+  numbers), the coach counts its actions, the object the last action touched carries the selection
+  ring until the next one, the palette offers only the one Stop with its key cap (Escape too, but
+  not from Create), every other control is disabled, and a **Demonstration** card at the top of the
+  inspector names the three parts of every result in a step list (section 9) with noun titles that
+  are true in every session ("Actions on the board", "Check in the real Excalidraw", "Result check")
+  and each state in words ("1 of 3", "1 confirmed" or "Not checked in this session", the verdict).
+  A chip says running, finished, stopped or stopped early; stopped early is one sentence for people
+  with the refusal's code under Technical details. History entries carry a "Demonstration" chip. At
+  its end the focus and the scroll go to the Demonstration card's title. The Goal card's verdict
+  says whose board it judged ("The demonstration's board meets all conditions."); there is no Check
+  on its board, and the one filled button is "Start your own attempt" (never "New variant": its pass
+  is not the person's). Leaving its board (own attempt, Reset, task or variant) asks nothing. Its
+  board offers no tools and cannot be exported (an information banner says why).
 - **Narrow screens.** The board is cropped to its content and drawn with larger labels and thicker
   strokes with a minimum SVG width so labels never fall below 12 CSS px. The drawing may
   scroll inside its labelled horizontal region; the page itself reflows. The tray remains the text

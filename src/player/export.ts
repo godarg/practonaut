@@ -50,8 +50,8 @@ export function createExportControl(context:Context):{view():HTMLElement}{
   const panel=card({title:m('exportTitle'),level:2});panel.dataset.testid='export-panel';
   panel.append(h('p',{class:'export-status',text:m('exportExplanation')}));
   const demonstration=context.demonstration();
-  if(modelOnly)panel.append(banner({tone:'unknown',text:m('exportNeedsReal'),testid:'export-model-only'}));
-  else if(demonstration)panel.append(banner({tone:'unknown',text:m('exportDemonstration'),testid:'export-demonstration'}));
+  if(modelOnly)panel.append(banner({tone:'accent',text:m('exportNeedsReal'),testid:'export-model-only'}));
+  else if(demonstration)panel.append(banner({tone:'accent',text:m('exportDemonstration'),testid:'export-demonstration'}));
   else if(loading)panel.append(h('p',{class:'export-status',testid:'export-loading',text:m('exportLoading'),attrs:{role:'status'}}));
   else if(error)panel.append(banner({tone:'danger',text:m(error),testid:'export-error',role:'alert'}));
   else if(prepared)panel.append(stale?banner({tone:'warning',text:m('exportStale'),testid:'export-stale'}):h('p',{class:'export-status',testid:'export-ready',text:m('exportReady').replace('{n}',String(prepared.revision)),attrs:{role:'status'}}));

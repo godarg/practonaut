@@ -166,7 +166,7 @@ export async function closeNativeOverlay(page: Page): Promise<void> {
   nativeOverlays.delete(page);
 }
 
-async function mode(page: Page, id: "board" | "editor" | "author"): Promise<void> {
+export async function mode(page: Page, id: "board" | "editor" | "author"): Promise<void> {
   await closeNativeOverlay(page);
   await closeSheets(page);
   if (await page.getByTestId("mode-" + id).getAttribute("aria-pressed") !== "true") await page.getByTestId("mode-" + id).click();
@@ -230,7 +230,7 @@ export async function demonstrate(s: PlayerSession, stage: "running" | "finished
   await settle(s.page);
 }
 /** Model-only sessions run without the create flow: a fresh attempt without the workspace waits. */
-async function modelBaseline(s: PlayerSession): Promise<void> {
+export async function modelBaseline(s: PlayerSession): Promise<void> {
   const demonstrated = await endDemonstration(s);
   const view = await s.observe();
   if (demonstrated || view.step || view.hintsOpened) { const reply = await s.post("reset", { confirmed: true }); if (!reply.ok) throw new Error(`reset refused: ${JSON.stringify(reply)}`); }
@@ -458,7 +458,7 @@ export const PLAYER_STATES: StateDef[] = [
     await s.page.getByTestId("history-entry").first().waitFor();
     await s.page.getByTestId("demo-start").click(); await s.page.getByTestId("demo-confirm").waitFor();
   } },
-  { id: "demo-running", label: "Demonstration playing: an action landed, confirmed by the real tool", workspace: "board", view: "[data-testid=demonstration]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "running"); } },
+  { id: "demo-running", label: "Demonstration playing: an action landed, confirmed by the real tool", workspace: "board", view: ".canvas", async enter(s) { await practiceBaseline(s); await demonstrate(s, "running"); } },
   { id: "demo-finished", label: "Demonstration finished: the result check's verdict and an own attempt", workspace: "board", view: "[data-testid=check-result]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "finished"); } },
   { id: "demo-stopped", label: "Demonstration stopped after its first action", workspace: "board", view: "[data-testid=demonstration]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "stopped"); } },
   { id: "demo-failed", label: "Demonstration stopped early by a refused step", workspace: "board", view: "[data-testid=demonstration]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "failed"); } },
@@ -754,7 +754,7 @@ export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',labe
 { id: 'model-only-banner', label: 'Model-only session: not yet checked against the real Excalidraw, with the named download', workspace: 'board', async enter(s) {
   await modelBaseline(s); await s.page.getByTestId('model-only-banner').waitFor();
 } },
-{ id: 'demo-running-model-only', label: 'Demonstration playing in a model-only session', workspace: 'board', view: '[data-testid=demonstration]', async enter(s) { await modelBaseline(s); await demonstrate(s, 'running'); } },
+{ id: 'demo-running-model-only', label: 'Demonstration playing in a model-only session', workspace: 'board', view: '.canvas', async enter(s) { await modelBaseline(s); await demonstrate(s, 'running'); } },
 { id: 'demo-finished-model-only', label: 'Demonstration finished in a model-only session', workspace: 'board', view: '[data-testid=check-result]', async enter(s) { await modelBaseline(s); await demonstrate(s, 'finished'); } }];
 
 /** Shell states need a fresh page whose bootstrap is held (loading) or already spent (failure). */

@@ -92,7 +92,8 @@ of `observe`, so agents read nothing new.
 `play` without a world offer it, and the host also checks that the world is the bundled example
 (never a library or bench task). Hidden data stays hidden: what it plays is a solution derived from
 each task's public third hint, never a checker fixture, and the host enforces the world (its id and
-version) as well as the CLI flag. It starts a new attempt and plays the current task's third hint
+version) as well as the CLI flag. It starts an attempt of its own (a reset or variant afterwards
+continues the person's attempt count as if it had not run) and plays the current task's third hint
 through the session's own `act` with the actor `{kind:"demonstration"}` (no request can claim
 it), about one action a second, then runs the same result check as the Check button. The real
 mirror confirms each action when the session has one. The script never travels as a whole; the

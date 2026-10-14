@@ -10,10 +10,10 @@
 .practice-head__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pn-space-3); margin-top: var(--pn-space-1); }
 .practice-head__controls .pn-picker { min-width: 0; max-width: 100%; }
 .practice-head__controls .pn-picker__button { max-width: 22rem; }
-.practice-head__meta { margin-left: auto; }
+.practice-head__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--pn-space-3); }
+.practice-head__meta { margin-left: auto; text-align: right; }
 @media (max-width: 47.99em) {
   .practice-head__title { font-size: var(--pn-text-title1); line-height: var(--pn-leading-title1); letter-spacing: var(--pn-tracking-title1); }
-  .practice-head__meta { margin-left: 0; }
 }
 
 /* ---------- Canvas ---------- */
@@ -34,6 +34,8 @@
 .canvas__scroll:focus-visible { outline-offset: calc(-1 * var(--pn-focus-width)); border-radius: var(--pn-radius-xl) var(--pn-radius-xl) var(--pn-radius-sm) var(--pn-radius-sm); }
 /* Never narrower than legible labels need; narrow screens draw larger labels (board-art compact) so the cropped frame fits. */
 .board-scroll .board-svg { min-width: calc(var(--_board-span) * var(--pn-text-caption) / var(--_board-text-unit) + var(--pn-space-1)); }
+/* At 48em and wider no slack beyond the 12 px label floor: a board that fits at the caption size fits its canvas. */
+@media (min-width: 48em) { .board-scroll .board-svg { min-width: calc(var(--_board-span) * var(--pn-text-caption) / var(--_board-text-unit)); } }
 .board-svg { width: 100%; height: auto; min-height: 18rem; }
 .canvas__coach {
   position: absolute; top: var(--pn-space-4); left: 50%; translate: -50% 0; z-index: var(--pn-z-floating);
@@ -186,15 +188,8 @@
 .model-only-banner__command { font-family: var(--pn-font-mono); letter-spacing: 0; white-space: nowrap; }
 body[data-workspace="author"] .model-only-banner { display: none; }
 
-/* Demonstration: three numbered lines (actions, real tool, result check), each with its state in words. */
-.demo-rows { display: grid; gap: var(--pn-space-3); }
-.demo-row { display: grid; grid-template-columns: 1.5rem 1fr; gap: var(--pn-space-3); align-items: start; }
-.demo-row__index { display: grid; place-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--pn-radius-full); background: var(--pn-color-fill); color: var(--pn-color-text-secondary); font-size: var(--pn-text-caption); font-weight: var(--pn-weight-semibold); font-variant-numeric: tabular-nums; }
-.demo-row__body { display: grid; gap: var(--pn-space-1); min-width: 0; }
-.demo-row__title { font-size: var(--pn-text-subhead); line-height: var(--pn-leading-subhead); letter-spacing: var(--pn-tracking-subhead); font-weight: var(--pn-weight-medium); }
-.demo-row__detail { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); letter-spacing: var(--pn-tracking-footnote); }
-.demo-row__verdict { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
-.demo-row__verdict .pn-status { width: var(--pn-icon-sm); height: var(--pn-icon-sm); }
+/* Demonstration: a state line inside the kit's step list (status mark and its words). */
+.demo-state { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
 
 /* Consequences and rejections */
 .practice-notices { display: grid; gap: var(--pn-space-3); }
@@ -271,7 +266,7 @@ body[data-workspace="editor"] .practice-tray { display: none; }
   .practice-head__controls .pn-btn--primary > span { position: static; width: auto; height: auto; margin: 0; clip-path: none; }
   /* A first-time offer is never a bare symbol: on narrow screens it takes its own line, in words. */
   .practice-head__controls:has(> .practice-head__demo) { flex-wrap: wrap; }
-  .practice-head__controls .practice-head__demo { order: 1; flex: 0 0 100%; justify-content: flex-start; width: auto; padding: var(--pn-space-2) var(--pn-space-3); }
+  .practice-head__controls .practice-head__demo { order: 1; flex: 0 0 100%; justify-content: flex-start; width: auto; padding: var(--pn-space-2) var(--pn-space-3); margin-inline-start: calc(-1 * var(--pn-space-3)); }
   .practice-head__controls .practice-head__demo > span { position: static; width: auto; height: auto; margin: 0; clip-path: none; }
 }
 
