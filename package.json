@@ -81,8 +81,8 @@
     "@types/react-dom": "18.3.7",
     "@types/yauzl": "3.4.0",
     "ajv": "8.20.0",
-    "esbuild": "0.25.12",
-    "playwright": "1.63.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "typescript": "7.0.2"
