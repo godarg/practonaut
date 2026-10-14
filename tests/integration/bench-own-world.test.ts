@@ -136,11 +136,16 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     limitedWorld.tasks[0].title.en = originalTitle; limitedWorld.tasks[0].limits = { actions: 1 };
     await writeFile(join(limitedSource, 'world.json'), JSON.stringify(limitedWorld));
     assert.equal(cli('pack', limitedSource, '--out', join(dir, 'limited.pnworld')).status, 0);
-    refused(await changed(async (copy, value) => {
+    const limitedWorldInto = async (copy: string, value: Json): Promise<void> => {
       const bytes = await readFile(join(dir, 'limited.pnworld')); await writeFile(join(copy, 'world.pnworld'), bytes);
       value.environment.world.package.sha256 = sha256(bytes);
       value.environment.world.contentHash = worldContentHash(await worldFromPackage(bytes));
-    }), 'bench_report_invalid', /run my-task-s2-r1: its final history holds 2 actions, more than the task's action limit of 1/);
+    };
+    // The report names no limits, the stored world has one: refused as a changed world.
+    refused(await changed(limitedWorldInto), 'bench_world_changed', /the stored world's task limits differ from those the report names/);
+    // With the report's limits forged too, the runs are still longer than the limit allows.
+    refused(await changed(async (copy, value) => { await limitedWorldInto(copy, value); value.environment.world.limits = [{ taskId: 'my-task', actions: 1 }]; }),
+      'bench_report_invalid', /run my-task-s2-r1: its final history holds 2 actions, more than the task's action limit of 1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
