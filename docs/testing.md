@@ -64,8 +64,10 @@ Hostile fixtures are generated at test time by an independent, permissive zip wr
   for the reference steps and near misses of every library task and the example's held-out task
   (`tests/support/oracle-scan.ts`), with a planted marker as positive control.
 - `tools/measure-first-action.ts` measures the time from `npx practonaut` (packed tarball, warm npx
-  cache; `--local` for `dist/`) to the first demonstrated action on the board, model-only and with
-  the real engine; median of three runs, written to `.local/measure-first-action/`. Budget 30 s.
+  cache, npm offline so no registry lookup; `--local` for `dist/`) to the first demonstrated action
+  on the board, model-only and with the real engine; the click is automated. Median of three runs,
+  written to `.local/measure-first-action/<time>-<commit>.json` with the commit and whether the tree
+  had changes. Budget 30 s.
 
 ## Known gaps
 
