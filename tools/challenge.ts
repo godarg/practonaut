@@ -74,7 +74,7 @@ async function generate(args: string[]): Promise<void> {
   process.stdout.write(`${family}: ${count} instances, seeds ${first}…${first + count - 1}${set === 'heldout' && values['--seed'] === undefined ? ' (base drawn at random)' : ''}, difficulty ${difficulty}, world ${generated.world.id}\n`);
   process.stdout.write(`reference lengths ${Math.min(...lengths)}–${Math.max(...lengths)} (proven minimal for ${generated.instances.filter(instance => instance.minimal).length} of ${count}); near misses ${generated.oracles.reduce((total, oracle) => total + oracle.nearMisses.length, 0)}; ${((performance.now() - started) / 1000).toFixed(1)} s\n`);
   process.stdout.write(`wrote ${written.world}, ${written.oracles.length} oracle files, ${written.instances}\n`);
-  process.stdout.write(`bench: npx practonaut bench --agent <oracle|random|claude-code> with the arguments in ${written.instances} (bench.args)\n`);
+  process.stdout.write(`bench: node src/cli/main.ts bench --agent <oracle|random|claude-code> with the arguments in ${written.instances} (bench.args)\n`);
 }
 
 async function verify(args: string[]): Promise<void> {

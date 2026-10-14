@@ -318,7 +318,7 @@ checker's 10⁶-step budget, and, for `tight-budget`, that its budget is a prove
 ```bash
 node tools/challenge.ts generate repair --set dev --out .local/challenge/dev/repair        # seeds 1…8
 node tools/challenge.ts verify .local/challenge/dev/repair                                 # checker only, no agent
-npx practonaut bench --agent oracle $(node -e "process.stdout.write(require('./.local/challenge/dev/repair/instances.json').bench.args.slice(1).join(' '))")
+node src/cli/main.ts bench --agent oracle $(node -e "process.stdout.write(require('./.local/challenge/dev/repair/instances.json').bench.args.slice(1).join(' '))")
 ```
 
 `generate` writes `world/world.json`, one oracle sidecar per instance in `oracles/` (outside the world
