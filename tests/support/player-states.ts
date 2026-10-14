@@ -281,11 +281,11 @@ async function nativeRepair(page: Page, frame: Frame): Promise<void> {
   const end = await editorPoint(page, frame, "ab", "end"), target = await editorPoint(page, frame, "c", "left");
   await page.mouse.move(end.x, end.y); await page.mouse.down(); await page.mouse.move(target.x, target.y, { steps: 8 }); await page.mouse.up();
   await frame.locator(".excalidraw").press("Escape");
-  await frame.waitForFunction(() => (window as unknown as EditorWindow).__pnEditor.read().find(e => e.id === "ab")?.endBinding?.elementId === "c", undefined, { timeout: 5000 });
+  await frame.waitForFunction(() => (window as unknown as EditorWindow).__pnEditor?.read().find(e => e.id === "ab")?.endBinding?.elementId === "c", undefined, { timeout: 5000 });
   for (const id of ["b", "bc"]) {
     const p = await editorPoint(page, frame, id, id === "bc" ? "middle" : "box"); await page.mouse.click(p.x, p.y);
     await frame.locator(".excalidraw").press("Delete");
-    await frame.waitForFunction(id => (window as unknown as EditorWindow).__pnEditor.read().find(e => e.id === id)?.isDeleted, id, { timeout: 5000 });
+    await frame.waitForFunction(id => (window as unknown as EditorWindow).__pnEditor?.read().find(e => e.id === id)?.isDeleted, id, { timeout: 5000 });
   }
 }
 
@@ -825,7 +825,7 @@ export async function fontFailureState(browser:Browser,definition:FontFailureSta
    await page.getByTestId('recovery-title').fill(language==='de'?'Fontfehler-Probe':'Font failure probe');await page.getByTestId('recovery-author').fill('Owned font design fixture');
    for(let index=0;index<3;index++)await page.getByTestId('recovery-label-'+index).fill(['Owned first','Owned middle','Owned last'][index]!);
    const answered=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/author/prepare'&&response.request().method()==='POST');await page.getByTestId('recovery-prepare').click();const result=await(await answered).json() as {ok:boolean};fontStateRequire(result.ok,'GENUINE_PREPARE_ACK_NOT_OK');
-   const frame=await waitReady();await frame.waitForFunction(()=>((window as any).__pnEditor.read() as any[]).some(element=>element.type==='text'&&element.originalText==='Owned first'),undefined,{timeout:10_000});
+   const frame=await waitReady();await frame.waitForFunction(()=>((window as any).__pnEditor?.read() as any[]|undefined)?.some(element=>element.type==='text'&&element.originalText==='Owned first'),undefined,{timeout:10_000});
    before=await observe();nativeBefore=await native(frame);fontStateRequire(before.author.project&&before.author.scene?.length&&!before.author.recording.active&&before.author.recordings.length===0&&before.workspace==='author','PREPARED_PROJECT_OR_RECORDER_BASELINE_DIFF');
    stage='real-second-document-font-fault';const beforeTimeOrigin=nativeBefore.document.timeOrigin;
    const navigation=page.waitForEvent('framenavigated',{predicate:candidate=>candidate===frame,timeout:10_000});
@@ -855,7 +855,7 @@ export async function fontFailureState(browser:Browser,definition:FontFailureSta
    stage='capture-loading';const capturedAt=Date.now();try{await visit(page,cdp,trace);fontStateRequire(Date.now()-capturedAt<5000&&await page.locator('[data-testid=engine-state][data-kind=loading]').isVisible(),'LOADING_CAPTURE_EXCEEDED_DECLARED_WINDOW');}finally{releaseRetryFont();}
   }
   stage='strict-own-retry-ready';const readyFrame=await waitReady();
-  if(!cold)await readyFrame.waitForFunction(()=>((window as any).__pnEditor.read() as any[]).some(element=>element.type==='text'&&element.originalText==='Owned first'),undefined,{timeout:10_000});
+  if(!cold)await readyFrame.waitForFunction(()=>((window as any).__pnEditor?.read() as any[]|undefined)?.some(element=>element.type==='text'&&element.originalText==='Owned first'),undefined,{timeout:10_000});
   await page.waitForFunction(workspace=>JSON.parse(sessionStorage.getItem('practonaut.tab-session')!).workspace===workspace,before.workspace,{timeout:10_000});
   const after=await observe(),nativeAfter=await native(readyFrame);trace.snapshots.push({point:'after',value:{parent:after,native:nativeAfter}});
   fontStateRequire(generation===retryGeneration,'GENUINE_RETRY_REAL_DOCUMENT_COUNT_DIFF');fontStateRequire(nativeAfter.document.timeOrigin!==nativeFailed.document.timeOrigin&&nativeAfter.document.parentFragmentMatchesExpected&&!nativeAfter.document.hasQuery&&nativeAfter.document.staticPath==='/editor.html','GENUINE_RETRY_DOCUMENT_INSTANCE_OR_FRAGMENT_DIFF');fontStateRequire(trace.documents.every(document=>document.navigation&&!document.hasQuery),'ACTUAL_STATIC_DOCUMENT_QUERY_OR_NAVIGATION_DIFF');fontStateRequire(JSON.stringify(after.host)===JSON.stringify(before.host)&&JSON.stringify(after.author)===JSON.stringify(before.author)&&after.workspace===before.workspace&&after.capabilities.practice&&after.capabilities.author&&!after.author.recording.active,'RETRY_HOST_AUTHOR_WORKSPACE_CAPABILITY_DIFF');
