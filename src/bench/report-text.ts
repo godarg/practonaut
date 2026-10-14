@@ -6,7 +6,8 @@
 import type { Language } from './rates.ts';
 
 const en = {
-  title: 'Practonaut bench', agent: 'Agent', model: 'model', modelUnknown: 'not reported', modelSelf: 'model {model} (self-reported)', modelNone: 'model not reported',
+  title: 'Practonaut bench', agent: 'Agent', model: 'model', modelUnknown: 'not reported', modelSelf: 'model {model} (self-reported)', modelSelfClient: 'model {model} (self-reported, client-attested)', modelSelfCommand: 'model {model} (self-reported, from the command output)', modelNone: 'model not reported',
+  modelClientAttested: 'client-attested', modelCommandOutput: 'from the command output', contentHash: 'Content hash (SHA-256)',
   mirrorOn: 'real Excalidraw mirror', mirrorOff: 'model only (no mirror)',
   summary: 'Summary', runs: 'runs', passed: 'passed', seeds: 'seeds', repeats: 'repeats', tasks: 'tasks',
   runCount: '{n} {n:run|runs}', actionCount: '{n} {n:action|actions}', seedCount: '{n} {n:seed|seeds}', repeatCount: '{n} {n:repeat|repeats}', taskCount: '{n} {n:task|tasks}', instanceCount: '{n} {n:instance|instances}',
@@ -24,7 +25,7 @@ const en = {
   reverifiedWorld: 're-verified: every judged run was re-judged by the checker from its artifacts, against the world stored with the runs',
   byTask: 'By task', task: 'task', actions: 'actions', reference: 'reference', run: 'run', seed: 'seed', repeat: 'repeat', result: 'result', pass: 'pass', fail: 'fail',
   status: 'agent exit', runsHeading: 'Runs, failures first', rejected: 'rejected', undo: 'undo', reset: 'reset', calls: 'host calls',
-  selfReported: 'Counted by the runner while the agent worked (rejected, undo, reset, host calls, time); report --verify cannot re-check these from the artifacts.',
+  selfReported: 'Not re-checked by report --verify: what the runner counted while the agent worked (rejected, undo, reset, host calls, time) and the agent exit status, what the client said about itself (model, API key source, tokens, turns, cost), and the call log the agent’s own bridge wrote.',
   errors: 'error classes', time: 'time', none: '—', environment: 'Environment', settings: 'Settings',
   note: 'How this is scored: after the agent stops, a separate checker process judges the host’s final session (its history replayed independently) and, with the mirror, the real Excalidraw export. The agent’s own output is never read for scoring. A model name is what the client reported about itself and is not verified. Rates are shown as fractions; a percentage appears only from 100 runs. The interval is a 95 % Wilson score interval over instances (task × seed).',
   commandLabel: 'Command', builtin: 'built-in baseline, no language model',
@@ -87,7 +88,8 @@ const en = {
 
 type Catalog = { readonly [K in keyof typeof en]: string };
 const de: Catalog = {
-  title: 'Practonaut-Bench', agent: 'Agent', model: 'Modell', modelUnknown: 'nicht gemeldet', modelSelf: 'Modell {model} (Selbstauskunft)', modelNone: 'Modell nicht gemeldet',
+  title: 'Practonaut-Bench', agent: 'Agent', model: 'Modell', modelUnknown: 'nicht gemeldet', modelSelf: 'Modell {model} (Selbstauskunft)', modelSelfClient: 'Modell {model} (Selbstauskunft des Clients)', modelSelfCommand: 'Modell {model} (Selbstauskunft, aus der Ausgabe des Befehls)', modelNone: 'Modell nicht gemeldet',
+  modelClientAttested: 'Selbstauskunft des Clients', modelCommandOutput: 'aus der Ausgabe des Befehls', contentHash: 'Inhalts-Hash (SHA-256)',
   mirrorOn: 'echte Excalidraw-Spiegelung', mirrorOff: 'nur Modell (keine Spiegelung)',
   summary: 'Übersicht', runs: 'Läufe', passed: 'bestanden', seeds: 'Seeds', repeats: 'Wiederholungen', tasks: 'Aufgaben',
   runCount: '{n} {n:Lauf|Läufe}', actionCount: '{n} {n:Aktion|Aktionen}', seedCount: '{n} {n:Seed|Seeds}', repeatCount: '{n} {n:Wiederholung|Wiederholungen}', taskCount: '{n} {n:Aufgabe|Aufgaben}', instanceCount: '{n} {n:Instanz|Instanzen}',
@@ -105,7 +107,7 @@ const de: Catalog = {
   reverifiedWorld: 'nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt, mit der zusammen mit den Läufen gespeicherten Welt',
   byTask: 'Nach Aufgabe', task: 'Aufgabe', actions: 'Aktionen', reference: 'Referenz', run: 'Lauf', seed: 'Seed', repeat: 'Wdh.', result: 'Ergebnis', pass: 'bestanden', fail: 'nicht bestanden',
   status: 'Agent-Ende', runsHeading: 'Läufe, nicht bestandene zuerst', rejected: 'abgelehnt', undo: 'Rückg.', reset: 'Neustart', calls: 'Host-Aufrufe',
-  selfReported: 'Vom Runner gezählt, während der Agent arbeitete (abgelehnt, Rückg., Neustart, Host-Aufrufe, Zeit); report --verify kann diese Werte nicht aus den Artefakten nachprüfen.',
+  selfReported: 'Von report --verify nicht nachgeprüft: was der Runner zählte, während der Agent arbeitete (abgelehnt, Rückg., Neustart, Host-Aufrufe, Zeit), das Agent-Ende, die Selbstauskunft des Clients (Modell, Quelle des API-Schlüssels, Tokens, Runden, Kosten) und das Aufrufprotokoll, das die Bridge des Agenten schrieb.',
   errors: 'Fehlerklassen', time: 'Zeit', none: '—', environment: 'Umgebung', settings: 'Einstellungen',
   note: 'So wird bewertet: Nach dem Ende des Agenten beurteilt ein getrennter Prüfprozess die letzte Sitzung des Hosts (ihre Historie unabhängig nachgerechnet) und, mit Spiegelung, den echten Excalidraw-Export. Die Ausgabe des Agenten fließt nie in die Bewertung ein. Ein Modellname ist die Selbstauskunft des Clients und nicht geprüft. Raten stehen als Brüche; einen Prozentwert gibt es erst ab 100 Läufen. Das Intervall ist ein 95-%-Wilson-Intervall über Instanzen (Aufgabe × Seed).',
   commandLabel: 'Befehl', builtin: 'eingebaute Vergleichsbasis ohne Sprachmodell',

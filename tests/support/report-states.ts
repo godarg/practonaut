@@ -7,7 +7,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runBench, type BenchOptions } from '../../src/bench/run.ts';
+import { libraryWorld, runBench, type BenchOptions } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
 import { ownBenchWorld } from '../../src/bench/world.ts';
 import { validateBenchReport, type BenchReport, type BenchReportV2 } from '../../src/bench/report.ts';
@@ -127,7 +127,7 @@ export interface ReportState { id: string; html(language: Language): Promise<str
 /** Every named state of the report and compare pages (PADR-0039 B, C). */
 export async function reportStates(fixtures: Fixtures): Promise<ReportState[]> {
   const v1 = validateBenchReport(JSON.parse(await readFile(V1_REPORT, 'utf8')));
-  await verifyBenchV2(fixtures.solved.report, fixtures.solved.directory);
+  await verifyBenchV2(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();
   const states: ReportState[] = [
     { id: 'report-failures', html: language => reportPage(fixtures.failing, language) },

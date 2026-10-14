@@ -7,7 +7,7 @@ import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
-import { verifyBenchArtifacts, verifyBenchV2 } from '../bench/verify.ts';
+import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
 import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
@@ -188,12 +188,15 @@ async function readReport(path: string): Promise<BenchReport> {
     throw new RuntimeError('bench_report_invalid', cliText('reportJson'));
   }
 }
-type Verified = { level: 'consistency-checked' } | { level: 're-verified'; reverified: number; unjudged: number; references?: number; world?: { id: string; version: string } };
-/** --verify re-judges the run artifacts: a /2 report against the world stored in its bench folder, a /1
- * report against the bundled library. Any difference is refused with its named code. */
+type Verified = { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult & Partial<Pick<VerificationResultV2, 'references' | 'world' | 'library'>>);
+/** --verify re-judges the run artifacts: a /2 report against the world stored in its bench folder
+ * (a library bench also against this Practonaut's library), a /1 report against the bundled library.
+ * Any difference is refused with its named code. */
 async function verifyReport(report: BenchReport, runs: string): Promise<Verified> {
-  try { return { level: 're-verified', ...(isBenchReportV2(report) ? await verifyBenchV2(report, runs) : await verifyBenchArtifacts(report, runs, await libraryWorld())) }; }
-  catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
+  try {
+    if (isBenchReportV2(report)) return { level: 're-verified', ...await verifyBenchV2(report, runs, libraryWorld) };
+    return { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+  } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
 }
 
 /** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]: validates,
@@ -211,10 +214,16 @@ export async function commandReport(args: string[]): Promise<number> {
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   else {
     process.stdout.write(renderTable(report, language, details, verification.level));
-    process.stdout.write(verification.level === 're-verified'
-      ? verification.world ? cliText('reportReverifiedWorld', { world: safeText(verification.world.id), version: safeText(verification.world.version), runs: verification.reverified, unjudged: verification.unjudged, references: verification.references ?? 0 })
-        : cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged })
-      : cliText('reportConsistencyOnly'));
+    if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
+    else if (verification.world === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
+    else {
+      const world = { world: safeText(verification.world.id), version: safeText(verification.world.version) };
+      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: verification.world.contentHash, runs: verification.reverified, unjudged: verification.unjudged, references: verification.references ?? 0 }));
+      // What the stored world is anchored to: this Practonaut's library, or only the bench's own record.
+      process.stdout.write(verification.library === undefined ? cliText('reportWorldOwn')
+        : verification.library.status === 'same' ? cliText('reportLibrarySame', world)
+        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${verification.library.shipped.id} ${verification.library.shipped.version}`) }));
+    }
   }
   const html = parsed.flags['--html'];
   if (html) {

@@ -29,6 +29,7 @@ All notable changes are recorded here. The format follows
 - **`practonaut compare a.json b.json [--html] [--fail-on-regression] [--verify]`**: refuses
   incomparable reports by name, aggregates repeats per instance, names instance regressions and gives
   an exact McNemar verdict ("not distinguishable at this n" when the sample cannot tell).
+- `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 
 ### Changed
 

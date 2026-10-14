@@ -8,7 +8,7 @@ import { isBenchReportV2, type BenchReport } from './report.ts';
 import type { Comparison, InstancePair } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
-import { escapeHtml as esc, page, type Verification } from './render.ts';
+import { escapeHtml as esc, modelHeadline, page, type Verification } from './render.ts';
 import { readableText } from '../cli/output.ts';
 
 export interface CompareInput { report: BenchReport; verification: Verification }
@@ -26,7 +26,7 @@ function sideText(side: Comparison['baseline'], language: Language): string {
 }
 function sideFacts(input: CompareInput, t: Words, language: Language): string {
   const report = input.report;
-  const model = report.agent.kind === 'builtin' ? t.builtin : report.agent.model === null ? t.modelNone : fill(language, t.modelSelf, { model: report.agent.model });
+  const model = report.agent.kind === 'builtin' ? t.builtin : modelHeadline(report, language);
   return [report.agent.name, ...(isBenchReportV2(report) && report.label !== undefined ? [report.label] : []), model, input.verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.createdAt.slice(0, 10)].join(' · ');
 }
 const flipLine = (pair: InstancePair, language: Language): string => {

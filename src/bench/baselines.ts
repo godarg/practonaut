@@ -12,7 +12,7 @@ import type { StdioMcpClient } from './mcp-client.ts';
 
 export const BUILTIN_AGENTS = ['oracle', 'random'] as const;
 export type BuiltinAgent = typeof BUILTIN_AGENTS[number];
-export interface BaselineContext { client: StdioMcpClient; world: World; seed: number; oracle?: TaskOracle | undefined; maxActions: number; randomSeed: number; deadline: number }
+export interface BaselineContext { client: StdioMcpClient; world: World; seed: number; oracle?: Pick<TaskOracle, 'steps'> | undefined; maxActions: number; randomSeed: number; deadline: number }
 export interface BaselineResult { note?: string }
 
 async function observe(client: StdioMcpClient): Promise<CompactView> {

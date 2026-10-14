@@ -4,7 +4,9 @@
 // world and oracle helpers that run before any agent starts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, rm, symlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +15,10 @@ import { BENCH_SCHEMA_V2, ISOLATION_OF, summarize, validateBenchReport, validate
 import { renderHtml, renderTable } from '../../src/bench/render.ts';
 import { clientInit } from '../../src/bench/agents.ts';
 import { parseBenchArguments } from '../../src/cli/bench.ts';
-import { ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, worldContentHash } from '../../src/bench/world.ts';
+import { assertReferencesFit, libraryReferences, ownBenchWorld, ownReferences, readAtMost, readOracleFile, readRegularFile, referencesText, resolveWorldTasks, validateOwnReferences, worldContentHash } from '../../src/bench/world.ts';
+import { libraryAnchor } from '../../src/bench/verify.ts';
+import { oracleDigest } from '../oracles/core-hash.ts';
+import { v2World } from '../support/world-v2.ts';
 import { fromScenes, type TaskOracle } from '../../src/authoring/from-scenes.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { World } from '../../src/world/types.ts';
@@ -131,8 +136,11 @@ test('rendering names label, isolation level, world, generated instances and "no
   const value = v2Report(); value.label = 'nightly \u001b[31m<b>run</b>\u202e';
   const table = renderTable(value), html = renderHtml(value, ':root{}');
   assert.match(table, /^Label: nightly \\u\{001b\}\[31m<b>run<\/b>\\u\{202e\}$/m);
-  assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported\)$/m);
+  // The header line names the model, that it is self-reported, and where the name came from.
+  assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported, from the command output\)$/m);
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
+  assert.match(table, /^Content hash \(SHA-256\): d{64}$/m);
+  assert.match(table, /^Practonaut bench  generic$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
   assert.match(table, /efficiency vs reference 0\.50, over 1 of 2 tasks with a validated reference/);
@@ -140,14 +148,20 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(html, /Label: nightly \\u\{001b\}\[31m&lt;b&gt;run&lt;\/b&gt;\\u\{202e\}/);
   assert.match(html, /<dt>Isolation<\/dt><dd>template: tools not restricted by Practonaut<\/dd>/);
   assert.match(html, /<td>no reference<\/td><td>no reference<\/td>/);
+  assert.match(html, /<dt>Content hash \(SHA-256\)<\/dt><dd>d{64}<\/dd>/);
+  assert.match(html, /model: some-model \(from the command output\)/);
+  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and the agent exit status, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
+  const attested = v2Report(); attested.agent = { ...attested.agent, kind: 'preset', name: 'claude-code', isolation: 'tool-restricted-preset', modelSource: 'client-attested' };
+  assert.match(renderTable(attested), /· model some-model \(self-reported, client-attested\)$/m);
   assert.equal(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/.test(table + html), false);
   for (const [kind, words] of [['builtin', 'built-in baseline: no language model, MCP only'], ['preset', 'tool-restricted preset']] as const) {
     const other = v2Report(); other.agent = { ...other.agent, kind, isolation: ISOLATION_OF[kind], command: kind === 'builtin' ? [] : other.agent.command, model: null, modelSource: 'none', apiKeySource: null };
     assert.match(renderTable(other), new RegExp(`^2/4 passed · .* · ${words}${kind === 'builtin' ? '' : ' · model not reported'}$`, 'm'));
   }
   const de = renderTable(value, 'de');
-  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft\)$/m);
+  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /Modell: some-model \(aus der Ausgabe des Befehls\)/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
   // A /1 report did not record its isolation level or a world line; its header line says so.
@@ -237,5 +251,59 @@ test('own world and oracle files: packed like pack, hostile input refused by nam
     await assert.rejects(validateOwnReferences(loaded.world, nearMiss, [3]), (error: Error & { code?: string }) => error.code === 'bench_oracle_invalid' && /reference of task Flow does not pass the checker: with seed 3 it does not reach the goal/.test(error.message));
     const broken = ownReferences(loaded.world, tasks, [{ path: 'b.json', oracle: { ...oracle, steps: [{ name: 'connect', params: { from: 'a', to: 'nowhere' } }] } }]);
     await assert.rejects(validateOwnReferences(loaded.world, broken, [1]), (error: Error & { code?: string }) => error.code === 'bench_oracle_invalid' && /with seed 1 its action 0 is rejected/.test(error.message));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('reads are bounded while they read: a file larger than the limit is refused, never read whole', async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-read-'));
+  try {
+    await writeFile(join(dir, 'twenty'), Buffer.alloc(20, 65));
+    // readAtMost on an open handle, past any size check made at open time.
+    const handle = await open(join(dir, 'twenty'), 'r');
+    try {
+      assert.equal(await readAtMost(handle, 10), null);
+      assert.equal((await readAtMost(handle, 20))?.length, 20);
+    } finally { await handle.close(); }
+    assert.equal((await readRegularFile(join(dir, 'twenty'), 20))?.length, 20);
+    assert.equal(await readRegularFile(join(dir, 'twenty'), 19), null);
+    assert.equal(await readRegularFile(join(dir, 'missing'), 100), null);
+    assert.equal(await readRegularFile(dir, 100), null, 'a folder is not a regular file');
+    if (process.platform !== 'win32') { await symlink(join(dir, 'twenty'), join(dir, 'link')); assert.equal(await readRegularFile(join(dir, 'link'), 100), null, 'a link is not followed'); }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('references.json keeps only what verification needs and must fit what --verify reads', () => {
+  const text = referencesText(libraryReferences(['connect', 'decision']), ['connect', 'decision']);
+  const stored = JSON.parse(text) as { schema: string; references: Array<Record<string, unknown>> };
+  assert.equal(stored.schema, 'practonaut.bench-references/1');
+  assert.deepEqual(stored.references.map(entry => Object.keys(entry).sort()), [['source', 'steps', 'taskId', 'worldId'], ['source', 'steps', 'taskId', 'worldId']]);
+  assert.equal(text.includes('nearMisses'), false, 'near misses stay in the library and the author\'s file');
+  assert.doesNotThrow(() => assertReferencesFit(text));
+  assert.throws(() => assertReferencesFit(text, Buffer.byteLength(text) - 1), (error: Error & { code?: string }) => error.code === 'bench_references_too_large' && new RegExp(`would take ${Buffer.byteLength(text)} bytes, but report --verify reads at most ${Buffer.byteLength(text) - 1}`).test(error.message));
+});
+
+test('a library bench is anchored to this Practonaut\'s library when the id and version are the same', () => {
+  const shipped = { id: 'excalidraw-library', version: '1.1.0', contentHash: 'a'.repeat(64) };
+  assert.deepEqual(libraryAnchor({ worldId: 'excalidraw-library', version: '1.1.0', contentHash: 'a'.repeat(64) }, shipped), { status: 'same' });
+  assert.throws(() => libraryAnchor({ worldId: 'excalidraw-library', version: '1.1.0', contentHash: 'b'.repeat(64) }, shipped),
+    (error: Error & { code?: string }) => error.code === 'bench_world_changed' && /content hash b{64} is not that library's \(a{64}\): it is not this Practonaut's library/.test(error.message));
+  assert.deepEqual(libraryAnchor({ worldId: 'excalidraw-library', version: '1.0.0', contentHash: 'b'.repeat(64) }, shipped), { status: 'other', shipped: { id: 'excalidraw-library', version: '1.1.0' } });
+});
+
+test('pack and validate print the content hash a bench report names, computed independently', async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-hash-'));
+  try {
+    const world = v2World();
+    await mkdir(join(dir, 'src')); await writeFile(join(dir, 'src', 'world.json'), JSON.stringify(world));
+    const cliPath = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
+    const packed = spawnSync(process.execPath, [cliPath, 'pack', join(dir, 'src'), '--out', join(dir, 'w.pnworld'), '--json'], { encoding: 'utf8' });
+    assert.equal(packed.status, 0, packed.stderr);
+    // The expected value comes from the separate hash oracle (tests/oracles), not from src/canonical.
+    const expected = oracleDigest(JSON.parse(JSON.stringify(world)));
+    assert.equal(JSON.parse(packed.stdout).contentHash, expected);
+    const validated = spawnSync(process.execPath, [cliPath, 'validate', join(dir, 'w.pnworld'), '--json'], { encoding: 'utf8' });
+    assert.equal(JSON.parse(validated.stdout).contentHash, expected);
+    assert.match(spawnSync(process.execPath, [cliPath, 'validate', join(dir, 'w.pnworld')], { encoding: 'utf8' }).stdout, new RegExp(`content  sha256 ${expected}`));
+    assert.equal((await ownBenchWorld(join(dir, 'w.pnworld'))).contentHash, expected, 'bench names the same hash');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

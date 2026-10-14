@@ -9,11 +9,10 @@
  * file that does not parse is reported as unreadable, never guessed around. Nothing here judges: a
  * missing or changed file only removes an explanation, never changes a verdict.
  */
-import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { sha256Hex } from '../canonical/index.ts';
-import { runOracle, type TaskOracle } from '../authoring/from-scenes.ts';
+import { runOracle, type OracleStep } from '../authoring/from-scenes.ts';
 import { Session } from '../core/session.ts';
 import { publicConditions } from '../host/session.ts';
 import { parseJsonEntry } from '../package/json.ts';
@@ -22,7 +21,7 @@ import { evaluate } from '../predicate/index.ts';
 import { generateVariant } from '../world/variant.ts';
 import { validateState } from '../world/schema.ts';
 import { worldEra, type Action, type Localized, type SessionData, type State, type World } from '../world/types.ts';
-import { libraryReferences, MAX_REFERENCES_BYTES, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
+import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES } from './svg.ts';
@@ -61,9 +60,8 @@ export interface RunDetail {
 }
 export interface ReportDetails { folder: 'read' | 'missing' | 'world-changed' | 'world-unreadable'; runs: Map<string, RunDetail> }
 
-async function bounded(path: string, max: number): Promise<Buffer | null> {
-  try { const info = await lstat(path); if (!info.isFile() || info.size > max) return null; return await readFile(path); } catch { return null; }
-}
+/** A regular file of at most `max` bytes (the limit enforced while reading), or null. */
+const bounded = (path: string, max: number): Promise<Buffer | null> => readRegularFile(path, max);
 /** A run file's text when its bytes have the bound hash; `changed` otherwise, `not-recorded` when missing. */
 async function bound(folder: string, runId: string, name: string, sha256: string, max = MAX_ARTIFACT_BYTES): Promise<{ text: string } | { missing: Missing }> {
   const bytes = await bounded(join(folder, runId, name), max);
@@ -162,14 +160,14 @@ async function boundWorld(report: BenchReport, folder: string): Promise<{ world:
 }
 
 /** The validated references of the report, by task: library solutions for /1, `references.json` for /2. */
-async function boundReferences(report: BenchReport, folder: string): Promise<Map<string, TaskOracle> | null> {
-  if (!isBenchReportV2(report)) return new Map([...libraryReferences(report.settings.tasks)].map(([task, reference]) => [task, reference.oracle]));
+async function boundReferences(report: BenchReport, folder: string): Promise<Map<string, readonly OracleStep[]> | null> {
+  if (!isBenchReportV2(report)) return new Map([...libraryReferences(report.settings.tasks)].map(([task, reference]) => [task, reference.steps]));
   if (report.references === null) return new Map();
   const bytes = await bounded(join(folder, BENCH_REFERENCES_FILE), MAX_REFERENCES_BYTES);
   if (bytes === null || sha256Hex(bytes) !== report.references.sha256) return null;
   try {
     const parsed = ReferencesFileSchema.safeParse(parseJsonEntry(bytes, BENCH_REFERENCES_FILE, 64));
-    return parsed.success ? new Map(parsed.data.references.map(entry => [entry.taskId, entry.oracle as TaskOracle])) : null;
+    return parsed.success ? new Map(parsed.data.references.map(entry => [entry.taskId, entry.steps as readonly OracleStep[]])) : null;
   } catch { return null; }
 }
 
@@ -246,11 +244,11 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       else detail.picture = schematic(read.missing === 'changed' ? 'picture-changed' : 'no-picture');
     } else detail.picture = schematic(mirror === 'required' ? 'no-picture' : 'model-only');
     // Example target: the validated reference's end state for this seed, as a schematic.
-    const oracle = references?.get(run.taskId);
+    const steps = references?.get(run.taskId);
     if (references === null) detail.targetMissing = 'unreadable';
-    else if (!oracle) detail.targetMissing = 'no-reference';
+    else if (!steps) detail.targetMissing = 'no-reference';
     else {
-      const played = runOracle(world, run.seed, run.taskId, oracle.steps);
+      const played = runOracle(world, run.seed, run.taskId, steps);
       if (played.ok) detail.target = schematicSvg(played.session.state, { prefix: `run${index}-target`, label: words.target, words });
       else detail.targetMissing = 'unreadable';
     }

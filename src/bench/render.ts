@@ -62,14 +62,26 @@ export function headline(report: BenchReport, language: Language, verification: 
     parts.push(fill(language, t.interval, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) }));
   } else parts.push(t.intervalNone);
   parts.push(verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff, isolationText(report, t));
-  if (report.agent.kind !== 'builtin') parts.push(report.agent.model === null ? t.modelNone : fill(language, t.modelSelf, { model: report.agent.model }));
+  if (report.agent.kind !== 'builtin') parts.push(modelHeadline(report, language));
   return parts;
 }
+/** The reported model with where it came from (never verified): the preset client's own init event,
+ * or an init line in a command template's output. */
+export function modelHeadline(report: BenchReport, language: Language): string {
+  const t = TEXT[language], model = report.agent.model;
+  if (model === null) return t.modelNone;
+  if (report.agent.modelSource === 'client-attested') return fill(language, t.modelSelfClient, { model });
+  if (report.agent.modelSource === 'command-output') return fill(language, t.modelSelfCommand, { model });
+  return fill(language, t.modelSelf, { model });
+}
+const modelText = (report: BenchReport, t: Words): string => report.agent.model === null ? t.modelUnknown
+  : report.agent.modelSource === 'client-attested' ? `${report.agent.model} (${t.modelClientAttested})`
+    : report.agent.modelSource === 'command-output' ? `${report.agent.model} (${t.modelCommandOutput})` : report.agent.model;
 
 /** bench/2 facts about the run's setting: world, generated instances, client-reported key source, kept names. */
 function settingFacts(report: BenchReport, t: Words): Array<[label: string, value: string]> {
   if (!isBenchReportV2(report)) return [];
-  const facts: Array<[string, string]> = [[t.world, worldText(report, t)]];
+  const facts: Array<[string, string]> = [[t.world, worldText(report, t)], [t.contentHash, report.environment.world.contentHash]];
   const generated = report.environment.world.generated;
   if (generated.length) facts.push([t.generated, generated.map(entry => `${entry.taskId} (${entry.id} ${entry.version}, seed ${entry.seed})`).join(', ')]);
   if (report.agent.apiKeySource !== null) facts.push([t.apiKeySource, report.agent.apiKeySource]);
@@ -332,7 +344,7 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
 <p class="eyebrow">${esc(t.title)}</p>
 <h1>${esc(report.agent.name)}</h1>
 <p class="headline">${esc(headline(report, language, verification).join(' · '))}</p>
-${isBenchReportV2(report) && report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc([report.createdAt.slice(0, 10), sampleLine(report, language), report.agent.kind === 'builtin' ? t.builtin : `${t.model}: ${report.agent.model ?? t.modelUnknown}`].join(' · '))}</p>
+${isBenchReportV2(report) && report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc([report.createdAt.slice(0, 10), sampleLine(report, language), report.agent.kind === 'builtin' ? t.builtin : `${t.model}: ${modelText(report, t)}`].join(' · '))}</p>
 </header>
 <section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2><div class="scroll" role="region" aria-labelledby="by-task" tabindex="0"><table><thead><tr><th scope="col">${esc(t.task)}</th><th scope="col">${esc(t.runs)}</th><th scope="col">${esc(t.passed)}</th><th scope="col">${esc(t.actions)}</th><th scope="col">${esc(t.reference)}</th><th scope="col">${esc(t.efficiency)}</th></tr></thead><tbody>${taskRows}</tbody></table></div></section>

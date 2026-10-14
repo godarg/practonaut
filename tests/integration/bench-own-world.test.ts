@@ -82,7 +82,7 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     await rm(join(dir, 'my-task'), { recursive: true, force: true });
     const verified = cli('report', join(moved, 'report.json'), '--verify');
     assert.equal(verified.status, 0, verified.stderr);
-    assert.match(verified.stdout, /Re-verified: 2 runs re-judged by the checker from their artifacts, against the world stored in the bench folder \(my-task 1\.0\.0\); every verdict matches \(0 not judged\); 1 reference re-checked/);
+    assert.match(verified.stdout, /Re-verified: 2 runs re-judged by the checker from their artifacts, against the world stored in the bench folder \(my-task 1\.0\.0, content hash [a-f0-9]{64}\); every verdict matches \(0 not judged\); 1 reference re-checked\.\nThe stored world is the bench's own record/);
     assert.match(verified.stdout, /^Label: Own task «1»$/m);
 
     /** A copy of the moved folder, changed by `mutate`, then verified. */
@@ -113,7 +113,7 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     // length in the report updated to it. The checker does not accept it.
     refused(await changed(async (copy, value) => {
       const references = await json(join(copy, 'references.json'));
-      references.references[0].oracle.steps = oracle.nearMisses[0].steps;
+      references.references[0].steps = oracle.nearMisses[0].steps;
       const text = JSON.stringify(references); await writeFile(join(copy, 'references.json'), text);
       const length = oracle.nearMisses[0].steps.length;
       value.references.sha256 = sha256(text); value.references.tasks[0].actions = length;
@@ -125,24 +125,26 @@ test('an authored task is benched with its oracle and the real mirror; the moved
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('the oracle sidecar never reaches the agent; references enter the bench folder only after the last agent ended', { timeout: 300_000 }, async () => {
+test('neither the oracle nor the stored world is in the bench folder while an agent runs; both arrive after the last agent ended', { timeout: 300_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-own-snoop-'));
   try {
     const task = await authoredTask(dir);
+    // What the agent looks for: the reference solution's action sequence, from the author's file.
+    const needle = JSON.stringify((await json(task.oracle)).steps), flat = (text: string): string => text.replace(/\s+/g, '');
     const before = await benches();
-    const snoop = cli('bench', '--agent', `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} snoop {mcp_config}`, '--world', task.world, '--oracle', task.oracle, '--seeds', '2', '--mirror', 'off');
+    const snoop = spawnSync(process.execPath, [CLI, 'bench', '--agent', `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} snoop {mcp_config}`, '--world', task.world, '--oracle', task.oracle, '--seeds', '2', '--mirror', 'off'], { encoding: 'utf8', env: { ...process.env, PN_SNOOP_NEEDLE: needle } });
     assert.equal(snoop.status, 0, snoop.stderr);
     const folder = await newBench(before);
     for (const run of ['my-task-s1-r1', 'my-task-s2-r1']) {
       const seen = await json(join(folder, run, 'agent', 'snoop.json')) as { files: string[]; hits: string[]; replyHits: number };
-      assert.ok(seen.files.includes('world.pnworld'), `${run} could read the bench folder: ${seen.files.join(', ')}`);
-      assert.equal(seen.files.includes('references.json'), false, `${run} saw references.json`);
-      assert.deepEqual(seen.hits, [], `${run} found a reference solution in ${seen.hits.join(', ')}`);
-      assert.equal(seen.replyHits, 0, `${run}: an MCP reply carried reference data`);
+      assert.ok(seen.files.some(name => name.endsWith('mcp.json')), `${run} could read the bench folder: ${seen.files.join(', ')}`);
+      for (const name of ['world.pnworld', 'references.json']) assert.equal(seen.files.includes(name), false, `${run} saw ${name}`);
+      assert.deepEqual(seen.hits, [], `${run} found the reference solution in ${seen.hits.join(', ')}`);
+      assert.equal(seen.replyHits, 0, `${run}: an MCP reply carried the reference solution`);
     }
-    // Positive control: what the agent looked for is in references.json, which exists now.
-    const references = await readFile(join(folder, 'references.json'), 'utf8');
-    assert.match(references, /practonaut\.bench-references/); assert.match(references, /practonaut\.task-oracle/); assert.match(references, /nearMisses/);
+    // Positive control: what the agent looked for is in references.json, and the world is stored, now.
+    assert.ok(flat(await readFile(join(folder, 'references.json'), 'utf8')).includes(flat(needle)));
+    assert.equal((await readFile(join(folder, 'world.pnworld'))).length > 0, true);
     const report = await json(join(folder, 'report.json'));
     assert.deepEqual([report.agent.isolation, report.runs[0].pass], ['template-unrestricted', false]);
     assert.equal(report.summary.efficiencyVsReference, null, 'no passed run, no efficiency');
@@ -199,23 +201,80 @@ test('a stored bench/1 report is read and re-verified as before', { timeout: 120
     const plain = cli('report', path);
     assert.equal(plain.status, 0, plain.stderr); assert.match(plain.stdout, /Consistency-checked, not re-verified/);
     assert.equal(JSON.parse(cli('report', path, '--json').stdout).schema, 'practonaut.bench/1');
+    // bench/1 re-judges against the bundled library, so a stored /1 report verifies only while this
+    // Practonaut ships the same library content (PADR-0036): the first library change ends it.
+    assert.equal((await libraryWorld()).contentHash, fixture.environment.library.contentHash,
+      'the bundled library changed since tests/fixtures/bench/v1 was made: a stored /1 report can no longer be re-verified (expected, PADR-0036). Make a new /1 fixture with a build before bench/2, or drop the re-verification part of this test');
     const verified = cli('report', path, '--verify');
-    // bench/1 re-judges against the bundled library: possible while this Practonaut ships the same
-    // library content, refused by name once the library has changed (as in 0.1.0).
-    if ((await libraryWorld()).contentHash === fixture.environment.library.contentHash) {
-      assert.equal(verified.status, 0, verified.stderr);
-      assert.match(verified.stdout, /Re-verified: 2 runs re-judged by the checker from their artifacts; every verdict matches \(0 not judged\)/);
-      await appendFile(join(dir, 'connect-s1-r1', 'checker.json'), ' ');
-      const tampered = cli('report', path, '--verify');
-      assert.equal(tampered.status, 2); assert.match(tampered.stderr, /run connect-s1-r1: artifact checker\.json does not match the hash the report binds.*\[bench_report_invalid\]/);
-      // A /1 report without artifact bindings (earlier builds) is consistency-checked only.
-      for (const run of fixture.runs) delete run.artifacts;
-      await writeFile(join(dir, 'unbound.json'), JSON.stringify(fixture));
-      assert.equal(cli('report', join(dir, 'unbound.json')).status, 0);
-      const unbound = cli('report', join(dir, 'unbound.json'), '--verify');
-      assert.equal(unbound.status, 2); assert.match(unbound.stderr, /binds no artifacts; the report can be consistency-checked but not re-verified/);
-    } else {
-      assert.equal(verified.status, 2); assert.match(verified.stderr, /report was made with library excalidraw-library 1\.1\.0.*cannot be re-judged here.*\[bench_report_invalid\]/);
-    }
+    assert.equal(verified.status, 0, verified.stderr);
+    assert.match(verified.stdout, /Re-verified: 2 runs re-judged by the checker from their artifacts; every verdict matches \(0 not judged\)/);
+    // The library content is part of what a /1 report binds: other content is refused by name.
+    const other = structuredClone(fixture); other.environment.library.contentHash = 'f'.repeat(64);
+    await writeFile(join(dir, 'other.json'), JSON.stringify(other));
+    const library = cli('report', join(dir, 'other.json'), '--verify');
+    assert.equal(library.status, 2); assert.match(library.stderr, /report was made with library excalidraw-library 1\.1\.0 of other content.*\[bench_report_invalid\]/);
+    await appendFile(join(dir, 'connect-s1-r1', 'checker.json'), ' ');
+    const tampered = cli('report', path, '--verify');
+    assert.equal(tampered.status, 2); assert.match(tampered.stderr, /run connect-s1-r1: artifact checker\.json does not match the hash the report binds.*\[bench_report_invalid\]/);
+    // A /1 report without artifact bindings (earlier builds) is consistency-checked only.
+    for (const run of fixture.runs) delete run.artifacts;
+    await writeFile(join(dir, 'unbound.json'), JSON.stringify(fixture));
+    assert.equal(cli('report', join(dir, 'unbound.json')).status, 0);
+    const unbound = cli('report', join(dir, 'unbound.json'), '--verify');
+    assert.equal(unbound.status, 2); assert.match(unbound.stderr, /binds no artifacts; the report can be consistency-checked but not re-verified/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('generated instances: a task\'s generatedBy is recorded and bound; a forged one fails verification', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-own-generated-'));
+  try {
+    const task = await authoredTask(dir);
+    const by = { id: 'repair', version: '0.1.0', seed: 4711, parameters: { defects: 3 } };
+    const world = await json(join(task.world, 'world.json')); world.tasks[0].generatedBy = by;
+    await writeFile(join(task.world, 'world.json'), JSON.stringify(world));
+    const before = await benches();
+    const bench = cli('bench', '--agent', 'oracle', '--world', task.world, '--oracle', task.oracle, '--mirror', 'off');
+    assert.equal(bench.status, 0, bench.stderr);
+    assert.match(bench.stdout, /^Generated instances: my-task \(repair 0\.1\.0, seed 4711\)$/m);
+    const folder = await newBench(before), path = join(folder, 'report.json');
+    assert.deepEqual((await json(path)).environment.world.generated, [{ taskId: 'my-task', ...by }]);
+    assert.equal(cli('report', path, '--verify').status, 0);
+    // Another seed in the report (still consistent): the stored world says otherwise.
+    const forged = await json(path); forged.environment.world.generated[0].seed = 4712;
+    await writeFile(join(folder, 'forged.json'), JSON.stringify(forged));
+    assert.equal(cli('report', join(folder, 'forged.json')).status, 0, 'the consistency check alone cannot see it');
+    const refused = cli('report', join(folder, 'forged.json'), '--verify');
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /the generator metadata of the stored world's tasks differs from the report's.*\[bench_world_changed\]/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a library bench is anchored to this Practonaut\'s library: a swapped library world with a consistent report fails', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-library-anchor-'));
+  try {
+    const before = await benches();
+    const bench = cli('bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'off');
+    assert.equal(bench.status, 0, bench.stderr);
+    const folder = await newBench(before), path = join(folder, 'report.json'), report = await json(path);
+    assert.match(bench.stdout, new RegExp(`^Content hash \\(SHA-256\\): ${report.environment.world.contentHash}$`, 'm'));
+    const verified = cli('report', path, '--verify');
+    assert.equal(verified.status, 0, verified.stderr);
+    assert.match(verified.stdout, /The stored world is this Practonaut's bundled library excalidraw-library [^ ]+ \(same content hash\)/);
+    // The library with one title changed, under the same id and version; the receiver's way to get its
+    // content hash is `pack --json` (or `validate --json`).
+    const library = await json(fileURLToPath(new URL('../../tasks/excalidraw/world/world.json', import.meta.url)));
+    library.tasks[0].title.en = 'A title the library does not have';
+    await mkdir(join(dir, 'swapped')); await writeFile(join(dir, 'swapped', 'world.json'), JSON.stringify(library));
+    const packed = cli('pack', join(dir, 'swapped'), '--out', join(dir, 'swapped.pnworld'), '--json');
+    assert.equal(packed.status, 0, packed.stderr);
+    const swappedHash = JSON.parse(packed.stdout).contentHash as string;
+    assert.notEqual(swappedHash, report.environment.world.contentHash);
+    const bytes = await readFile(join(dir, 'swapped.pnworld'));
+    await writeFile(join(folder, 'world.pnworld'), bytes);
+    report.environment.world.package.sha256 = sha256(bytes); report.environment.world.contentHash = swappedHash;
+    await writeFile(path, JSON.stringify(report));
+    assert.equal(cli('report', path).status, 0, 'the swapped report is consistent');
+    const refused = cli('report', path, '--verify');
+    assert.equal(refused.status, 2);
+    assert.match(refused.stderr, new RegExp(`the report names the bundled library excalidraw-library [^ ]+, but the stored world's content hash ${swappedHash} is not that library's \\([a-f0-9]{64}\\): it is not this Practonaut's library.*\\[bench_world_changed\\]`));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

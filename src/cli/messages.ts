@@ -416,8 +416,32 @@ export const CLI_CATALOG = {
     "de": "HTML: {path}\n"
   },
   "reportReverifiedWorld": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
-    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
+    "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}, Inhalts-Hash {hash}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
+  },
+  "reportWorldOwn": {
+    "en": "The stored world is the bench's own record: to know it is the world you expect, compare its content hash with what {cli} validate <world.pnworld> --json prints for that world.\n",
+    "de": "Die gespeicherte Welt ist die eigene Aufzeichnung des Bench: Ob es die erwartete Welt ist, zeigt der Vergleich ihres Inhalts-Hashs mit der Ausgabe von {cli} validate <welt.pnworld> --json für diese Welt.\n"
+  },
+  "reportLibrarySame": {
+    "en": "The stored world is this Practonaut's bundled library {world} {version} (same content hash).\n",
+    "de": "Die gespeicherte Welt ist die mitgelieferte Bibliothek {world} {version} dieses Practonaut (gleicher Inhalts-Hash).\n"
+  },
+  "reportLibraryOther": {
+    "en": "The stored world names the bundled library {world} {version}, but this Practonaut ships {shipped}: it is not this Practonaut's library. Compare its content hash with that version's library.\n",
+    "de": "Die gespeicherte Welt nennt die mitgelieferte Bibliothek {world} {version}, dieses Practonaut liefert aber {shipped}: Es ist nicht die Bibliothek dieses Practonaut. Ihren Inhalts-Hash mit der Bibliothek jener Version vergleichen.\n"
+  },
+  "verifyLibraryContent": {
+    "en": "the report names the bundled library {world} {version}, but the stored world's content hash {hash} is not that library's ({shipped}): it is not this Practonaut's library",
+    "de": "der Bericht nennt die mitgelieferte Bibliothek {world} {version}, der Inhalts-Hash {hash} der gespeicherten Welt ist aber nicht der dieser Bibliothek ({shipped}): Es ist nicht die Bibliothek dieses Practonaut"
+  },
+  "benchReferencesTooLarge": {
+    "en": "the references of this bench would take {size} bytes, but report --verify reads at most {limit}; bench fewer tasks at once",
+    "de": "die Referenzen dieses Bench würden {size} Bytes belegen, report --verify liest aber höchstens {limit}; weniger Aufgaben auf einmal bewerten"
+  },
+  "packageContentHash": {
+    "en": "content  sha256 {hash} (the world's canonical JSON, as bench reports name it)",
+    "de": "Inhalt  sha256 {hash} (kanonisches JSON der Welt, wie Bench-Berichte sie nennen)"
   },
   "benchSeedsExclusive": {
     "en": "--seeds and --seed-list exclude each other: --seeds <n> runs seeds 1 to n, --seed-list names them",
