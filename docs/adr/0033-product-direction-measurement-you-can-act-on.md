@@ -62,9 +62,12 @@ would have broken an invariant, and added the measurement rules and spike fallba
   preregistered rules), and a challenge tier behind a ladder gate. The release does not wait for a
   family to pass the gate.
 - A task family is published only after a preregistered ladder of at least three agents passes on
-  fresh held-out instances: the strongest agent between 10 % and 80 %, a significant gap to the
-  weakest (exact McNemar, α = 0.05, at least 20 points), oracle 100 %, random at most 5 %, every near
-  miss failing. Two failed rounds for every family trigger a re-assessment of the headroom bet.
+  at least 24 fresh held-out instances, with the instance (not the run) as the unit and the compared
+  agents named from development runs: the strongest agent between 10 % and 80 %, a significant gap to
+  the weakest (exact McNemar, α = 0.05, at least 20 points), oracle 100 %, random at most 5 %, every
+  near miss failing. Two failed rounds for every family trigger a re-assessment of the headroom bet;
+  until a family passes, later deliverables use the library, labelled as such.
+- A paired regression fails an acceptance line; only a maintainer can change such a criterion.
 - Goal conditions stay public and identical for Player and agent (architecture §10). Families that
   would hide the formal goal are out; a scripted human co-actor waits for its own scenario record.
 - Every exported number carries its n, its interval at small n, its verification status and the

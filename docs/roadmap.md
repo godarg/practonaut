@@ -50,17 +50,22 @@ with a measurement and ends with its acceptance line measured.
 **Measurement rules for this release** (they apply to every acceptance line below):
 
 - Latency is the **client-observed round trip** of `tools/call` through the real `practonaut mcp`
-  bridge (not the host's own `latencyMs`), on a fixed action sequence, 72 calls after 8 warm-up calls,
-  median and p90, the component timings reported alongside. Baseline and new version are measured
-  on the same machine, in the same week, with the same versioned tool (`tools/`).
+  bridge, measured by instrumented client code (the versioned measurement tool and Practonaut's own
+  bench client, `src/bench/mcp-client.ts`) — not the host's `latencyMs` and not the bridge, which
+  cannot see the client's side — on a fixed action sequence, 72 calls after 8 warm-up calls, median
+  and p90; bridge and host processing times are reported alongside and labelled as such. Baseline and
+  new version are measured on the same machine, in the same week, with the same tool (`tools/`).
 - Reply size is the **full serialized `tools/call` result** (every content part and
   `structuredContent`).
 - "No regression in pass rate" means a **paired grid** (same tasks, seeds and models, both versions
-  measured in the same week): every instance that passed with 0.1.0 passes again, or the release
-  notes name it with its cause.
+  measured in the same week): every instance that passed with 0.1.0 passes again. Any paired
+  regression fails the acceptance line; an exception needs a maintainer-approved change of the
+  criterion, recorded with the affected instances.
 - Model runs use the subscription only (`env -u ANTHROPIC_API_KEY`), the model is read from the
   client's own output, and the running list-price total is kept in the report. Budget for the whole
-  release: at most 300 model runs; a family gets at most two ladder rounds.
+  release: at most 500 model runs (Must 1 grid about 50; per challenge family and round at most 100:
+  a small development sample plus 3 agents × 24 held-out instances); a family gets at most two
+  ladder rounds.
 
 ### Must
 
@@ -115,25 +120,36 @@ with a measurement and ends with its acceptance line measured.
    folder is moved, `report --verify` passes; a changed world or artifact fails verification; a
    stored `/1` report still verifies.
 3. **Results you can act on** (L). A call log per run: the bridge records every tool call (name,
-   result code, full result bytes, client round-trip), the host records every mutation (revision,
-   accepted or rejected with parameters and error code); both go into the bench folder. Report v2:
+   result code, full result bytes, bridge processing time), Practonaut's bench client adds the
+   client round trip for its built-in agents (for other clients: "client timing unavailable"), the
+   host records every mutation (revision, accepted or rejected with parameters and error code); all
+   go into the bench folder. Report v2:
    a header line with the fraction, a 95 % Wilson interval, verification status, mirror, isolation
    level and "model self-reported"; failures first; per run the trajectory, the goal conditions met
-   after each action (checker on prefixes), the final board as a miniature (a static SVG string
-   variant of `src/player/ui/miniature.ts`, labels escaped — board text is untrusted), next to an
-   example target only when one is supplied and checker-validated (otherwise "no example target"),
+   after each action (checker on prefixes), the final board as the real engine's SVG export when the
+   mirror ran (otherwise a schematic labelled as such) — a picture that keeps every goal-relevant
+   attribute (shape, fill, stroke, size, position, frames, groups); the Player's `miniature()` drops
+   most of them and may only be used as a labelled topology sketch; board text is untrusted and
+   escaped — next to an example target only when one is supplied and checker-validated (otherwise
+   "no example target"),
    error classes with their explanation text, tokens, turns, cost and model when the client reports
    them. `practonaut compare a.json b.json [--html] [--fail-on-regression]` refuses incomparable
    reports (world hash, grid, mirror, budget, isolation level) and pairs runs by task, seed and
-   instance. Its rules are fixed in a PADR before code: an **instance regression** is an instance
-   that passed in every baseline repeat and fails in every candidate repeat (this is what
-   `--fail-on-regression` gates on); **rate claims** use an exact McNemar test on discordant pairs at
-   α = 0.05 and otherwise say "not distinguishable at this n"; the docs carry a table of the n needed
-   to detect a 20-point difference. The renderer falls under `design:lint`.
-   *Acceptance:* at least 10 deliberately failing fixture runs (one per error class, plus timeout,
-   rejected actions, model-only, consistency-checked only, empty, two agents, long German names):
-   a test asserts that the report names the error class, the unmet condition and the action after
-   which that condition was last lost (or "never met"); `compare` gives the documented verdicts on
+   instance. Its rules are fixed in a PADR before code: the **unit of analysis is the distinct
+   instance** — repeats of one instance are aggregated into one outcome per agent (pass when at least
+   half of its repeats pass) and never counted as independent pairs; an **instance regression** is an
+   instance with at least three repeats on each side that passed in every baseline repeat and fails in
+   every candidate repeat (this is what `--fail-on-regression` gates on; with fewer repeats the report
+   says "single runs — not a regression signal"); **rate claims** use an exact McNemar test on the
+   discordant instances at α = 0.05 and otherwise say "not distinguishable at this n"; the docs carry a
+   table of the number of instances needed to detect a 20-point difference. The renderer falls under
+   `design:lint`.
+   *Acceptance:* fixture runs with a test each: for every checker error class, a failed run whose
+   report names the error class, the unmet condition and the action after which that condition was
+   last lost (or "never met"); for timeout, rejected actions, model-only, consistency-checked only,
+   unjudged (`checker: null`), empty, two agents and long German names, a run whose report shows that
+   state by name with its reason; a correct and an incorrect `restyle-flow` board whose pictures
+   differ; `compare` gives the documented verdicts on
    hand-built fixtures (instance regression, improvement, not distinguishable, unjudged runs,
    incomparable); no rate is shown finer than 1/n; axe passes on the report states.
 4. **Headroom: challenge tier** (L, plus ladder rounds). Build at least four candidate families from
@@ -151,29 +167,37 @@ with a measurement and ends with its acceptance line measured.
    recorded by a PADR; planned for 0.3.0).
    *Gate per family, preregistered in the PR before the first ladder run:* ladder = Claude Opus,
    Sonnet and Haiku through the `claude-code` preset (a non-Claude agent only if a maintainer approves
-   one; otherwise the family is labelled "ladder: Claude models only"); development instances for
-   tuning, then **fresh held-out instances for the gate**; headroom — the strongest agent passes
-   between 10 % and 80 % of at least 24 runs over at least 12 distinct instances; discrimination —
-   strongest vs weakest differ by at least 20 points with exact McNemar p < 0.05 on the paired
-   instances; every run counts in the denominator, and more than 5 % `infra_error` voids the round;
-   oracle 100 %, random ≤ 5 %, every near miss fails. At most 60 model runs per family per round.
+   one; otherwise the family is labelled "ladder: Claude models only"). Tuning uses development
+   instances only; the **strongest and the weakest agent are named from the development runs**,
+   before the gate. The gate runs on **at least 24 fresh held-out instances, one run per agent per
+   instance** (the instance is the unit, as in `compare`): headroom — the strongest agent passes
+   between 10 % and 80 % of them; discrimination — strongest vs weakest differ by at least 20 points
+   with an exact McNemar p < 0.05 on the discordant instances; every run counts in the denominator,
+   and more than 5 % `infra_error` voids the round; oracle 100 %, random ≤ 5 %, every near miss fails.
+   A second round uses new held-out instances, never the first round's. At most 100 model runs per
+   family per round.
    *Acceptance:* every candidate has a gate report in `docs/benchmarks/`; families that pass are
    published, the others stay unpublished and are named. The release does not wait for a passing
-   family; if none passes after two rounds, that is reported and PADR-0033's re-assessment trigger fires.
+   family; if none passes after two rounds, that is reported, PADR-0033's re-assessment trigger fires,
+   and the zero-family branch below applies.
 
 ### Should
 
 5. **CI recipe** (S): a GitHub Actions example with pinned versions and the user's own agent
    credentials, gating on instance regressions; JUnit output from `bench`. Publishing a marketplace
-   action is a maintainer step.
+   action is a maintainer step. *Acceptance:* the example runs in a test repository with the oracle
+   agent and fails on a planted instance regression; the JUnit file validates.
 6. **Result card and badge** (M): `report --card` (1280 × 640 SVG and PNG, light and dark) and
    `report --badge` (SVG), both with n, isolation level and verification status, byte-identical for
-   the same report.
+   the same report. *Acceptance:* a double render gives identical bytes; the required caveat texts are
+   text nodes in the SVG (test); a report that is only consistency-checked yields a card that says so.
 7. **First 60 seconds** (S): `npx practonaut` opens model-only at once with a visible "not yet
    checked against the real Excalidraw" banner; the mirror download is a named step with its size;
    a **public, unscored demonstration on the bundled example world** (never a library or bench task,
    whose reference solutions stay hidden) shows actions landing, the mirror confirming and the
-   checker judging.
+   checker judging. *Acceptance:* time from the command to the first visible action ≤ 30 s with a warm
+   npx cache, measured; an e2e test shows the banner and the demonstration; no library or bench
+   reference reaches the Player (test).
 8. **Spike for application #2: draw.io** (M, timeboxed, in its own git worktree; preregistered in
    `spikes/drawio/PREREGISTRATION.md` before the first run, report in `spikes/drawio/REPORT.md`): run
    the official embed JSON protocol from a local, pinned bundle (release tag and SHA-256 recorded) in
@@ -218,6 +242,7 @@ per family, spikes M and S, walkthrough and release preparation S.
 | draw.io aborts | spike bpmn-js as application #2 at the start of 0.3.0 (same abort criteria); the adapter follows only if it passes |
 | both abort | no second application in 0.3.0; artifact mode, bridges and the co-actor family; the spreadsheet spike moves forward from 0.4.0 |
 | bring-your-own-tools spike finds no readable state | artifact mode in 0.3.0 starts with tools that hand back a native file (for example draw.io's `create_diagram`), and the other servers are listed as not supported |
+| no challenge family passes (zero-family branch) | 0.3.0 starts with a renewed, gated family development (new candidates, new held-out instances); until a family passes, artifact mode and the narrowed plan use the library tasks, labelled "library, not a challenge tier" |
 
 ## 0.3.0 — Two apps, your tools (target: March 2027)
 
@@ -240,8 +265,9 @@ narrows the plan (Checkpoints).
   with any tools it has; Practonaut judges the native result with the same independent checker. A
   separate verdict level ("artifact-judged, end-state only, no Practonaut history") recorded by a
   PADR, shown as such in every report, card and comparison. *Acceptance:* two external toolchains
-  (for example the official Excalidraw and draw.io MCP servers) scored on the challenge tier, with
-  the results and their verdict level in the docs.
+  (for example the official Excalidraw and draw.io MCP servers) scored on the challenge tier (or, in
+  the zero-family branch, on the library, labelled so), with the results and their verdict level in
+  the docs.
 - **A human edits mid-run** (M): the challenge family deferred from 0.2.0, after its scenario PADR
   (schedule stored with the run and bound into `--verify` and `compare`; human actions do not use the
   agent's budget; undo and reset rules). *Acceptance:* the oracle passes under the scripted
@@ -345,5 +371,5 @@ with the numbers measured that day.
 
 **Narrowed plan (written now, used only if the first checkpoint fails):** keep own-task bench,
 `compare` and the challenge tier; publish the measured findings (headroom, context cost, model
-comparisons) as a technical report; export the challenge tier to Harbor and OpenEnv so researchers
+comparisons) as a technical report; export the challenge tier (or the library, in the zero-family branch) to Harbor and OpenEnv so researchers
 can use it where they already work; no second application; re-assess after three months.

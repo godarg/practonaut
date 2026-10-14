@@ -61,8 +61,8 @@ service, public rankings before scores are sealed.
 **External projects that use Practonaut repeatedly.** An *external project* counts when, in public
 and outside this project's own accounts, there is (a) a repository whose workflow, configuration or
 task pack runs Practonaut, or (b) a person or team reporting use in at least two separate weeks
-(issue, discussion, post), or (c) a published report or task pack that `report --verify` or
-`validate` accepts. Each project counts once. Counted from public evidence only (code search,
+(issue, discussion, post), or (c) published reports or task packs, on at least two separate dates,
+that `report --verify` or `validate` accepts. Each project counts once. Counted from public evidence only (code search,
 issues, discussions), never from telemetry, so every count is a lower bound.
 
 Supporting signals: stars, npm downloads (trend only; mirrors and bots inflate them), issues and
@@ -82,9 +82,9 @@ These add to the invariants in [architecture](architecture.md) §10; they do not
 1. **The checker is the product.** Verdicts come from the real application's state, a separate
    checker and counter-probes. Never a language-model judge, never the agent's own words.
 2. **Headroom or it does not count.** A task family is published only after a preregistered ladder
-   of at least three agents passes on fresh held-out instances: the strongest agent between 10 % and
-   80 %, a significant gap to the weakest, the oracle 100 %, the random agent at most 5 %, every near
-   miss failing (details: roadmap 0.2.0, item 4).
+   of at least three agents passes on at least 24 fresh held-out instances (the instance is the unit,
+   not the run): the strongest agent between 10 % and 80 %, a significant gap to the weakest, the
+   oracle 100 %, the random agent at most 5 %, every near miss failing (details: roadmap 0.2.0, item 4).
 3. **Your task, your tools.** The user's own tasks and toolchain are the main path; the bundled
    library is the example set and the shared yardstick.
 4. **Every number carries its n and its limits.** Fractions before rates, intervals at small n,
