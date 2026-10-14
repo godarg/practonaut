@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { arrow, between, box, scene } from '../support/scenes.ts';
 import { libraryWorld } from '../../src/bench/run.ts';
+import { worldContentHash, worldFromPackage } from '../../src/bench/world.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
@@ -51,7 +52,7 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     const steps = (oracle.steps as unknown[]).length;
     // Another world under the same id and version (a changed title), packed by the CLI.
     const otherSource = join(dir, 'other'); await mkdir(otherSource);
-    const otherWorld = await json(join(task.world, 'world.json')); otherWorld.tasks[0].title.en = 'Something else';
+    const otherWorld = await json(join(task.world, 'world.json')); const originalTitle = otherWorld.tasks[0].title.en as string; otherWorld.tasks[0].title.en = 'Something else';
     await writeFile(join(otherSource, 'world.json'), JSON.stringify(otherWorld));
     assert.equal(cli('pack', otherSource, '--out', join(dir, 'other.pnworld')).status, 0);
 
@@ -65,7 +66,10 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     assert.equal(report.label, 'Own task «1»');
     assert.deepEqual([report.environment.world.source, report.environment.world.worldId, report.environment.world.package.path, report.environment.mirror], ['own', 'my-task', 'world.pnworld', 'required']);
     assert.equal(report.environment.world.package.sha256, sha256(await readFile(join(folder, 'world.pnworld'))));
-    assert.deepEqual(report.references.tasks, [{ taskId: 'my-task', source: 'oracle-file', actions: steps }]);
+    // Hand reasoning: Review's fill and the new arrow are two objects no single action changes
+    // together, so the two-action reference is minimal (PADR-0040).
+    assert.deepEqual(report.references.tasks, [{ taskId: 'my-task', source: 'oracle-file', actions: steps, minimal: true }]);
+    assert.equal(steps, 2);
     assert.deepEqual([report.agent.isolation, report.agent.modelSource, report.agent.apiKeySource], ['builtin-baseline', 'none', null]);
     assert.deepEqual(report.settings.seeds, [2, 5]);
     for (const run of report.runs) {
@@ -122,6 +126,21 @@ test('an authored task is benched with its oracle and the real mirror; the moved
       const efficiency = Math.round(length / steps * 10_000) / 10_000;
       value.summary.efficiencyVsReference = efficiency; value.summary.byTask[0].referenceActions = length; value.summary.byTask[0].efficiency = efficiency;
     }), 'bench_reference_invalid', /the reference of task my-task does not pass the checker: with seed 2 it does not reach the goal/);
+    // A minimality claim the analysis on the stored world does not make.
+    refused(await changed(async (_copy, value) => { value.references.tasks[0].minimal = false; }), 'bench_reference_invalid', /task my-task: the report says the reference is a reference length; the minimal-length analysis on the stored world says proven minimal/);
+    // A consistent forgery of the world: the same task with an action limit below the runs' history
+    // length, every world hash in the report updated to it. The host would never have let the runs
+    // take more actions than the limit, so --verify refuses them.
+    const limitedSource = join(dir, 'limited'); await mkdir(limitedSource);
+    const limitedWorld = await json(join(otherSource, 'world.json'));
+    limitedWorld.tasks[0].title.en = originalTitle; limitedWorld.tasks[0].limits = { actions: 1 };
+    await writeFile(join(limitedSource, 'world.json'), JSON.stringify(limitedWorld));
+    assert.equal(cli('pack', limitedSource, '--out', join(dir, 'limited.pnworld')).status, 0);
+    refused(await changed(async (copy, value) => {
+      const bytes = await readFile(join(dir, 'limited.pnworld')); await writeFile(join(copy, 'world.pnworld'), bytes);
+      value.environment.world.package.sha256 = sha256(bytes);
+      value.environment.world.contentHash = worldContentHash(await worldFromPackage(bytes));
+    }), 'bench_report_invalid', /run my-task-s2-r1: its final history holds 2 actions, more than the task's action limit of 1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -168,7 +187,7 @@ test('a template keeps the model its output reports; a task without a reference 
     assert.match(random.stderr, /0 of 1 benched task has a validated reference/);
     const unreferenced = await json(randomOut);
     assert.deepEqual([unreferenced.references, unreferenced.runs[0].referenceActions, unreferenced.summary.efficiencyVsReference], [null, null, null]);
-    assert.match(random.stdout, /efficiency vs reference no reference/);
+    assert.match(random.stdout, /efficiency vs reference length no reference/);
     assert.match(random.stdout, /^my-task .* no reference +no reference$/m);
 
     // Refused before any run starts, and no bench folder is created.
