@@ -90,7 +90,7 @@ test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client tim
   const withEvidence = (): BenchReportV2 => {
     const value = structuredClone(v2Report()), first = value.runs[0]!;
     first.artifacts = { ...first.artifacts!, trace: hash('7'), board: null };
-    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act, omitted: 0 } };
+    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act + first.toolCalls.check, omitted: 0 } };
     first.client = { source: 'command-output', model: 'some-model', turns: 6, costUsd: 0.05, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 } };
     return value;
   };
@@ -104,7 +104,9 @@ test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client tim
   refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
   // A trace without the mutation log that re-derives it could never be re-verified: refused outright.
   refused(value => { delete value.runs[0]!.logs; }, /binds a condition trace without the mutation log it is re-derived from/);
-  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
+  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 6 entries, but the run counted 5 act, undo, reset and check_result calls/);
+  // The log records check calls too (PADR-0040): one without them is refused.
+  refused(value => { value.runs[0]!.logs!.mutations.entries -= value.runs[0]!.toolCalls.check; }, /the mutation log holds 4 entries, but the run counted 5 act, undo, reset and check_result calls/);
   refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
   refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);
   // A trace that could not be made, with its error, is valid; so is a run without any evidence (an older /2 report).

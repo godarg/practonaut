@@ -568,8 +568,8 @@ export const CLI_CATALOG = {
     "de": "Lauf {run}: mutations.jsonl ist kein Änderungsprotokoll"
   },
   "verifyMutationsCounters": {
-    "en": "run {run}: the mutation log does not agree with the run's counted act, undo and reset calls",
-    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo und reset des Laufs"
+    "en": "run {run}: the mutation log does not agree with the run's counted act, undo, reset and check_result calls",
+    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo, reset und check_result des Laufs"
   },
   "verifyTrace": {
     "en": "run {run}: the checker does not re-derive the stored condition trace from the session and the mutation log",
@@ -588,8 +588,8 @@ export const CLI_CATALOG = {
     "de": "Lauf {id} bindet einen Bedingungsverlauf ohne das Änderungsprotokoll, aus dem er nachgerechnet wird"
   },
   "benchReportMutations": {
-    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo and reset calls",
-    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo und reset"
+    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo, reset and check_result calls",
+    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo, reset und check_result"
   },
   "benchReportClientTiming": {
     "en": "run {id}: client timing comes only from Practonaut's own client (built-in agents)",
@@ -668,8 +668,16 @@ export const CLI_CATALOG = {
     "de": "die Aufgabenlimits der gespeicherten Welt weichen von denen im Bericht ab"
   },
   "verifyActionLimit": {
-    "en": "run {run}: its final history holds {actions} actions, more than the task's action limit of {limit}",
-    "de": "Lauf {run}: seine letzte Historie hat {actions} Aktionen, mehr als das Aktionslimit der Aufgabe von {limit}"
+    "en": "run {run}: it used {actions} changes (accepted actions, undos and resets), more than the task's action limit of {limit}",
+    "de": "Lauf {run}: er hat {actions} Änderungen verbraucht (angenommene Aktionen, Rückgängig und Neustarts), mehr als das Aktionslimit der Aufgabe von {limit}"
+  },
+  "verifyCheckLimit": {
+    "en": "run {run}: the host recorded {checks} checks, more than the {limit} the run allowed",
+    "de": "Lauf {run}: der Host hat {checks} Prüfungen aufgezeichnet, mehr als die {limit}, die der Lauf erlaubte"
+  },
+  "verifyLimitsEvidence": {
+    "en": "run {run}: its task has limits, but the run has no mutation log to count them from",
+    "de": "Lauf {run}: seine Aufgabe hat Limits, aber der Lauf hat kein Änderungsprotokoll, aus dem sie gezählt werden können"
   },
   "lengthMinimal": {
     "en": "proven minimal",

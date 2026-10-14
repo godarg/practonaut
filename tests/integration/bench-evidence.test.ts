@@ -35,8 +35,10 @@ test('built-in agent: client round trips joined to the bridge log, every mutatio
     assert.equal(calls.every(call => call.clientMs !== null && call.clientMs + 0.2 >= call.bridgeMs && call.resultBytes > 0), true, 'every call of the bench client has its round trip, which contains the bridge time');
     assert.deepEqual(calls.filter(call => call.tool === 'act').length, run.toolCalls.act);
     const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'));
-    assert.equal(mutations.length, run.referenceActions);
-    assert.equal(mutations.every(entry => entry.op === 'act' && entry.outcome === 'accepted' && entry.client === 'practonaut-bench'), true);
+    // Every action of the reference, then the oracle's one check (recorded host-side, PADR-0040).
+    assert.equal(mutations.length, run.referenceActions! + 1);
+    assert.equal(mutations.slice(0, -1).every(entry => entry.op === 'act' && entry.outcome === 'accepted' && entry.client === 'practonaut-bench'), true);
+    assert.deepEqual([mutations.at(-1)!.op, mutations.at(-1)!.outcome, run.toolCalls.check], ['check', 'accepted', 1]);
     const trace = JSON.parse(await readFile(join(folder, 'trace.json'), 'utf8')) as { points: Array<{ met: string }> };
     assert.equal(trace.points.length, run.referenceActions);
     assert.match(trace.points.at(-1)!.met, /^1+$/, 'the oracle meets every condition after its last action');
@@ -56,7 +58,7 @@ test('built-in agent: client round trips joined to the bridge log, every mutatio
   const forged = structuredClone(report) as BenchReportV2; const forgedRun = forged.runs.find(run => run.id === 'restyle-flow-s1-r1')!;
   forgedRun.logs!.mutations.sha256 = sha256Hex(forgedLog);
   await writeFile(path, JSON.stringify(forged));
-  refused = verify(path, bench.directory); assert.equal(refused.status, 2, refused.stdout); assert.match(refused.stderr, /restyle-flow-s1-r1: the mutation log does not agree with the run's counted act, undo and reset calls \[bench_report_invalid\]/);
+  refused = verify(path, bench.directory); assert.equal(refused.status, 2, refused.stdout); assert.match(refused.stderr, /restyle-flow-s1-r1: the mutation log does not agree with the run's counted act, undo, reset and check_result calls \[bench_report_invalid\]/);
   // The same log with counters forged to match: the checker cannot replay it into the judged session.
   forgedRun.logs!.mutations.entries += 1; forgedRun.toolCalls.act += 1; forgedRun.toolCalls.total += 1; forgedRun.acceptedActions += 1; forged.summary.toolCalls += 1;
   await writeFile(path, JSON.stringify(forged));
@@ -91,7 +93,7 @@ test('command agent: no client timing, its own figures self-reported, two MCP cl
     assert.equal(run.logs?.calls?.clientTiming, false);
     assert.equal(parseCallLog(await readFile(join(folder, 'calls.jsonl'), 'utf8')).every(call => call.clientMs === null), true);
     const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'));
-    assert.deepEqual(mutations.map(entry => [entry.op, entry.outcome, entry.code ?? null, entry.client]), [['act', 'accepted', null, 'practonaut-bench'], ['undo', 'accepted', null, null], ['act', 'rejected', 'precondition_failed', 'practonaut-bench'], ['act', 'accepted', null, 'second-agent']]);
+    assert.deepEqual(mutations.map(entry => [entry.op, entry.outcome, entry.code ?? null, entry.client]), [['act', 'accepted', null, 'practonaut-bench'], ['undo', 'accepted', null, null], ['act', 'rejected', 'precondition_failed', 'practonaut-bench'], ['act', 'accepted', null, 'second-agent'], ['check', 'accepted', null, null]]);
     // connect: 2 steps · 1 arrow · “l2” · “l1” · arrow l1→l2. a→b meets all; undo returns; b→a misses the direction.
     const trace = JSON.parse(await readFile(join(folder, 'trace.json'), 'utf8')) as { start: string; points: Array<{ seq: number; met: string }> };
     assert.deepEqual([trace.start, ...trace.points.map(point => `${point.seq}:${point.met}`)], ['10110', '0:11111', '1:10110', '3:11110']);

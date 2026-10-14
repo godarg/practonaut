@@ -97,7 +97,14 @@ export function countingController(inner: PracticeController, counters: RunCount
       counters.mutations++;
       const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; note('reset', reply); return reply;
     },
-    check: async (request, context) => { counters.check++; return inner.check(request, context); },
+    // Every check is recorded host-side too (PADR-0040): `report --verify` counts a task's check
+    // limit from these records, never from the agent's call log.
+    check: async (request, context) => {
+      counters.check++;
+      const reply = await inner.check(request, context);
+      recorder?.record({ op: 'check', client: null, outcome: reply.ok ? 'accepted' : 'rejected', ...(reply.ok ? {} : { code: reply.error.code }), position: () => { const now = inner.view(); return { step: now.step, revision: now.revision }; } });
+      return reply;
+    },
     variant: (request, context) => inner.variant(request, context),
     hint: (request, context) => inner.hint(request, context),
     png: context => inner.png(context),

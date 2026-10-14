@@ -99,6 +99,31 @@ async function evidenceHashes(run: BenchRunV2, directory: string): Promise<{ mut
   return { mutations, trace };
 }
 
+/**
+ * A task's limits (PADR-0040), counted as the host counts them from the runner's host-side mutation
+ * log: every accepted action, undo and reset uses one change, every accepted check one check. Never
+ * from the final history alone (an undone action still counted) nor from the agent's call log. The
+ * log's records are bound to the run's counters by verifyEvidence. A judged run of a limited task
+ * without the log cannot be verified and is refused.
+ */
+function verifyLimits(run: BenchRunV2, world: World, settingsChecks: number | undefined, mutations: string | null): void {
+  const own = world.tasks.find(task => task.id === run.taskId)?.limits;
+  const actionLimit = own?.actions;
+  const checkLimits = [own?.checks, settingsChecks].filter((value): value is number => value !== undefined);
+  const checkLimit = checkLimits.length ? Math.min(...checkLimits) : undefined;
+  if (actionLimit === undefined && checkLimit === undefined) return;
+  if (actionLimit !== undefined && run.actions > actionLimit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: run.actions, limit: actionLimit }));
+  if (mutations === null || !run.logs) {
+    if (run.checker === null && run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check === 0) return;
+    throw new BenchReportError(cliText('verifyLimitsEvidence', { run: run.id }));
+  }
+  let records;
+  try { records = parseMutations(mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }
+  const counted = mutationCounts(records), changes = counted.accepted + counted.undos + counted.resets;
+  if (actionLimit !== undefined && changes > actionLimit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: changes, limit: actionLimit }));
+  if (checkLimit !== undefined && counted.checks > checkLimit) throw new BenchReportError(cliText('verifyCheckLimit', { run: run.id, checks: counted.checks, limit: checkLimit }));
+}
+
 /** The mutation log agrees with the run's counters, and the checker re-derives the stored trace from
  * the session and that log. */
 async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string | null, texts: { mutations: string | null; trace: string | null }): Promise<void> {
@@ -109,7 +134,7 @@ async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string
   try { records = parseMutations(texts.mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }
   const counted = mutationCounts(records), omitted = run.logs.mutations.omitted;
   if (records.length !== run.logs.mutations.entries || counted.accepted !== run.acceptedActions || counted.undos !== run.undos || counted.resets !== run.resets
-    || counted.act + counted.undoCalls + counted.resetCalls + omitted !== run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset
+    || counted.act + counted.undoCalls + counted.resetCalls + counted.checkCalls + omitted !== run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check
     || counted.rejected > run.rejectedActions || (omitted === 0 && counted.rejected !== run.rejectedActions))
     throw new BenchReportError(cliText('verifyMutationsCounters', { run: run.id }));
   if (texts.trace === null || sessionText === null) return;
@@ -234,10 +259,9 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
   const references = await verifyReferences(report, world, stored);
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
+    // The host enforces a task's limits; a run that used more cannot come from a bench run.
+    verifyLimits(run, world, report.settings.checks, evidence.get(run.id)!.mutations);
     if (run.checker === null) { unjudged++; await verifyEvidence(run, world, null, evidence.get(run.id)!); continue; }
-    // The host enforces a task's action limit; a longer final history cannot come from a bench run.
-    const limit = world.tasks.find(task => task.id === run.taskId)?.limits?.actions;
-    if (limit !== undefined && run.actions > limit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: run.actions, limit }));
     const sessionText = await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
     await verifyEvidence(run, world, sessionText, evidence.get(run.id)!);
     reverified++;

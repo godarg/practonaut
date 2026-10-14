@@ -180,7 +180,7 @@ run folder also keeps what explains the verdict, each file bound by its SHA-256 
 |---|---|---|
 | `calls.bridge.jsonl` | the agent's bridge (`practonaut mcp --call-log`) | as the bridge wrote it; never changed by the runner |
 | `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
-| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself), accepted or rejected with the host's error code, step and revision afterwards. Refusals for an exhausted budget are kept up to 100 and counted beyond; a rejected action's strings are cut at 256 characters. |
+| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself), accepted or rejected with the host's error code, step and revision afterwards; and every `check_result` as a `check` record (accepted or rejected, no client name), from which `--verify` counts a task's check limit (PADR-0040). Refusals for an exhausted budget (of changes, of checks) are kept up to 100 each and counted beyond; a rejected action's strings are cut at 256 characters. |
 | `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made; the verdict never depends on it. |
 | `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw` |
 
@@ -277,9 +277,12 @@ Two levels of checking, and the output always says which one ran:
     report says, is not accepted by the checker on the stored world for a seed a run used, or its
     `minimal` claim differs from the minimal-length analysis on the stored world;
   - `bench_report_invalid`: the session's task and seed; `actions` equals the length of the
-    session's final history and is within the task's action limit, if it has one; the independent checker, re-run on the session and the export in a
+    session's final history; a task's limits hold as the host counts them, from the mutation log:
+    accepted actions, undos and resets within the action limit (an undone action still counts), and
+    accepted checks within the check limit (the task's or `--checks`, the smaller); a limited task's
+    judged run without a mutation log is refused; the independent checker, re-run on the session and the export in a
     separate process, gives the stored checker output and the report's verdicts; the mutation log
-    agrees with the run's counted act, undo and reset calls; the checker re-derives the stored
+    agrees with the run's counted act, undo, reset and check_result calls; the checker re-derives the stored
     condition trace from the session and the mutation log. The engine's picture cannot be re-derived
     without the engine: only its hash is checked.
 
@@ -327,7 +330,7 @@ come first, each with:
   in full (a drawing may cut a long one), shape, line, fill, size, position, frame and group; beside it
   an **example target** — a schematic of the validated reference's end state for that seed — or "no
   example target" when the task has none;
-- the **trajectory**: every act, undo and reset in order, accepted or rejected, with the conditions met
+- the **trajectory**: every act, undo, reset and check in order, accepted or rejected, with the conditions met
   afterwards and which ones changed;
 - the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
 

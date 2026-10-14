@@ -73,7 +73,8 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    with the error code, and the step and revision afterwards. Every mutation that reaches the
    session is recorded (at most the action budget); refusals for an exhausted budget are recorded up
    to 100 and counted beyond. Parameters of a rejected action are kept as scalars, strings cut at
-   256 characters.
+   256 characters. [PADR-0040](0040-challenge-tier-generated-families-and-gate.md) decision 4 adds
+   a `check` record for every `check_result` call, so a task's check limit is verified host-side.
 3. **`trace.json`** — the separate checker process replays the accepted mutations from the task's
    start with its own transition code (`act` appends, `undo` removes the last action, `reset` returns
    to the start), refuses a timeline that does not end in the judged session's history and hash,

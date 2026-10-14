@@ -145,7 +145,7 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     refused(await changed(limitedWorldInto), 'bench_world_changed', /the stored world's task limits differ from those the report names/);
     // With the report's limits forged too, the runs are still longer than the limit allows.
     refused(await changed(async (copy, value) => { await limitedWorldInto(copy, value); value.environment.world.limits = [{ taskId: 'my-task', actions: 1 }]; }),
-      'bench_report_invalid', /run my-task-s2-r1: its final history holds 2 actions, more than the task's action limit of 1/);
+      'bench_report_invalid', /run my-task-s2-r1: it used 2 changes \(accepted actions, undos and resets\), more than the task's action limit of 1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -300,5 +300,58 @@ test('a library bench is anchored to this Practonaut\'s library: a swapped libra
     const refused = cli('report', path, '--verify');
     assert.equal(refused.status, 2);
     assert.match(refused.stderr, new RegExp(`the report names the bundled library excalidraw-library [^ ]+, but the stored world's content hash ${swappedHash} is not that library's \\([a-f0-9]{64}\\): it is not this Practonaut's library.*\\[bench_world_changed\\]`));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('task limits are verified from the host\'s own records: undone actions, undos and checks count, not only the final history (PADR-0040)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-own-limits-'));
+  try {
+    const task = await authoredTask(dir);
+    // Move Draft, undo that, draw the Review → Send arrow, then check 100 times: three changes for a
+    // final history of one action.
+    const script = join(dir, 'script.json');
+    await writeFile(script, JSON.stringify({ 'my-task': { steps: [{ act: 'move_step', params: { id: 'a', x: 120, y: 140 } }, { undo: true }, { act: 'connect', params: { from: 'b', to: 'c' } }, ...Array.from({ length: 100 }, () => ({ check: true }))] } }));
+    const before = await benches();
+    const bench = spawnSync(process.execPath, [CLI, 'bench', '--agent', `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} script {mcp_config}`, '--world', task.world, '--oracle', task.oracle, '--seed-list', '2', '--mirror', 'off'], { encoding: 'utf8', env: { ...process.env, PN_TEST_AGENT_SCRIPT: script } });
+    assert.equal(bench.status, 0, bench.stderr);
+    const folder = await newBench(before), report = await json(join(folder, 'report.json')), run = report.runs[0];
+    assert.deepEqual([run.acceptedActions, run.undos, run.resets, run.actions, run.toolCalls.check], [2, 1, 0, 1, 100]);
+    assert.equal(cli('report', join(folder, 'report.json'), '--verify').status, 0);
+    // The same task with limits, the stored world and every hash and limit in the report forged to it.
+    const source = await json(join(task.world, 'world.json'));
+    let made = 0;
+    const limitedTo = async (limits: { actions?: number; checks?: number }): Promise<ReturnType<typeof cli>> => {
+      const name = `limited-${++made}`; await mkdir(join(dir, name));
+      const world = structuredClone(source); world.tasks[0].limits = limits;
+      await writeFile(join(dir, name, 'world.json'), JSON.stringify(world));
+      assert.equal(cli('pack', join(dir, name), '--out', join(dir, `${name}.pnworld`)).status, 0);
+      const copy = join(dir, `${name}-bench`); await cp(folder, copy, { recursive: true });
+      const bytes = await readFile(join(dir, `${name}.pnworld`)); await writeFile(join(copy, 'world.pnworld'), bytes);
+      const value = await json(join(copy, 'report.json'));
+      value.environment.world.package.sha256 = sha256(bytes);
+      value.environment.world.contentHash = worldContentHash(await worldFromPackage(bytes));
+      value.environment.world.limits = [{ taskId: 'my-task', ...limits }];
+      await writeFile(join(copy, 'report.json'), JSON.stringify(value));
+      assert.equal(cli('report', join(copy, 'report.json')).status, 0, 'the forged report is consistent');
+      return cli('report', join(copy, 'report.json'), '--verify');
+    };
+    // The final history (1) fits a limit of 2 changes; the move, its undo and the arrow do not.
+    let refused = await limitedTo({ actions: 2 });
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /run my-task-s2-r1: it used 3 changes \(accepted actions, undos and resets\), more than the task's action limit of 2 \[bench_report_invalid\]/);
+    // Three changes fit; the host recorded 100 checks against a limit of one.
+    refused = await limitedTo({ actions: 3, checks: 1 });
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /run my-task-s2-r1: the host recorded 100 checks, more than the 1 the run allowed \[bench_report_invalid\]/);
+    // Exactly what the run used passes.
+    const exact = await limitedTo({ actions: 3, checks: 100 });
+    assert.equal(exact.status, 0, exact.stderr);
+    // The check records are bound to the run's counted check calls: a log with 99 of them dropped
+    // (its hash and entry count recomputed) is refused.
+    const copy = join(dir, 'dropped'); await cp(folder, copy, { recursive: true });
+    const log = (await readFile(join(copy, run.id, 'mutations.jsonl'), 'utf8')).trim().split('\n').slice(0, 4).join('\n') + '\n';
+    await writeFile(join(copy, run.id, 'mutations.jsonl'), log);
+    const value = await json(join(copy, 'report.json')); value.runs[0].logs.mutations.sha256 = sha256(log); value.runs[0].logs.mutations.entries = 4;
+    await writeFile(join(copy, 'report.json'), JSON.stringify(value));
+    refused = cli('report', join(copy, 'report.json'), '--verify');
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /run my-task-s2-r1: the mutation log holds 4 entries, but the run counted 103 act, undo, reset and check_result calls/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

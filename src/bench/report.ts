@@ -400,7 +400,7 @@ function checkRunEvidence(report: BenchReportV2, run: BenchRunV2, fail: (message
   // it could not be checked, so it is not accepted at all.
   if (typeof artifacts?.trace === 'string' && !run.logs) fail(cliText('benchReportTraceWithoutLog', { id: run.id }));
   if (run.logs) {
-    const calls = run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset;
+    const calls = run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check;
     if (run.logs.mutations.entries + run.logs.mutations.omitted !== calls) fail(cliText('benchReportMutations', { id: run.id, entries: run.logs.mutations.entries + run.logs.mutations.omitted, calls }));
     if (run.logs.calls?.clientTiming && kind !== 'builtin') fail(cliText('benchReportClientTiming', { id: run.id }));
   }

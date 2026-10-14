@@ -120,8 +120,12 @@ judged state and the error classes, and the judged state may hold whatever an ag
    refuses. The view, every mutation reply and every check carry the
    counts (`limits.actions|checks: { limit, used }`, `checksRemaining`); the Player shows them.
    `--checks <n>` on `bench`, `play`/`serve` and `mcp --task` sets a session check limit; with a
-   task limit the smaller one applies. The checker stays end-state-only; `report --verify` also
-   refuses a run whose final history is longer than its task's action limit.
+   task limit the smaller one applies. The checker stays end-state-only. The bench's host-side
+   mutation log (PADR-0039 decision 2) also records every `check_result` call as a `check` record,
+   bound to the run's counted check calls; `report --verify` counts a run's limits from that log as
+   the host counts them — accepted actions, undos and resets against the action limit (an undone
+   action still counts), accepted checks against the check limit — never from the final history
+   alone or the agent's call log, and refuses a judged run of a limited task without the log.
 5. **Minimal length.** It applies to a task whose goal is exactly a from-scenes goal (parsed, then
    regenerated from the parsed form and compared), without group, order or alignment clauses, whose
    arrows join steps with unique labels and have no loose end, on a start without groups. There,

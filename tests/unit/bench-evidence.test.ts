@@ -59,9 +59,12 @@ test('mutation recorder: rejected parameters cut and scalar, budget refusals cap
   recorder.record({ op: 'act', action: { name: 'rename_step', params: { id: 'a', label: 'Ok' }, baseStep: 0 }, client: 'agent-one', outcome: 'accepted', position: at(1) });
   recorder.record({ op: 'act', action: { name: 'rename_step', params: { id: 'a', label: 'x'.repeat(1000), nested: { deep: true } } as never, baseStep: 1 }, client: '<script>', outcome: 'rejected', code: 'invalid_argument', position: at(1) });
   recorder.record({ op: 'undo', outcome: 'accepted', position: at(0) });
+  recorder.record({ op: 'check', outcome: 'accepted', position: at(0) });
   for (let i = 0; i < MAX_RECORDED_REFUSALS + 7; i++) recorder.record({ op: 'act', action: { name: 'connect', params: {} }, outcome: 'rejected', code: 'action_budget_exhausted', position: at(0) });
-  assert.equal(recorder.records.length, 3 + MAX_RECORDED_REFUSALS); assert.equal(recorder.omitted, 7);
-  assert.equal(reads, 3 + MAX_RECORDED_REFUSALS, 'an omitted refusal never reads the session');
+  // Check refusals are capped on their own, so 100 action refusals cannot hide a check (PADR-0040).
+  for (let i = 0; i < MAX_RECORDED_REFUSALS + 3; i++) recorder.record({ op: 'check', outcome: 'rejected', code: 'check_budget_exhausted', position: at(0) });
+  assert.equal(recorder.records.length, 4 + 2 * MAX_RECORDED_REFUSALS); assert.equal(recorder.omitted, 10);
+  assert.equal(reads, 4 + 2 * MAX_RECORDED_REFUSALS, 'an omitted refusal never reads the session');
   const rejected = recorder.records[1]!;
   assert.equal((rejected.action!.params.label as string).length, MAX_REJECTED_TEXT + 1);
   assert.equal(rejected.action!.params.nested, '[not a scalar]');
@@ -69,9 +72,10 @@ test('mutation recorder: rejected parameters cut and scalar, budget refusals cap
   assert.equal(recorder.records[0]!.client, 'agent-one');
   const parsed = parseMutations(recorder.text());
   assert.deepEqual(parsed, recorder.records);
-  assert.deepEqual(mutationCounts(parsed), { act: 2 + MAX_RECORDED_REFUSALS, accepted: 1, rejected: 1 + MAX_RECORDED_REFUSALS, undoCalls: 1, undos: 1, resetCalls: 0, resets: 0 });
+  assert.deepEqual(mutationCounts(parsed), { act: 2 + MAX_RECORDED_REFUSALS, accepted: 1, rejected: 1 + MAX_RECORDED_REFUSALS, undoCalls: 1, undos: 1, resetCalls: 0, resets: 0, checkCalls: 1 + MAX_RECORDED_REFUSALS, checks: 1 });
   const timeline = timelineOf(parsed, recorder.omitted);
   assert.ok('timeline' in timeline);
+  // A check changes nothing: the checker's replay never sees it.
   assert.deepEqual(timeline.timeline, [{ seq: 0, op: 'act', action: { name: 'rename_step', params: { id: 'a', label: 'Ok' }, baseStep: 0 } }, { seq: 2, op: 'undo' }]);
   assert.throws(() => parseMutations(recorder.text().replace('"outcome":"accepted"', '"outcome":"maybe"')), /line 1/);
 });

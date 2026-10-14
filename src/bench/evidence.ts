@@ -19,7 +19,7 @@ export const RUN_EVIDENCE = Object.freeze({ bridgeCalls: 'calls.bridge.jsonl', c
 export const MAX_LOG_BYTES = 16 * 1024 * 1024;
 /** The most lines a log keeps. */
 export const MAX_LOG_LINES = 100_000;
-/** Budget refusals recorded in full before they are only counted. */
+/** Budget refusals (of changes and of checks, each) recorded in full before they are only counted. */
 export const MAX_RECORDED_REFUSALS = 100;
 /** Strings of a rejected action's parameters are cut to this many characters. */
 export const MAX_REJECTED_TEXT = 256;
@@ -101,8 +101,10 @@ export function parseCallLog(text: string): CallRecord[] {
 
 const scalar = z.union([z.string().max(4096), z.number().int().safe(), z.boolean(), z.null()]);
 const ActionSchema = z.strictObject({ name: z.string().regex(/^[a-z_]{1,32}$/), params: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,31}$/), scalar), baseStep: z.number().int().nonnegative().safe().optional() });
+/** `check` records a check_result call (PADR-0040): it changes nothing, but a task's check limit is
+ * verified from these host-side records, never from the agent's call log. */
 export const MutationRecordSchema = z.strictObject({
-  seq: count, op: z.enum(['act', 'undo', 'reset']),
+  seq: count, op: z.enum(['act', 'undo', 'reset', 'check']),
   /** For `act`: the action as the host received it; a rejected action's strings are cut. */
   action: ActionSchema.optional(),
   /** The MCP client name the agent declared (shown, never trusted); null without one. */
@@ -135,9 +137,11 @@ export class MutationRecorder {
   /** Budget refusals beyond MAX_RECORDED_REFUSALS: counted, not recorded. */
   omitted = 0;
   private refusals = 0;
+  private checkRefusals = 0;
   /** `position` is read only for an entry that is kept (a refusal beyond the cap costs nothing). */
   record(entry: { op: MutationOp; action?: Action; client?: string | null; outcome: 'accepted' | 'rejected'; code?: string; position: () => { step: number; revision: number } }): void {
     if (entry.code === 'action_budget_exhausted' && ++this.refusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
+    if (entry.code === 'check_budget_exhausted' && ++this.checkRefusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
     if (this.records.length >= MAX_LOG_LINES) { this.omitted++; return; }
     const { step, revision } = entry.position();
     const action = entry.action === undefined ? undefined : {
@@ -163,9 +167,9 @@ export function parseMutations(text: string): MutationRecord[] {
 }
 
 /** What a mutation log says about the run's counters (each kind of call and its outcome). */
-export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number } {
+export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; checkCalls: number; checks: number } {
   const of = (op: MutationOp, outcome?: 'accepted' | 'rejected'): number => records.filter(record => record.op === op && (outcome === undefined || record.outcome === outcome)).length;
-  return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted') };
+  return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted'), checkCalls: of('check'), checks: of('check', 'accepted') };
 }
 
 /** The accepted mutations as the checker's trace replays them, or the reason there is none: a log
@@ -175,7 +179,8 @@ export function timelineOf(records: readonly MutationRecord[], omitted = 0): { t
   if (records.length >= MAX_LOG_LINES && omitted > 0) return { reason: 'log_truncated' };
   const timeline: TimelineEntry[] = [];
   for (const record of records) {
-    if (record.outcome !== 'accepted') continue;
+    // A check changes nothing: it is not part of the timeline the checker replays.
+    if (record.outcome !== 'accepted' || record.op === 'check') continue;
     if (record.op === 'act') timeline.push({ seq: record.seq, op: 'act', action: record.action as Action });
     else timeline.push({ seq: record.seq, op: record.op });
   }
