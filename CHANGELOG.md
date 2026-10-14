@@ -17,9 +17,12 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
-- **First 60 seconds.** `npx practonaut` without Chromium opens the Player at once with a banner
-  "Not yet checked against the real Excalidraw" that names the one download, the Chromium headless
-  shell, with its size. On the bundled example **Watch a demonstration** solves the current task
+- **First 60 seconds.** When the real engine is not installed, `npx practonaut` opens the Player at
+  once, model-only, with a banner "Not yet checked against the real Excalidraw" that names the one
+  download, the Chromium headless shell, with its size. With the engine installed, the existing
+  start check of Chromium runs first ([PADR-0032](docs/adr/0032-chromium-sandbox-stays-on.md)).
+  From the command to the first demonstrated action: 2.5 s model-only, 2.8 s with the real engine
+  (median of 3, warm npx cache, Apple M4). On the bundled example **Watch a demonstration** solves the current task
   once: actions land on the board, the real Excalidraw confirms each one (or the session says
   "model only"), and the result check judges the end. It is labelled as a demonstration, never
   counts as anyone's result (its board cannot be continued or exported), and Stop or Escape ends

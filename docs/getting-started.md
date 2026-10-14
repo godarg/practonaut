@@ -41,8 +41,14 @@ its start.
 
 ## 2. Turn on the real Excalidraw engine (optional, once)
 
-Without Chromium the Player opens at once anyway, with a banner **Not yet checked against the real
-Excalidraw** that names the command and the one download it needs. Then:
+When the real engine is not installed, `npx practonaut` opens the Player at once, model-only, with
+a banner **Not yet checked against the real Excalidraw** that names the command and the one
+download it needs. When it is installed, Practonaut first starts Chromium once to check that it
+runs ([PADR-0032](adr/0032-chromium-sandbox-stays-on.md)) and then opens with the real engine; if
+that start fails it opens model-only and says why. Measured from the command to the first action
+of the demonstration on the board (`tools/measure-first-action.ts`: `npx` of the packed package
+with a warm cache, a fresh browser, median of 3, Apple M4, 2026-10-14): 2.5 s model-only and 2.8 s
+with the real engine; up to 7.5 s while other processes loaded the machine heavily. Then:
 
 ```bash
 npx practonaut setup
