@@ -1,9 +1,13 @@
 // First 60 seconds (roadmap 0.2.0, Should 7): the time from the command to the first visible action
-// of the demonstration. Each run starts `practonaut --no-open` as a user would (by default through
-// `npx` from the packed tarball, with a warm npx cache), opens the printed link in a fresh browser
-// profile, clicks "Watch a demonstration" and stops the clock when the first demonstrated step is on
-// the board. The browser launch counts: it stands in for the user's own browser that `practonaut`
-// opens. Writes .local/measure-first-action/<timestamp>.json and prints the medians.
+// of the demonstration. Each run starts `practonaut --no-open` as a user would: by default
+// `npx --yes --package <packed tarball> practonaut` with a warm npx cache, which installs nothing and
+// looks nothing up in the npm registry (the runs set npm offline; a registry install would add its
+// own download time). It opens the printed link in a fresh browser profile, clicks "Watch a
+// demonstration" by automation (so the figure holds no human reaction time) and stops the clock when
+// the first demonstrated step is on the board. The browser launch counts: it stands in for the
+// user's own browser that `practonaut` opens.
+// Writes .local/measure-first-action/<timestamp>-<commit>.json (the commit and whether the tree had
+// changes are in the file) and prints the medians.
 //
 //   node tools/measure-first-action.ts [--runs 3] [--mode model-only|real-engine|both] [--tarball <tgz> | --local]
 //
@@ -62,7 +66,8 @@ const emptyBrowsers = await mkdtemp(join(await realpath(tmpdir()), 'pn-measure-n
 try {
   for (const mode of modes) for (let index = 1; index <= runs; index++) {
     const home = await mkdtemp(join(await realpath(tmpdir()), 'pn-measure-home-'));
-    const env: NodeJS.ProcessEnv = { ...process.env, PRACTONAUT_HOME: home, ...(mode === 'model-only' ? { PLAYWRIGHT_BROWSERS_PATH: emptyBrowsers } : {}) };
+    // npm offline: a measured run that would need the registry fails instead of quietly downloading.
+    const env: NodeJS.ProcessEnv = { ...process.env, PRACTONAUT_HOME: home, ...(local ? {} : { npm_config_offline: 'true' }), ...(mode === 'model-only' ? { PLAYWRIGHT_BROWSERS_PATH: emptyBrowsers } : {}) };
     const target = spawnable([...command, '--no-open']);
     const started = performance.now();
     const child = spawn(target.command, target.args, { env, stdio: ['pipe', 'pipe', 'pipe'], ...(target.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}) });
@@ -98,9 +103,11 @@ try {
 const median = (values: number[]): number => { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle]! : Math.round((sorted[middle - 1]! + sorted[middle]!) / 2); };
 const summary = Object.fromEntries(modes.map(mode => { const own = samples.filter(sample => sample.mode === mode); return [mode, { runs: own.length, medianFirstActionMs: median(own.map(sample => sample.firstActionMs)), medianPlayerMs: median(own.map(sample => sample.playerMs)), medianLinkMs: median(own.map(sample => sample.linkMs)) }]; }));
 const machine = { platform: `${platform()} ${release()} ${arch()}`, cpu: cpus()[0]?.model ?? 'unknown', cores: cpus().length, memoryGb: Math.round(totalmem() / 1024 ** 3), node: process.version };
-const report = { schema: 'practonaut.measure-first-action/1', date: new Date().toISOString(), how, budgetMs: 30_000, machine, summary, samples };
-const file = join(out, `${report.date.replace(/[:.]/g, '-')}.json`);
+const git = (args: string[]): string => spawnSync('git', args, { encoding: 'utf8' }).stdout.trim();
+const commit = git(['rev-parse', '--short', 'HEAD']) || 'unknown', dirty = git(['status', '--porcelain', '--untracked-files=no']) !== '';
+const report = { schema: 'practonaut.measure-first-action/1', date: new Date().toISOString(), commit, dirty, how, clicks: 'automated (no human reaction time)', budgetMs: 30_000, machine, summary, samples };
+const file = join(out, `${report.date.replace(/[:.]/g, '-')}-${commit}${dirty ? '-dirty' : ''}.json`);
 await writeFile(file, JSON.stringify(report, null, 2) + '\n');
-console.log(JSON.stringify({ how, machine, summary }, null, 2));
+console.log(JSON.stringify({ commit, dirty, how, machine, summary }, null, 2));
 console.log(`measure: written ${file}`);
 if (Object.values(summary).some(entry => entry.medianFirstActionMs > report.budgetMs)) process.exitCode = 1;
