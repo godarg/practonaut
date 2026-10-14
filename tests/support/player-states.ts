@@ -645,16 +645,16 @@ export const limitsWorld = (): World => v2World({ tasks: [v2Task({ limits: { act
 /** Task limits in the Player: what remains is shown, and a used-up check limit turns Check off.
  * Needs `startPlayer({ world: limitsWorld(), taskId: 'T1', phase3: false })`. */
 export const LIMIT_STATES: StateDef[] = [
-  { id: 'practice-limits', label: 'Limited attempt: changes used and checks left', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+  { id: 'practice-limits', label: 'Limited attempt: changes used and checks left', workspace: 'board', view: '[data-testid=changes-used]', async enter(s) {
     if (!(await s.observe()).limits) throw new Error('limit states need a task with limits');
     await s.page.getByTestId('checks-left').waitFor();
   } },
-  { id: 'practice-checks-left', label: 'One change and one failed check used', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+  { id: 'practice-checks-left', label: 'One change and one failed check used', workspace: 'board', view: '[data-testid=changes-used]', async enter(s) {
     await act(s, { name: 'move_step', params: { id: 'a', x: 120, y: 100 } });
     await s.page.getByTestId('check').click();
     await s.page.waitForFunction(() => /1/.test(document.querySelector('[data-testid=checks-left]')?.textContent ?? ''));
   } },
-  { id: 'practice-limits-used', label: 'Every change and check of the attempt used', workspace: 'board', view: '[data-testid=checks-left]', async enter(s) {
+  { id: 'practice-limits-used', label: 'Every change and check of the attempt used', workspace: 'board', view: '[data-testid=changes-used]', async enter(s) {
     await act(s, { name: 'move_step', params: { id: 'a', x: 140, y: 100 } });
     await act(s, { name: 'connect', params: { from: 'b', to: 'c' } });
     await s.page.getByTestId('check').click();

@@ -499,9 +499,7 @@ function practiceHead(): HTMLElement {
   // One step: choosing a task switches to it (a dialog asks only when unsolved work would be lost).
   controls.append(listPicker({ id: 'task-picker', testid: 'task-picker', label: msg('taskSelect'), value: c.task.id, currentWord: msg('taskCurrent'), disabled: working, items: c.tasks.map(item => ({ value: item.id, label: text(item.title), ...(item.level && item.referenceActions ? { detail: actionCount(item.referenceActions), meter: { value: item.level, max: 3, label: msg('taskDifficulty').replace('{n}', String(item.level)) } } : {}) })), onPick: id => changeAttempt(id) }));
   controls.append(button({ label: msg('newVariant'), title: msg('newVariant'), icon: 'shuffle', variant: 'plain', testid: 'new-variant', disabled: working, onClick: () => changeAttempt() }));
-  // A task with an action limit says how many changes this attempt has used (PADR-0040).
-  const budget = c.limits?.actions;
-  controls.append(h('span', { class: 'practice-head__meta t-footnote t-secondary t-tabular', testid: 'practice-meta', text: `${msg('attempt')} ${c.attempt} · ${actionCount(c.step)}${budget ? ` · ${msg('changesUsed').replace('{used}', String(budget.used)).replace('{limit}', String(budget.limit))}` : ''}` }));
+  controls.append(h('span', { class: 'practice-head__meta t-footnote t-secondary t-tabular', text: `${msg('attempt')} ${c.attempt} · ${actionCount(c.step)}` }));
   // While an agent works on the session, the head says so: the last change and who made it.
   const last = c.history.at(-1);
   if (last?.actor.kind === 'agent') controls.append(h('span', { class: 'practice-head__actor t-footnote', testid: 'head-actor' }, chip(msg('actorAgent').replace('{client}', last.actor.client), { tone: 'accent' }), h('span', { class: 't-secondary', text: msg('lastChange') })));
@@ -549,14 +547,17 @@ function goalCard(): HTMLElement {
   const failedNow = matches && !lastCheck!.passed;
   const quietCheck = (!c.step && !lastCheck) || failedNow;
   const facts = failedNow ? h('p', { class: 'goal-note', text: msg('factsOnBoard').replace('{facts}', boardFacts()) }) : undefined;
-  // A limited attempt says how many checks remain; with none left the host would refuse, so Check is off.
+  // A limited attempt (PADR-0040) says, next to Check, how many changes it has used and how many
+  // checks remain; with no check left the host would refuse, so Check is off.
+  const budget = c.limits?.actions;
+  const changesNote = budget ? h('p', { class: 'goal-note', testid: 'changes-used', text: msg('changesUsed').replace('{used}', String(budget.used)).replace('{limit}', String(budget.limit)) }) : undefined;
   const checks = c.limits?.checks, checksLeft = checks ? checks.limit - checks.used : undefined;
   const checksNote = checks ? h('p', { class: 'goal-note', testid: 'checks-left', text: checksLeft === 0 ? msg('checksNone') : count(checksLeft!, 'checksLeft1', 'checksLeftN').replace('{limit}', String(checks.limit)) }) : undefined;
   const checkButton = button({ label: owner === 'variant' ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck && checksLeft !== 0 ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: working || checksLeft === 0 });
   const formalSwitch = hasFormal ? button({ label: msg(showFormal ? 'formalHide' : 'formalShow'), icon: showFormal ? 'chevronUp' : 'chevronDown', variant: 'plain', size: 'sm', class: 'goal-formal-switch', testid: 'formal-switch', pressed: showFormal, onClick: () => { showFormal = !showFormal; render(); document.querySelector<HTMLElement>('[data-testid="formal-switch"]')?.focus(); } }) : undefined;
   result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
   if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
-  if (checksNote) result.append(checksNote);
+  for (const note of [changesNote, checksNote]) if (note) result.append(note);
   result.append(checkButton);
   return result;
 }
