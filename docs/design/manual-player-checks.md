@@ -28,6 +28,10 @@ screen reader and Practonaut version. No audio or screen recording is needed.
    middle step. Run Check result and read every condition.
 7. Repeat the main controls at **200 % browser zoom**, light and dark: focused controls and the
    pending instruction stay visible, all text is readable, every action works without dragging.
+8. With `npx practonaut` (the bundled example without a world argument), use **Watch a
+   demonstration**. Is each action announced with its number and whether the real Excalidraw
+   confirmed it, and does Escape stop it? At the end, is the verdict read as the demonstration's,
+   and is **Start your own attempt** reachable from where the focus lands?
 
 Use the visible buttons when screen-reader quick navigation conflicts with the C/R shortcuts, and
 say whether the shortcut help was confusing.
