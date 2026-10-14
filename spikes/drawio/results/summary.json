@@ -1,0 +1,749 @@
+{
+ "schema": "practonaut.spike-drawio-summary/1",
+ "pin": {
+  "tag": "v32.4.1",
+  "asset": "draw.war",
+  "published": "2026-10-08",
+  "bytes": 48442174,
+  "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+ },
+ "environment": {
+  "node": "v22.22.3",
+  "platform": "darwin",
+  "arch": "arm64",
+  "os": "27.0.0",
+  "cpu": "Apple M4",
+  "cores": 10,
+  "memoryBytes": 17179869184,
+  "playwrightCore": "1.63.0",
+  "chromium": "153.0.8010.12",
+  "drawio": {
+   "tag": "v32.4.1",
+   "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+  }
+ },
+ "protocol": {
+  "urlParameters": "embed=1&proto=json&configure=1&stealth=1&lockdown=1&pwa=0&plugins=0&math=0&gapi=0&od=0&tr=0&gh=0&gl=0&drafts=0&splash=0&sync=none",
+  "configure": {
+   "compressXml": false
+  },
+  "writePath": "load (complete predicted after-state)",
+  "readBack": "export format=xml",
+  "scriptInAppFrame": false
+ },
+ "a_sourcePatches": {
+  "servedFilesMatchReleaseInEveryRun": true,
+  "servedFiles": 14,
+  "servedPaths": [
+   "index.html",
+   "styles/grapheditor.css",
+   "js/bootstrap.js",
+   "js/main.js",
+   "styles/high-contrast.css",
+   "js/PreConfig.js",
+   "js/app.min.js",
+   "mxgraph/css/common.css",
+   "js/PostConfig.js",
+   "resources/dia.txt",
+   "js/shapes-14-6-5.min.js",
+   "js/stencils.min.js",
+   "js/extensions.min.js",
+   "images/github-logo.svg"
+  ]
+ },
+ "b_externalRequests": {
+  "blockedPerReplayRun": [
+   0,
+   0,
+   0
+  ],
+  "blockedInCoverage": [
+   0,
+   0,
+   0
+  ],
+  "blockedInNegative": 0,
+  "blockedInProbes": 0,
+  "blockedInColdStarts": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "missingLocalFilesPerReplayRun": [
+   0,
+   0,
+   0
+  ],
+  "withoutStealthParameters": {
+   "params": "embed=1&proto=json",
+   "blocked": [],
+   "roundTripOk": true
+  }
+ },
+ "c_actionsAndRoundTrips": {
+  "runs": [
+   {
+    "run": 1,
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "roundTripsOk": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117,
+    "wallSeconds": 81.5
+   },
+   {
+    "run": 2,
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "roundTripsOk": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117,
+    "wallSeconds": 49.2
+   },
+   {
+    "run": 3,
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "roundTripsOk": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117,
+    "wallSeconds": 28.6
+   }
+  ],
+  "crossRunAgreement": {
+   "stepsCompared": 624,
+   "projectionDisagreements": 0
+  },
+  "actionsUsedByLibrary": [
+   "add_step",
+   "connect",
+   "delete_step",
+   "disconnect",
+   "group_steps",
+   "move_step",
+   "reconnect_end",
+   "rename_frame",
+   "rename_step",
+   "resize_step",
+   "set_frame",
+   "set_style"
+  ],
+  "coverage": [
+   {
+    "run": 1,
+    "nativeGroupsOnly": {
+     "ok": false,
+     "roundTripsOk": 22,
+     "roundTrips": 23,
+     "inexpressible": [
+      {
+       "step": 15,
+       "action": "set_frame",
+       "reason": "group members in different frames; a draw.io cell has one parent"
+      }
+     ]
+    },
+    "withDataAttributeGroups": {
+     "ok": true,
+     "roundTripsOk": 23,
+     "roundTrips": 23
+    },
+    "actionsCovered": [
+     "add_step",
+     "connect",
+     "delete_step",
+     "disconnect",
+     "group_steps",
+     "move_step",
+     "reconnect_end",
+     "rename_frame",
+     "rename_step",
+     "resize_step",
+     "set_frame",
+     "set_style",
+     "ungroup"
+    ]
+   },
+   {
+    "run": 2,
+    "nativeGroupsOnly": {
+     "ok": false,
+     "roundTripsOk": 22,
+     "roundTrips": 23,
+     "inexpressible": [
+      {
+       "step": 15,
+       "action": "set_frame",
+       "reason": "group members in different frames; a draw.io cell has one parent"
+      }
+     ]
+    },
+    "withDataAttributeGroups": {
+     "ok": true,
+     "roundTripsOk": 23,
+     "roundTrips": 23
+    },
+    "actionsCovered": [
+     "add_step",
+     "connect",
+     "delete_step",
+     "disconnect",
+     "group_steps",
+     "move_step",
+     "reconnect_end",
+     "rename_frame",
+     "rename_step",
+     "resize_step",
+     "set_frame",
+     "set_style",
+     "ungroup"
+    ]
+   },
+   {
+    "run": 3,
+    "nativeGroupsOnly": {
+     "ok": false,
+     "roundTripsOk": 22,
+     "roundTrips": 23,
+     "inexpressible": [
+      {
+       "step": 15,
+       "action": "set_frame",
+       "reason": "group members in different frames; a draw.io cell has one parent"
+      }
+     ]
+    },
+    "withDataAttributeGroups": {
+     "ok": true,
+     "roundTripsOk": 23,
+     "roundTrips": 23
+    },
+    "actionsCovered": [
+     "add_step",
+     "connect",
+     "delete_step",
+     "disconnect",
+     "group_steps",
+     "move_step",
+     "reconnect_end",
+     "rename_frame",
+     "rename_step",
+     "resize_step",
+     "set_frame",
+     "set_style",
+     "ungroup"
+    ]
+   }
+  ],
+  "coverageRunsAgree": true
+ },
+ "d_silentChanges": {
+  "cases": [
+   {
+    "id": "edge-missing-target",
+    "appChanged": true,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff",
+     "write check"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "duplicate-id",
+    "appChanged": true,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff",
+     "write check"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "parent-is-edge",
+    "appChanged": false,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff",
+     "integrity:edge_parent"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "parent-cycle",
+    "appChanged": true,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff",
+     "write check"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "invalid-colour",
+    "appChanged": false,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "unmodeled:unknown_colour"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "markup-label-html0",
+    "appChanged": false,
+    "detectedByProjectionCheck": false,
+    "detectedWithWriteCheck": false,
+    "loadEventEchoesInput": true,
+    "how": [],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "markup-label-html1",
+    "appChanged": false,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "integrity:markup_label"
+    ],
+    "requestsToLocalOrigin": [
+     "x"
+    ],
+    "dialogs": 0
+   },
+   {
+    "id": "non-integer-geometry",
+    "appChanged": false,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "integrity:non_integer"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "missing-parent",
+    "appChanged": true,
+    "detectedByProjectionCheck": false,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "write check"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "wrong-prediction",
+    "appChanged": false,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "labels-unicode",
+    "appChanged": false,
+    "detectedByProjectionCheck": false,
+    "detectedWithWriteCheck": false,
+    "loadEventEchoesInput": true,
+    "how": [],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   },
+   {
+    "id": "malformed-xml",
+    "appChanged": true,
+    "detectedByProjectionCheck": true,
+    "detectedWithWriteCheck": true,
+    "loadEventEchoesInput": true,
+    "how": [
+     "declared-set diff",
+     "write check"
+    ],
+    "requestsToLocalOrigin": [],
+    "dialogs": 0
+   }
+  ],
+  "silentWithWriteCheck": [],
+  "silentWithProjectionCheckOnly": [
+   "missing-parent"
+  ],
+  "firstPassSilent": [
+   "missing-parent"
+  ]
+ },
+ "e_startMemoryDownload": {
+  "start": {
+   "definition": "launchChromium call -> load event of the first (empty) diagram",
+   "coldMs": [
+    923,
+    749,
+    709,
+    703,
+    708
+   ],
+   "coldInitMs": [
+    891,
+    715,
+    676,
+    672,
+    675
+   ],
+   "coldMedianMs": 709,
+   "coldMaxMs": 923,
+   "warmMs": [
+    798,
+    721,
+    786
+   ],
+   "replayRunStartsMs": [
+    2179,
+    1545,
+    1133
+   ]
+  },
+  "memory": {
+   "peakChromiumTreeMB": [
+    578.99,
+    491.23,
+    564.69
+   ],
+   "peakNodeMB": [
+    320.18,
+    313.95,
+    333.97
+   ],
+   "chromiumProcesses": [
+    4,
+    4,
+    4
+   ],
+   "samples": [
+    105,
+    75,
+    66
+   ]
+  },
+  "download": {
+   "releaseAssetMB": 48.44,
+   "unpackedMB": 115.5,
+   "unpackedFiles": 3154,
+   "loadedByAppMB": 20.28,
+   "loadedByAppFiles": 14
+  }
+ },
+ "latency": {
+  "perReplayRun": [
+   {
+    "loadMedianMs": 7.9,
+    "loadP90Ms": 26.1,
+    "exportMedianMs": 3.1,
+    "exportP90Ms": 9.7
+   },
+   {
+    "loadMedianMs": 6.3,
+    "loadP90Ms": 14,
+    "exportMedianMs": 2.6,
+    "exportP90Ms": 6.5
+   },
+   {
+    "loadMedianMs": 4.6,
+    "loadP90Ms": 7.7,
+    "exportMedianMs": 1.7,
+    "exportP90Ms": 2.8
+   }
+  ],
+  "medianLoadMs": 6.3,
+  "medianExportMs": 2.6
+ },
+ "q5_exportStability": {
+  "tasks": 16,
+  "varyingRawAttributes": [
+   "id"
+  ],
+  "projectionsIdentical": true,
+  "projectionsEqualPrediction": true,
+  "compressedExport": {
+   "honoured": true,
+   "projectionEqualsPrediction": true
+  }
+ },
+ "counterProbes": {
+  "cases": 144,
+  "allFail": true
+ },
+ "exploratory": {
+  "merge": {
+   "mode": "merge",
+   "sequences": 55,
+   "ok": 0,
+   "failingOnlyOnCellCheck": 0,
+   "denied": [],
+   "missing": [],
+   "failureExamples": [
+    {
+     "task": "add-step",
+     "sequence": "reference",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-a54f8ecf15ec068773c08ca24112100b7d4522d48156a6f9401f9e194842: written but not read back"
+     ]
+    },
+    {
+     "task": "add-step",
+     "sequence": "near-1",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-7eeadc4c7c705b6808b313e0f3e22addf20e1ab459d084a6f9200ced29c8: written but not read back"
+     ]
+    },
+    {
+     "task": "add-step",
+     "sequence": "near-2",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-1f75d2fbbb23931654c7aa67ce9e5ed01bc935f05c2da9ede979660c7fc9: written but not read back"
+     ]
+    },
+    {
+     "task": "connect",
+     "sequence": "reference",
+     "ok": false,
+     "failures": [
+      "connect: declared set differs",
+      "connect: cells a-27244cee37f3f7b07167f4653b876638f60b3e55609d6c25904ab99aa22c: written but not read back"
+     ]
+    },
+    {
+     "task": "connect",
+     "sequence": "near-1",
+     "ok": false,
+     "failures": [
+      "connect: declared set differs",
+      "connect: cells a-b516ce76e7013f4a3b5481d1d1b06e4b192c180ed15e251d8f114bfe36a2: written but not read back"
+     ]
+    }
+   ]
+  },
+  "merge-sync": {
+   "mode": "merge-sync",
+   "sequences": 55,
+   "ok": 0,
+   "failingOnlyOnCellCheck": 0,
+   "denied": [],
+   "missing": [],
+   "failureExamples": [
+    {
+     "task": "add-step",
+     "sequence": "reference",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-a54f8ecf15ec068773c08ca24112100b7d4522d48156a6f9401f9e194842: written but not read back"
+     ]
+    },
+    {
+     "task": "add-step",
+     "sequence": "near-1",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-7eeadc4c7c705b6808b313e0f3e22addf20e1ab459d084a6f9200ced29c8: written but not read back"
+     ]
+    },
+    {
+     "task": "add-step",
+     "sequence": "near-2",
+     "ok": false,
+     "failures": [
+      "add_step: declared set differs",
+      "add_step: cells s-1f75d2fbbb23931654c7aa67ce9e5ed01bc935f05c2da9ede979660c7fc9: written but not read back"
+     ]
+    },
+    {
+     "task": "connect",
+     "sequence": "reference",
+     "ok": false,
+     "failures": [
+      "connect: declared set differs",
+      "connect: cells a-27244cee37f3f7b07167f4653b876638f60b3e55609d6c25904ab99aa22c: written but not read back"
+     ]
+    },
+    {
+     "task": "connect",
+     "sequence": "near-1",
+     "ok": false,
+     "failures": [
+      "connect: declared set differs",
+      "connect: cells a-b516ce76e7013f4a3b5481d1d1b06e4b192c180ed15e251d8f114bfe36a2: written but not read back"
+     ]
+    }
+   ]
+  },
+  "patch": {
+   "mode": "patch",
+   "sequences": 55,
+   "ok": 45,
+   "failingOnlyOnCellCheck": 0,
+   "denied": [],
+   "missing": [],
+   "failureExamples": [
+    {
+     "task": "group",
+     "sequence": "reference",
+     "ok": false,
+     "failures": [
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-f15dbf9548768c5b96e319c89880f13b5abafad890b6f0bf5a8d668fe315\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;",
+      "group_steps: declared set differs",
+      "group_steps: cells b: written [\"g-f15dbf9548768c5b96e319c89880f13b5abafad890b6f0bf5a8d668fe315\",\"Pack\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pack\",\"rounded=0;"
+     ]
+    },
+    {
+     "task": "group",
+     "sequence": "near-1",
+     "ok": false,
+     "failures": [
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-b85de6dce89fde4114a74cf5679bffcf6eafa763908e4e2a6a4e3138c518\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;",
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-b85de6dce89fde4114a74cf5679bffcf6eafa763908e4e2a6a4e3138c518\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;"
+     ]
+    },
+    {
+     "task": "group",
+     "sequence": "near-2",
+     "ok": false,
+     "failures": [
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-b85de6dce89fde4114a74cf5679bffcf6eafa763908e4e2a6a4e3138c518\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;"
+     ]
+    },
+    {
+     "task": "group",
+     "sequence": "near-3",
+     "ok": false,
+     "failures": [
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-f15dbf9548768c5b96e319c89880f13b5abafad890b6f0bf5a8d668fe315\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;",
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-f15dbf9548768c5b96e319c89880f13b5abafad890b6f0bf5a8d668fe315\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;"
+     ]
+    },
+    {
+     "task": "group",
+     "sequence": "near-4",
+     "ok": false,
+     "failures": [
+      "group_steps: declared set differs",
+      "group_steps: cells a: written [\"g-f15dbf9548768c5b96e319c89880f13b5abafad890b6f0bf5a8d668fe315\",\"Pick\",\"rounded=0;whiteSpace=wrap;html=0;strokeColor=#000000;fillColor=none;\",true,false,null, read [\"1\",\"Pick\",\"rounded=0;"
+     ]
+    }
+   ]
+  },
+  "params": {
+   "mode": "params",
+   "params": "embed=1&proto=json",
+   "roundTripOk": true,
+   "denied": [],
+   "missing": [],
+   "served": [
+    "index.html",
+    "styles/grapheditor.css",
+    "js/bootstrap.js",
+    "js/main.js",
+    "styles/high-contrast.css",
+    "js/PreConfig.js",
+    "js/app.min.js",
+    "mxgraph/css/common.css",
+    "js/PostConfig.js",
+    "resources/dia.txt",
+    "js/shapes-14-6-5.min.js",
+    "js/stencils.min.js",
+    "js/extensions.min.js",
+    "images/github-logo.svg"
+   ],
+   "timings": {
+    "launchMs": 461.481541,
+    "initMs": 1224.805166,
+    "firstLoadMs": 1258.6173749999998
+   },
+   "console": []
+  },
+  "render": {
+   "mode": "render",
+   "svg": {
+    "exports": [
+     {
+      "ms": 26,
+      "bytes": 11414,
+      "sha": "fbd83b23757466e7"
+     },
+     {
+      "ms": 13,
+      "bytes": 11414,
+      "sha": "5bc22f12f49a68d9"
+     }
+    ],
+    "identical": false,
+    "nonEmpty": true
+   },
+   "png": {
+    "exports": [
+     {
+      "ms": 14,
+      "bytes": 42482,
+      "sha": "46a261f17b4ef35b"
+     },
+     {
+      "ms": 13,
+      "bytes": 42482,
+      "sha": "46a261f17b4ef35b"
+     }
+    ],
+    "identical": true,
+    "nonEmpty": true
+   },
+   "denied": [],
+   "missing": [],
+   "console": []
+  }
+ }
+}
