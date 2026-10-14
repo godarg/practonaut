@@ -38,7 +38,7 @@ Measured or sourced on 2026-10-14 (details and sources in the [landscape note](r
 
 | Strength | Gap |
 |---|---|
-| A real, pinned Excalidraw engine confirms every action; a separate checker with counter-probes decides; replay is deterministic; hidden data stays hidden | **No headroom:** 36 of 36 Claude Code runs passed on the six hardest library tasks — Opus 5.5 and Haiku 5.5 alike. Today `bench` is a smoke test, not a measure of ability |
+| A real, pinned Excalidraw engine confirms every action; a separate checker with counter-probes decides; replay is deterministic; hidden data stays hidden | **No headroom:** 36 of 36 Claude Code runs passed on the six hardest library tasks — Opus 5.5 and Haiku 5.5 alike, both limited to Practonaut's seven tools (no file or shell access). Today `bench` is a smoke test, not a measure of ability; other vendors' agents are not measured yet |
 | One `npx`, no Docker, three operating systems in CI | **Only library tasks can be benched.** A task you author yourself can be practised over MCP but not benched or re-verified |
 | Tasks from two drawings, checked before they are written | **Expensive for agents:** every `act` reply repeats the whole view; 67 % of reply bytes are static, context grows quadratically with the number of actions |
 | Human and agent on one session, with the actor in the history | **Results say "passed?", not "why?":** no trajectory, no picture of the board, no tokens or cost, no comparison of two runs, "1.00" shown at n = 6 without an interval |
@@ -58,19 +58,22 @@ service, public rankings before scores are sealed.
 
 ## 5. North Star
 
-**External projects that run Practonaut repeatedly** — a public repository whose workflow,
-configuration or task pack uses Practonaut, or a maintainer who reports using it for decisions in
-at least two separate weeks. Counted from public evidence (code search, issues, discussions), never
-from telemetry, so every count is a lower bound.
+**External projects that use Practonaut repeatedly.** An *external project* counts when, in public
+and outside this project's own accounts, there is (a) a repository whose workflow, configuration or
+task pack runs Practonaut, or (b) a person or team reporting use in at least two separate weeks
+(issue, discussion, post), or (c) a published report or task pack that `report --verify` or
+`validate` accepts. Each project counts once. Counted from public evidence only (code search,
+issues, discussions), never from telemetry, so every count is a lower bound.
 
 Supporting signals: stars, npm downloads (trend only; mirrors and bots inflate them), issues and
 pull requests from people outside the project, external task packs, Practonaut badges in other
 READMEs.
 
-Targets are hypotheses with dates, reviewed at each checkpoint in the [roadmap](roadmap.md):
-3 external projects by 2026-12-31, 10 by 2027-03-31, 50 by 2027-09-30, 300 by 2028-06-30. A thousand
-regular users needs several integrations whose users keep the workflow; it is a direction, not a
-forecast.
+Targets are hypotheses, reviewed at the checkpoints in the [roadmap](roadmap.md): the first
+external project within six weeks after 0.2.0 ships (at the latest 2027-02-28), 10 by 2027-06-30,
+50 by 2027-12-31, 300 by 2028-12-31. A thousand regular users needs several integrations whose users
+keep the workflow; it is a direction, not a forecast. If the first checkpoint fails, the roadmap's
+narrowed plan applies.
 
 ## 6. Product principles
 
@@ -78,14 +81,16 @@ These add to the invariants in [architecture](architecture.md) §10; they do not
 
 1. **The checker is the product.** Verdicts come from the real application's state, a separate
    checker and counter-probes. Never a language-model judge, never the agent's own words.
-2. **Headroom or it does not count.** A task family is published only after a ladder of at least
-   three agents shows a spread: the strongest available agent passes between 10 % and 80 %, the
-   oracle 100 %, the random agent about 0 %, near misses fail.
+2. **Headroom or it does not count.** A task family is published only after a preregistered ladder
+   of at least three agents passes on fresh held-out instances: the strongest agent between 10 % and
+   80 %, a significant gap to the weakest, the oracle 100 %, the random agent at most 5 %, every near
+   miss failing (details: roadmap 0.2.0, item 4).
 3. **Your task, your tools.** The user's own tasks and toolchain are the main path; the bundled
    library is the example set and the shared yardstick.
 4. **Every number carries its n and its limits.** Fractions before rates, intervals at small n,
-   verification status, mirror and "self-reported" markers travel with every exported surface —
-   report, card, badge, comparison.
+   verification status, mirror, isolation level ("tool-restricted", "not restricted", "sealed") and
+   "self-reported" markers travel with every exported surface — report, card, badge, comparison. A
+   comparison says "not distinguishable" when the sample cannot tell.
 5. **Lean for agents.** Replies are sized for context windows: compact by default, full on request,
    one language unless asked for two.
 6. **One `npx` on the main path.** No Docker, no VM, no account. Containers appear only as optional
@@ -101,12 +106,12 @@ These add to the invariants in [architecture](architecture.md) §10; they do not
 
 | # | Bet | Why now | How it could fail | Cheapest test |
 |---|---|---|---|---|
-| B1 | **Measurement you can act on:** bench your own tasks, compare two agent configurations with honest statistics, see why a run failed, gate CI on regressions | Models, prompts, tool schemas and clients change monthly; developers lack state-based regression checks | Developers prefer their existing eval stack | One external project runs `compare` twice on its own task |
-| B2 | **Headroom by design:** harder task families (repair, prompt injection in content, long horizon with distractors, a human editing mid-run, hidden formal goals), a seeded generator with a difficulty knob | The library is saturated; labs retire tasks near 70 % success | New families still do not spread agents | Ladder run on a prototype family before building more |
+| B1 | **Measurement you can act on:** bench your own tasks, compare two agent configurations with honest statistics, see why a run failed, gate CI on instance regressions (a task that always passed now always fails) | Models, prompts, tool schemas and clients change monthly; developers lack state-based regression checks; agents repeat the same action sequence in most repeats, so instance regressions are meaningful at small n | Developers prefer their existing eval stack; rate differences stay "not distinguishable" at affordable n | One external project uses `compare` to make a change decision on its own task |
+| B2 | **Headroom by design:** harder task families (repair, prompt injection in content, long horizon with distractors, limited checks, tight budgets; later a human editing mid-run), a seeded generator with a difficulty knob | The library is saturated; labs retire tasks near 70 % success | New families still do not spread agents; two failed ladder rounds stop the bet | Ladder run on a prototype family before building more |
 | B3 | **Same task, any hands:** the same task and checker for Practonaut's actions, for the user's own tools (any MCP server, judged on the native artifact), later for GUI agents | Official app MCP servers exist; nobody compares interfaces on identical tasks | Third-party tools leave no readable state | Judge one official-server run on its exported `.excalidraw` |
 | B4 | **Meet agents where they live:** results inside chat clients (MCP Apps), export to Harbor/OpenEnv, verdict files for host evals, a GitHub Actions recipe | MCP Apps render in Claude, ChatGPT, VS Code, Cursor; Harbor and OpenEnv are where trainers look | Maintenance of bridges without demand | One bridge at a time, each with a user |
 | B5 | **Proven skills:** measure whether a skill, playbook or tool description helps, on held-out variants, against a same-length placebo | Skills are a cross-vendor format; their effect is mostly unmeasured | Effects are noise at small n | One paired A/B with an interval |
-| B6 | **Breadth along the vocabulary:** draw.io next (same diagram vocabulary, so every task runs on two apps), then bpmn-js (an app that enforces its own rules), then spreadsheets — a new domain only after the action-vocabulary decision | "One app" reads as a toy; draw.io has about 4.2 M VS Code installs and an official MCP server, Excalidraw's extension about 0.56 M | The local embed path breaks with an upstream release; a new domain costs as much as the first app | A preregistered draw.io spike with hard abort criteria (0.2.0) |
+| B6 | **Breadth along the vocabulary, then beyond diagrams:** draw.io next (same diagram vocabulary, so every task runs on two apps), then spreadsheets after an identity spike, then documents or Git — a new domain only after the action-vocabulary decision | "One app" reads as a toy; draw.io has about 4.2 M VS Code installs and an official MCP server, Excalidraw's extension about 0.56 M; spreadsheets are the largest agent demand | The local embed path breaks with an upstream release; diagram authors are a small pool; a new domain costs as much as the first app | Preregistered spikes with hard abort criteria (draw.io in 0.2.0, spreadsheets in 0.4.0) |
 
 ## 8. Milestones at a glance
 
@@ -115,7 +120,7 @@ These add to the invariants in [architecture](architecture.md) §10; they do not
 | 0.2.0 | **Real signal** | Does a Practonaut score tell two agents apart, and does it say why? |
 | 0.3.0 | **Two apps, your tools** | Can I score *my* toolchain, on more than one app, and keep it from regressing? |
 | 0.4.0 | **Where agents live** | Can I see results in my chat client, and trust scores of agents with shell access? |
-| 0.5.0 | **Beyond diagrams** | Does the approach hold for an app with its own rules, and for an MCP server as the app? |
+| 0.5.0 | **Beyond diagrams** | Does the approach hold for spreadsheets, and for an MCP server as the app? |
 | 0.6.0 | **Practice that transfers** | Does what an agent learned here help on tasks it has not seen? |
 | 0.7.0 | **Other hands** | How do API, MCP-tool and GUI agents compare on the same task? |
 | 1.0 | **Stable platform** | Can others build on Practonaut for years? |

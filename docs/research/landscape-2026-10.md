@@ -99,6 +99,8 @@ the machine, so latencies are ranges.
 | Claude Code, Opus 5.5 (seeds 1–2, 2 repeats) | 24 | 24 | 3.7–5.0 | 0 | 17–22 s |
 | Claude Code template, Haiku 5.5 (seeds 1–2) | 12 | 12 | 4.2 | 5 (`stale_base` from parallel calls) | 19 s |
 
+Both Claude agents ran with only Practonaut's seven MCP tools (`--tools ''` and an allow-list; the
+client's `init` event lists exactly those tools), so they could not read files or reference solutions.
 Every report re-verified with `report --verify`. No agent ever saw an unmet condition; the only error
 class was `stale_base` from two parallel `act` calls. Opus solved `reorder` in 2 instead of 4 actions and
 `insert-between` in 3 instead of 4: the reference solutions are not minimal, so "efficiency vs
