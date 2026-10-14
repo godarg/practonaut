@@ -1,7 +1,7 @@
 // Output helpers for the CLI: terminal-safe text and shareable paths.
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, normalize, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, normalize, relative, resolve, sep } from "node:path";
 
 // Everything outside printable ASCII is escaped: controls, bidi and format characters, tag
 // characters (U+E0000 block), soft hyphens, look-alikes. Output that may reach a terminal, a log
@@ -47,8 +47,11 @@ export function displayPath(p: string): string {
   const target = real(p);
   const rel = relative(real(process.cwd()), target);
   if (rel === "") return ".";
-  // Walking up out of the cwd into the home directory would spell out the account name.
-  const home = real(homedir());
-  if (rel.startsWith("..") && (target === home || target.startsWith(home + "/"))) return "~/" + relative(home, target).split("\\").join("/");
+  // Walking up out of the cwd into the home directory, or (Windows) onto another drive's home,
+  // would spell out the account name.
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    const home = real(homedir());
+    if (target === home || target.startsWith(home + sep)) return "~/" + relative(home, target).split("\\").join("/");
+  }
   return isAbsolute(rel) ? rel : rel.split("\\").join("/");
 }

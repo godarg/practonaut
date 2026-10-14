@@ -25,8 +25,11 @@ async function files(directory: string): Promise<string[]> {
   return (await readdir(directory, { recursive: true }).catch(() => [] as string[])).map(String);
 }
 
+// Windows cannot deliver SIGINT/SIGTERM/SIGHUP to another process: Node ends it abruptly, so no
+// handler runs. Ctrl+C handling is tested on POSIX; the Windows process-tree end is tested below.
+const POSIX_SIGNALS: string | false = process.platform === 'win32' ? 'POSIX signals cannot be sent to another process on Windows' : false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-  test(`${signal} during bench ends the agent and its child, closes the session and writes a partial report`, { timeout: 120_000 }, async () => {
+  test(`${signal} during bench ends the agent and its child, closes the session and writes a partial report`, { timeout: 120_000, skip: POSIX_SIGNALS }, async () => {
     const state = await mkdtemp(join(realpathSync(tmpdir()), 'pn-interrupt-')), home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-interrupt-home-'));
     let pids: { agent: number; child: number } | undefined;
     try {
@@ -54,7 +57,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   });
 }
 
-test('an interrupted bench before any run finished writes no report and exits 130', { timeout: 120_000 }, async () => {
+test('an interrupted bench before any run finished writes no report and exits 130', { timeout: 120_000, skip: POSIX_SIGNALS }, async () => {
   const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-interrupt-home-'));
   try {
     const bench = spawn(process.execPath, [CLI, 'bench', '--agent', `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} sleep {mcp_config}`, '--tasks', 'connect', '--mirror', 'off'], { env: { ...process.env, PRACTONAUT_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -1,0 +1,13 @@
+# Byte-exact checkouts on every platform. Schemas, the task library, fixtures and documents are
+# compared and hashed as bytes (schema:check, library:check, docs:check, world and package hashes);
+# a Windows checkout with core.autocrlf=true would otherwise rewrite them with CRLF.
+* text=auto eol=lf
+
+# Binary assets: never converted, never diffed as text.
+*.png binary
+*.woff2 binary
+*.tgz binary
+*.pnworld binary
+
+# Upstream file kept byte-identical to the vendored original (it ships with CRLF line endings).
+src/adapters/excalidraw/assets/fonts/Cascadia/LICENSE -text

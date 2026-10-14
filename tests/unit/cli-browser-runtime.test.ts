@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,8 +8,8 @@ import { test } from 'node:test';
 
 test('without Chromium: doctor warns, --adapter and --mirror required refuse with a setup remedy', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'pn-cli-browser-missing-'));
-  const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
-  const world = new URL('../../examples/worlds/flow-diagram', import.meta.url).pathname;
+  const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
+  const world = fileURLToPath(new URL('../../examples/worlds/flow-diagram', import.meta.url));
   const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(directory, 'empty-cache') };
   const run = (args: string[]) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 30_000, env });
   try {

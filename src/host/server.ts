@@ -3,7 +3,6 @@ import { connect } from "node:net";
 import { Resolver } from "node:dns/promises";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, open, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -24,6 +23,7 @@ import { CheckerError } from '../checker/index.ts';
 import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
+import { BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string }
 export const PLAYER_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; font-src 'self'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'";
@@ -51,7 +51,9 @@ class DiagnosticError extends Error {
 }
 async function privateDiagnostics(tokenFile: string, token: string, codes: () => readonly string[], authorToken?:string): Promise<{ write(record: MirrorDiagnostic): Promise<void>; close(): Promise<void>; discard(): Promise<void> }> {
   const path = tokenFile.replace(/\.token$/, '.mirror.jsonl');
-  const file = await open(path, EXCLUSIVE_CREATE | constants.O_APPEND, 0o600);
+  // Positioned writes instead of O_APPEND: Windows opens an append-only handle without the write
+  // access that truncation (the rotation below) needs.
+  const file = await open(path, EXCLUSIVE_CREATE, 0o600);
   const stat = await file.stat();
   if (!isPrivateFile(stat)) { await file.close(); throw new DiagnosticError('diagnostic_unavailable'); }
   let bytes = 0, generation = 0;
@@ -70,7 +72,7 @@ async function privateDiagnostics(tokenFile: string, token: string, codes: () =>
         if (body.length > DIAGNOSTIC_BYTES) throw new DiagnosticError('diagnostic_limit');
         // Rotate in-place: the most recent rejection is retained, total disk use stays bounded.
         if (bytes + body.length > DIAGNOSTIC_BYTES) { await file.truncate(0); bytes = 0; generation++; body = line(); }
-        await file.appendFile(body); await file.sync(); bytes += body.length;
+        await file.write(body, 0, body.length, bytes); await file.sync(); bytes += body.length;
       } catch (error) { if (error instanceof DiagnosticError) throw error; throw new DiagnosticError('diagnostic_unavailable'); }
     },
     // A diagnostics file that never received a record is not kept (no empty files left behind).
@@ -375,7 +377,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
       const step = async (operation: () => Promise<void>): Promise<void> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try { await Promise.race([Promise.resolve().then(operation), new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(3_000, deadline - performance.now())));
+          // Each step may take as long as a browser's own bounded close (graceful + forced); a shorter cap
+          // reported a slow but completed Chromium close on a loaded machine as unconfirmed.
+          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced, deadline - performance.now())));
         })]); } catch { failed = true; } finally { clearTimeout(timer); }
       };
       clearInterval(heartbeat);

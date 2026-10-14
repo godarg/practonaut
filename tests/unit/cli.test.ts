@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { HOSTILE_CASES, pkg, sha } from "../support/fixtures.ts";
@@ -78,7 +78,7 @@ describe("practonaut CLI", () => {
     assert.equal(r.status, 0, r.stderr);
     const j = JSON.parse(r.stdout) as { ok: boolean; path: string; world: { id: string }; archive: { sha256: string } };
     assert.equal(j.ok, true);
-    assert.equal(j.path, relative(tmp, out));
+    assert.equal(j.path, relative(tmp, out).split(sep).join("/"), "shown with / on every platform");
     assert.equal(j.world.id, "minimal");
     assert.equal(j.archive.sha256, sha(readFileSync(out)));
     assert.ok(!r.stdout.includes(homedir()), "home path leaked");

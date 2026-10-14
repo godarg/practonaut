@@ -8,6 +8,7 @@ import { createProjectStore } from '../../src/host/project-store.ts';
 import { prepareRepairProject } from '../../src/authoring/recovery.ts';
 import { canonicalJson, sha256Hex } from '../../src/canonical/index.ts';
 import { makeRecording } from './recorder-fixture.ts';
+import { POSIX } from '../support/platform.ts';
 
 const request = { expectedRevision: 0, title: 'Shorten the purchasing flow', author: 'Synthetic author', labels: ['Request', 'Approval', 'Purchase'] as [string,string,string] };
 async function temp() { return mkdtemp(join(await realpath(tmpdir()), 'pn-recovery-host-')); }
@@ -22,8 +23,7 @@ test('a named draft survives close and restart without recording, IDs stay priva
     const saved = await controller.save(reply.view.revision);
     assert.equal(saved.savedProjects?.[0]?.title.de, request.title);
     const path = join(dir,'projects',id+'.json');
-    assert.equal((await lstat(path)).mode & 0o777, 0o600);
-    assert.equal((await lstat(join(dir,'projects'))).mode & 0o777, 0o700);
+    if (POSIX) { assert.equal((await lstat(path)).mode & 0o777, 0o600); assert.equal((await lstat(join(dir,'projects'))).mode & 0o777, 0o700); }
     assert.deepEqual((await readdir(join(dir,'projects'))), [id+'.json']);
     await controller.close(); controller = await createAuthorController(dir);
     assert.equal((await controller.view()).project, null);
@@ -48,10 +48,11 @@ test('project reads/writes reject traversal, symlink, hardlink, permissions, for
     await assert.rejects(store.read('../outside'), /identifier/);
     await store.save(project); const file = join(path,'test-project.json');
     const original = await readFile(file);
-    await chmod(file,0o644); await assert.rejects(store.read(project.id), /unsafe/); await chmod(file,0o600);
+    if (POSIX) { await chmod(file,0o644); await assert.rejects(store.read(project.id), /unsafe/); await chmod(file,0o600); }
     const hard = join(dir,'hard'); await link(file,hard); await assert.rejects(store.save(project), /unsafe/); await unlink(hard);
     await unlink(file); const outside = join(dir,'outside'); await writeFile(outside,original,{mode:0o600}); await symlink(outside,file);
-    await assert.rejects(store.save(project), /safe|unsafe/); assert.deepEqual(await readFile(outside),original); await unlink(file);
+    // Refused by code: POSIX at open (O_NOFOLLOW), Windows right after opening.
+    await assert.rejects(store.save(project), (error: unknown) => (error as { code?: string }).code === 'project_store_unsafe'); assert.deepEqual(await readFile(outside),original); await unlink(file);
     await writeFile(file,original,{mode:0o600});
     const altered = JSON.parse(original.toString()); altered.project.notes='altered'; await writeFile(file,JSON.stringify(altered));
     await assert.rejects(store.read(project.id), /digest/); await writeFile(file,original);

@@ -86,7 +86,6 @@ test('native lifecycle pure: primary and cleanup error originals remain separate
 // Prepared real-process controls, never counted as runtime evidence until this exact test executes.
 for (const fault of ['initial-write-stall', 'primary-and-close-failure'] as const) {
   test(`native lifecycle real process: ${fault}, joined factory and immutable terminal originals`, { timeout: 90_000 }, async context => {
-    assert.equal(process.platform, 'darwin', 'Owned-process evidence is preregistered for macOS; no silent skip');
     const root = await mkdtemp(join(await realpath(tmpdir()), 'pn-native-lifecycle-'));
     context.diagnostic(`Native lifecycle control originals: ${root}`);
     const inputPath = join(root, 'input.excalidraw'), outputDirectory = join(root, 'attempt');
@@ -104,7 +103,9 @@ const ownedBrowserEvidence=async b=>({bound:b.isConnected(),parentOwner:true,res
 const fault=${JSON.stringify(fault)}, root=${JSON.stringify(root)}, outputDirectory=${JSON.stringify(outputDirectory)};
 const launch=chromium.launch.bind(chromium); let browser,realClose,started=false,launches=0,beforePending;
 chromium.launch=async options=>{
-  launches++; browser=await launch(options); realClose=browser.close.bind(browser);
+  // Counts started browsers. A start the system refused for the sandbox produced none; the Linux
+  // fallback that follows it (PADR-0032) is that same start, not a relaunch of a lost browser.
+  browser=await launch(options); launches++; realClose=browser.close.bind(browser);
   if(fault==='primary-and-close-failure') browser.close=async()=>{await realClose();return await new Promise(()=>{});};
   const newContext=browser.newContext.bind(browser);
   browser.newContext=async options=>{
@@ -210,7 +211,6 @@ test('native abort settlement pure: complete whole-byte candidate/terminal pair 
 });
 
 test('native abort settlement combined real process: pending initial write plus close reply after actual owned close', { timeout: 90_000 }, async context => {
-  assert.equal(process.platform, 'darwin', 'No silent unsupported-platform skip');
   const root = await mkdtemp(join(await realpath(tmpdir()), 'pn-abort-combined-'));
   context.diagnostic(`Combined abort settlement originals: ${root}`);
   const inputPath = join(root, 'input.excalidraw'), outputDirectory = join(root, 'attempt');
@@ -236,7 +236,8 @@ const watchdog=setTimeout(()=>{
   void Promise.resolve().then(()=>realClose?.()).finally(()=>{clearTimeout(hard);process.exit(124);});
 },84000);
 chromium.launch=async options=>{
-  launches++;browser=await launch(options);realClose=browser.close.bind(browser);mark('real-launch');
+  // Counts started browsers; a sandbox refusal and its Linux fallback are one start (PADR-0032).
+  browser=await launch(options);launches++;realClose=browser.close.bind(browser);mark('real-launch');
   browser.close=async()=>{mark('tested-close-entered');await realClose();actualCloseDone=true;mark('actual-owned-close-complete');closeReplyHeld=true;return await new Promise(()=>{});};
   const newContext=browser.newContext.bind(browser);
   browser.newContext=async options=>{

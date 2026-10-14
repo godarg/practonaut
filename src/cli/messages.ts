@@ -503,6 +503,14 @@ export const CLI_CATALOG = {
     "en": "starts (headless, sandbox on)",
     "de": "Startet (headless, Sandbox an)"
   },
+  "chromiumStartsUnsandboxed": {
+    "en": "starts (headless, sandbox off: this Linux system does not allow Chromium's sandbox; set PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead)",
+    "de": "Startet (headless, Sandbox aus: dieses Linux erlaubt die Chromium-Sandbox nicht; PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen)"
+  },
+  "sandboxFallbackNotice": {
+    "en": "practonaut: Chromium runs without its sandbox because this Linux system does not allow it (unprivileged user namespaces, AppArmor); the mirror only loads the bundled Excalidraw. Set PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead.\n",
+    "de": "practonaut: Chromium läuft ohne Sandbox, weil dieses Linux sie nicht erlaubt (unprivilegierte User-Namespaces, AppArmor); die Spiegelung lädt nur das mitgelieferte Excalidraw. PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen.\n"
+  },
   "chromiumStartFails": {
     "en": "installed but does not start: {detail}",
     "de": "Installiert, startet aber nicht: {detail}"

@@ -19,9 +19,12 @@ version is tagged ([docs/release.md](docs/release.md)).
 - **Real application in the loop.** Every action is applied to a pinned Excalidraw 0.18.1 engine
   running headless and read back before it counts. `practonaut setup` downloads Chromium once
   (naming the folder and size); without it sessions run model-only and say so
-  (`--mirror auto|required|off`). An installed Chromium that does not start (Linux sandbox under
-  AppArmor, missing libraries) is reported with its reason: `auto` runs model-only, `required`
-  fails as `browser_start_failed`, and `doctor` checks the start
+  (`--mirror auto|required|off`). Chromium starts with its sandbox; where Linux refuses only the
+  sandbox (Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor) it starts
+  once without it and the session and `doctor` say so; `PRACTONAUT_CHROMIUM_SANDBOX=require`
+  refuses that instead. An installed Chromium that still does not start (missing libraries, a
+  damaged download) is reported with its reason: `auto` runs model-only, `required` fails as
+  `browser_start_failed`, and `doctor` checks the start
   ([PADR-0032](docs/adr/0032-chromium-sandbox-stays-on.md)).
 - **Task library** (world `excalidraw-library` 1.1.0). 16 Excalidraw tasks
   (`practonaut tasks list`), from one-action edits to multi-action restructuring, each with three
@@ -37,7 +40,9 @@ version is tagged ([docs/release.md](docs/release.md)).
   workflow).
 - **Any MCP agent.** `practonaut mcp --task <task>` starts its own session and serves seven tools
   over stdio (`observe`, `list_actions`, `act`, `undo`, `reset`, `explain_result`,
-  `check_result`); `--host`/`--token-file` attaches to a session a person is using. Human and agent
+  `check_result`); `--host`/`--token-file` attaches to a session a person is using. Listed in the
+  official MCP Registry as `io.github.godarg/practonaut` (`server.json`, checked offline against
+  the pinned registry schema). Human and agent
   share one state and history. The public goal conditions (sentence and formal form) reach agents
   exactly as the Player shows them; reference solutions and near misses do not.
 - **Bench.** `practonaut bench` runs agents on library tasks across seeds and repeats, each run in
@@ -55,6 +60,23 @@ version is tagged ([docs/release.md](docs/release.md)).
   package checks with named rejection codes; `validate`, `pack`, `run`, `check` commands. A
   malformed request target gets 400 on the session and editor ports.
 
+### Fixed before publication (platform fixes from the first public CI run)
+
+- **Linux:** the real mirror did not start on Ubuntu 24.04 (Chromium sandbox under AppArmor); see
+  the sandbox fallback above. A root-owned sticky shared directory such as `/tmp` is accepted as an
+  ancestor of a pinned agent executable (no other user can swap entries below it).
+- **Windows:** text files are checked out with LF (`.gitattributes`), so schema, library and hash
+  checks compare the committed bytes. Running from a source checkout found the engine bundle only
+  with `/` paths, so the mirror never started. Mirror diagnostics now rotate (an append-only handle
+  cannot be truncated there). A session credential is written only when its file name is the
+  regular file just created (Windows has no `O_NOFOLLOW`). `tasks from-scenes` names a file on the
+  `--out` path as such, and a path in the home directory is shown from `~` also when the working
+  directory is on another drive.
+- **All platforms:** every option that takes a value also accepts `--option=value` (the form MCP
+  registries render); an empty value is refused.
+- CI runs the unit, integration, MCP and pack layers on Ubuntu, macOS and Windows and the browser
+  layers on Ubuntu; one Linux step lifts the AppArmor restriction and checks the sandboxed start.
+
 ### Limits
 
 - Excalidraw 0.18.1 is the only application.
@@ -65,3 +87,5 @@ version is tagged ([docs/release.md](docs/release.md)).
 - Whether practising improves a person's skill in the real tool has not been studied. Manual
   screen-reader and 200 % zoom checks have not been done.
 - CI covers Ubuntu, macOS and Windows; by hand, only macOS has been used.
+- On Windows, private files rely on the user profile's ACL (no POSIX modes); supervised client
+  evaluation in the repository tooling (`tools/agent-runs.ts`) is POSIX-only and refuses Windows.

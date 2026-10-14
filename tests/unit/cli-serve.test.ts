@@ -1,5 +1,6 @@
 // serve/play argument handling, mirror resolution and the browser-open command per platform.
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { BUNDLED_WORLD, fallbackNotice, parseServeArguments, resolveMirror, startHostWithMirror } from '../../src/cli/serve.ts';
@@ -14,7 +15,7 @@ import { join } from 'node:path';
 import { HELP_COMMANDS } from '../../src/cli/help.ts';
 import { RuntimeError } from '../../src/cli/runtime.ts';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[], env: NodeJS.ProcessEnv = process.env) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 30_000, env });
 const url = 'http://127.0.0.1:4321/#code=' + 'a'.repeat(32);
 
@@ -26,15 +27,20 @@ test('serve defaults: bundled world, seed 42, mirror auto, browser opens', () =>
 
 test('mirror auto falls back to model-only without Chromium or when it does not start; required refuses with a named error; off never probes', async () => {
   const probes = (installed: boolean, starts: StartResult | 'never') => ({ installed: async () => installed, starts: async (): Promise<StartResult> => { if (starts === 'never') throw new Error('must not start'); return starts; } });
-  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true })), { mode: 'required', fallback: false });
+  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true });
+  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: false })), { mode: 'required', fallback: false, sandbox: false });
   assert.deepEqual(await resolveMirror('auto', probes(false, 'never')), { mode: 'off', fallback: true, reason: 'missing' });
   assert.deepEqual(await resolveMirror('auto', probes(true, { ok: false, detail: 'No usable sandbox!' })), { mode: 'off', fallback: true, reason: 'start', detail: 'No usable sandbox!' });
-  assert.deepEqual(await resolveMirror('required', probes(true, { ok: true })), { mode: 'required', fallback: false });
+  assert.deepEqual(await resolveMirror('required', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true });
   await assert.rejects(resolveMirror('required', probes(false, 'never')), (error: unknown) => error instanceof RuntimeError && error.code === 'browser_runtime_missing');
   await assert.rejects(resolveMirror('required', probes(true, { ok: false, detail: 'No usable sandbox!' })), (error: unknown) => error instanceof RuntimeError && error.code === 'browser_start_failed' && /did not start \(No usable sandbox!\)/.test(error.message) && /--mirror off/.test(error.message));
   assert.deepEqual(await resolveMirror('off', { installed: async () => { throw new Error('must not probe'); }, starts: async () => { throw new Error('must not probe'); } }), { mode: 'off', fallback: false });
   assert.match(fallbackNotice({ mode: 'off', fallback: true, reason: 'start', detail: 'x' }), /installed but did not start \(x\)/);
   assert.equal(fallbackNotice({ mode: 'required', fallback: false }), '');
+  assert.equal(fallbackNotice({ mode: 'required', fallback: false, sandbox: true }), '');
+  // A mirror without its sandbox is said in one line, with the switch that refuses it.
+  const unsandboxed = fallbackNotice({ mode: 'required', fallback: false, sandbox: false });
+  assert.match(unsandboxed, /without its sandbox/); assert.match(unsandboxed, /PRACTONAUT_CHROMIUM_SANDBOX=require/); assert.equal(unsandboxed.trimEnd().split('\n').length, 1);
 });
 
 test('browser start failures are reported as one telling line with platform advice', () => {
@@ -63,8 +69,11 @@ test('the default browser opens a private launcher file, so the code never appea
     const html = await readFile(launcher.path, 'utf8');
     assert.match(html, new RegExp(`<meta http-equiv="refresh" content="0;url=${url.replace(/[.?/]/g, '\\$&')}">`));
     if (process.platform !== 'win32') { assert.equal((await lstat(launcher.path)).mode & 0o777, 0o600); assert.equal((await lstat(join(dir, 'host'))).mode & 0o777, 0o700); }
+    // The launcher path in the form each platform would hand over (a Windows run also checks the
+    // POSIX branches with the same file written as a POSIX path).
+    const posixForm = process.platform === 'win32' ? launcher.path.replace(/^[A-Za-z]:/, '').replaceAll('\\', '/') : launcher.path;
     for (const platform of ['darwin', 'linux', 'freebsd', 'win32'] as const) {
-      const { command, args } = openCommand(launcher.path, platform);
+      const { command, args } = openCommand(platform === 'win32' ? launcher.path : posixForm, platform);
       assert.equal([command, ...args].join(' ').includes('a'.repeat(32)), false, `${platform}: code in argv`);
       assert.equal(command, platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open');
     }

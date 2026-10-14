@@ -10,10 +10,14 @@ export function requireSameUser(identity: AgentIdentity): void {
   const uid = process.getuid?.(), gid = process.getgid?.();
   if (uid === undefined || gid === undefined || uid === 0 || identity.uid !== uid || identity.gid !== gid) throw new RuntimeError('evaluation_identity_unsupported', 'Root and cross-user evaluation are unsupported; only the current non-root uid/gid may run unsealed');
 }
+/** A shared directory others may write to is safe as an ancestor only when root owns it and its
+ * sticky bit is set (Linux /tmp, mode 1777): then no other user can rename or remove the entries
+ * below it that the coordinator owns, so the path to the client cannot be swapped. */
+const rootStickyShared = (stat: { uid: number; mode: number }): boolean => stat.uid === 0 && (stat.mode & 0o1000) !== 0;
 async function validateAncestors(path: string): Promise<void> {
   const root = parse(path).root; let cursor = root;
   for (const part of dirname(path).slice(root.length).split('/').filter(Boolean)) { cursor = join(cursor, part); const stat = await lstat(cursor);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.uid !== 0 && stat.uid !== process.getuid?.()) || (stat.mode & 0o022) !== 0) throw new RuntimeError('evaluation_client_unsafe', 'Client ancestor must be root/coordinator-owned, non-symlink and not group/world writable');
+    if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.uid !== 0 && stat.uid !== process.getuid?.()) || ((stat.mode & 0o022) !== 0 && !rootStickyShared(stat))) throw new RuntimeError('evaluation_client_unsafe', 'Client ancestor must be root/coordinator-owned, non-symlink and not group/world writable');
   }
 }
 async function fingerprint(path: string): Promise<{ sha256: string; size: number }> {

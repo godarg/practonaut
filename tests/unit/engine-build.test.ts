@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { applySourcePatches, buildEngine, themeBindings } from '../../tools/build-engine.ts';
 
 // Offline promise: the shipped engine never loads code or fonts from a public CDN.
@@ -24,14 +24,14 @@ test('the built engine bundle contains no unpkg/esm.sh/jsdelivr URL', { timeout:
     await buildEngine(output);
     const all = await files(output);
     const code = all.filter(path => /\.(js|css|html)$/.test(path));
-    assert.ok(code.some(path => path.endsWith('/engine.js')) && code.some(path => path.endsWith('/editor.js')));
+    assert.ok(code.some(path => path.endsWith(sep + 'engine.js')) && code.some(path => path.endsWith(sep + 'editor.js')));
     const offenders: string[] = [];
     for (const path of code) if (CDN.test(await readFile(path, 'utf8'))) offenders.push(path);
     assert.deepEqual(offenders, []);
     // Local fonts and notices travel with the bundle.
     assert.ok((await stat(join(output, 'fonts/Cascadia/CascadiaCode-Regular.woff2'))).size > 0);
     assert.ok((await stat(join(output, 'LICENSES.json'))).size > 0);
-    assert.ok(all.some(path => path.includes('/licenses/')));
+    assert.ok(all.some(path => path.includes(sep + 'licenses' + sep)));
     // The Mermaid converter is the local stub, the More-tools entry is hidden.
     const css = await readFile(join(output, 'engine.css'), 'utf8');
     assert.match(css, /toolbar-laser.{0,40}~.{0,40}toolbar-embeddable/);

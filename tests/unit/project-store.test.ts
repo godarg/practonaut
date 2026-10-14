@@ -57,7 +57,9 @@ test('committed symlinks and altered envelopes still fail closed on read',async(
   try{
     const original=await readFile(join(f.directory,'saved.json')),outside=join(f.root,'outside');
     await writeFile(outside,original,{mode:0o600});await symlink(outside,join(f.directory,'forged.json'));
-    await assert.rejects(f.store.list(),/safe|unsafe/);await assert.rejects(f.store.read('forged'),/safe|unsafe/);
+    // POSIX refuses the link when opening (O_NOFOLLOW); Windows has no O_NOFOLLOW and refuses it right after.
+    const unsafe=(error:unknown)=>(error as {code?:string}).code==='project_store_unsafe';
+    await assert.rejects(f.store.list(),unsafe);await assert.rejects(f.store.read('forged'),unsafe);
     await rm(join(f.directory,'forged.json'));const envelope=JSON.parse(original.toString());envelope.project.notes='altered';await writeFile(join(f.directory,'saved.json'),JSON.stringify(envelope));
     await assert.rejects(f.store.list(),/digest/);await assert.rejects(f.store.read('saved'),/digest/);
   }finally{await rm(f.root,{recursive:true,force:true});}

@@ -4,8 +4,9 @@ import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { prepareAgentMcpEntry } from '../../tools/agent-runs.ts';
+import { SUPERVISED_EVALUATION } from '../support/platform.ts';
 
 const host = { origin: 'http://127.0.0.1:12345', tokenFile: '/private/fixture/session-token' };
 const digest = (bytes: string): string => createHash('sha256').update(bytes).digest('hex');
@@ -27,11 +28,11 @@ test('the original caller retains its explicitly labeled source wrapper', async 
   assert.equal(entry.evidence.entrySha256, undefined);
   assert.equal(entry.evidence.entryVersion, undefined);
   assert.equal(entry.config.command, process.execPath);
-  assert.deepEqual(entry.config.args, ['--input-type=module', '-e', `const {commandMcp}=await import(${JSON.stringify(source)});process.exitCode=await commandMcp(process.argv.slice(1));`, '--', '--host', host.origin, '--token-file', host.tokenFile]);
+  assert.deepEqual(entry.config.args, ['--input-type=module', '-e', `const {commandMcp}=await import(${JSON.stringify(pathToFileURL(source).href)});process.exitCode=await commandMcp(process.argv.slice(1));`, '--', '--host', host.origin, '--token-file', host.tokenFile]);
   await entry.assertUnchanged();
 });
 
-test('a pinned installed entry configures the real CLI mcp subcommand on that same host', async () => {
+test('a pinned installed entry configures the real CLI mcp subcommand on that same host', { skip: SUPERVISED_EVALUATION }, async () => {
   const f = await fixture();
   try {
     const entry = await prepareAgentMcpEntry(host, f.request);
@@ -58,7 +59,7 @@ test('another source or entry is refused before a version process can run', asyn
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
-test('the whole-file hash and actual version must match explicit caller expectations', async () => {
+test('the whole-file hash and actual version must match explicit caller expectations', { skip: SUPERVISED_EVALUATION }, async () => {
   const f = await fixture();
   try {
     await assert.rejects(prepareAgentMcpEntry(host, { ...f.request, sha256: '0'.repeat(64) }), /hash/i);
@@ -68,7 +69,7 @@ test('the whole-file hash and actual version must match explicit caller expectat
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
-test('symlinks, directories and non-executable files cannot be selected as an installed entry', async () => {
+test('symlinks, directories and non-executable files cannot be selected as an installed entry', { skip: SUPERVISED_EVALUATION }, async () => {
   const f = await fixture();
   try {
     await chmod(f.path, 0o600);

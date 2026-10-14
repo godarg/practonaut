@@ -45,9 +45,11 @@ const fs = require("node:fs");
 const {execFileSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const bytes=fs.readFileSync(process.argv[2]);
-const names=execFileSync('tar',['-tzf',process.argv[2]],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
+// tar runs beside the tarball with a relative name: GNU tar (Git Bash on Windows) reads "C:\\..." as a remote host.
+const tarIn={cwd:require('node:path').dirname(process.argv[2])},tgzName=require('node:path').basename(process.argv[2]);
+const names=execFileSync('tar',['-tzf',tgzName],{...tarIn,encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
 if(names.some(p=>!/^package\/[A-Za-z0-9._/@+-]+$/.test(p))||new Set(names).size!==names.length)throw Error('Unsafe or duplicate tarball name');
-const types=execFileSync('tar',['-tvzf',process.argv[2]],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
+const types=execFileSync('tar',['-tvzf',tgzName],{...tarIn,encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
 if(types.length!==names.length||types.some(line=>!['-','d'].includes(line[0])))throw Error('Tarball links and special entries are refused before extraction');
 const entries=names.filter(p=>!p.endsWith('/'));
 if(entries.some(p=>!p.startsWith('package/')||p.includes('..'))||new Set(entries).size!==entries.length)throw Error('Unexpected or duplicate tarball member');
@@ -56,10 +58,13 @@ const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.starts
 const extra = files.filter((p) => !allowed(p));
 const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
 const missing = required.filter((p) => !files.includes(p));
-const packageMetadata = JSON.parse(execFileSync('tar',['-xOf',process.argv[2],'package/package.json'],{encoding:'utf8',maxBuffer:1024*1024}));
+const packageMetadata = JSON.parse(execFileSync('tar',['-xOzf',tgzName,'package/package.json'],{...tarIn,encoding:'utf8',maxBuffer:1024*1024}));
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
 const lifecycle = ['preinstall', 'install', 'postinstall', 'prepare'].filter(name => Object.hasOwn(packageMetadata.scripts ?? {}, name));
 if (packageMetadata.private !== false || !packageMetadata.bin?.practonaut) { console.error('test:pack: FAIL package must be public with a practonaut bin'); process.exit(1); }
+// The MCP Registry verifies npm ownership through mcpName in the published package.json; server.json itself is not shipped.
+if (packageMetadata.mcpName !== 'io.github.godarg/practonaut') { console.error('test:pack: FAIL package.json must carry mcpName io.github.godarg/practonaut'); process.exit(1); }
+if (files.includes('server.json')) { console.error('test:pack: FAIL server.json belongs to the registry entry, not the package'); process.exit(1); }
 console.log(`test:pack: exact candidate: ${files.length} files, ${bytes.length} bytes packed, sha256=${createHash('sha256').update(bytes).digest('hex')}`);
 let bad = false;
 if (lifecycle.length) { console.error(`test:pack: FAIL install-time lifecycle scripts: ${lifecycle.join(', ')}`); bad = true; } else console.log('test:pack: ok   no install-time lifecycle scripts');
@@ -77,26 +82,38 @@ for WORLD in "$ROOT/examples/worlds/flow-diagram" ""; do
   node - "$WORLD" "${NPX[@]}" <<'NODE'
 const {spawn}=require('node:child_process');
 const [world,...command]=process.argv.slice(2);
-const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe']});
+// Ctrl+C goes to the CLI process itself (its pid is in the token file name): a signal to npx alone
+// does not reach a CLI behind Linux's dash, and npx then reports its own interruption, not the CLI's.
+const posix=process.platform!=='win32';
+const child=spawn(command[0],[...command.slice(1),'serve',...(world?[world]:[]),'--no-open','--mirror','off'],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
 let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
-const timer=setTimeout(()=>{console.error(out);child.kill('SIGKILL');process.exit(1);},60_000);
+// Generous: a cold npx on a Windows runner has taken over a minute before the CLI printed anything.
+const timer=setTimeout(()=>{console.error('no session link within 180 s:\n'+out);child.kill('SIGKILL');process.exit(1);},180_000);
 const poll=setInterval(()=>{
   const link=/^Open: http:\/\/127\.0\.0\.1:\d+\/#code=[0-9a-f]{32}$/m.test(out),token=/^Token file: (.+)$/m.exec(out)?.[1];
   if(!link||!token)return;
   clearInterval(poll);
-  if(!token.startsWith(process.env.PRACTONAUT_HOME)){console.error('token outside PRACTONAUT_HOME: '+token);process.exit(1);}
+  // Compared as real paths: Windows mixes 8.3 short names, long names and both separators.
+  const real=p=>require('node:fs').realpathSync.native(p);
+  if(!real(token).startsWith(real(process.env.PRACTONAUT_HOME))){console.error('token outside PRACTONAUT_HOME: '+token);process.exit(1);}
   if(!/world flow-diagram/.test(out)){console.error(out);process.exit(1);}
-  child.once('exit',code=>{clearTimeout(timer);process.exit(code===0?0:1);});child.kill('SIGINT');
+  // Windows cannot deliver Ctrl+C to another process; there the session is ended and only the link is checked.
+  child.once('exit',code=>{clearTimeout(timer);process.exit(code===0||!posix?0:1);});if(posix)process.kill(Number(/session-(\d+)-[0-9a-f]{32}\.token$/.exec(token)[1]),'SIGINT');else child.kill();
 },50);
 NODE
   RC=$?
   [ $RC -eq 0 ] && ok "npx practonaut serve ${WORLD:+<world> }--no-open prints a one-use link and stops on Ctrl+C" || fail "npx practonaut serve ${WORLD:+<world> }--no-open -> exit $RC"
 done
-# The one-line agent setup: `npx practonaut mcp --task excalidraw/connect` must answer MCP initialize and tools/list.
-node - "${NPX[@]}" <<'NODE'
+# The one-line agent setup, exactly as the MCP Registry entry starts it: the arguments come from
+# server.json (`mcp --task excalidraw/connect`, default mirror) and must answer initialize and tools/list.
+node - "$ROOT/server.json" "${NPX[@]}" <<'NODE'
 const {spawn}=require('node:child_process');
-const command=process.argv.slice(2);
-const child=spawn(command[0],[...command.slice(1),'mcp','--task','excalidraw/connect','--mirror','off'],{stdio:['pipe','pipe','pipe']});
+const [serverJson,...command]=process.argv.slice(2);
+const entry=JSON.parse(require('node:fs').readFileSync(serverJson,'utf8')).packages.find(p=>p.registryType==='npm');
+if(entry.packageArguments.some(a=>a.type!=='positional'||typeof a.value!=='string')){console.error('server.json arguments must be literal positional values');process.exit(1);}
+const args=entry.packageArguments.map(a=>a.value);
+if(args.join(' ')!=='mcp --task excalidraw/connect'){console.error('server.json arguments: '+args.join(' '));process.exit(1);}
+const child=spawn(command[0],[...command.slice(1),...args],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
 let out='',err='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
 const timer=setTimeout(()=>{console.error(err);child.kill('SIGKILL');process.exit(1);},90_000);
 const send=m=>child.stdin.write(JSON.stringify(m)+'\n');
@@ -115,7 +132,7 @@ const poll=setInterval(()=>{
 },50);
 NODE
 RC=$?
-[ $RC -eq 0 ] && ok "npx practonaut mcp --task excalidraw/connect answers initialize and tools/list, link on stderr only" || fail "npx practonaut mcp --task -> exit $RC"
+[ $RC -eq 0 ] && ok "npx <tarball> with the server.json arguments (mcp --task excalidraw/connect) answers initialize and tools/list, link on stderr only" || fail "npx <tarball> mcp --task (server.json arguments) -> exit $RC"
 [ -z "$(ls -A "$TMP/empty")" ] && ok "npx left the working directory empty" || fail "npx wrote into the working directory: $(ls -A "$TMP/empty")"
 
 mkdir -p "$TMP/app"
@@ -187,9 +204,11 @@ NODE
 
 cd "$ROOT"
 node src/cli/main.ts pack examples/worlds/minimal --out "$TMP/repo.pnworld" >/dev/null || fail "repository pack"
-A="$(shasum -a 256 "$TMP/installed.pnworld" | cut -d' ' -f1)"
-B="$(shasum -a 256 "$TMP/repo.pnworld" | cut -d' ' -f1)"
-if [ "$A" = "$B" ]; then ok "installed and repository world packs are byte-identical in this source/environment ($A)"; else fail "pack differs: installed $A, repository $B"; fi
+# Hashed by node: shasum is not on every platform (Git Bash on Windows), and an empty hash on both sides must never pass.
+sha256() { node -e 'process.stdout.write(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$1"; }
+A="$(sha256 "$TMP/installed.pnworld")"
+B="$(sha256 "$TMP/repo.pnworld")"
+if [ ${#A} -eq 64 ] && [ "$A" = "$B" ]; then ok "installed and repository world packs are byte-identical in this source/environment ($A)"; else fail "pack differs: installed $A, repository $B"; fi
 
 if [ $FAILED -eq 0 ]; then echo "test:pack: PASSED"; else echo "test:pack: FAILED" >&2; fi
 exit $FAILED

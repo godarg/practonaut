@@ -4,16 +4,16 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "
 import { join, resolve } from "node:path";
 import { HOST_LIMITS, RequestBudget } from "../../src/host/limits.ts";
 import { createTokenFile } from "../../src/host/token-file.ts";
+import { POSIX } from "../support/platform.ts";
 
 async function fixture(): Promise<string> { await mkdir(".local", { recursive: true }); return mkdtemp(resolve(".local/host-unit-")); }
 test("token files are exclusive 0600, inside 0700 owned directory, removed by owner", async () => {
   const dir = await fixture();
   try {
     const token = await createTokenFile(join(dir, "runtime"), "test-runtime-capability");
-    assert.equal((await lstat(join(dir, "runtime"))).mode & 0o777, 0o700);
-    assert.equal((await lstat(token.path)).mode & 0o777, 0o600);
+    if (POSIX) { assert.equal((await lstat(join(dir, "runtime"))).mode & 0o777, 0o700); assert.equal((await lstat(token.path)).mode & 0o777, 0o600); }
     assert.equal((await lstat(token.path)).nlink, 1);
-    assert.equal((await lstat(token.path)).uid, process.getuid?.());
+    if (POSIX) assert.equal((await lstat(token.path)).uid, process.getuid?.());
     assert.equal(await readFile(token.path, "utf8"), "test-runtime-capability\n");
     await token.remove(); await assert.rejects(lstat(token.path), { code: "ENOENT" });
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -26,12 +26,12 @@ test("symlink directory, ancestor, file and existing readable file fail closed",
     for (const target of [link, join(link, "nested")]) await assert.rejects(createTokenFile(target, "test"), { code: "token_file_unsafe" });
     const occupied = join(safe, "session-fixed.token"); await writeFile(occupied, "other", { mode: 0o644 });
     await assert.rejects(createTokenFile(safe, "test", "session-fixed.token"), { code: "token_file_unsafe" });
-    assert.equal(await readFile(occupied, "utf8"), "other"); assert.equal((await lstat(occupied)).mode & 0o777, 0o644);
+    assert.equal(await readFile(occupied, "utf8"), "other"); if (POSIX) assert.equal((await lstat(occupied)).mode & 0o777, 0o644);
     await rm(occupied); await symlink(join(dir, "victim"), occupied);
     await assert.rejects(createTokenFile(safe, "test", "session-fixed.token"), { code: "token_file_unsafe" });
     assert.equal((await lstat(occupied)).isSymbolicLink(), true);
     await assert.rejects(createTokenFile(safe, "test", "../escaped.token"), { code: "token_file_unsafe" });
-    await chmod(safe, 0o755); await assert.rejects(createTokenFile(safe, "test"), { code: "token_file_unsafe" });
+    if (POSIX) { await chmod(safe, 0o755); await assert.rejects(createTokenFile(safe, "test"), { code: "token_file_unsafe" }); }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test("shutdown refuses to delete a replacement credential file", async () => {

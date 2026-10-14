@@ -1,5 +1,6 @@
 // tasks list | show | from-scenes. play <task-id> needs the built Player: tests/integration/cli-play.test.ts.
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -8,7 +9,7 @@ import { join } from 'node:path';
 import { validateWorld } from '../../src/world/schema.ts';
 import { box, scene, arrow } from '../support/scenes.ts';
 
-const main = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const cli = (args: string[], cwd?: string) => spawnSync(process.execPath, [main, ...args], { encoding: 'utf8', timeout: 60_000, ...(cwd ? { cwd } : {}) });
 
 test('tasks list and show describe the bundled library in both languages', () => {

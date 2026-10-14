@@ -1,7 +1,8 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,realpath,mkdir,writeFile,readFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {createHash} from 'node:crypto';
 import {startHost} from '../../src/host/server.ts';import {validateWorld} from '../../src/world/index.ts';import {runRealAgent} from '../../tools/agent-runs.ts';
-test('supervised client reports bind an explicit executable and a fresh solution-free cwd',{timeout:20000},async()=>{
+import {SUPERVISED_EVALUATION} from '../support/platform.ts';
+test('supervised client reports bind an explicit executable and a fresh solution-free cwd',{skip:SUPERVISED_EVALUATION,timeout:20000},async()=>{
  const root=await mkdtemp(join(await realpath(tmpdir()),'pn-client-evidence-'));const assets=join(root,'player');await mkdir(assets);for(const name of ['index.html','player.js','player.css','tokens.css'])await writeFile(join(assets,name),'fixed');
  const world=validateWorld(JSON.parse(await readFile('tests/fixtures/core/world.json','utf8')));const host=await startHost(world,{mirror:'off',assetDirectory:assets,tokenDirectory:join(root,'tokens')});
  const client=join(root,'fixture-client');const program='#!'+process.execPath+'\nconst fs=require("node:fs");if(process.argv.includes("--version")){console.log("fixture-version/client-attested");}else{const entries=fs.readdirSync(process.cwd()).sort();if(JSON.stringify(entries)!==JSON.stringify(["mcp.json"]))process.exit(9);console.error(JSON.stringify({cwd:process.cwd(),entries}));console.log(JSON.stringify({type:"assistant",message:{model:"fixture/model-attested",content:[{type:"tool_use",name:"mcp__practonaut__observe"}]}}));console.log(JSON.stringify({type:"result",is_error:false}));}\n';await writeFile(client,program,{mode:0o700});await writeFile(join(root,'human-reference.excalidraw'),'HUMAN_REFERENCE_NOT_AVAILABLE_IN_CLIENT_CWD');
@@ -11,13 +12,13 @@ test('supervised client reports bind an explicit executable and a fresh solution
   await writeFile(client,'#!'+process.execPath+'\nprocess.exit(3)\n',{mode:0o700});await assert.rejects(runRealAgent(host,'Synthetic failure',join(root,'failed'),{clientPath:client}),/version probe failed/);assert.equal(JSON.parse(await readFile(join(root,'failed','failure.json'),'utf8')).phase,'version-probe');
  }finally{await host.close();await rm(root,{recursive:true,force:true});}
 });
-for(const fill of [65,255])test(`client evidence stops retaining output at the byte limit, input byte ${fill}`,{timeout:15000},async()=>{
+for(const fill of [65,255])test(`client evidence stops retaining output at the byte limit, input byte ${fill}`,{skip:SUPERVISED_EVALUATION,timeout:15000},async()=>{
  const root=await mkdtemp(join(await realpath(tmpdir()),'pn-client-output-'));const assets=join(root,'player');await mkdir(assets);for(const name of ['index.html','player.js','player.css','tokens.css'])await writeFile(join(assets,name),'fixed');
  const host=await startHost(validateWorld(JSON.parse(await readFile('tests/fixtures/core/world.json','utf8'))),{mirror:'off',assetDirectory:assets,tokenDirectory:join(root,'tokens')});const client=join(root,'fixture-client');await writeFile(client,'#!'+process.execPath+'\nif(process.argv.includes("--version")){console.log("fixture-version");}else{process.on("SIGTERM",()=>{});console.error(JSON.stringify({pid:process.pid}));const bytes=Buffer.alloc(1024*1024,'+fill+');for(let index=0;index<40;index++)process.stdout.write(bytes);setInterval(()=>{},1000);}\n',{mode:0o700});
  try{await assert.rejects(runRealAgent(host,'Synthetic bounded output',join(root,'report'),{clientPath:client,timeoutMs:5000}),/evidence budget/);const output=await readFile(join(root,'report','stream.jsonl'));assert.ok(output.length>0);assert.ok(output.length<=16*1024*1024,'post-limit termination wait must discard additional output');const {pid}=JSON.parse((await readFile(join(root,'report','stderr.log'),'utf8')).trim());assert.throws(()=>process.kill(pid,0),{code:'ESRCH'});
  }finally{await host.close();await rm(root,{recursive:true,force:true});}
 });
-test('supervised helper exports exact bytes from the running host, retaining rejected candidates',{timeout:25000},async()=>{
+test('supervised helper exports exact bytes from the running host, retaining rejected candidates',{skip:SUPERVISED_EVALUATION,timeout:25000},async()=>{
  const {createPracticeController}=await import('../../src/host/session.ts');const {createProductionMirror}=await import('../../src/host/mirror.ts');
  const root=await mkdtemp(join(await realpath(tmpdir()),'pn-client-export-'));const assets=join(root,'player');await mkdir(assets);for(const name of ['index.html','player.js','player.css','tokens.css'])await writeFile(join(assets,name),'fixed');
  const world=validateWorld(JSON.parse(await readFile('examples/worlds/flow-diagram/world.json','utf8')));let exports=0,captured:any,badHash=false;

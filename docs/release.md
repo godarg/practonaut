@@ -13,6 +13,12 @@ maintainer rights can start it; the publish step waits for a manual approval.
 - npm provenance, created by GitHub Actions through trusted publishing (OIDC). No npm token is
   stored anywhere.
 - A GitHub release for the tag, with the matching `CHANGELOG.md` section as its notes.
+- The entry in the official [MCP Registry](https://registry.modelcontextprotocol.io): `server.json`
+  in the repository root (name `io.github.godarg/practonaut`, npm package, stdio,
+  `mcp --task excalidraw/connect`). It is not part of the npm package; the package carries the
+  matching `mcpName`, which the registry checks against npm. `npm run check` validates
+  `server.json` offline against the pinned schema (`tools/vendor/mcp-registry/`) and requires its
+  versions to equal `package.json`.
 
 ## 2. One-time setup
 
@@ -38,8 +44,8 @@ Node version that ships a recent npm. See npm's
 
 ## 3. Cutting a release
 
-1. On a branch: set `version` in `package.json` (and `npm install --package-lock-only` to update the
-   lockfile), move the `Unreleased` entries in `CHANGELOG.md` into a `## [X.Y.Z] - YYYY-MM-DD`
+1. On a branch: set `version` in `package.json` and both versions in `server.json` (and
+   `npm install --package-lock-only` to update the lockfile), move the `Unreleased` entries in `CHANGELOG.md` into a `## [X.Y.Z] - YYYY-MM-DD`
    section, open a pull request and merge it when CI is green. `release.yml` finds the section by
    its version alone (`## [X.Y.Z]`), whatever follows it.
 
@@ -61,6 +67,9 @@ Node version that ships a recent npm. See npm's
    publish job then publishes that tarball with `--provenance` and creates the GitHub release.
 5. Check the result: `npm view practonaut version`, the provenance badge on npmjs.com, and
    `npx -y practonaut@X.Y.Z --help` in an empty directory.
+6. Publish the registry entry (after the npm version exists): `mcp-publisher login github`, then
+   `mcp-publisher publish` in the repository root, and check
+   `https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.godarg/practonaut`.
 
 If a step fails before the publish job, fix it on `main`, delete the tag and tag again. A published
 version cannot be replaced; publish a new patch version instead.

@@ -43,6 +43,10 @@ export async function createTokenFile(directory: string, token: string, filename
     let own: { ino: number; dev: number } | undefined;
     try {
       const stat = await handle.stat();
+      // Windows has no O_NOFOLLOW: an exclusive create can go through a planted dangling link.
+      // The name itself must be the regular file just opened, before any credential is written.
+      const named = await lstat(path);
+      if (named.isSymbolicLink() || named.ino !== stat.ino || named.dev !== stat.dev) throw new TokenFileError();
       if (!isPrivateFile(stat)) throw new TokenFileError();
       own = { ino: stat.ino, dev: stat.dev };
       await handle.writeFile(token + "\n", "utf8");

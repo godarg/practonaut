@@ -1,6 +1,6 @@
 import { cliText } from './messages.ts';
 import { chromiumCheck } from './doctor.ts';
-import { browserAdvice, chromiumStarts } from './browser-start.ts';
+import { browserAdvice, chromiumStarts, sandboxFallbackNotice } from './browser-start.ts';
 import { spawn } from "node:child_process";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -16,11 +16,13 @@ import { loadCheckerBundle } from "../checker/bundle.ts";
 import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
+import { inlineOptionValues } from './options.ts';
 export class RuntimeError extends Error {
   readonly code: string;
   constructor(code:string,message:string){super(message);this.name="RuntimeError";this.code=code;}
 }
-function options(args:string[],allowed: string[]): {path:string;flags:Record<string,string>} {
+function options(given:string[],allowed: string[]): {path:string;flags:Record<string,string>} {
+ const args=inlineOptionValues(given,allowed);
  const flags:Record<string,string>={};const paths:string[]=[];
  for(let i=0;i<args.length;i++) { const a=args[i]!;if(a.startsWith("--")){if(!allowed.includes(a))throw new RuntimeError("usage",cliText("optionUnknown", { option: a }));const value=args[++i];if(!value||value.startsWith("--"))throw new RuntimeError("usage",cliText("optionValue", { option: a }));if(Object.hasOwn(flags,a))throw new RuntimeError("usage",cliText("optionDuplicate", { option: a }));flags[a]=value;}else paths.push(a);}
  if(paths.length!==1)throw new RuntimeError("usage",cliText("inputUsage"));return {path:paths[0]!,flags};
@@ -56,7 +58,7 @@ export async function commandRun(args:string[]):Promise<number>{
  if(flags["--export"]&&mirror==="off")throw new RuntimeError("usage",cliText("nativeExport"));
  if(mirror==='required'){
   if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing'));
-  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));
+  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];

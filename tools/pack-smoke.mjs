@@ -2,14 +2,21 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { chromium } from 'playwright-core';
+import { launchChromium } from '../src/adapters/excalidraw/chromium.ts';
 
 const [bin, world] = process.argv.slice(2);
 assert.ok(bin && world, 'usage: pack-smoke.mjs <installed-bin> <world>');
-const serve = spawn(bin, ['serve', world, '--seed', '42', '--task', 'T3', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+// On Windows the installed bin is a .cmd shim, which Node does not spawn without a shell; start the
+// installed entry it points to with this Node instead (the shim itself is run by test-pack.sh).
+const installedMain = join(dirname(bin), '..', 'practonaut', 'dist', 'cli', 'main.js');
+const [command, ...prefix] = process.platform === 'win32' ? [process.execPath, installedMain] : [bin];
+const serve = spawn(command, [...prefix, 'serve', world, '--seed', '42', '--task', 'T3', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
 let stdout = ''; let stderr = '';
 serve.stdout.on('data', bytes => { stdout += bytes.toString(); });
 serve.stderr.on('data', bytes => { stderr += bytes.toString(); });
@@ -30,8 +37,10 @@ try {
   assert.equal(stdout.includes(token), false, 'practice credential contents stay private');
   const resumed = await (await fetch(origin + '/api/resume', { headers: { 'X-Practonaut-Token': token } })).json();
   assert.equal(resumed.ok, true); assert.equal(Object.hasOwn(resumed.value, 'authorToken'), false); assert.equal(Object.hasOwn(resumed.value, 'token'), false);
-  assert.equal(tokenFile.startsWith(process.env.PRACTONAUT_HOME), true, 'installed CLI keeps credentials under PRACTONAUT_HOME');
-  browser = await chromium.launch({ headless: true, chromiumSandbox: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
+  // Compared as real paths: Windows mixes 8.3 short names, long names and both separators.
+  assert.equal(realpathSync.native(tokenFile).startsWith(realpathSync.native(process.env.PRACTONAUT_HOME)), true, 'installed CLI keeps credentials under PRACTONAUT_HOME');
+  // Started like the product's mirror: sandbox first, on Linux once without it if the system refuses it.
+  ({ browser } = await launchChromium(chromium, () => ({ headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false })));
   const context = await browser.newContext({ serviceWorkers: 'block', reducedMotion: 'reduce' });
   const external = []; let bootstrapRequests = 0;
   await context.addInitScript(() => {
@@ -67,7 +76,7 @@ try {
   client = new Client({ name: 'practonaut-packed-smoke', version: '1.0.0' }, {
     versionNegotiation: { mode: { pin: '2026-07-28' } },
   });
-  await client.connect(new StdioClientTransport({ command: bin, args: ['mcp', '--host', origin, '--token-file', tokenFile], stderr: 'pipe' }));
+  await client.connect(new StdioClientTransport({ command, args: [...prefix, 'mcp', '--host', origin, '--token-file', tokenFile], stderr: 'pipe' }));
   assert.deepEqual((await client.listTools()).tools.map(t => t.name).sort(), ['observe', 'list_actions', 'act', 'undo', 'reset', 'explain_result', 'check_result'].sort());
   const call = async (name, args = {}) => {
     const result = await client.callTool({ name, arguments: args });
@@ -107,6 +116,10 @@ try {
     } finally { clearTimeout(timer); }
   }
   // Connection capabilities and bootstrap URL are intentionally never logged.
-  assert.equal(serve.exitCode, 0, 'Installed serve must close cleanly.');
-  assert.equal(stderr.length === 0, true, 'Installed serve emitted an unexpected diagnostic.');
+  // Windows cannot deliver SIGINT to another process (Node ends it abruptly), so a clean exit code is a POSIX check.
+  if (process.platform !== 'win32') assert.equal(serve.exitCode, 0, 'Installed serve must close cleanly.');
+  // The one diagnostic serve may print: the Linux start without the Chromium sandbox (PADR-0032), one line.
+  const SANDBOX_NOTICE = /^practonaut: Chromium runs without its sandbox because this Linux system does not allow it [^\n]*\n/;
+  const diagnostics = process.platform === 'linux' ? stderr.replace(SANDBOX_NOTICE, '') : stderr;
+  assert.equal(diagnostics.length === 0, true, 'Installed serve emitted an unexpected diagnostic.');
 }

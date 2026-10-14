@@ -42,7 +42,7 @@ async function gesture(page:Page,name:ActionNameV1):Promise<void>{
   await page.mouse.click(a.x,a.y);
   try{await page.waitForFunction('window.__demo.api.getAppState().selectedElementIds.a === true',{},{timeout:5000});}
   catch{throw new Error('Native duplication was not attempted: the intended step was not selected.');}
-  await page.keyboard.press('Meta+d');
+  await page.keyboard.press('ControlOrMeta+d'); // Excalidraw duplicates with Cmd on macOS, Ctrl elsewhere
   try{await page.waitForFunction(()=>{
    const demo=(window as unknown as {__demo:{api:{getSceneElements():Array<{type:string;isDeleted:boolean}>};recorder:{gestures:RecordedGesture[]}}}).__demo;
    return demo.api.getSceneElements().filter(e=>e.type==='rectangle'&&!e.isDeleted).length===4&&demo.recorder.gestures.some(g=>g.boundary==='key'&&g.events.filter(e=>e.kind==='create'&&e.element.type==='rectangle').length===1&&Object.values(g.after.elements).filter(e=>e.type==='rectangle'&&!e.attributes.isDeleted).length===4);
@@ -58,7 +58,9 @@ async function gesture(page:Page,name:ActionNameV1):Promise<void>{
   // it does not change how a genuinely paused gesture is recorded.
   await page.mouse.move(end.x,end.y);await page.mouse.up();await page.waitForFunction(()=>{const api=(window as unknown as {__demo:{api:{getAppState():{activeTool:{type:string}};getSceneElements():Array<{id:string;type:string;isDeleted:boolean;startBinding?:{elementId:string}|null;endBinding?:{elementId:string}|null}>}}}).__demo.api;return api.getAppState().activeTool.type==='selection'&&api.getSceneElements().some(e=>e.type==='arrow'&&!e.isDeleted&&!['ab','bc'].includes(e.id)&&e.startBinding?.elementId==='a'&&e.endBinding?.elementId==='c');},{},{timeout:5000});await page.keyboard.press('Escape');
  }
- else {const mid=await canvasPoint(page,'ab','arrow-middle');await page.mouse.click(mid.x,mid.y);const endpoint=await canvasPoint(page,'ab','arrow-end'),target=await canvasPoint(page,'c','left');await page.mouse.move(endpoint.x,endpoint.y);await page.mouse.down();await page.mouse.move(target.x,target.y,{steps:8});await page.mouse.up();await page.keyboard.press('Escape');}
+ else {const mid=await canvasPoint(page,'ab','arrow-middle');await page.mouse.click(mid.x,mid.y);
+  // The endpoint handle exists only once the arrow is selected; pressing earlier drags the whole arrow (a stray, unmodeled gesture on a loaded runner).
+  await page.waitForFunction('window.__demo.api.getAppState().selectedElementIds.ab === true',{},{timeout:5000});const endpoint=await canvasPoint(page,'ab','arrow-end'),target=await canvasPoint(page,'c','left');await page.mouse.move(endpoint.x,endpoint.y);await page.mouse.down();await page.mouse.move(target.x,target.y,{steps:8});await page.mouse.up();await page.keyboard.press('Escape');}
  try{await page.waitForFunction(name=>{
  const gs=(window as unknown as {__demo:{recorder:{gestures:RecordedGesture[]}}}).__demo.recorder.gestures;
  return gs.some(g=>g.events.some(e=>name==='rename_step'?e.kind==='set'&&e.id==='a:text'&&e.field==='originalText'&&e.after==='Prepared':name==='move_step'?e.kind==='set'&&e.id==='a'&&e.field==='y':name==='delete_step'?e.kind==='set'&&e.id==='b'&&e.field==='isDeleted'&&e.after===true:name==='disconnect'?e.kind==='set'&&e.id==='bc'&&e.field==='isDeleted'&&e.after===true:name==='connect'?e.kind==='create'&&e.element.type==='arrow'&&e.element.attributes.start==='a'&&e.element.attributes.end==='c':e.kind==='set'&&e.id==='ab'&&e.field==='end'&&e.after==='c'));
@@ -110,7 +112,9 @@ export async function runPhase3Demo(output=resolve('.local/phase3-demo-output'),
     const recording=validateRecording({manifest:{schema:'practonaut.recording/1',id:`demo-${name}-${Date.now()}-${repetition}`,createdAt,stoppedAt:new Date().toISOString(),appVersion:'0.18.1',adapterVersion:'1.0.0',coalescingVersion:COALESCING_VERSION,author:'Practonaut scripted UI demonstration',license:'CC0-1.0',consent:'Self-created CC0 scene with no personal content; local scripted demonstration',demonstration:'scripted',status:recorded.gestures.some(g=>g.quarantined)?'quarantined':'review'},...recorded});
     const analysis=analyzeRecordings([recording]);const templates=analysis.hypotheses.filter(h=>h.status==='proposed').map(h=>h.id);
     const expected=RULE_TEMPLATES.find(t=>t.action===name)?.id;
-    const diagnostics=expected&&!templates.includes(expected)?{expectedTemplate:expected,gestures:recording.gestures.map(g=>({index:g.index,boundary:g.boundary,events:g.events,unmodeled:g.unmodeled,quarantineReasons:g.quarantineReasons,before:projectSnapshot(g.before),after:projectSnapshot(g.after)}))}:undefined;
+    // An unmodeled gesture blocks every later confirmation; name what it changed so a failed run says why.
+    const stray=recording.gestures.filter(g=>g.unmodeled.length).map(g=>({index:g.index,boundary:g.boundary,unmodeled:g.unmodeled,events:g.events,quarantineReasons:g.quarantineReasons}));
+    const diagnostics=stray.length&&!(expected&&!templates.includes(expected))?{stray}:expected&&!templates.includes(expected)?{expectedTemplate:expected,gestures:recording.gestures.map(g=>({index:g.index,boundary:g.boundary,events:g.events,unmodeled:g.unmodeled,quarantineReasons:g.quarantineReasons,before:projectSnapshot(g.before),after:projectSnapshot(g.after)}))}:undefined;
     if(diagnostics)await writeFile(join(output,`${name}-${repetition}-diagnostics.json`),JSON.stringify({...diagnostics,nativeBefore,nativeAfter},null,2)+'\n');
     attempts.push({action:name,repetition,gestures:recording.gestures.length,unmodeled:recording.gestures.reduce((n,g)=>n+g.unmodeled.length,0),templates,...(diagnostics?{diagnostics}:{})});
     await page.screenshot({path:join(output,`${name}-${repetition}.png`)});await store.save(recording);recordings.push(recording);

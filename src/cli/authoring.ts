@@ -11,6 +11,7 @@ import { validateAuthorProject, compileProject } from '../authoring/index.ts';
 import { sha256Hex } from '../canonical/index.ts';
 import { RuntimeError } from './runtime.ts';
 import { safeJson } from './output.ts';
+import { inlineOptionValues } from './options.ts';
 
 async function readProject(path: string): Promise<unknown> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -51,7 +52,8 @@ export async function commandRecord(args: string[]): Promise<number> {
   }
   process.stdout.write(safeJson({ ok: true, value: result }) + '\n'); return 0;
 }
-export async function commandCompile(args: string[]): Promise<number> {
+export async function commandCompile(given: string[]): Promise<number> {
+  const args = inlineOptionValues(given, ['--out', '--checker', '--recordings-root']);
   let source: string | undefined, out: string | undefined, checker: string | undefined, root: string | undefined;
   const seen = new Set<string>();
   for (let i = 0; i < args.length; i++) {

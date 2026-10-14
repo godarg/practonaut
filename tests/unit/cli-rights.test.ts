@@ -1,8 +1,9 @@
 /** Actual CLI disclosure is metadata, never a verified redistribution grant. */
 import {test} from 'node:test';import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';import {tmpdir} from 'node:os';import {spawnSync} from 'node:child_process';
-const MAIN=new URL('../../src/cli/main.ts',import.meta.url).pathname;
+const MAIN=fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 for(const language of ['en','de'])test(`actual ${language} CLI discloses public and private declared rights without granting permission`,()=>{
  const dir=mkdtempSync(join(tmpdir(),'pn-rights-cli-'));try{
  for(const isPrivate of [false,true]){

@@ -10,6 +10,7 @@ import { startHost } from '../host/server.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import type { RunningHost } from '../host/protocol.ts';
+import { inlineOptionValues } from './options.ts';
 
 /** Self-start: `--task` (with optional `--task-id`, `--seed`, `--mirror`, `--open`). Attach: `--host` + `--token-file`. */
 export interface McpArguments {
@@ -17,7 +18,8 @@ export interface McpArguments {
   start?: { task: string; taskId?: string; seed: number; mirror: MirrorChoice; open: boolean };
 }
 const VALUED = ['--host', '--token-file', '--task', '--task-id', '--seed', '--mirror'];
-export function parseMcpArguments(args: string[], env: NodeJS.ProcessEnv = process.env): McpArguments {
+export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = process.env): McpArguments {
+  const args = inlineOptionValues(given, VALUED);
   const flags: Record<string, string> = {}; let open = false;
   for (let i = 0; i < args.length; i++) {
     const key = args[i]!;

@@ -17,6 +17,7 @@ import { stateHash } from "../../src/canonical/index.ts";
 import type { State } from "../../src/world/types.ts";
 import type { PracticeMirror } from "../../src/host/mirror.ts";
 import { solution } from "./solutions.ts";
+import { POSIX } from "../support/platform.ts";
 
 async function fixture(controllerFactory?: ControllerFactory): Promise<{ dir: string; host: RunningHost }> {
   await mkdir(".local", { recursive: true }); const dir = await mkdtemp(resolve(".local/host-http-"));
@@ -152,9 +153,16 @@ test("CSP, fixed asset allowlist, loopback listener and runtime file removal", a
   try {
     const shell = await call(f.host, "/"); assert.equal(shell.status, 200); assert.equal(shell.headers["content-security-policy"], PLAYER_CSP); assert.doesNotMatch(PLAYER_CSP, /unsafe-inline/); assert.match(PLAYER_CSP, /require-trusted-types-for 'script'/);
     assert.equal(shell.headers["x-content-type-options"], "nosniff"); assert.equal(shell.headers["cache-control"], "no-store");
-    assert.equal((await lstat(f.host.tokenFile)).mode & 0o777, 0o600);
-    const listener = spawnSync("lsof", ["-nP", `-iTCP:${f.host.port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
-    assert.equal(listener.status, 0, listener.stderr); assert.match(listener.stdout, new RegExp(`127\\.0\\.0\\.1:${f.host.port}`)); assert.doesNotMatch(listener.stdout, /\*:\d+|\[::\]/);
+    if (POSIX) assert.equal((await lstat(f.host.tokenFile)).mode & 0o777, 0o600);
+    if (process.platform === "win32") {
+      // Windows has no lsof; netstat lists the listening sockets with their bound address.
+      const listener = spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8" });
+      const lines = listener.stdout.split(/\r?\n/).filter(line => /LISTENING/.test(line) && new RegExp(`:${f.host.port}\\s`).test(line));
+      assert.equal(listener.status, 0, listener.stderr); assert.ok(lines.length > 0, "the host listens"); assert.ok(lines.every(line => line.includes(`127.0.0.1:${f.host.port}`)), lines.join("\n"));
+    } else {
+      const listener = spawnSync("lsof", ["-nP", `-iTCP:${f.host.port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+      assert.equal(listener.status, 0, listener.stderr); assert.match(listener.stdout, new RegExp(`127\\.0\\.0\\.1:${f.host.port}`)); assert.doesNotMatch(listener.stdout, /\*:\d+|\[::\]/);
+    }
     assert.equal((await call(f.host, "/api/tool.png", { headers: auth(f.host) })).value.error?.code, "mirror_unavailable");
     await f.host.close(); await assert.rejects(lstat(f.host.tokenFile), { code: "ENOENT" }); await f.host.close();
   } finally { await dispose(f); }
@@ -260,7 +268,7 @@ test("HTTP mirror disagreement persists private before/predicted/readback diagno
     assert.equal(rejected.status, 409); assert.equal(rejected.value.error?.code, "real_tool_disagrees"); assertRecoveredView(await view(f.host), before, 1);
     const directory = dirname(f.host.tokenFile);
     const files = (await readdir(directory)).filter(name => name.endsWith(".mirror.jsonl")); assert.equal(files.length, 1);
-    const path = join(directory, files[0]!); assert.equal((await lstat(path)).mode & 0o777, 0o600); assert.equal((await lstat(directory)).mode & 0o777, 0o700);
+    const path = join(directory, files[0]!); if (POSIX) { assert.equal((await lstat(path)).mode & 0o777, 0o600); assert.equal((await lstat(directory)).mode & 0o777, 0o700); }
     const log = await readFile(path, "utf8"); assert.equal(log.includes(f.host.token), false); assert.equal(log.includes(f.host.code), false);
     const records = log.trim().split("\n").map(line => JSON.parse(line)); assert.equal(records.length, 1);
     const record = records[0] as MirrorDiagnostic & { schema: string; redacted: boolean };

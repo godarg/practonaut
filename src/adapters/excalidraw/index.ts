@@ -15,6 +15,7 @@ import { RUNTIME_LIMITS } from '../../world/limits.ts';
 import { toRaw, project, integrity } from './raw.ts';
 import type { RawElement } from './raw.ts';
 import { BROWSER_BOUNDS, bounded, closeBrowser as closeWithDeadline } from './bounded.ts';
+import { launchChromium } from './chromium.ts';
 /** The pinned Excalidraw release this adapter drives (package.json devDependency and engine bundle). */
 export const EXCALIDRAW_APP_VERSION = '0.18.1';
 export { renderCheck } from './render-check.ts';
@@ -122,13 +123,14 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
   checkState(initialState);
   if (options.signal?.aborted) throw new Error('cancelled');
   const installed = fileURLToPath(new URL('./engine/', import.meta.url));
-  const sourceFile = fileURLToPath(import.meta.url).endsWith('/src/adapters/excalidraw/index.ts');
+  // The module URL, not the file path: a URL uses / on every platform (Windows paths use \\).
+  const sourceFile = import.meta.url.endsWith('/src/adapters/excalidraw/index.ts');
   const root = sourceFile ? fileURLToPath(new URL('../../../.local/engine/', import.meta.url)) : installed;
   if (!existsSync(resolve(root, 'engine.js'))) throw new Error('Engine bundle missing: run npm run engine:build');
   const launchDeadline = performance.now() + BROWSER_BOUNDS.launch;
   const { chromium } = await bounded(import('playwright-core'), launchDeadline - performance.now());
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
-  const browser: Browser = await chromium.launch({ headless: true, chromiumSandbox: true, timeout: Math.max(1, launchDeadline - performance.now()), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
+  const { browser } = await launchChromium(chromium, () => ({ headless: true, timeout: Math.max(1, launchDeadline - performance.now()), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
   const closeBrowser = (): Promise<void> => closeWithDeadline(browser);
   const denied: string[] = [];
   let context: BrowserContext, page: Page;
