@@ -122,6 +122,21 @@ describe('minimal length: proven where the bounded search is small', () => {
   });
 });
 
+describe('bounded reading of a goal', () => {
+  it('a goal that names ten million steps is a reference length, answered at once and without allocating them', () => {
+    const { world } = task(state(stepV2('a', 'Pack', 0, 0)), state(stepV2('a', 'Pack', 0, 0, { fill: 'green' })));
+    const huge = structuredClone(world);
+    const goal = huge.tasks[0]!.goal as { op: 'all'; args: Array<{ op: string; right: { value: number } }> };
+    // Every count literal that expands into slots: total steps, the signature count, and an arrow count.
+    for (const clause of goal.args) if (clause.op === 'eq') clause.right.value = 10_000_000;
+    const started = performance.now(), before = process.memoryUsage().heapUsed;
+    assert.deepEqual(analyseLength(huge, 't', 0, 1, 1), { kind: 'reference', length: 1, reason: 'not-applicable' });
+    assert.ok(performance.now() - started < 2000, 'answered quickly');
+    assert.ok(process.memoryUsage().heapUsed - before < 64 * 1024 * 1024, 'no slot array was allocated');
+    assert.equal(readGoal(goal as never), undefined);
+  });
+});
+
 describe('assignment cost (Hungarian method)', () => {
   it('equals hand-solved minimum assignments', () => {
     assert.equal(assignmentCost([]), 0);

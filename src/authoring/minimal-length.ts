@@ -24,6 +24,9 @@ import { canonicalJson } from '../canonical/index.ts';
 
 /** Search nodes before the analysis gives up ("reference length"). */
 export const MINIMAL_SEARCH_NODES = 250_000;
+/** Most goal objects the analysis reads (from-scenes' own scene limits): a goal naming more steps,
+ * arrows or frames is answered "reference length" before anything is allocated for them. */
+export const MINIMAL_GOAL_LIMITS = Object.freeze({ steps: 200, arrows: 400, frames: 40 });
 
 export type LengthAnalysis =
   | { kind: 'minimal'; length: number }
@@ -37,8 +40,10 @@ const fieldOf = (value: Value): string | undefined => value.kind === 'field' ? v
 const countClause = (p: Predicate): { type: string; where: Predicate; n: number } | undefined => {
   if (p.op !== 'eq' || p.left.kind !== 'count') return undefined;
   const n = literal(p.right);
-  return typeof n === 'number' ? { type: p.left.type, where: p.left.where, n } : undefined;
+  return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? { type: p.left.type, where: p.left.where, n } : undefined;
 };
+/** Room for `n` more goal objects of a kind, checked before any slot is allocated. */
+const fits = (taken: number, n: number, kind: keyof typeof MINIMAL_GOAL_LIMITS): boolean => taken + n <= MINIMAL_GOAL_LIMITS[kind];
 const args = (p: Predicate): Predicate[] => p.op === 'all' ? p.args : [p];
 /** `eq(field, literal)` → [field, value]. */
 const fieldEquals = (p: Predicate): [string, Scalar] | undefined => {
@@ -57,6 +62,7 @@ export function readGoal(goal: Predicate): GoalSpec | undefined {
     if (counted?.type === 'frame') {
       const name = fieldEquals(counted.where);
       if (!name || name[0] !== 'name' || typeof name[1] !== 'string') return undefined;
+      if (!fits(spec.frameNames.length, counted.n, 'frames')) return undefined;
       for (let i = 0; i < counted.n; i++) spec.frameNames.push(name[1]);
       continue;
     }
@@ -77,6 +83,7 @@ export function readGoal(goal: Predicate): GoalSpec | undefined {
         return undefined;
       }
       if (grouped !== false || slot.label === undefined || !slot.shape || !slot.stroke || !slot.fill) return undefined;
+      if (!fits(spec.steps.length, counted.n, 'steps')) return undefined;
       for (let i = 0; i < counted.n; i++) spec.steps.push({ ...(slot as StepSlot) });
       continue;
     }
@@ -85,6 +92,7 @@ export function readGoal(goal: Predicate): GoalSpec | undefined {
       if (ends.length !== 2) return undefined;
       const labels = ends.map(end => end.op === 'exists' ? args(end.where).map(fieldEquals).find(value => value?.[0] === 'label')?.[1] : undefined);
       if (labels.some(label => typeof label !== 'string')) return undefined; // a loose end, or not an end at all
+      if (!fits(spec.arrows.length, counted.n, 'arrows')) return undefined;
       for (let i = 0; i < counted.n; i++) spec.arrows.push({ from: labels[0] as string, to: labels[1] as string });
       continue;
     }
