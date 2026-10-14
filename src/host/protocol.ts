@@ -115,7 +115,10 @@ export interface ServeOptions { seed?: number; taskId?: string; mirror?: MirrorM
    * host also checks that the world is that example). */
   demonstration?: boolean;
   /** Why this session is model-only, for the Player's banner (set by the CLI with `mirror: "off"`). */
-  modelOnly?: ModelOnlyNotice }
+  modelOnly?: ModelOnlyNotice;
+  /** A bench host (PADR-0036): the task list holds only the session's own task, and a change to another
+   * task is refused. The Player's `play` and `serve` keep every task. */
+  singleTask?: boolean }
 /** Credentials are runtime-only; callers must never log token or write it to tracked files. */
 export interface RunningHost {
   origin: string; url: string; port: number; token: string; code: string; tokenFile: string;

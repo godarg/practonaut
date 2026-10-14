@@ -232,7 +232,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
       task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) })), hintCount: selectedTask.hints.length },
-      tasks: candidate.world.tasks.map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
+      tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
       log: candidate.log, history, actions: candidate.world.actions, rules: candidate.world.rules, mirror: mode,
       mirrorHealth: { status: closed ? 'closed' : mode === 'off' ? 'model-only' : mirror ? 'available' : 'unavailable', recoveries },
       practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: consequences(candidate), ...overrides,
@@ -369,7 +369,8 @@ export async function createPracticeController(input: World, options: PracticeSe
     },context),
     undo: (request,context) => mutate(request, budget => { const candidate = candidateFromLog(budget); const undone = candidate.undo(); if (!undone.ok) throw undone.error; return { candidate }; },context),
     reset: (request: ResetRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Reset needs confirmation'))) : mutate(request, () => ({ candidate: new Session(original, session.seed, session.taskId), reset: true }),context),
-    variant: (request: VariantRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Task or variant change needs confirmation'))) : mutate(request, budget => {
+    variant: (request: VariantRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Task or variant change needs confirmation')))
+      : options.singleTask && request.taskId !== undefined && request.taskId !== session.taskId ? Promise.resolve(rejected(reject('invalid_request', 'This session offers only its own task'))) : mutate(request, budget => {
       let seed = session.seed;
       if (request.taskId === undefined) {
         seed++;

@@ -192,8 +192,8 @@ history and a separate checker after the agent stops. Defaults: the task library
 --seeds (1), 1 repeat, 300 s, 50 actions.
 --world benches your own world (for example one made with tasks from-scenes); --oracle gives a task's
 reference solution (the oracle.json beside the world), which the checker must pass before any run and which
-never reaches the agent. Without a reference a task has no efficiency. The world and the references are
-stored in the bench folder, so report --verify can re-judge it anywhere.
+never reaches the agent. Without a reference a task has no efficiency. After the last agent has ended, the
+world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
@@ -212,8 +212,8 @@ mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: die Aufgabenbi
 --seeds die Seeds 1…n (1), 1 Wiederholung, 300 s, 50 Aktionen.
 --world bewertet Ihre eigene Welt (zum Beispiel eine aus tasks from-scenes); --oracle gibt die Referenzlösung
 einer Aufgabe (die oracle.json neben der Welt), die der Prüfer vor jedem Lauf bestätigen muss und die den Agenten
-nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Welt und Referenzen werden im Bench-Ordner
-gespeichert, sodass report --verify ihn überall neu beurteilen kann.
+nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Nach dem Ende des letzten Agenten werden Welt und
+Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu beurteilen kann.
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
@@ -227,20 +227,24 @@ Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and
 the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
 a static HTML page. Consistency is not proof: a consistently edited file passes. --verify re-judges every run
 from the artifacts in its bench folder (default: the report's folder; else --runs <bench folder>): for /2 the
-stored world and references and every artifact against the hashes the report binds, every reference against
-the stored world, then the independent checker on the session and the native export; a /1 report is re-judged
-against the bundled task library. Any difference: exit 2, with bench_world_changed, bench_artifact_changed,
-bench_reference_invalid or bench_report_invalid.`,
+stored world (for a library bench of this Practonaut's library version: against that library's content), the
+references and every artifact against the hashes the report binds, every reference against the stored world,
+then the independent checker on the session and the native export; a /1 report is re-judged against the
+bundled task library. Any difference: exit 2, with bench_world_changed, bench_artifact_changed,
+bench_reference_invalid or bench_report_invalid. The output shows the world's content hash; validate --json
+prints it for a world package.`,
     de: `Verwendung: practonaut report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]
 
 Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
 aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
 eine Tabelle oder schreibt eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei
 besteht. --verify beurteilt jeden Lauf aus den Artefakten seines Bench-Ordners neu (Standard: Ordner des Berichts,
-sonst --runs <Bench-Ordner>): bei /2 gespeicherte Welt, Referenzen und jedes Artefakt gegen die gebundenen
-Hashes, jede Referenz gegen die gespeicherte Welt, dann der unabhängige Prüfer auf Sitzung und nativem Export;
-ein /1-Bericht wird gegen die mitgelieferte Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit
-bench_world_changed, bench_artifact_changed, bench_reference_invalid oder bench_report_invalid.`,
+sonst --runs <Bench-Ordner>): bei /2 gespeicherte Welt (bei einem Bibliotheks-Bench der Bibliotheksversion
+dieses Practonaut gegen deren Inhalt), Referenzen und jedes Artefakt gegen die gebundenen Hashes, jede Referenz
+gegen die gespeicherte Welt, dann der unabhängige Prüfer auf Sitzung und nativem Export; ein /1-Bericht wird
+gegen die mitgelieferte Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit bench_world_changed,
+bench_artifact_changed, bench_reference_invalid oder bench_report_invalid. Die Ausgabe zeigt den Inhalts-Hash
+der Welt; validate --json gibt ihn für ein Weltpaket aus.`,
   },
   setup: {
     en: `Usage: practonaut setup

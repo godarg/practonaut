@@ -2,20 +2,20 @@
  * The world a bench runs on and the references its efficiency is measured against (PADR-0036).
  *
  * The world is the bundled library or one given with `--world` (a folder, packed exactly like
- * `practonaut pack`, or a `.pnworld`, read by the hardened package reader). Its package bytes are
- * stored in the bench folder and the hosts load the world from them, so `report --verify` can judge
- * against exactly that world later.
+ * `practonaut pack`, or a `.pnworld`, read by the hardened package reader). The hosts load the world
+ * from its package bytes, which stay in memory during the runs and are written to the bench folder
+ * after the last agent has ended, so `report --verify` can judge against exactly that world later.
  *
  * A reference is a task's reference solution: the library's, or an oracle sidecar that
  * `tasks from-scenes` writes beside a world (`practonaut.task-oracle/1`), accepted only after the
  * separate checker passes it for every seed of the plan. References never reach the agent: they are
- * not part of the world, not given to the host, and written to the bench folder only after the last
- * agent has ended.
+ * not part of the world, not given to the host, and written to the bench folder (only the action
+ * sequence, never the near misses) after the last agent has ended.
  */
 import { constants } from 'node:fs';
-import { open, stat } from 'node:fs/promises';
+import { open, stat, type FileHandle } from 'node:fs/promises';
 import { z } from 'zod';
-import { runOracle, type TaskOracle } from '../authoring/from-scenes.ts';
+import { runOracle, type OracleStep, type TaskOracle } from '../authoring/from-scenes.ts';
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { displayPath, safeText } from '../cli/output.ts';
@@ -29,7 +29,8 @@ import { V2_ACTION_NAMES, type SessionData, type World } from '../world/types.ts
 import { BENCH_REFERENCES_FILE, TASK_ID } from './report.ts';
 
 export type ReferenceSource = 'library' | 'oracle-file';
-export interface BenchReference { taskId: string; source: ReferenceSource; oracle: TaskOracle }
+/** A validated reference: what the oracle agent plays and what verification re-checks. */
+export interface BenchReference { taskId: string; source: ReferenceSource; worldId: string; steps: OracleStep[] }
 /** A loaded bench world: the package bytes that get stored, the world they hold and its content hash. */
 export interface BenchWorld { source: 'library' | 'own'; bytes: Buffer; world: World; contentHash: string }
 
@@ -97,16 +98,44 @@ export const TaskOracleSchema = z.strictObject({
   steps, nearMisses: z.array(z.strictObject({ id: z.string().max(64), kind: z.string().max(64), steps: z.array(OracleStepSchema).max(MAX_STEPS), violates: z.array(z.number().int().min(0).max(4096)).max(4096) })).max(64),
 });
 
-/** A regular file of at most `max` bytes (a FIFO or device is refused before it is read). */
+
+/** At most `limit` bytes from an open file, or null when it holds more: the limit holds while the file
+ * is read, not only when it was opened (a file that grows after `stat` is still refused). */
+export async function readAtMost(handle: FileHandle, limit: number): Promise<Buffer | null> {
+  const buffer = Buffer.alloc(limit + 1);
+  let length = 0;
+  while (length <= limit) {
+    const { bytesRead } = await handle.read(buffer, length, limit + 1 - length, length);
+    if (bytesRead === 0) break;
+    length += bytesRead;
+  }
+  return length > limit ? null : buffer.subarray(0, length);
+}
+
+/** A regular file's bytes, at most `limit` of them; null when it is missing, a link, not a regular
+ * file (a FIFO or device is refused before it is read) or larger. Used for every file the bench and
+ * `report --verify` read back. */
+export async function readRegularFile(path: string, limit: number): Promise<Buffer | null> {
+  let handle: FileHandle;
+  try { handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0)); } catch { return null; }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > limit) return null;
+    return await readAtMost(handle, limit);
+  } catch { return null; } finally { await handle.close(); }
+}
+
+/** A user-named regular file of at most `max` bytes, with a named refusal for each reason. */
 export async function readBoundedFile(path: string, max: number): Promise<Buffer> {
-  let handle;
+  let handle: FileHandle;
   try { handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK); }
   catch (error) { throw new RuntimeError('usage', cliText('readFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' })); }
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new RuntimeError('usage', cliText('regularFile', { path: safeText(displayPath(path)) }));
-    if (info.size > max) throw new RuntimeError('bench_oracle_invalid', cliText('benchFileTooLarge', { path: safeText(displayPath(path)), size: max / 1024 / 1024 }));
-    return await handle.readFile();
+    const bytes = info.size > max ? null : await readAtMost(handle, max);
+    if (bytes === null) throw new RuntimeError('bench_oracle_invalid', cliText('benchFileTooLarge', { path: safeText(displayPath(path)), size: max / 1024 / 1024 }));
+    return bytes;
   } finally { await handle.close(); }
 }
 
@@ -127,10 +156,11 @@ export async function readOracleFile(path: string): Promise<TaskOracle> {
 /** The library's references for the benched tasks (its reference solutions, checked when it is built). */
 export function libraryReferences(tasks: readonly string[]): Map<string, BenchReference> {
   const entries = new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry]));
-  return new Map(tasks.map(taskId => [taskId, { taskId, source: 'library' as const, oracle: entries.get(taskId)!.oracle }]));
+  return new Map(tasks.map(taskId => { const oracle = entries.get(taskId)!.oracle; return [taskId, { taskId, source: 'library' as const, worldId: oracle.worldId, steps: oracle.steps }]; }));
 }
 
-/** Own references: each oracle belongs to this world and to a distinct benched task. */
+/** Own references: each oracle belongs to this world and to a distinct benched task. Only the
+ * reference solution is kept; near misses and seeds stay in the author's file. */
 export function ownReferences(world: World, tasks: readonly string[], oracles: ReadonlyArray<{ path: string; oracle: TaskOracle }>): Map<string, BenchReference> {
   const references = new Map<string, BenchReference>();
   for (const { path, oracle } of oracles) {
@@ -138,7 +168,7 @@ export function ownReferences(world: World, tasks: readonly string[], oracles: R
     if (oracle.worldId !== world.id) throw new RuntimeError('bench_oracle_invalid', cliText('benchOracleWorld', { path: shown, world: safeText(oracle.worldId), expected: safeText(world.id) }));
     if (!tasks.includes(oracle.taskId)) throw new RuntimeError('usage', cliText('benchOracleTask', { path: shown, task: safeText(oracle.taskId) }));
     if (references.has(oracle.taskId)) throw new RuntimeError('usage', cliText('benchOracleTwice', { task: safeText(oracle.taskId) }));
-    references.set(oracle.taskId, { taskId: oracle.taskId, source: 'oracle-file', oracle });
+    references.set(oracle.taskId, { taskId: oracle.taskId, source: 'oracle-file', worldId: oracle.worldId, steps: oracle.steps });
   }
   return references;
 }
@@ -146,9 +176,9 @@ export function ownReferences(world: World, tasks: readonly string[], oracles: R
 /** Why a reference is not valid for this world and seed, or null when the checker accepts it: the
  * steps are played through the core and the session is judged by the separate checker process,
  * which replays its history independently. */
-export async function referenceProblem(world: World, taskId: string, oracle: TaskOracle, seed: number): Promise<string | null> {
-  if (oracle.taskId !== taskId || oracle.worldId !== world.id) return cliText('benchReferenceOther', { task: safeText(taskId) });
-  const run = runOracle(world, seed, taskId, oracle.steps);
+export async function referenceProblem(world: World, taskId: string, reference: Pick<BenchReference, 'taskId' | 'worldId' | 'steps'>, seed: number): Promise<string | null> {
+  if (reference.taskId !== taskId || reference.worldId !== world.id) return cliText('benchReferenceOther', { task: safeText(taskId) });
+  const run = runOracle(world, seed, taskId, reference.steps);
   if (!run.ok) return cliText('benchReferenceRejected', { task: safeText(taskId), seed, index: run.index, code: run.code });
   const session: SessionData = { schema: 'practonaut.session/1', world: { id: world.id, version: world.version }, seed, taskId, toolVersion: PACKAGE_VERSION, log: run.session.log, state: run.session.state, hash: run.session.hash };
   let passed: boolean;
@@ -164,7 +194,7 @@ export async function validateOwnReferences(world: World, references: ReadonlyMa
   for (const reference of references.values()) {
     if (reference.source !== 'oracle-file') continue;
     for (const seed of seeds) {
-      const problem = await referenceProblem(world, reference.taskId, reference.oracle, seed);
+      const problem = await referenceProblem(world, reference.taskId, reference, seed);
       if (problem !== null) throw new RuntimeError('bench_oracle_invalid', problem);
     }
   }
@@ -173,15 +203,22 @@ export async function validateOwnReferences(world: World, references: ReadonlyMa
 // ---- references.json in the bench folder ----
 
 export const REFERENCES_SCHEMA = 'practonaut.bench-references/1';
+/** What verification needs of a reference: its task, world and action sequence; nothing else. */
 export const ReferencesFileSchema = z.strictObject({
   schema: z.literal(REFERENCES_SCHEMA),
-  references: z.array(z.strictObject({ taskId: z.string().regex(TASK_ID), source: z.enum(['library', 'oracle-file']), oracle: TaskOracleSchema })).min(1).max(1000),
+  references: z.array(z.strictObject({ taskId: z.string().regex(TASK_ID), source: z.enum(['library', 'oracle-file']), worldId: z.string().max(64), steps })).min(1).max(1000),
 });
 export type ReferencesFile = z.infer<typeof ReferencesFileSchema>;
 
 /** The text of `references.json`: the references of the benched tasks, in plan order. */
 export function referencesText(references: ReadonlyMap<string, BenchReference>, tasks: readonly string[]): string {
-  const file: ReferencesFile = { schema: REFERENCES_SCHEMA, references: tasks.flatMap(taskId => { const reference = references.get(taskId); return reference ? [{ taskId, source: reference.source, oracle: reference.oracle as ReferencesFile['references'][number]['oracle'] }] : []; }) };
+  const file = { schema: REFERENCES_SCHEMA, references: tasks.flatMap(taskId => { const reference = references.get(taskId); return reference ? [{ taskId, source: reference.source, worldId: reference.worldId, steps: reference.steps }] : []; }) };
   return JSON.stringify(file, null, 2) + '\n';
+}
+
+/** Refuses, before the first run, references that `report --verify` would not read back. */
+export function assertReferencesFit(text: string, limit: number = MAX_REFERENCES_BYTES): void {
+  const size = Buffer.byteLength(text);
+  if (size > limit) throw new RuntimeError('bench_references_too_large', cliText('benchReferencesTooLarge', { size, limit }));
 }
 export { BENCH_REFERENCES_FILE };

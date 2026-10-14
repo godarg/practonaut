@@ -1,6 +1,6 @@
 # PADR-0036 — Bench report v2: any world, the world stored with the runs, isolation level, optional reference; generated instances are materialised
 
-Status: proposed · Date: 2026-10-14 · Refines the report and verification of
+Status: accepted 2026-10-14 after independent review (pull request #30) · Date: 2026-10-14 · Refines the report and verification of
 [PADR-0030](0030-bench-replaces-unsealed-eval.md); records what
 [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) deferred to bench/2
 
@@ -33,13 +33,19 @@ instances (Must 4) are stored. Must 3 will add per-run fields (tokens, turns, co
 1. *The bundled library, or the path the user benched.* Breaks when the library changes, when the
    world folder is edited or moved, or when the report travels without the world.
 2. *A copy of the public world in the bench folder, bound by hash* (chosen): the bench folder is
-   self-contained and can be moved, archived or handed over.
+   self-contained and can be moved, archived or handed over. The trade-off: a stored copy proves only
+   that the report and its folder agree. Whoever writes the folder can swap the world and the report
+   together. A library bench is therefore also anchored to the library this Practonaut ships when
+   the id and version are the same (decision 6); an own world has no anchor beyond its content hash,
+   which the report shows and which the receiver compares with the world they expect
+   (`practonaut validate <world.pnworld> --json` or `pack --json` prints it).
 
 **References (the reference solution behind efficiency).**
 1. *Record only the length.* Efficiency would rest on a number nobody can re-check.
 2. *Require the oracle file again at `--verify`.* A moved folder could not be verified on its own.
 3. *Store the references in the bench folder, written after the last agent has ended, bound by
-   hash, and re-validated by the checker at `--verify`* (chosen).
+   hash, and re-validated by the checker at `--verify`* (chosen). Only the action sequence is stored,
+   never the near misses: verification replays and judges the sequence and needs nothing else.
 
 **Generated instances (Must 4).**
 1. *A variant format in bench/2:* runs name a generator, its version, a seed and parameters, and bench
@@ -71,7 +77,8 @@ instances (Must 4) are stored. Must 3 will add per-run fields (tokens, turns, co
    other text from a report. Refused by name before any run: `--oracle` without `--world`; an oracle
    for another world or a task that is not benched; two oracles for one task; the `oracle` agent on
    a task without a reference; two benched task ids that differ only in case (their run folders
-   would collide on case-insensitive file systems); `--seeds` with `--seed-list`.
+   would collide on case-insensitive file systems); `--seeds` with `--seed-list`; references whose
+   stored form would exceed what `report --verify` reads (64 MiB, `bench_references_too_large`).
 2. **Validated reference.** A library task's reference is its reference solution (checked when the
    library is built). An own task's reference is its oracle file *after the checker accepts it*: for
    every seed of the plan the oracle is played through the core and the resulting session is judged
@@ -80,12 +87,18 @@ instances (Must 4) are stored. Must 3 will add per-run fields (tokens, turns, co
    reference; otherwise the report says "no reference". The oracle never reaches the agent: it is
    not part of the world, not given to the host, the Player or MCP (the `oracle` baseline plays it
    through MCP actions like any agent), and not written to the bench folder while an agent runs.
-3. **Bench folder.** `world.pnworld` (the public world, written before the first run; the hosts load
-   the world from these bytes), one folder per run with its judged artifacts as before,
-   `references.json` (`practonaut.bench-references/1`: the oracles of the referenced tasks, written
-   after the last agent has ended, private file mode), and `report.json`. The report records only
-   these fixed names, never a path outside the folder.
-4. **Report `practonaut.bench/2`** (`schemas/bench.v2.json`, generated from the zod source like v1).
+3. **Bench folder.** One folder per run with its judged artifacts as before; `world.pnworld` (the
+   public world package) and `references.json` (`practonaut.bench-references/1`: task, source, world
+   and action sequence of each referenced task); `report.json`. The world's package bytes are hashed
+   before the first run and stay in memory, and every run's host loads the world from them; the world
+   (with its hints, error classes and `generatedBy`) and the references are written to the folder
+   only after the last agent has ended, in private file mode, and the written world is read back
+   against the bound hash. While an agent runs, the bench folder holds neither. The report records
+   only these fixed names, never a path outside the folder.
+4. **One task per bench host.** A bench host publishes only its run's task in the task list and
+   refuses a change to another task (`invalid_request`); the Player's `play` and `serve` keep every
+   task. A world that holds a held-out set therefore shows an agent only the instance it is on.
+5. **Report `practonaut.bench/2`** (`schemas/bench.v2.json`, generated from the zod source like v1).
    New against v1:
    - `label` (optional).
    - `environment.world`: `source` (`library` or `own`), world id, version, content hash (SHA-256 of
@@ -107,26 +120,36 @@ instances (Must 4) are stored. Must 3 will add per-run fields (tokens, turns, co
    - `runs[].referenceActions` is null for a task without a reference; `runs[].id` must be
      `<task>-s<seed>-r<repeat>`; a judged run must bind its artifacts and an unjudged run must not.
    - Task ids follow the world format (letters, digits, `_`, `-`, up to 64 characters).
-5. **Verification of /2** (`report --verify`) never uses the bundled library. It checks, in order,
+6. **Verification of /2** (`report --verify`) judges against the stored world. It checks, in order,
    with a named code and exit 2 on the first difference: the stored world's bytes against the bound
    hash, its package through the hardened reader, its id, version, content hash and `generated`
-   metadata (`bench_world_changed`); `references.json` against its hash and every run artifact against
-   its hash (`bench_artifact_changed`); every stored reference against the stored world — its task,
-   its length, and the checker's verdict on it for every seed (`bench_reference_invalid`); then, as in
-   v1, each judged run's session, export and checker output re-judged by the checker
-   (`bench_report_invalid`). A library bench therefore stays verifiable after a library update.
-6. **bench/1 stays as it was.** `report` and `report --verify` read both versions; a /1 report is
+   metadata, and — for a library bench whose id and version are those of the library this Practonaut
+   ships — that library's content hash (`bench_world_changed`); `references.json` and then every run
+   artifact against their hashes (`bench_artifact_changed`); every stored reference against the stored
+   world — its task, its length, and the checker's verdict on it for each seed a run of its task used
+   (`bench_reference_invalid`); then, as in v1, each judged run's session, export and checker output
+   re-judged by the checker (`bench_report_invalid`). A library bench of another version (older or
+   newer than this Practonaut's) is re-judged against its stored world and the output says it is not
+   this Practonaut's library, with its content hash. Every bounded file is read with its limit
+   enforced during the read. The report output (table and HTML) shows the world's content hash.
+7. **bench/1 stays as it was.** `report` and `report --verify` read both versions; a /1 report is
    validated by the /1 rules and re-verified against the bundled library exactly as in 0.1.0. `bench`
-   writes /2 only. A real /1 report with its artifacts is kept as a test fixture.
-7. **Generated instances are materialised.** A generator writes concrete world/2 tasks; each task it
+   writes /2 only. A real /1 report with its artifacts is kept as a test fixture. Re-verifying a
+   stored /1 report therefore ends with the first change of the bundled library (it is then refused
+   by name, as in 0.1.0); its consistency check stays.
+8. **Generated instances are materialised.** A generator writes concrete world/2 tasks; each task it
    made carries `generatedBy: { id, version, seed, parameters }` (generator id, semantic version, the
    seed, and up to 16 named integer or short-string parameters such as a difficulty level), and each
    instance has an ordinary oracle sidecar. A held-out set is one world with one task per instance,
    or one world per instance; both bench as written above. The instance identity is the task id
    within the world's content hash. `generatedBy` is world content, so the host never puts it into
    the Player's or an agent's view (it is not hidden data, but an agent that can run the generator
-   could regenerate the instance's oracle from the seed).
-8. **Open for Must 3.** Until 0.2.0 is released, optional per-run fields (tokens, turns, cost,
+   could regenerate the instance's oracle from the seed). Instances are ordinary public tasks: their
+   goal conditions reach the Player and the agent in the same public form as every task (architecture
+   §10, "Hidden data stays hidden"; no hidden formal goal, as the roadmap excludes it from 0.2.0).
+   "Held-out" for a challenge family means *not used for tuning*, not hidden checker data; what stays
+   hidden is the same as for every task — reference solutions and near misses.
+9. **Open for Must 3.** Until 0.2.0 is released, optional per-run fields (tokens, turns, cost,
    call-log artifacts) may be added to /2; consumers already re-derive every aggregate and must not
    depend on more than the schema. After the release, a change to /2 needs a new schema version.
 
@@ -134,10 +157,16 @@ instances (Must 4) are stored. Must 3 will add per-run fields (tokens, turns, co
 
 - Authors can bench their own tasks and hand over a bench folder that re-verifies anywhere with the
   same or a later Practonaut; the folder is larger by one world package and one references file.
-- After the runs, the bench folder holds the reference solutions it used. Same OS user: a later agent
-  with file or shell tools could read finished bench folders, as it could read the library on disk or
-  an author's `oracle.json`; the shipped preset has no such tools (PADR-0030, benchmarks §4).
-- `--verify` costs one extra checker process per referenced task and seed.
+- After the runs, the bench folder holds the world and the reference solutions it used. A bench is not
+  sealed (PADR-0030): the agent runs as the same OS user. An agent with file or shell tools could read
+  the user's own `--world` folder or `oracle.json`, the library on disk, or finished bench folders of
+  earlier benches; one that escapes its process group (for example with `setsid`) and outlives its
+  run could read this bench's folder after the runs. Practonaut cannot prevent that without a sealed
+  runner; it keeps both files out of the folder while the agents of this bench run, and the
+  tool-restricted preset has no file or shell tools at all (benchmarks §4).
+- `--verify` shows that a folder is consistent with its report; it anchors a library bench to this
+  Practonaut's library, and an own world only to the content hash a receiver compares.
+- `--verify` costs one extra checker process per referenced task and seed that a run used.
 - A /2 report says what kind of isolation its agent had; `compare` (Must 3) can refuse to compare a
   tool-restricted preset with an unrestricted template.
 - World/2 gains one optional, additive task field; worlds without it are unchanged.

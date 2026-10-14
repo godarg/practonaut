@@ -24,6 +24,7 @@ All notable changes are recorded here. The format follows
   "model only"), and the result check judges the end. It is labelled as a demonstration, never
   counts as anyone's result (its board cannot be continued or exported), and Stop or Escape ends
   it. Never on a library or bench task. Measured with `tools/measure-first-action.ts`.
+- `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 
 ### Changed
 

@@ -5,11 +5,12 @@
  * bench/1 (PADR-0030): against the bundled library — the library (id, version and content hash of
  * the world) and each run's reference length must equal what this Practonaut ships.
  *
- * bench/2 (PADR-0036): against the world stored in the bench folder, never the bundled library — the
- * stored package's bytes, its identity and content hash and its tasks' generator metadata
- * (`bench_world_changed`); the stored references and every run artifact against the hashes the
- * report binds (`bench_artifact_changed`); every stored reference against the stored world: its
- * task, its length and the checker's verdict for every seed (`bench_reference_invalid`).
+ * bench/2 (PADR-0036): against the world stored in the bench folder — the stored package's bytes, its
+ * identity and content hash and its tasks' generator metadata, and for a library bench of the version
+ * this Practonaut ships, that library's content hash (`bench_world_changed`); the stored references
+ * and every run artifact against the hashes the report binds (`bench_artifact_changed`); every stored
+ * reference against the stored world: its task, its length and the checker's verdict for each seed a
+ * run used (`bench_reference_invalid`).
  *
  * Both then re-verify, for each judged run, the SHA-256 the report binds for the committed session,
  * the native export and the checker output; the session's task, seed and final history length
@@ -25,7 +26,6 @@
  * that those artifacts came from the agent named in the report. Whoever can write the run directory
  * can replace them; there is no signature.
  */
-import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { sha256Hex } from '../canonical/index.ts';
@@ -40,24 +40,15 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun } from './report.ts';
 import { RUN_ARTIFACTS, verdictOf } from './run.ts';
-import { MAX_REFERENCES_BYTES, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage } from './world.ts';
+import { MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage, type BenchReference, type ReferencesFile } from './world.ts';
 
 const MAX_ARTIFACT_BYTES = 32 * 1024 * 1024;
 
 export interface VerificationResult { reverified: number; unjudged: number }
-export interface VerificationResultV2 extends VerificationResult { references: number; world: { id: string; version: string } }
-
-/** A bounded regular file's bytes, or null when it is missing, not a regular file or too large. */
-async function boundedBytes(path: string, max: number): Promise<Buffer | null> {
-  try {
-    const stat = await lstat(path);
-    if (!stat.isFile() || stat.size > max) return null;
-    return await readFile(path);
-  } catch { return null; }
-}
+export interface VerificationResultV2 extends VerificationResult { references: number; world: { id: string; version: string; contentHash: string }; library?: LibraryAnchor }
 
 async function artifact(directory: string, runId: string, name: string, expected: string, code: BenchErrorCode): Promise<string> {
-  const bytes = await boundedBytes(join(directory, runId, name), MAX_ARTIFACT_BYTES);
+  const bytes = await readRegularFile(join(directory, runId, name), MAX_ARTIFACT_BYTES);
   if (bytes === null) throw new BenchReportError(cliText('verifyArtifactMissing', { run: runId, name }), code);
   if (sha256Hex(bytes) !== expected) throw new BenchReportError(cliText('verifyArtifactHash', { run: runId, name }), code);
   return bytes.toString('utf8');
@@ -109,10 +100,21 @@ export async function verifyBenchArtifacts(report: BenchReportV1, runsDirectory:
   return { reverified, unjudged };
 }
 
+/** How a /2 library bench relates to the library this Practonaut ships: `same` (same id, version and
+ * content), or `other` when the id or version differ (its content cannot be compared here). The same
+ * id and version with other content is refused: a swapped stored world cannot pass as the library. */
+export type LibraryAnchor = { status: 'same' } | { status: 'other'; shipped: { id: string; version: string } };
+export function libraryAnchor(bound: { worldId: string; version: string; contentHash: string }, shipped: { id: string; version: string; contentHash: string }): LibraryAnchor {
+  if (bound.worldId !== shipped.id || bound.version !== shipped.version) return { status: 'other', shipped: { id: shipped.id, version: shipped.version } };
+  if (bound.contentHash !== shipped.contentHash)
+    throw new BenchReportError(cliText('verifyLibraryContent', { world: safeText(bound.worldId), version: safeText(bound.version), hash: bound.contentHash, shipped: shipped.contentHash }), 'bench_world_changed');
+  return { status: 'same' };
+}
+
 /** bench/2: the stored world, as the report binds it. */
 async function storedWorld(report: BenchReportV2, directory: string): Promise<World> {
   const bound = report.environment.world, fail = (message: string): never => { throw new BenchReportError(message, 'bench_world_changed'); };
-  const bytes = await boundedBytes(join(directory, BENCH_WORLD_FILE), LIMITS.maxArchiveBytes);
+  const bytes = await readRegularFile(join(directory, BENCH_WORLD_FILE), LIMITS.maxArchiveBytes);
   if (bytes === null) return fail(cliText('verifyWorldMissing', { file: BENCH_WORLD_FILE }));
   if (sha256Hex(bytes) !== bound.package.sha256) return fail(cliText('verifyWorldHash', { file: BENCH_WORLD_FILE }));
   let world: World;
@@ -127,47 +129,61 @@ async function storedWorld(report: BenchReportV2, directory: string): Promise<Wo
   return world;
 }
 
-/** bench/2: the stored references, re-checked against the stored world for every planned seed. */
-async function verifyReferences(report: BenchReportV2, world: World, directory: string): Promise<number> {
+/** bench/2: `references.json` against the hash the report binds, parsed. */
+async function storedReferences(report: BenchReportV2, directory: string): Promise<ReferencesFile['references']> {
   const bound = report.references;
-  if (bound === null) return 0;
-  const bytes = await boundedBytes(join(directory, BENCH_REFERENCES_FILE), MAX_REFERENCES_BYTES);
+  if (bound === null) return [];
+  const bytes = await readRegularFile(join(directory, BENCH_REFERENCES_FILE), MAX_REFERENCES_BYTES);
   if (bytes === null) throw new BenchReportError(cliText('verifyReferencesMissing', { file: BENCH_REFERENCES_FILE }), 'bench_artifact_changed');
   if (sha256Hex(bytes) !== bound.sha256) throw new BenchReportError(cliText('verifyReferencesHash', { file: BENCH_REFERENCES_FILE }), 'bench_artifact_changed');
+  let parsed: ReturnType<typeof ReferencesFileSchema.safeParse> | undefined;
+  try { parsed = ReferencesFileSchema.safeParse(parseJsonEntry(bytes, BENCH_REFERENCES_FILE, 64)); } catch { parsed = undefined; }
+  if (!parsed?.success) throw new BenchReportError(cliText('verifyReferencesFormat', { file: BENCH_REFERENCES_FILE }), 'bench_reference_invalid');
+  return parsed.data.references;
+}
+
+/** bench/2: every stored reference against the stored world, for each seed a run of its task used. */
+async function verifyReferences(report: BenchReportV2, world: World, stored: ReferencesFile['references']): Promise<number> {
+  const bound = report.references;
+  if (bound === null) return 0;
   const fail = (message: string): never => { throw new BenchReportError(message, 'bench_reference_invalid'); };
-  let parsed: ReturnType<typeof ReferencesFileSchema.safeParse>;
-  try { parsed = ReferencesFileSchema.safeParse(parseJsonEntry(bytes, BENCH_REFERENCES_FILE, 64)); } catch { return fail(cliText('verifyReferencesFormat', { file: BENCH_REFERENCES_FILE })); }
-  if (!parsed.success) return fail(cliText('verifyReferencesFormat', { file: BENCH_REFERENCES_FILE }));
-  const stored = parsed.data.references;
   if (stored.length !== bound.tasks.length) fail(cliText('verifyReferenceTask', { task: (stored.find(entry => !bound.tasks.some(task => task.taskId === entry.taskId)) ?? stored[0])?.taskId ?? '' }));
   for (const [index, expected] of bound.tasks.entries()) {
     const entry = stored[index]!;
-    if (entry.taskId !== expected.taskId || entry.source !== expected.source || entry.oracle.taskId !== expected.taskId) fail(cliText('verifyReferenceTask', { task: expected.taskId }));
-    if (entry.oracle.steps.length !== expected.actions) fail(cliText('verifyReferenceLength', { task: expected.taskId, given: expected.actions, actual: entry.oracle.steps.length }));
-    for (const seed of report.settings.seeds) {
-      const problem = await referenceProblem(world, expected.taskId, entry.oracle as Parameters<typeof referenceProblem>[2], seed);
+    if (entry.taskId !== expected.taskId || entry.source !== expected.source) fail(cliText('verifyReferenceTask', { task: expected.taskId }));
+    if (entry.steps.length !== expected.actions) fail(cliText('verifyReferenceLength', { task: expected.taskId, given: expected.actions, actual: entry.steps.length }));
+    // Only seeds that runs of this task used: an interrupted bench re-checks nothing it did not run.
+    for (const seed of new Set(report.runs.filter(run => run.taskId === expected.taskId).map(run => run.seed))) {
+      const problem = await referenceProblem(world, expected.taskId, entry as BenchReference, seed);
       if (problem !== null) fail(problem);
     }
   }
   return bound.tasks.length;
 }
 
-/** bench/2: verifies the stored world and references, then re-judges every judged run against that
- * world. Throws a named `BenchReportError` on the first difference. */
-export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string): Promise<VerificationResultV2> {
+/** bench/2, in the order of PADR-0036 decision 6: the stored world (and, for a library bench, this
+ * Practonaut's library), `references.json` and every run artifact against their hashes, the stored
+ * references against the stored world, then every judged run re-judged against that world. Throws a
+ * named `BenchReportError` on the first difference. */
+export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string, shippedLibrary: () => Promise<{ world: World; contentHash: string }>): Promise<VerificationResultV2> {
   const world = await storedWorld(report, runsDirectory);
-  // Artifacts are compared with their hashes before anything is re-judged.
+  let library: LibraryAnchor | undefined;
+  if (report.environment.world.source === 'library') {
+    const shipped = await shippedLibrary();
+    library = libraryAnchor(report.environment.world, { id: shipped.world.id, version: shipped.world.version, contentHash: shipped.contentHash });
+  }
+  const stored = await storedReferences(report, runsDirectory);
   for (const run of report.runs) if (run.artifacts) {
     await artifact(runsDirectory, run.id, RUN_ARTIFACTS.session, run.artifacts.session, 'bench_artifact_changed');
     await artifact(runsDirectory, run.id, RUN_ARTIFACTS.checker, run.artifacts.checker, 'bench_artifact_changed');
     if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
   }
-  const references = await verifyReferences(report, world, runsDirectory);
+  const references = await verifyReferences(report, world, stored);
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
     if (run.checker === null) { unjudged++; continue; }
     await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
     reverified++;
   }
-  return { reverified, unjudged, references, world: { id: world.id, version: world.version } };
+  return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}) };
 }
