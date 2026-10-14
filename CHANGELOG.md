@@ -17,6 +17,20 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- **Task limits** ([PADR-0040](docs/adr/0040-challenge-tier-generated-families-and-gate.md)): a world/2
+  task may limit an attempt's accepted changes (`limits.actions`, undo and reset included) and checks
+  (`limits.checks`); the host enforces them for the Player and agents alike
+  (`action_budget_exhausted`, `check_budget_exhausted`), and the Player, `observe`, every mutation
+  reply and `check_result` show what is used. `--checks <n>` on `play`/`serve`, `mcp --task` and
+  `bench` sets a check limit (it can only lower a task's own).
+- **Minimal length.** Where a bounded search is small, `bench` proves that a reference is a minimal
+  solution; the report then shows "efficiency vs minimal length", otherwise "vs reference length",
+  and `report --verify` recomputes the proof.
+- **Challenge tier candidates** (maintainer tooling, not yet published): seeded generators for five
+  families — repair, prompt injection in board content, long horizon with look-alike labels, limited
+  checks, tight action budget — that materialise checked world/2 instances with oracle sidecars
+  (`node tools/challenge.ts generate|verify`), and the preregistered ladder gate
+  (`node tools/challenge.ts gate`) with Wilson intervals and an exact McNemar test.
 
 ### Changed
 

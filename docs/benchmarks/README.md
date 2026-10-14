@@ -1,7 +1,9 @@
 # Benchmarks: `practonaut bench`
 
 Decision records: [PADR-0030](../adr/0030-bench-replaces-unsealed-eval.md) (bench),
-[PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md) (own worlds, report `/2`).
+[PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md) (own worlds, report `/2`),
+[PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits, minimal length,
+challenge tier and its gate, §7).
 
 `practonaut bench` lets any MCP agent practise the bundled Excalidraw task library, or a world of
 your own, and scores it independently: every run gets a fresh session, the agent works only through
@@ -40,6 +42,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 | `--repeats <k>` | 1 | independent repeats per task and seed (needed for pass^k with k > 1) |
 | `--timeout <s>` | 300 | wall time per run; the agent's process group is stopped after it |
 | `--max-actions <n>` | 50 | mutation budget per run (act, undo, reset); further ones are refused by the host with `action_budget_exhausted` |
+| `--checks <n>` | none | checks allowed per run (0–1000); further `check_result` calls are refused with `check_budget_exhausted`. A task's own limits (`limits` in the world) always apply; `--checks` can only lower its check limit |
 | `--mirror auto\|required\|off` | `auto` | real Excalidraw mirror (`auto` uses it when Chromium is installed) |
 | `--out <file>` | `~/.practonaut/bench/<id>/report.json` | report path; run logs stay in `~/.practonaut/bench/<id>/` |
 | `--keep-env <names>` | none | comma-separated variables a preset agent gets although it withholds them (§2); refused for other agents |
@@ -130,7 +133,12 @@ checker (never by the agent):
 - **actions** — the actions in the final history of the committed session (undone actions are
   not in it). `report --verify` re-derives this number from the session artifact.
 - **referenceActions** — the length of the task's validated reference solution, or `null`
-  ("no reference"). Library tasks have one (checked when the library is built). An own task has one
+  ("no reference"). Where a bounded search is small, the report also says whether that length is
+  **proven minimal** (`references.tasks[].minimal`): a branch-and-bound search over assignments of
+  goal objects to start objects shows that no solution can be shorter
+  ([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) decision 5; tasks with
+  order, alignment or group conditions, or where the search would be large, keep a plain
+  "reference length"). Library tasks have one (checked when the library is built). An own task has one
   when `--oracle` gives it and the separate checker accepts it: before the first run, the oracle is
   played through the core for every planned seed and each session must pass the checker, otherwise
   the bench is refused (`bench_oracle_invalid`). `report --verify` checks the stored reference again.
@@ -149,10 +157,13 @@ Aggregates:
 - **pass^k** — as defined by τ-bench (Yao et al., 2024, [arXiv:2406.12045](https://arxiv.org/abs/2406.12045), §5):
   for each task-and-seed instance with n repeats and c passes, C(c, k) / C(n, k), averaged over
   instances — the chance that all of k repeats pass. Reported for k = 1…repeats.
-- **mean actions**, **mean actions when passed**, **efficiency vs reference** (reference-solution
-  length divided by the run's actions, over passed runs of tasks with a reference; above 1 means a
-  shorter solution than the reference; "no reference" when no benched task has one, and the summary
-  names how many tasks it covers when only some do), mean time per run. All but the time follow from
+- **mean actions**, **mean actions when passed**, **efficiency** (reference-solution length divided
+  by the run's actions, over passed runs of tasks with a reference; above 1 means a shorter solution
+  than the reference; "no reference" when no benched task has one, and the summary names how many
+  tasks it covers when only some do). It reads **"efficiency vs minimal length"** when every
+  referenced task's reference is proven minimal (then 1 is the best possible), otherwise
+  **"efficiency vs reference length"**, and the table marks each proven length "(minimal)". Mean
+  time per run. All but the time follow from
   re-verifiable numbers.
 
 `check_result` is available to agents, exactly like the Check button for a human: it reports the
@@ -191,7 +202,9 @@ generator materialised (`generated`, from each task's `generatedBy`, see
 [world format](../world-format.md) §2a); the agent (template with the home directory shown as `~`,
 isolation level, model, model source, `apiKeySource`, kept variable names); the settings; the
 **references** (null, or `references.json`'s SHA-256 and per task its source — `library` or
-`oracle-file` — and length); every run (`referenceActions` null without a reference) and the summary.
+`oracle-file` —, its length and whether it is proven minimal); every run (`referenceActions` null
+without a reference) and the summary. `settings.checks` records `--checks`; a task's own limits are
+part of the stored world.
 
 The bench folder (`~/.practonaut/bench/<id>/`) holds everything `report --verify` needs and nothing
 outside it is referenced, so it can be moved, archived or handed over:
@@ -233,9 +246,10 @@ Two levels of checking, and the output always says which one ran:
   - `bench_artifact_changed`: a run artifact or `references.json` is missing or differs from its
     bound hash;
   - `bench_reference_invalid`: a stored reference names another task, has another length than the
-    report says, or is not accepted by the checker on the stored world for every seed of the plan;
+    report says, is not accepted by the checker on the stored world for every seed of the plan, or
+    its `minimal` claim differs from the minimal-length analysis on the stored world;
   - `bench_report_invalid`: the session's task and seed; `actions` equals the length of the
-    session's final history; the independent checker, re-run on the session and the export in a
+    session's final history and is within the task's action limit, if it has one; the independent checker, re-run on the session and the export in a
     separate process, gives the stored checker output and the report's verdicts.
 
   A `/1` report is re-verified as in 0.1.0: against the library this Practonaut ships (id, version
@@ -272,3 +286,68 @@ two repeats per task: an example of the format, not a measurement of the model.
 Measured the same day with the built-ins (`--tasks all --seeds 2`, real mirror): `oracle` 32 of 32
 passed; `random --max-actions 30` 0 of 32. Re-run them with the commands at the top; the numbers in
 this paragraph are not maintained.
+
+## 7. Challenge tier (candidates)
+
+The task library is saturated for current Claude models (0.1.0 baseline: 36 of 36 runs on its six
+hardest tasks passed). The challenge tier adds harder task families, made by a seeded generator and
+published only after a preregistered ladder gate
+([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md), roadmap 0.2.0 item 4). Until
+a family passes, it is a **candidate**: it lives in `src/challenge/` and is generated from a checkout
+with `node tools/challenge.ts`, not through the `practonaut` command.
+
+| Family | What makes it hard | Instances (difficulty 1 / 2 / 3) |
+|---|---|---|
+| `repair` | find 3–5 subtle defects against the goal list: colours, shapes, a misspelled label, a reversed arrow, an arrow end on a look-alike step, a missing or extra arrow, a stray copy, swapped labels, a step in the wrong frame | 3 / 4 / 5 defects on boards of 6–15 steps |
+| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such notes |
+| `long-horizon` | 20–60 required actions among look-alike labels | 20–26 / 30–40 / 45–60 actions |
+| `limited-checks` | build the missing part of a diagram with only `limits.checks` checks | 8–11 / 11–14 / 14–18 actions; 2 / 1 / 1 checks |
+| `tight-budget` | reach the goal within `limits.actions` = the **proven minimal** length: one `set_style` for three attributes, one `reconnect_end` instead of two actions, no undo | 4–6 / 7–9 / 10–13 actions |
+
+Every instance is a world/2 task made by the state-based core of `tasks from-scenes`, so its goal is
+from-scenes' exact goal (every step's label, shape, colours, frame; every arrow by its end labels;
+every frame's name) and its reference solution and near misses are from-scenes' and checked the
+same way: the reference passes the independent checker, the start and every near miss fail. Each
+task carries `generatedBy` (generator id `challenge-<family>`, version, seed, difficulty and
+structural parameters). Instances differ in structure, not only in labels: topology (chain, decision
+branch, fork, lanes in frames), size, which objects carry which defect or edit. Before an instance is
+written, the generator also checks that injection notes never reach a title, prompt or hint, that a
+verdict on a **stress board** (the goal plus 15–20 extra steps and arrows) needs at most half of the
+checker's 10⁶-step budget, and, for `tight-budget`, that its budget is a proven minimal length.
+
+```bash
+node tools/challenge.ts generate repair --set dev --out .local/challenge/dev/repair        # seeds 1…8
+node tools/challenge.ts verify .local/challenge/dev/repair                                 # checker only, no agent
+npx practonaut bench --agent oracle $(node -e "process.stdout.write(require('./.local/challenge/dev/repair/instances.json').bench.args.slice(1).join(' '))")
+```
+
+`generate` writes `world/world.json`, one oracle sidecar per instance in `oracles/` (outside the world
+folder, never seen by an agent) and `instances.json` with every instance's facts and the bench
+arguments (`bench.args`: `--world`, `--oracle`, `--seed-list 1 --repeats 1`, the family's
+recommended `--max-actions` and `--timeout`). Seeds: development 1–999 (default 1…8), throwaway
+self-checks 10 000–19 999 (default 10 001…10 024), held-out ≥ 1 000 000. `--difficulty 1|2|3|mixed`
+(default `mixed`: 1, 2, 3, 1, …). Long-horizon runs need `--max-actions 120` (recommended in
+`instances.json`).
+
+**Held-out sets** are generated right before a gate round and not looked at while tuning:
+`node tools/challenge.ts generate <family> --set heldout --round 1 --count 24 --difficulty <d> --out <dir>`
+draws a random seed base (printed and recorded); round 2 uses a new base, and the gate refuses a
+round that reuses an earlier round's seeds.
+
+**The gate** takes the five bench/2 reports of one round — oracle, random and the three ladder agents
+(`claude-code` with Opus, Sonnet and Haiku, chosen with `ANTHROPIC_MODEL`), all on the same held-out
+world, tasks, seed, mirror, timeout and caps — re-verifies each against its bench folder, replays
+every stored near miss in a checker process, and writes the gate report:
+
+```bash
+node tools/challenge.ts gate --family repair --round 1 --oracle <oracle/report.json> --random <random/report.json> \
+  --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --strongest <model> --weakest <model> \
+  --dev-runs <n> --out docs/benchmarks/challenge/repair-round1.md
+```
+
+`--strongest` and `--weakest` are the models named from the development runs before the round
+(preregistered); `--previous <report.json>` gives round 1's report to a round 2. The verdict rules
+are PADR-0040's: headroom (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar
+p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %, every near miss fails, every run
+counts, more than 5 % `infra_error` voids the round, at most 100 model runs per family and round.
+

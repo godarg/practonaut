@@ -102,6 +102,9 @@ change with a test and an update of this table. No environment variable disables
 | Recordings | 30 min, 1,000 gestures, 3 MiB each; 100 recordings / 64 MiB in total | `recording_limit` | `src/host/author-controller.ts` |
 | Bench run | `--timeout` (default 300 s), `--max-actions` (default 50) | `action_budget_exhausted` | `src/bench/` |
 | Bench oracle file / stored references | 4 MiB / 64 MiB, JSON depth 64, 1,000 actions per sequence | `bench_oracle_invalid`; at `--verify` `bench_artifact_changed` or `bench_reference_invalid` | `src/bench/world.ts`, `src/bench/verify.ts` |
+| Task limits (a task's `limits`, `--checks`; PADR-0040) | at most 1,000 accepted changes and 1,000 checks per attempt; `--checks` 0–1,000 lowers a task's check limit, never raises it | `action_budget_exhausted` / `check_budget_exhausted`; a world with other values is refused when loaded, `--checks` outside 0–1,000 is `usage` | `src/world/schema.ts` (`TASK_LIMITS`), `src/host/session.ts` |
+| Minimal-length search | 250,000 search nodes, then "reference length" (no claim) | — | `src/authoring/minimal-length.ts` |
+| Challenge instances (generator, PADR-0040) | at most 56 live objects per board; a verdict on a stress board within half the 10⁶-step predicate budget; no limit is raised | instance redrawn, else `generation_failed` | `src/challenge/build.ts` |
 
 ## 5. Where the controls are tested
 

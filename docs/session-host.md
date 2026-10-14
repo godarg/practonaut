@@ -71,12 +71,16 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 | POST `/api/reset` | revision, `confirmed:true`, optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
 | POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed |
 | POST `/api/hint` | revision | next public hint, never hidden data |
-| POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict |
+| POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict; with a check limit also `checksRemaining` |
 | GET `/api/events` | token header via fetch | SSE ready/changed/rejected/heartbeat; never browser-supplied confirmation |
 | GET `/api/tool.png` | token header | host-rendered image/png with nosniff; no SVG or HTML |
 
 `changed` contains the committed view. `rejected` contains the unchanged revision/hash and a
-named error. Heartbeat contains revision only. Practice does not load a checker bundle.
+named error. When the attempt has limits (a task's `limits`, or `--checks` on `play`/`serve`,
+`mcp --task` and `bench`; [PADR-0040](adr/0040-challenge-tier-generated-families-and-gate.md)), the
+view and every mutation delta carry `limits: { actions?: {limit, used}, checks?: {limit, used} }`;
+accepted act, undo, reset and editor changes count as actions, evaluated checks as checks, a refused
+request counts for neither, and only a new task or variant starts fresh counts. Heartbeat contains revision only. Practice does not load a checker bundle.
 Quantified predicates remain whole public conditions so different witnesses cannot incorrectly
 satisfy split fragments. Every result is explicitly end-state-only, not learner attestation.
 
@@ -129,6 +133,8 @@ These are fixed constants, not environment overrides. Tests exercise each releva
 | Private diagnostic | 4 MiB file and single-record cap | diagnostic_limit / diagnostic_unavailable |
 | Optional network startup probe | 3 s | E_NETWORK_AVAILABLE when external reachability is observed |
 | Bench action budget (bench runs only) | `--max-actions`, default 50 act/undo/reset per run | action_budget_exhausted (HTTP 429) |
+| Task action limit (PADR-0040) | a task's `limits.actions`: accepted act/undo/reset/editor changes per attempt | action_budget_exhausted (HTTP 429) |
+| Check limit (PADR-0040) | a task's `limits.checks` and `--checks`, the smaller one: evaluated checks per attempt | check_budget_exhausted (HTTP 429) |
 
 Other named guards include token_required/token_invalid/token_in_query, host_rejected,
 origin_rejected, json_required, invalid_request, token_file_unsafe, stale_base, session_busy,

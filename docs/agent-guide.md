@@ -160,6 +160,16 @@ rejects stale input. Undo/reset can reuse a step number, which is why the revisi
 Do not retry a stale action with an invented revision. In a bench run the host refuses
 mutations beyond the run's action budget with `action_budget_exhausted`.
 
+**Limits.** Some tasks limit an attempt's changes or checks (a task's `limits`, or `--checks <n>` on
+`mcp --task`, `play` and `bench`;
+[PADR-0040](adr/0040-challenge-tier-generated-families-and-gate.md)). Then `observe` and every `act`,
+`undo` and `reset` reply carry `limits: { "actions": {"limit", "used"}, "checks": {"limit", "used"} }`
+(only the limits that apply), and `check_result` adds `checksRemaining`. Every accepted `act`,
+`undo` and `reset` uses one action, every `check_result` one check; a refused call uses nothing, and
+`reset` gives nothing back. A call beyond a limit is refused with `action_budget_exhausted` or
+`check_budget_exhausted` and changes nothing. The Player shows the same counts; a person and an agent
+on one session share them.
+
 Human and agent edits appear in the same history and Player through its existing live updates.
 Each history entry names who made it (`actor`): `{"kind":"human"}` for the Player and the real
 editor, `{"kind":"agent","client":"<name>"}` for every `act` through MCP, where `<name>` is the
