@@ -359,9 +359,41 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
     "de": "practonaut bench: abgebrochen, bevor der erste Lauf endete; kein Bericht geschrieben (Laufprotokolle: {logs}).\n"
   },
-  "reportRunsNeedsVerify": {
-    "en": "--runs names the run directory for --verify; add --verify",
-    "de": "--runs nennt das Laufverzeichnis für --verify; --verify ergänzen"
+  "compareUsage": {
+    "en": "compare needs two bench reports: {cli} compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]",
+    "de": "compare braucht zwei Bench-Berichte: {cli} compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]"
+  },
+  "compareIncomparable": {
+    "en": "the reports are not comparable (PADR-0039): {differences}. Bench the baseline again with the candidate's settings",
+    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+  },
+  "compareDifference": {
+    "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",
+    "de": "{field} unterscheidet sich ({baseline} bei der Basis, {candidate} beim Kandidaten)"
+  },
+  "compareField_world": {
+    "en": "the world content",
+    "de": "der Inhalt der Welt"
+  },
+  "compareField_grid": {
+    "en": "the grid of tasks and seeds",
+    "de": "das Raster aus Aufgaben und Seeds"
+  },
+  "compareField_mirror": {
+    "en": "the mirror",
+    "de": "die Spiegelung"
+  },
+  "compareField_budget": {
+    "en": "the action budget",
+    "de": "das Aktionsbudget"
+  },
+  "compareField_isolation": {
+    "en": "the isolation level",
+    "de": "die Isolationsstufe"
+  },
+  "compareRegression": {
+    "en": "{n} instance {n:regression|regressions} (passed in every baseline repeat, failed in every candidate repeat): {list}",
+    "de": "{n} {n:Instanz-Regression|Instanz-Regressionen} (bei jeder Wiederholung der Basis bestanden, bei jeder des Kandidaten nicht): {list}"
   },
   "reportTooLarge": {
     "en": "the bench report is larger than {size} MiB",

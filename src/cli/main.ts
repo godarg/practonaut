@@ -24,7 +24,7 @@ import { commandRecord, commandCompile } from './authoring.ts';
 import { AuthoringError } from '../authoring/index.ts';
 import { CheckerError } from '../checker/index.ts';
 import { commandMcp } from './mcp.ts';
-import { commandBench, commandReport } from './bench.ts';
+import { commandBench, commandCompare, commandReport } from './bench.ts';
 import { commandSetup } from './setup.ts';
 import { commandTasks } from './tasks.ts';
 import {PACKAGE_VERSION} from '../version.ts';
@@ -217,7 +217,7 @@ export async function main(argv: string[]): Promise<number> {
     if (argv[0]?.startsWith("-") && !["--help", "-h", "--version", "-V"].includes(argv[0])) argv = ["play", ...argv];
     const [cmd, ...given] = argv;
     // --json is a global switch for error output; validate, pack, doctor and tasks also take it.
-    const rest = cmd === "validate" || cmd === "pack" || cmd === "doctor" || cmd === "tasks" || cmd === "report" ? given : given.filter(arg => arg !== "--json");
+    const rest = cmd === "validate" || cmd === "pack" || cmd === "doctor" || cmd === "tasks" || cmd === "report" || cmd === "compare" ? given : given.filter(arg => arg !== "--json");
     if (cmd !== undefined && (rest.includes("--help") || rest.includes("-h"))) {
       const text = commandHelp(cmd, getCliLanguage());
       if (text === undefined) throw new UsageError(cliText("commandUnknown", { command: safeText(cmd) }));
@@ -254,6 +254,7 @@ export async function main(argv: string[]): Promise<number> {
       case 'mcp': return await commandMcp(rest);
       case 'bench': return await commandBench(rest);
       case 'report': return await commandReport(rest);
+      case 'compare': return await commandCompare(rest);
       case 'eval': throw new RuntimeError('usage', cliText('evalRemoved'));
       case 'setup': return await commandSetup(rest);
       case 'tasks': return await commandTasks(rest);

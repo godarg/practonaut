@@ -131,7 +131,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   const value = v2Report(); value.label = 'nightly \u001b[31m<b>run</b>\u202e';
   const table = renderTable(value), html = renderHtml(value, ':root{}');
   assert.match(table, /^Label: nightly \\u\{001b\}\[31m<b>run<\/b>\\u\{202e\}$/m);
-  assert.match(table, /^Isolation: template: tools not restricted by Practonaut$/m);
+  assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported\)$/m);
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
@@ -143,16 +143,18 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.equal(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/.test(table + html), false);
   for (const [kind, words] of [['builtin', 'built-in baseline: no language model, MCP only'], ['preset', 'tool-restricted preset']] as const) {
     const other = v2Report(); other.agent = { ...other.agent, kind, isolation: ISOLATION_OF[kind], command: kind === 'builtin' ? [] : other.agent.command, model: null, modelSource: 'none', apiKeySource: null };
-    assert.match(renderTable(other), new RegExp(`^Isolation: ${words}$`, 'm'));
+    assert.match(renderTable(other), new RegExp(`^2/4 passed · .* · ${words}${kind === 'builtin' ? '' : ' · model not reported'}$`, 'm'));
   }
   const de = renderTable(value, 'de');
-  assert.match(de, /^Isolation: Vorlage: Werkzeuge nicht von Practonaut eingeschränkt$/m);
+  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft\)$/m);
   assert.match(de, /keine Referenz/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
-  // A /1 report renders as before: no isolation or world line was recorded.
+  // A /1 report did not record its isolation level or a world line; its header line says so.
   const v1 = JSON.parse(readFileSync(new URL('../fixtures/bench/v1/report.json', import.meta.url), 'utf8'));
-  assert.equal(/^Isolation:/m.test(renderTable(validateBenchReport(v1))), false);
+  const old = renderTable(validateBenchReport(v1));
+  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded \(bench\/1\)$/m);
+  assert.equal(/^World:/m.test(old), false);
 });
 
 test('the client init line gives the model and apiKeySource, each only when it is plain text', () => {
