@@ -8,7 +8,8 @@ import { HOST_ROUTES, HOST_ERROR_CODES, TOKEN_HEADER, type HostReply, type HostE
 import { parseJsonEntry } from "../package/json.ts";
 import { ActionDefinitionSchemaV2, AnyStateSchema, RuleSchemaV2, WorldSchema } from "../world/schema.ts";
 import { ERROR_CODES } from "../world/types.ts";
-import { agentClientName, TOOL_SCHEMAS, type McpBridge, type McpCallContext, type McpBridgeConfig, type McpToolName, type McpToolInputs, type McpToolValues } from "./contracts.ts";
+import { agentClientName, inputProblems, TOOL_SCHEMAS, type McpBridge, type McpCallContext, type McpBridgeConfig, type McpToolName, type McpToolInputs, type McpToolValues } from "./contracts.ts";
+import { checkResult, compactView, fullView, localize, mutationResult, type Lang } from "./replies.ts";
 import {HOST_TRANSACTION_MS} from '../host/mirror.ts';
 export const BRIDGE_DEADLINE_MS=HOST_LIMITS.requestTimeoutMs;
 export const BRIDGE_REOBSERVE_MS=3_000;
@@ -72,12 +73,19 @@ export const publicViewSchema = z.strictObject({
   mirrorHealth: z.strictObject({ status: z.enum(["available", "unavailable", "closed", "model-only"]), recoveries: integer }),
   practiceEvidence: z.boolean(), attempt: integer, hintsOpened: integer, hints: z.array(localized), result: checkSchema.nullable(), errors: diagnosis,
 });
-const mutationSchema = z.strictObject({ view: publicViewSchema, mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative() });
+const effect = z.strictObject({ kind: z.string(), id: z.string() });
+/** A mutation answered without its view (`reply: "delta"`, PADR-0038); `changed` holds state objects. */
+const deltaReplySchema = z.strictObject({
+  delta: z.strictObject({ step: integer, revision: integer, hash: z.string(), changed: z.record(z.string(), z.unknown()), created: z.array(z.string()), removed: z.array(z.string()), effects: z.array(effect), errors: diagnosis }),
+  mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative(),
+}).superRefine((value, context) => { if (!AnyStateSchema.safeParse({ objects: value.delta.changed }).success) context.addIssue({ code: "custom", message: "changed objects do not match the state schema" }); });
 // Only practice/core failures are part of these seven tools. Authoring/runtime or future
 // private diagnostics must not silently enter the MCP surface. Empty core details preserve
 // HTTP parity; nonempty diagnostics need an explicit public contract before admission.
 const errorSchema = z.union([
  z.strictObject({ ok: z.literal(false), error: z.strictObject({ code: z.enum([...HOST_ERROR_CODES, ...ERROR_CODES]), message: z.string().max(8192), details: z.strictObject({}).optional() }) }),
+ // A stale request learns the current step and revision, nothing else.
+ z.strictObject({ ok: z.literal(false), error: z.strictObject({ code: z.literal('stale_base'), message: z.string().max(8192), details: z.strictObject({ step: integer, revision: integer }) }) }),
  z.strictObject({ok:z.literal(false),error:z.strictObject({code:z.literal('outcome_unknown'),message:z.string().max(256),details:z.strictObject({observedRevision:integer,observedHash:z.string().regex(/^[a-f0-9]{64}$/)})})}),
 ]);
 function failure(code: HostErrorCode, message: string): HostReply<never> { return { ok: false, error: { code, message } }; }
@@ -123,17 +131,27 @@ export async function createBridge(config: McpBridgeConfig): Promise<McpBridge> 
     if (!budget.take()) return failure("rate_limited", "Request rate exceeds bridge budget");
     if (!Object.hasOwn(TOOL_SCHEMAS, name)) return failure("invalid_request", "Tool name is not registered");
     const checked = TOOL_SCHEMAS[name].safeParse(input);
-    if (!checked?.success) return failure("invalid_request", "Tool input does not match its schema");
+    if (!checked?.success) return failure("invalid_request", `Tool input does not match its schema: ${inputProblems(TOOL_SCHEMAS, name, input)}`);
+    const lang: Lang = (checked.data as { lang?: Lang }).lang ?? "en";
+    // Every host reply is admitted against its public schema first; shaping only selects and
+    // localises admitted public data (PADR-0038).
+    const shape = <T, U>(reply: HostReply<T>, map: (value: T) => U): HostReply<U> => reply.ok ? { ok: true, value: map(reply.value) } : reply;
     let reply: HostReply<unknown>;
     if (name === "act") {
       const value = checked.data as McpToolInputs["act"];
       // Every change made through MCP is an agent's; the history shows the client's declared name.
-      reply = admitted(await request(HOST_ROUTES.act, { expectedRevision: value.expectedRevision, action: { name: value.name, params: value.params, baseStep: value.baseStep }, actor: { kind: 'agent', client: agentClientName(context.client) } }), mutationSchema);
-    } else if (name === "undo" || name === "reset") reply = admitted(await request(name === "undo" ? HOST_ROUTES.undo : HOST_ROUTES.reset, checked.data), mutationSchema);
-    else if (name === "check_result") reply = admitted(await request(HOST_ROUTES.check, checked.data), checkSchema);
-    else {
+      reply = shape(admitted(await request(HOST_ROUTES.act, { expectedRevision: value.expectedRevision, action: { name: value.name, params: value.params, baseStep: value.baseStep }, actor: { kind: 'agent', client: agentClientName(context.client) }, reply: 'delta' }), deltaReplySchema), delta => mutationResult(delta as never, lang));
+    } else if (name === "undo" || name === "reset") {
+      const { lang: _lang, ...body } = checked.data as McpToolInputs["undo"] | McpToolInputs["reset"];
+      reply = shape(admitted(await request(name === "undo" ? HOST_ROUTES.undo : HOST_ROUTES.reset, { ...body, reply: 'delta' }), deltaReplySchema), delta => mutationResult(delta as never, lang));
+    } else if (name === "check_result") {
+      reply = shape(admitted(await request(HOST_ROUTES.check, { expectedRevision: (checked.data as McpToolInputs["check_result"]).expectedRevision }), checkSchema), check => checkResult(check as never, lang));
+    } else {
       const observed = admitted(await request(HOST_ROUTES.observe), publicViewSchema);
-      reply = !observed.ok ? observed : name === "list_actions" ? { ok: true, value: observed.value.actions } : name === "explain_result" ? { ok: true, value: { result: observed.value.result, errors: observed.value.errors } } : observed;
+      const options = checked.data as McpToolInputs["observe"];
+      reply = !observed.ok ? observed : name === "list_actions" ? { ok: true, value: observed.value.actions }
+        : name === "explain_result" ? { ok: true, value: localize({ result: observed.value.result, errors: observed.value.errors }, lang) }
+        : { ok: true, value: options.detail === "full" ? fullView(observed.value as never, lang) : compactView(observed.value as never, lang, options.history) };
     }
     return reply as HostReply<McpToolValues[K]>; // Switch above exhausts the seven fixed tools and validates each wire value.
   } };

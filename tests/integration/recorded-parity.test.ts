@@ -47,14 +47,14 @@ test("guided native author path compiles the exact opened package then Player/MC
     let tokenFile: string | undefined;
     for (const name of await readdir(dirname(s.host.tokenFile))) if (name.endsWith(".token")) { const path = join(dirname(s.host.tokenFile), name); if (await readSessionToken(path) === childToken) tokenFile = path; }
     assert.ok(tokenFile); sdk = await sdkClient({ origin: childOrigin, tokenFile });
-    const observe = async (): Promise<HostView> => { const reply = await sdk!.call("observe", {}); assert.ok(reply.ok); assertOracle(world, reply.value); return reply.value; };
+    const observe = async (): Promise<HostView> => { const reply = await sdk!.call("observe", { detail: "full", lang: "both" }); assert.ok(reply.ok); assertOracle(world, reply.value as HostView); return reply.value as HostView; };
     let view = await observe();
     const human = async (operation: () => Promise<unknown>) => { const response = page.waitForResponse(response => response.url() === childOrigin + "/api/act"); await operation(); const reply = await (await response).json() as HostReply<MutationReply>; assert.ok(reply.ok); assert.equal(reply.value.mirrorConfirmed, true); assertOracle(world, reply.value.view); return reply.value.view; };
     await page.locator('[data-object-id="ab"]').first().click(); await page.getByTestId("action-rewire-end").click(); view = await human(() => page.locator('[data-object-id="c"]').first().click());
-    const agent = await sdk.call("act", { name: "disconnect", params: { id: "bc" }, baseStep: view.step, expectedRevision: view.revision }); assert.ok(agent.ok); assertOracle(world, agent.value.view);
+    const agent = await sdk.call("act", { name: "disconnect", params: { id: "bc" }, baseStep: view.step, expectedRevision: view.revision }); assert.ok(agent.ok); assert.equal(agent.value.revision, view.revision + 1); assertOracle(world, await observe());
     await page.waitForFunction(() => !document.querySelector('[data-object-id="bc"]'));
     await page.locator('[data-object-id="b"]').first().click(); view = await human(() => page.getByTestId("action-delete").click());
-    const checked = await sdk.call("check_result", { expectedRevision: view.revision }); assert.ok(checked.ok); assert.equal(checked.value.passed, true);
+    const checked = await sdk.call("check_result", { expectedRevision: view.revision, lang: "both" }); assert.ok(checked.ok); assert.equal(checked.value.passed, true);
     const response = page.waitForResponse(response => response.url() === childOrigin + "/api/check"); await page.getByTestId("check").click(); const humanResult = await (await response).json(); assert.deepEqual(humanResult.value, checked.value);
     const final = await observe(); const adapter = await createExcalidrawAdapter(final.state);
     try { const artifact = await adapter.exportArtifact(); const verdict = await checkInProcess(world, artifact.native, { bundle, seed: final.seed, taskId: final.task.id }); assert.equal(verdict.passed, true); }

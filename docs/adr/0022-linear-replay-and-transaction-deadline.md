@@ -1,3 +1,5 @@
+⛔ Refined by [PADR-0037](0037-fork-the-committed-session-for-candidates.md): mutation candidates fork the committed session instead of a tentative reconstruction; the committed session is replayed before every check and export, the candidate before every publication. All other decisions remain in force.
+
 # PADR-0022 — Validated replay and one transaction deadline
 
 Status: accepted · Date: 2026-10-09

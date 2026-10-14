@@ -4,7 +4,8 @@
  * within the action budget. They bound a score from above and below; neither sees the goal predicate.
  */
 import type { TaskOracle, OracleParam } from '../authoring/from-scenes.ts';
-import type { HostView, MutationReply, PublicCheck } from '../host/protocol.ts';
+import type { PublicCheck } from '../host/protocol.ts';
+import type { CompactView, MutationResult } from '../mcp/replies.ts';
 import type { ActionDefinition, Parameter, Scalar, World } from '../world/types.ts';
 import { substituteTokens, variantIndex, variantTokens } from '../world/variant.ts';
 import type { StdioMcpClient } from './mcp-client.ts';
@@ -14,10 +15,16 @@ export type BuiltinAgent = typeof BUILTIN_AGENTS[number];
 export interface BaselineContext { client: StdioMcpClient; world: World; seed: number; oracle: TaskOracle; maxActions: number; randomSeed: number; deadline: number }
 export interface BaselineResult { note?: string }
 
-async function observe(client: StdioMcpClient): Promise<HostView> {
-  const reply = await client.call<HostView>('observe', {});
+async function observe(client: StdioMcpClient): Promise<CompactView> {
+  const reply = await client.call<CompactView>('observe', {});
   if (!reply.ok) throw new Error(`observe failed: ${reply.error.code}`);
   return reply.value;
+}
+/** The board as the agent knows it: the observed objects with every reply's changes applied. */
+function applyChanges(view: CompactView, result: MutationResult): CompactView {
+  const objects = { ...view.state.objects };
+  for (const [id, object] of Object.entries(result.changed)) { if (object.deleted) delete objects[id]; else objects[id] = object; }
+  return { ...view, state: { objects }, step: result.step, revision: result.revision };
 }
 
 /** The reference solution with this seed's variant labels; created ids are read from each reply. */
@@ -32,11 +39,10 @@ export async function runOracle(context: BaselineContext): Promise<BaselineResul
       if (value !== null && typeof value === 'object') params[key] = created[value.created] ?? '';
       else params[key] = typeof value === 'string' ? substituteTokens(value, tokens) : value;
     }
-    const before = new Set(Object.keys(view.state.objects));
-    const reply = await client.call<MutationReply>('act', { name: step.name, params, baseStep: view.step, expectedRevision: view.revision });
+    const reply = await client.call<MutationResult>('act', { name: step.name, params, baseStep: view.step, expectedRevision: view.revision });
     if (!reply.ok) return { note: `oracle action ${index} rejected: ${reply.error.code}` };
-    view = reply.value.view;
-    created[index] = Object.keys(view.state.objects).find(id => !before.has(id)) ?? '';
+    view = applyChanges(view, reply.value);
+    created[index] = reply.value.created[0] ?? '';
   }
   const check = await client.call<PublicCheck>('check_result', { expectedRevision: view.revision });
   return check.ok ? {} : { note: `check_result failed: ${check.error.code}` };
@@ -55,7 +61,7 @@ export function seededRandom(seed: number): () => number {
 }
 const WORDS = ['Start', 'Review', 'Done', 'Check', 'Approve', 'Step', 'Draft', 'Ship'];
 /** One value per parameter contract, drawn from the current objects where the parameter is an id. */
-export function randomParameter(parameter: Parameter, view: HostView, random: () => number): Scalar {
+export function randomParameter(parameter: Parameter, view: Pick<CompactView, 'state'>, random: () => number): Scalar {
   const pick = <T>(values: readonly T[]): T => values[Math.floor(random() * values.length)]!;
   const objects = Object.values(view.state.objects);
   const ids = objects.map(object => object.id);
@@ -81,14 +87,15 @@ export async function runRandom(context: BaselineContext): Promise<BaselineResul
   const { client, maxActions } = context;
   const random = seededRandom(context.randomSeed);
   let view = await observe(client);
+  const listed = await client.call<ActionDefinition[]>('list_actions', {});
+  const actions = listed.ok ? listed.value : [];
   for (let attempt = 0; attempt < maxActions && Date.now() < context.deadline; attempt++) {
-    const actions = view.actions as ActionDefinition[];
     if (!actions.length) return { note: 'no actions' };
     const action = actions[Math.floor(random() * actions.length)]!;
     const params: Record<string, Scalar> = {};
     for (const [name, parameter] of Object.entries(action.parameters)) params[name] = randomParameter(parameter, view, random);
-    const reply = await client.call<MutationReply>('act', { name: action.name, params, baseStep: view.step, expectedRevision: view.revision });
-    if (reply.ok) view = reply.value.view;
+    const reply = await client.call<MutationResult>('act', { name: action.name, params, baseStep: view.step, expectedRevision: view.revision });
+    if (reply.ok) view = applyChanges(view, reply.value);
     else if (reply.error.code === 'action_budget_exhausted') break;
     else view = await observe(client);
   }

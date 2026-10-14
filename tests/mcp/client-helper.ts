@@ -17,6 +17,8 @@ export async function sdkClient(host: Pick<RunningHost, "origin" | "tokenFile">,
       const raw = await client.callTool({ name, arguments: input }); outputs.push(raw);
       assert.ok(Array.isArray(raw.content));
       const text = raw.content.find(value => value.type === "text"); assert.ok(text && "text" in text && typeof text.text === "string");
+      // Both forms carry the same complete reply, whichever one a client reads (PADR-0038).
+      assert.deepEqual(raw.structuredContent, JSON.parse(text.text));
       return JSON.parse(text.text) as HostReply<McpToolValues[K]>;
     },
     async close() { await client.close(); },

@@ -154,24 +154,28 @@ const COMMANDS: Record<string, Text> = {
   mcp: {
     en: `Usage: practonaut mcp --task <task|world> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--open]
        practonaut mcp --host <http://127.0.0.1:port> --token-file <path>
+       either form: [--call-log <file>]
 
 With --task, starts its own session (a library task such as excalidraw/connect, or a world path) and
 serves it over stdio until the client closes. The real Excalidraw mirror runs when Chromium is installed
 (--mirror auto). A one-use link to watch the session in your browser is printed on stderr; --open opens it.
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 With --host and --token-file (both printed by play/serve), attaches to a running session that a person
-can use at the same time. stdout carries JSON-RPC only.
-Tools: observe, list_actions, act, undo, reset, explain_result, check_result.`,
+can use at the same time. stdout carries JSON-RPC only. --call-log <file> appends one JSON line per tool call
+(tool, result code, result bytes, bridge time) for measurements.
+Tools: observe, list_actions, act, undo, reset, explain_result, check_result; resource practonaut://task; prompt practise.`,
     de: `Verwendung: practonaut mcp --task <Aufgabe|Welt> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--open]
             practonaut mcp --host <http://127.0.0.1:port> --token-file <Pfad>
+            beide Formen: [--call-log <Datei>]
 
 Mit --task startet eine eigene Sitzung (eine Bibliotheksaufgabe wie excalidraw/connect oder ein Weltpfad), die
 über stdio bedient wird, bis der Client schließt. Die echte Excalidraw-Spiegelung läuft, wenn Chromium installiert
 ist (--mirror auto). Ein Link zum Mitsehen im Browser (gilt einmal) steht auf stderr; --open öffnet ihn.
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 Mit --host und --token-file (beide gibt play/serve aus) bindet an eine laufende Sitzung an, die ein Mensch
-gleichzeitig nutzen kann. stdout trägt nur JSON-RPC.
-Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result.`,
+gleichzeitig nutzen kann. stdout trägt nur JSON-RPC. --call-log <Datei> hängt je Werkzeugaufruf eine JSON-Zeile an
+(Werkzeug, Ergebniscode, Ergebnisbytes, Bridge-Zeit), für Messungen.
+Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result; Ressource practonaut://task; Prompt practise.`,
   },
   bench: {
     en: `Usage: practonaut bench --agent <oracle|random|claude-code|"command … {mcp_config} …">

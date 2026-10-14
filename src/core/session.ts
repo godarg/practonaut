@@ -19,8 +19,26 @@ export class SessionError extends Error {
   constructor(message: string) { super(message); this.name = "SessionError"; }
 }
 interface Snapshot { data: Buffer; bytes: number }
+/** Deep-freezes plain JSON data in place; a frozen world can be shared without copying. */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+/** Everything a fork shares or copies. Not exported: only `Session.fork` can make one, so no caller
+ * can hand a Session an unvalidated world, state or prefix (PADR-0037). */
+class ForkParts {
+  readonly world: World; readonly initial: State; readonly transitions: ReturnType<typeof createSessionTransitions>;
+  readonly state: State; readonly log: LogEntry[]; readonly snapshots: Map<number, Snapshot>; readonly snapshotBytes: number;
+  constructor(world: World, initial: State, transitions: ReturnType<typeof createSessionTransitions>, state: State, log: LogEntry[], snapshots: Map<number, Snapshot>, snapshotBytes: number) {
+    this.world = world; this.initial = initial; this.transitions = transitions; this.state = state; this.log = log; this.snapshots = snapshots; this.snapshotBytes = snapshotBytes;
+  }
+}
 
-/** State/log getters are detached copies; Session.act is the only mutation path. */
+/** State/log getters are detached copies; the world is validated once, frozen and shared;
+ * Session.act is the only mutation path. */
 export class Session {
   readonly #seed: number;
   readonly #taskId: string;
@@ -31,21 +49,34 @@ export class Session {
   #log: LogEntry[] = [];
   #snapshots = new Map<number, Snapshot>();
   #snapshotBytes = 0;
-  constructor(world: World, seed: number, taskId: string) {
+  constructor(world: World, seed: number, taskId: string, fork?: ForkParts) {
     if (!Number.isSafeInteger(seed)) throw new WorldError('seed must be a safe integer');
     if (typeof taskId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(taskId)) throw new WorldError('taskId must be a valid identifier');
-    this.#world = validateWorld(generateVariant(validateWorld(world), seed));
     this.#seed = seed; this.#taskId = taskId;
+    if (fork !== undefined) {
+      if (!(fork instanceof ForkParts)) throw new WorldError('invalid session fork');
+      this.#world = fork.world; this.#initial = fork.initial; this.#transitions = fork.transitions;
+      this.#state = fork.state; this.#log = fork.log; this.#snapshots = fork.snapshots; this.#snapshotBytes = fork.snapshotBytes;
+      return;
+    }
+    this.#world = deepFreeze(validateWorld(generateVariant(validateWorld(world), seed)));
     const task = this.#world.tasks.find(t => t.id === taskId);
     if (!task) throw new WorldError(`unknown task: ${taskId}`);
-    this.#initial = validateState(structuredClone(task.initialState ?? this.#world.initialState));
+    this.#initial = deepFreeze(validateState(structuredClone(task.initialState ?? this.#world.initialState)));
     this.#state = structuredClone(this.#initial);
     this.#transitions = createSessionTransitions(this.#world, seed, taskId);
+  }
+  /** An independent copy at the same step, sharing the validated world: a transaction candidate
+   * without re-validating the world or replaying the log (PADR-0037). Acting on either never
+   * changes the other. */
+  fork(): Session {
+    return new Session(this.#world, this.#seed, this.#taskId, new ForkParts(this.#world, this.#initial, this.#transitions.fork(), structuredClone(this.#state), structuredClone(this.#log), new Map(this.#snapshots), this.#snapshotBytes));
   }
   get seed(): number { return this.#seed; }
   get taskId(): string { return this.#taskId; }
   get state(): State { return structuredClone(this.#state); }
-  get world(): World { return structuredClone(this.#world); }
+  /** The validated post-variant world, deep-frozen and shared (no copy per read). */
+  get world(): World { return this.#world; }
   get log(): LogEntry[] { return structuredClone(this.#log); }
   get hash(): string { return stateHash(this.#state); }
   get step(): number { return this.#log.length; }
@@ -97,7 +128,8 @@ export class Session {
     const privateLog = structuredClone(log);
     if (!continuing(options)) return cancelledReplay();
     let state = structuredClone(this.#initial);
-    const transitions = createSessionTransitions(this.#world, this.seed, this.taskId);
+    // A fresh private executor over the world this Session validated once (PADR-0022, PADR-0037).
+    const transitions = this.#transitions.fresh();
     for (let index = 0; index < privateLog.length; index++) {
       if (!continuing(options)) return cancelledReplay();
       const entry = privateLog[index]!;

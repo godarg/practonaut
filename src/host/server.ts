@@ -9,7 +9,7 @@ import { z } from "zod";
 import { parseJsonEntry } from "../package/json.ts";
 import type { World } from "../world/types.ts";
 import { createPracticeSession, type MirrorDiagnostic, type PracticeSessionOptions } from "./session.ts";
-import { ACTOR_CLIENT, HOST_ROUTES, TOKEN_HEADER, type ControllerFactory, type HostErrorCode, type HostEvent, type HostReply, type RunningHost, type ServeOptions } from "./protocol.ts";
+import { ACTOR_CLIENT, HOST_ROUTES, TOKEN_HEADER, type ControllerFactory, type HostErrorCode, type HostEvent, type HostReply, type MutationDeltaReply, type MutationReply, type RunningHost, type ServeOptions } from "./protocol.ts";
 import { HOST_LIMITS, RequestBudget } from "./limits.ts";
 import { createTokenFile } from "./token-file.ts";
 import { createAuthorController, AuthorHostError } from './author-controller.ts';
@@ -85,10 +85,18 @@ const revision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const scalar = z.union([z.string().max(4096), z.number().finite().refine(v => !Number.isInteger(v) || Number.isSafeInteger(v)), z.boolean(), z.null()]);
 const action = z.strictObject({ name: z.string().min(1).max(128), params: z.record(z.string().max(128), scalar), baseStep: revision.optional() });
 const revisionSchema = z.strictObject({ expectedRevision: revision });
-const actSchema = revisionSchema.extend({ action, actor: z.strictObject({ kind: z.literal('agent'), client: z.string().regex(ACTOR_CLIENT) }).optional() });
-const resetSchema = revisionSchema.extend({ confirmed: z.literal(true) });
+/** `reply: "delta"`: answer a mutation without the view (PADR-0038); the Player leaves it out. */
+const replyShape = { reply: z.enum(['view', 'delta']).optional() };
+const undoSchema = revisionSchema.extend(replyShape);
+const actSchema = revisionSchema.extend({ action, actor: z.strictObject({ kind: z.literal('agent'), client: z.string().regex(ACTOR_CLIENT) }).optional(), ...replyShape });
+const resetSchema = revisionSchema.extend({ confirmed: z.literal(true), ...replyShape });
 const variantSchema = revisionSchema.extend({ confirmed: z.literal(true), taskId: z.string().min(1).max(128).optional() });
 const bootstrapSchema = z.strictObject({ code: z.string().min(1).max(128) });
+function withoutView(reply: 'view' | 'delta' | undefined, value: HostReply<MutationReply>): HostReply<MutationReply | MutationDeltaReply> {
+  if (reply !== 'delta' || !value.ok) return value;
+  const { view: _view, ...rest } = value.value;
+  return { ok: true, value: rest };
+}
 /** The request target as a URL of this listener; a target that is not a valid URL is a 400, never a throw. */
 export function requestUrl(target: string | undefined, origin: string): URL {
   try { return new URL(target ?? "/", origin); } catch { throw new HostError("invalid_request", "Request target is not a valid URL"); }
@@ -280,10 +288,10 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
         let reply: HostReply<unknown>;
         const checked = <T>(schema: z.ZodType<T>): T => { const result = schema.safeParse(payload); if (!result.success) throw new HostError("invalid_request", "Request does not match route schema"); return result.data; };
         switch (url.pathname) {
-          case HOST_ROUTES.act: { const parsed = checked(actSchema); reply = await controller.act({ expectedRevision: parsed.expectedRevision, action: { name: parsed.action.name, params: parsed.action.params, ...(parsed.action.baseStep === undefined ? {} : { baseStep: parsed.action.baseStep }) }, ...(parsed.actor ? { actor: { kind: 'agent' as const, client: parsed.actor.client } } : {}) },transactionContext); break; }
-          case HOST_ROUTES.reset: reply = await controller.reset(checked(resetSchema),transactionContext); break;
+          case HOST_ROUTES.act: { const parsed = checked(actSchema); reply = withoutView(parsed.reply, await controller.act({ expectedRevision: parsed.expectedRevision, action: { name: parsed.action.name, params: parsed.action.params, ...(parsed.action.baseStep === undefined ? {} : { baseStep: parsed.action.baseStep }) }, ...(parsed.actor ? { actor: { kind: 'agent' as const, client: parsed.actor.client } } : {}) },transactionContext)); break; }
+          case HOST_ROUTES.reset: { const parsed = checked(resetSchema); reply = withoutView(parsed.reply, await controller.reset({ expectedRevision: parsed.expectedRevision, confirmed: parsed.confirmed },transactionContext)); break; }
           case HOST_ROUTES.variant: { const parsed = checked(variantSchema); reply = await controller.variant({ expectedRevision: parsed.expectedRevision, confirmed: parsed.confirmed, ...(parsed.taskId === undefined ? {} : { taskId: parsed.taskId }) },transactionContext); break; }
-          case HOST_ROUTES.undo: reply = await controller.undo(checked(revisionSchema),transactionContext); break;
+          case HOST_ROUTES.undo: { const parsed = checked(undoSchema); reply = withoutView(parsed.reply, await controller.undo({ expectedRevision: parsed.expectedRevision },transactionContext)); break; }
           case HOST_ROUTES.hint: reply = await controller.hint(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.check: reply = await controller.check(checked(revisionSchema),transactionContext); break;
           case HOST_ROUTES.export: reply = await controller.export(checked(revisionSchema),transactionContext); break;

@@ -6,6 +6,7 @@
 // plant   : leave files named like the judged artifacts in PRACTONAUT_HOME and its parent, then solve.
 // plant-dir: put a folder where the run's checker.json goes (PRACTONAUT_HOME/..), then solve.
 // stubborn: ignore SIGTERM and never finish; its pid goes to <state>/pids.json (forced-stop path).
+// tasks   : write the task list of a full observe to <PN_TEST_AGENT_STATE>/tasks.json, then exit.
 // family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
 //           and both sleep; their pids go to <state>/pids.json (interrupt path).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -38,7 +39,12 @@ else {
   if (mode === 'plant') for (const directory of [home, join(home, '..')]) for (const name of ['session.json', 'checker.json', 'native.excalidraw']) writeFileSync(join(directory, name), '{"forged":true}');
   if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
   const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
-  const observed = await client.call<HostView>('observe', {});
+  if (mode === 'tasks') {
+    const full = await client.call<HostView>('observe', { detail: 'full', lang: 'both' });
+    writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'tasks.json'), JSON.stringify(full.ok ? full.value.tasks : null));
+    await client.close(); process.exit(0);
+  }
+  const observed = await client.call<Pick<HostView, 'step' | 'revision'>>('observe', {});
   if (!observed.ok) process.exit(3);
   const view = observed.value;
   const reply = await client.call('act', { name: 'connect', params: { from: 'a', to: 'b' }, baseStep: view.step, expectedRevision: view.revision });

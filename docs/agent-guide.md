@@ -1,6 +1,7 @@
 # Agent guide
 
-Agents use the MCP server built into the CLI, on the pinned official MCP v2 SDK. It opens no listening socket and owns no second world state: human
+Agents use the MCP server built into the CLI, on the pinned official MCP v2 SDK. It opens no
+listening socket and owns no second world state: human
 and agent actions change the same host revision, action log and real Excalidraw mirror. Agents
 see what the Player shows: public task, goal conditions in plain words together with their formal
 form (each goal clause written out as text, as in the Player), state and feedback. No reference
@@ -66,8 +67,8 @@ do not gain separate mutation budgets.
 Use a separately installed and authenticated Claude Code executable. Practonaut neither
 creates that account nor injects a provider API key, and the `bench` preset withholds the keys in
 your environment (a set `ANTHROPIC_API_KEY` switches Claude Code to API billing; for a manual run,
-unset it yourself). For a scored run use `practonaut bench --agent claude-code` (section 4). For a manual run with the `.mcp.json` from
-section 1, restrict the client to the Practonaut tools:
+unset it yourself). For a scored run use `practonaut bench --agent claude-code` (section 4). For a
+manual run with the `.mcp.json` from section 1, restrict the client to the Practonaut tools:
 
 ```bash
 claude -p --model opus --effort high --output-format stream-json --verbose \
@@ -91,19 +92,36 @@ Do not infer provider offline operation from the local runtime's offline checks.
 
 Tool descriptions and the server instructions are fixed project text, written so an agent can
 work without this guide; they are never supplied by a world. Outputs carry
-the same task, state and feedback available to the Player. Successful replies have
-`{ "ok": true, "value": ... }`; failures have `{ "ok": false, "error": ... }` with a structured
-code. Extra input fields are rejected.
+the same task, state and feedback available to the Player, sized for a context window
+([PADR-0038](adr/0038-lean-mcp-replies.md)). Successful replies have `{ "ok": true, "value": ... }`;
+failures have `{ "ok": false, "error": ... }` with a structured code. Every result carries the same
+JSON twice: as text and as `structuredContent`, so it is complete whichever one a client passes to
+its model. Extra input fields are rejected.
 
 | Tool | Input | Public result |
 |---|---|---|
-| `observe` | `{}` | Current host view: task, state, hash, step, revision, actions, history, rules and Player-visible feedback |
+| `observe` | `{}`; optional `detail` (`compact` default, `full`), `lang` (`en` default, `de`, `both`), `history` (0–200, default 5) | Compact: task (title, prompt, goal conditions with sentence and formal form), live objects, step, revision, mirror, the last `history` items, the last check, error explanations, opened hints. `full` adds action definitions, rules, the task list, the complete log and history; `full` with `both` is exactly the Player's view |
 | `list_actions` | `{}` | Public action definitions and parameter contracts |
-| `act` | `name`, `params`, `baseStep`, `expectedRevision` | Shared mutation and mirror-confirmed view |
-| `undo` | `expectedRevision` | Undo the last shared action; updated shared view |
-| `reset` | `expectedRevision`, `confirmed: true` | Reset this attempt; updated shared view |
-| `explain_result` | `{}` | Current public result, if any, and Player-visible errors |
-| `check_result` | `expectedRevision` | Public practice-goal verdict, identical to the Player's check |
+| `act` | `name`, `params`, `baseStep`, `expectedRevision`; optional `lang` | What changed: new `step` and `revision`, `changed` (each changed object as it is now; a deleted one with `deleted: true`), `created` and `removed` ids, effects, current error explanations, `mirrorConfirmed` |
+| `undo` | `expectedRevision`; optional `lang` | What changed, like `act` |
+| `reset` | `expectedRevision`, `confirmed: true`; optional `lang` | What changed, like `act` |
+| `explain_result` | optional `lang` | Current public result, if any, and Player-visible errors |
+| `check_result` | `expectedRevision`; optional `lang` | Public practice-goal verdict with every condition's sentence and formal form; with `lang: "both"` identical to the Player's check |
+
+The goal conditions — the sentence and the formal form of each — are in every `observe` and every
+`check_result`, in the chosen language, exactly as the Player shows them. The server also offers the
+current task as the resource `practonaut://task` (title, prompt and conditions in English and
+German) and one task-neutral prompt, `practise`. Tool annotations mark `observe`, `list_actions`,
+`explain_result` and `check_result` read-only and `reset` destructive; no tool reaches outside the
+session.
+
+Measured on 2026-10-14 with `tools/measure-agent-surface.ts` against the published 0.1.0 on the same
+machine (macOS arm64, Node 22): one `act` on `excalidraw/connect` costs 866 bytes of full result
+instead of 12–63 KB (0.1.0 repeated the whole view and grew by about 600 bytes per action); the
+first `observe` 3.7 KB instead of 8.1 KB; an oracle episode on the six hardest library tasks 79 %
+fewer result bytes in total (192,668 instead of 910,466 bytes over 12 episodes); the client round
+trip of an `act` 10.4 ms instead of 133.7 ms without the mirror and 33.6 ms instead of 150.0 ms with
+it (median of 72 calls after 8 warm-up calls).
 
 The `act` tool's input schema is generated from the session world when `practonaut mcp` starts:
 its `name` enum lists exactly the world's actions and `params` offers one strict parameter object
@@ -113,11 +131,16 @@ world (for example the bundled task library, `practonaut tasks list`) adds `resi
 `set_style` (shape, line and fill from a named palette), `rename_frame`, `group_steps`, `ungroup`
 and `set_frame`. Read the parameters from `list_actions` for the loaded world; the host validates
 every value again. Parameters are scalar values; at most 32 keys, key length at most 64, string
-values at most 4096 characters. Steps and revisions are nonnegative safe integers.
+values at most 4096 characters. Steps and revisions are nonnegative safe integers. A refused input
+says which path is wrong and what it expects (for example
+`params.x: move_step: Invalid input: expected number, received string`); it never repeats the
+input's own text.
 
 Always start with `observe`. For `act`, copy the returned `step` into `baseStep` and `revision`
-into `expectedRevision`. After a successful mutation use its returned view, or observe again.
-For example, if the observed view has step 0 and revision 0 and the world exposes step `b`:
+into `expectedRevision`. After a successful mutation use the `step` and `revision` of its reply;
+ids of new objects are in `created`. A `stale_base` refusal names the current step and revision in
+`error.details`. For example, if the observed view has step 0 and revision 0 and the world exposes
+step `b`:
 
 ```json
 {

@@ -7,8 +7,8 @@ import { selectVariant } from '../world/variant.ts';
 import { actionTemplates } from '../player/messages.ts';
 import { styleNames } from '../world/style-names.ts';
 import { stateHash } from '../canonical/index.ts';
-import type { Action, Localized, Predicate, Task, World, State, Value } from '../world/types.ts';
-import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationReply, PracticeController, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
+import type { Action, Effect, Localized, Predicate, Task, World, State, Value } from '../world/types.ts';
+import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
 import { toRaw } from '../adapters/excalidraw/raw.ts';
 import { interpretEditorGesture, reconcileCreatedIdentity } from './editor-input.ts';
 import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAINING_MS } from './mirror.ts';
@@ -66,6 +66,21 @@ function actionDescription(action: Action, before: State, after: State): Localiz
   return { en: render('en'), de: render('de') };
 }
 const reject = <T>(code: HostErrorCode, message: string): HostReply<T> => ({ ok: false, error: { code, message } });
+/** What a mutation changed, from the committed state before it and the published view after it:
+ * every object that differs (deleted objects keep their tombstone), the ids it created and the ids
+ * it deleted. Derived from public data only; an agent learns nothing a view would not show. */
+export function mutationDelta(before: State, after: HostView, effects: Effect[]): MutationDelta {
+  const changed: MutationDelta['changed'] = {}, created: string[] = [], removed: string[] = [];
+  for (const [id, object] of Object.entries(after.state.objects)) {
+    const previous = before.objects[id];
+    if (previous && isDeepStrictEqual(previous, object)) continue;
+    changed[id] = structuredClone(object);
+    if (!previous) created.push(id);
+    else if (!previous.deleted && object.deleted) removed.push(id);
+  }
+  for (const id of Object.keys(before.objects)) if (!Object.hasOwn(after.state.objects, id)) removed.push(id);
+  return { step: after.step, revision: after.revision, hash: after.hash, changed, created, removed, effects: structuredClone(effects), errors: structuredClone(after.errors) };
+}
 /** Never split through quantifiers: each witness must satisfy the complete body. */
 export function publicConditions(task: Task): Array<PublicCondition & { predicate: Predicate }> {
   const clauses = task.goal.op === 'all' ? task.goal.args : [task.goal];
@@ -227,11 +242,14 @@ export async function createPracticeController(input: World, options: PracticeSe
   const contextFor=(context?:TransactionContext):TransactionContext=>context??{deadline:performance.now()+HOST_TRANSACTION_MS};
   const continues=(context:TransactionContext):boolean=>Number.isFinite(context.deadline)&&performance.now()<context.deadline;
   const deadline=(context:TransactionContext):void=>{if(!continues(context))throw new MirrorFault('mirror_timeout','Transaction deadline reached before commit');};
-  const guard = <T>(request: RevisionRequest,context:TransactionContext): HostReply<T> | undefined => {
+  /** `replay`: the committed session's full replay, before every result check and export
+   * (architecture §9). Mutations replay their candidate instead (PADR-0037). */
+  const guard = <T>(request: RevisionRequest,context:TransactionContext,replayCommitted=true): HostReply<T> | undefined => {
     if (closed) return reject('mirror_unavailable', 'Session closed');
     if (busy) return reject('session_busy', 'A transaction is in progress');
-    if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision) return reject('stale_base', 'Board changed since this request');
+    if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision) return { ok: false, error: { code: 'stale_base', message: `Board changed since this request; the current step is ${session.step} and the current revision ${revision}`, details: { step: session.step, revision } } };
     if(!continues(context))return reject('mirror_timeout','Transaction deadline reached before commit');
+    if (!replayCommitted) return undefined;
     const replay = session.checkReplay({continue:()=>continues(context)});
     if (!replay.ok) return reject(replay.error.code==='cancelled'?'mirror_timeout':replay.error.code, replay.error.code==='cancelled'?'Transaction deadline reached before commit':replay.error.message);
     return undefined;
@@ -240,14 +258,11 @@ export async function createPracticeController(input: World, options: PracticeSe
     if (!reply.ok) emit({ type: 'rejected', revision, hash: session.hash, error: { code: reply.error.code, message: reply.error.message } });
     return reply;
   };
+  /** The transaction candidate: a fork of the committed session, never the committed one itself.
+   * Its full history is replayed before it can be published (PADR-0037). */
   const candidateFromLog = (context:TransactionContext): Session => {
     deadline(context);
-    const candidate = new Session(original, session.seed, session.taskId);
-    for (const entry of session.log) {
-      deadline(context);
-      const applied = candidate.act(entry.action);
-      if (!applied.ok || candidate.hash !== entry.hash) throw new Error('replay_mismatch');
-    }
+    const candidate = session.fork();
     deadline(context);
     return candidate;
   };
@@ -290,7 +305,7 @@ export async function createPracticeController(input: World, options: PracticeSe
     return reject(code!, mirror ? 'Mirror rejected the action and was restored; the board was not changed' : 'Mirror unavailable; restart the session. The board was not changed');
   };
   const mutate = async (request: RevisionRequest, build: (context:TransactionContext) => { candidate: Session; action?: Action; effects?: HistoryItem['effects']; reset?: boolean; actor?: HistoryItem['actor'] },suppliedContext?:TransactionContext): Promise<HostReply<MutationReply>> => {
-    const context=contextFor(suppliedContext),invalid = guard<MutationReply>(request,context); if (invalid) return rejected(invalid);
+    const context=contextFor(suppliedContext),invalid = guard<MutationReply>(request,context,false); if (invalid) return rejected(invalid);
     busy = true;
     const started = performance.now();let mirrorWritten=false;
     try {
@@ -311,11 +326,13 @@ export async function createPracticeController(input: World, options: PracticeSe
       const latencyMs = Math.round(performance.now() - started);
       if(next.action){projectedHistory.at(-1)!.latencyMs=latencyMs;projectedHistory.at(-1)!.mirrorConfirmed=synchronized.value;}
       const value=makeView(next.candidate,{revision:revision+1,history:projectedHistory,result:null,...(next.reset?{attempt:nextAttempt,hintsOpened:0,hints:[]}:{})});admit(value);
+      const before = session.state;
       deadline(context); // No await between this final check and the synchronous commit.
       session = next.candidate; revision++; result = null;history=projectedHistory;
       if (next.reset) { attempt = nextAttempt; hintsOpened = 0; }
       mirrorWritten=false;emit({ type: 'changed', view: value });
-      return { ok: true, value: { view: value, mirrorConfirmed: synchronized.value, latencyMs } };
+      const delta = mutationDelta(before, value, next.effects ?? []);
+      return { ok: true, value: { view: value, delta, mirrorConfirmed: synchronized.value, latencyMs } };
     } catch (error) {
       const timedOut=!continues(context);
       if(mirrorWritten)await recoverMirror(); // Lock stays held through verified rollback/disposal.
