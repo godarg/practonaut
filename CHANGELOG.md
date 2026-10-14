@@ -4,6 +4,15 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- Vision, roadmap to 1.0 and the product direction
+  ([docs/vision.md](docs/vision.md), [docs/roadmap.md](docs/roadmap.md),
+  [PADR-0033](docs/adr/0033-product-direction-measurement-you-can-act-on.md)), with a research note
+  and the measured baseline of 0.1.0 ([docs/research/landscape-2026-10.md](docs/research/landscape-2026-10.md)).
+
 ## [0.1.0] - 2026-10-13
 
 First public version: a local practice gym for AI agents on real apps. The date is set when the
