@@ -290,6 +290,14 @@ params substitute in labels, frame names, localized texts and literals. **Tasks*
 `conditionTexts`, one EN/DE sentence per top-level goal clause (exactly as many as clauses), which
 the Player shows instead of the formal narration.
 
+**Generated tasks.** A task that a generator materialised carries
+`generatedBy: { "id", "version", "seed", "parameters" }`: the generator id (lowercase letters,
+digits, `-`), its semantic version, the integer seed, and up to 16 named parameters (integer or a
+display string of at most 64 characters, for example a difficulty level; default `{}`). It is world
+content: covered by the world's content hash and recorded in bench reports, but never part of the
+Player's or an agent's view ([PADR-0036](adr/0036-bench-report-v2-any-world-stored-world.md):
+generated instances are stored as concrete worlds, not regenerated from a seed).
+
 **Exports.** For world/2 the checker reads any Excalidraw drawing with a tolerant parser
 (`src/checker/scene.ts`): rectangles, ellipses and diamonds are steps (bound text is the label,
 absent text an empty label), any font, rotation, opacity and stroke style are ignored, colours map

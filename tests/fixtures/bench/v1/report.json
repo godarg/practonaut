@@ -1,0 +1,162 @@
+{
+  "schema": "practonaut.bench/1",
+  "createdAt": "2026-10-14T14:14:36.377Z",
+  "environment": {
+    "practonaut": "0.2.0-dev.0",
+    "excalidraw": "0.18.1",
+    "node": "v22.22.3",
+    "os": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "arch": "arm64"
+    },
+    "mirror": "required",
+    "library": {
+      "worldId": "excalidraw-library",
+      "version": "1.1.0",
+      "contentHash": "6f46bc08e6a612235d29a0aa06eed3324952ad16897b0b042fc4e08ca80c33da"
+    }
+  },
+  "agent": {
+    "kind": "builtin",
+    "name": "oracle",
+    "command": [],
+    "model": null,
+    "modelSource": "none"
+  },
+  "settings": {
+    "tasks": [
+      "connect",
+      "insert-between"
+    ],
+    "seeds": [
+      1
+    ],
+    "repeats": 1,
+    "timeoutSeconds": 300,
+    "maxActions": 50,
+    "mirror": "required",
+    "prompt": ""
+  },
+  "runs": [
+    {
+      "id": "connect-s1-r1",
+      "taskId": "connect",
+      "seed": 1,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "wallMs": 1713,
+      "referenceActions": 1,
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "agentExitCode": 0,
+      "artifacts": {
+        "session": "d3057bd17c243a833601426a35e6c0d16f0cb350cc93f1aea98af05770af6180",
+        "native": "b1acefbe0066942b1b1b1cae728d0cce650b9c2bfd1fdc0c93bac7affd55825f",
+        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b"
+      }
+    },
+    {
+      "id": "insert-between-s1-r1",
+      "taskId": "insert-between",
+      "seed": 1,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "actions": 4,
+      "acceptedActions": 4,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 4,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 7
+      },
+      "wallMs": 1118,
+      "referenceActions": 4,
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "agentExitCode": 0,
+      "artifacts": {
+        "session": "e9e60eb3b30a3385da7326b0bdbf4b936587d5ec7d589aadce2bb348c3d389e8",
+        "native": "c5410ed116a99976c349e115ce8caa9ab917a5d9f5d2bf78624d8870a58358bb",
+        "checker": "24486f949f89ec0c0399e98149d3a9184caec44cbfb911e8dea3841aa395987f"
+      }
+    }
+  ],
+  "summary": {
+    "runs": 2,
+    "passed": 2,
+    "judged": 2,
+    "infraErrors": 0,
+    "passAt1": 1,
+    "passHatK": [
+      {
+        "k": 1,
+        "value": 1
+      }
+    ],
+    "meanActions": 2.5,
+    "meanActionsPassed": 2.5,
+    "efficiencyVsReference": 1,
+    "meanWallMs": 1415.5,
+    "rejectedActions": 0,
+    "undos": 0,
+    "resets": 0,
+    "toolCalls": 11,
+    "byTask": [
+      {
+        "taskId": "connect",
+        "runs": 1,
+        "passed": 1,
+        "passAt1": 1,
+        "meanActions": 1,
+        "referenceActions": 1,
+        "efficiency": 1
+      },
+      {
+        "taskId": "insert-between",
+        "runs": 1,
+        "passed": 1,
+        "passAt1": 1,
+        "meanActions": 4,
+        "referenceActions": 4,
+        "efficiency": 1
+      }
+    ]
+  }
+}

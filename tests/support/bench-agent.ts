@@ -9,7 +9,10 @@
 // tasks   : write the task list of a full observe to <PN_TEST_AGENT_STATE>/tasks.json, then exit.
 // family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
 //           and both sleep; their pids go to <state>/pids.json (interrupt path).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// init    : print a stream-json system/init line (model pn-test-model, apiKeySource none), then solve.
+// snoop   : look for the reference solution (PN_SNOOP_NEEDLE) everywhere it can reach: every file in the bench folder
+//           (PRACTONAUT_HOME/../..) and every MCP reply; findings go to PRACTONAUT_HOME/snoop.json.
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { StdioMcpClient } from '../../src/bench/mcp-client.ts';
@@ -34,8 +37,24 @@ else if (mode === 'stubborn') {
   writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'pids.json'), JSON.stringify({ agent: process.pid }));
   setInterval(() => {}, 1000);
 }
+else if (mode === 'snoop') {
+  // PN_SNOOP_NEEDLE: the reference solution's action sequence as JSON, given by the test. Compared
+  // without whitespace, so any serialization of it (compact or indented) is found.
+  const home = process.env.PRACTONAUT_HOME!, bench = join(home, '..', '..');
+  const flat = (text: string): string => text.replace(/\s+/g, '');
+  const needle = flat(process.env.PN_SNOOP_NEEDLE ?? '');
+  if (needle.length < 20) { process.stderr.write('PN_SNOOP_NEEDLE missing\n'); process.exit(5); }
+  const files = (readdirSync(bench, { recursive: true }) as string[]).map(String).filter(name => statSync(join(bench, name)).isFile());
+  const hits = files.filter(name => flat(readFileSync(join(bench, name)).toString('utf8')).includes(needle));
+  const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
+  const replies = [JSON.stringify(await client.call('observe', {})), JSON.stringify(await client.call('list_actions', {})), JSON.stringify(await client.call('explain_result', {})), JSON.stringify(await client.listTools())];
+  await client.close();
+  writeFileSync(join(home, 'snoop.json'), JSON.stringify({ files, hits, replyHits: replies.filter(text => flat(text).includes(needle)).length }));
+  process.exit(0);
+}
 else {
   const home = process.env.PRACTONAUT_HOME!;
+  if (mode === 'init') process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', model: 'pn-test-model', apiKeySource: 'none', tools: [] }) + '\n');
   if (mode === 'plant') for (const directory of [home, join(home, '..')]) for (const name of ['session.json', 'checker.json', 'native.excalidraw']) writeFileSync(join(directory, name), '{"forged":true}');
   if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
   const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });

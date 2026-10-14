@@ -30,7 +30,7 @@ Practice:
   tasks list|show    the bundled Excalidraw task library (play <task-id> opens one)
   serve [world]      same as play; for scripts use --no-open
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
-  bench --agent <a>  score an agent on the task library (independent checker)
+  bench --agent <a>  score an agent on the task library or your own world (independent checker)
   report <file>      show a bench report as a table or a static HTML page
   setup              download Chromium once for the real Excalidraw mirror
   doctor             check the environment
@@ -61,7 +61,7 @@ Verwendung:
   tasks list|show    die mitgelieferte Excalidraw-Aufgabenbibliothek (play <Aufgaben-ID> öffnet eine)
   serve [Welt]       wie play; für Skripte --no-open verwenden
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
-  bench --agent <a>  Agenten an der Aufgabenbibliothek bewerten (unabhängiger Prüfer)
+  bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
   report <Datei>     Bench-Bericht als Tabelle oder statische HTML-Seite zeigen
   setup              Chromium einmalig für die echte Excalidraw-Spiegelung laden
   doctor             Umgebung prüfen
@@ -179,50 +179,72 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
   },
   bench: {
     en: `Usage: practonaut bench --agent <oracle|random|claude-code|"command … {mcp_config} …">
-                        [--tasks all|<id,id,…>] [--seeds <n>] [--repeats <k>] [--timeout <seconds>]
+                        [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
+                        [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>]
+                        [--keep-env <name,…>] [--label <text>]
 
-Runs every task × seed (1…n) × repeat in its own session and its own run folder. The agent
+Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
 configuration) and {prompt}, and is started without a shell (the prompt is also on stdin). oracle plays the
 reference solution, random acts at random; neither uses a language model. Scoring uses only the host's
-history and a separate checker after the agent stops. Defaults: all tasks, 1 seed, 1 repeat, 300 s, 50 actions.
+history and a separate checker after the agent stops. Defaults: the task library, all tasks, seeds 1…n with
+--seeds (1), 1 repeat, 300 s, 50 actions.
+--world benches your own world (for example one made with tasks from-scenes); --oracle gives a task's
+reference solution (the oracle.json beside the world), which the checker must pass before any run and which
+never reaches the agent. Without a reference a task has no efficiency. After the last agent has ended, the
+world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
-Writes practonaut.bench/1 (schemas/bench.v1.json); see docs/benchmarks/README.md.`,
+Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
-                        [--tasks all|<id,id,…>] [--seeds <n>] [--repeats <k>] [--timeout <Sekunden>]
+                        [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
+                        [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>]
+                        [--keep-env <Name,…>] [--label <Text>]
 
-Fährt jede Aufgabe × Seed (1…n) × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
+Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
 MCP-Konfiguration) und {prompt} und startet ohne Shell (der Prompt kommt auch über stdin). oracle spielt die
 Referenzlösung, random handelt zufällig; beide ohne Sprachmodell. Bewertet wird nur aus der Host-Historie und
-mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: alle Aufgaben, 1 Seed, 1 Wiederholung, 300 s,
-50 Aktionen. Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
+mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: die Aufgabenbibliothek, alle Aufgaben, mit
+--seeds die Seeds 1…n (1), 1 Wiederholung, 300 s, 50 Aktionen.
+--world bewertet Ihre eigene Welt (zum Beispiel eine aus tasks from-scenes); --oracle gibt die Referenzlösung
+einer Aufgabe (die oracle.json neben der Welt), die der Prüfer vor jedem Lauf bestätigen muss und die den Agenten
+nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Nach dem Ende des letzten Agenten werden Welt und
+Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu beurteilen kann.
+Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
-Schreibt practonaut.bench/1 (schemas/bench.v1.json); siehe docs/benchmarks/README.md.`,
+Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },
   report: {
     en: `Usage: practonaut report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]
 
-Checks a bench report for consistency (every pass and aggregate is re-derived from the verdicts in the file;
-a report that does not add up is rejected with exit 2) and prints a table, or writes a static HTML page.
-Consistency is not proof: a consistently edited file passes. --verify re-judges every run from the
-artifacts in its run directory (default: the report's folder; else --runs <bench folder>): the hashes the
-report binds, then the independent checker on the session and the native export. Any difference: exit 2.`,
+Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and aggregate is re-derived from
+the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
+a static HTML page. Consistency is not proof: a consistently edited file passes. --verify re-judges every run
+from the artifacts in its bench folder (default: the report's folder; else --runs <bench folder>): for /2 the
+stored world (for a library bench of this Practonaut's library version: against that library's content), the
+references and every artifact against the hashes the report binds, every reference against the stored world,
+then the independent checker on the session and the native export; a /1 report is re-judged against the
+bundled task library. Any difference: exit 2, with bench_world_changed, bench_artifact_changed,
+bench_reference_invalid or bench_report_invalid. The output shows the world's content hash; validate --json
+prints it for a world package.`,
     de: `Verwendung: practonaut report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]
 
-Prüft einen Bench-Bericht auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird aus den Urteilen in der Datei
-neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt eine Tabelle oder schreibt
-eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei besteht. --verify
-beurteilt jeden Lauf aus den Artefakten seines Laufordners neu (Standard: Ordner des Berichts, sonst --runs
-<Bench-Ordner>): die gebundenen Hashes, dann der unabhängige Prüfer auf Sitzung und nativem Export. Jede Abweichung: Exit 2.`,
+Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
+aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
+eine Tabelle oder schreibt eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei
+besteht. --verify beurteilt jeden Lauf aus den Artefakten seines Bench-Ordners neu (Standard: Ordner des Berichts,
+sonst --runs <Bench-Ordner>): bei /2 gespeicherte Welt (bei einem Bibliotheks-Bench der Bibliotheksversion
+dieses Practonaut gegen deren Inhalt), Referenzen und jedes Artefakt gegen die gebundenen Hashes, jede Referenz
+gegen die gespeicherte Welt, dann der unabhängige Prüfer auf Sitzung und nativem Export; ein /1-Bericht wird
+gegen die mitgelieferte Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit bench_world_changed,
+bench_artifact_changed, bench_reference_invalid oder bench_report_invalid. Die Ausgabe zeigt den Inhalts-Hash
+der Welt; validate --json gibt ihn für ein Weltpaket aus.`,
   },
   setup: {
     en: `Usage: practonaut setup

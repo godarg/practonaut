@@ -84,10 +84,21 @@ export const WorldSchema = z.strictObject({
 
 const localizedV2 = z.strictObject({ en: text, de: text });
 const errorClassV2 = z.strictObject({ id, category: z.enum(["rejected_by_app", "accepted_but_violates_goal", "suboptimal", "unmodeled"]), when: PredicateSchemaV2, explanation: localizedV2 });
+/** A task a generator materialised (PADR-0036): generator id and version, the seed and named
+ * parameters (for example a difficulty level). World content, never part of the Player's or an
+ * agent's view. */
+export const GENERATED_BY_LIMITS = Object.freeze({ parameters: 16, text: 64 });
+/** Named generator parameters: at most 16, each an integer or a short display string. */
+export const GeneratedParametersSchema = z.record(z.string().regex(/^[a-z][A-Za-z0-9_-]{0,31}$/), z.union([integer, z.string().min(1).max(GENERATED_BY_LIMITS.text).refine(isDisplayText, 'display strings must be NFC without invisible controls')]))
+  .refine(value => Object.keys(value).length <= GENERATED_BY_LIMITS.parameters, `at most ${GENERATED_BY_LIMITS.parameters} parameters`);
+export const GeneratedBySchema = z.strictObject({
+  id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/), version: semver.max(64), seed: integer, parameters: GeneratedParametersSchema.default({}),
+});
 export const TaskSchemaV2 = z.strictObject({
   id, title: localizedV2, prompt: localizedV2, initialState: StateSchemaV2.optional(), goal: PredicateSchemaV2,
   hints: z.array(localizedV2).min(1).max(32), errorClasses: z.array(errorClassV2).max(128),
   conditionTexts: z.array(localizedV2).max(4096).optional(),
+  generatedBy: GeneratedBySchema.optional(),
 });
 const parameterV2 = z.strictObject({ type: z.enum(["string", "integer", "id", "end", "nullable-id", "enum"]), min: integer.optional(), max: integer.optional(), values: z.array(z.string().min(1).max(64)).min(1).max(32).optional() });
 const EFFECTS_V2 = ["create_step", "set_label", "set_position", "create_arrow", "set_endpoint", "clear_endpoint", "disconnect_arrow", "tombstone_step", "detach_incident_arrows", "set_size", "set_style", "set_frame_name", "set_group", "clear_group", "set_frame"] as const;

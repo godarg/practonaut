@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
-import { summarize, type BenchReport } from '../../src/bench/report.ts';
+import { summarize, type BenchReportV2 as BenchReport } from '../../src/bench/report.ts';
 import { loadLibrary } from '../../src/library/index.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -19,14 +19,15 @@ const base = { seeds: [1], repeats: 1, timeoutSeconds: 60, maxActions: 50, mirro
 const command = (mode: string) => resolveAgent(`${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} ${mode} {mcp_config}`);
 const verify = (path: string) => spawnSync(process.execPath, [CLI, 'report', path, '--verify'], { encoding: 'utf8' });
 
-test('report --verify re-derives the reference length, the final history and the library content', { timeout: 300_000 }, async () => {
+test('report --verify re-derives the reference length, the final history and the stored library content', { timeout: 300_000 }, async () => {
   const bench = await runBench({ ...base, agent: resolveAgent('oracle'), tasks: ['connect', 'insert-between'] });
   const report = bench.report!, directory = bench.directory;
   // Expected values from another source than the runner: the committed library file.
   const library = new Map(loadLibrary().library.tasks.map(task => [task.id, task.actions]));
   for (const run of report.runs) { assert.equal(run.referenceActions, library.get(run.taskId)); assert.equal(run.actions, library.get(run.taskId), run.id); assert.equal(run.pass, true, run.id); }
-  assert.equal(report.environment.library.version, '1.1.0');
-  assert.match(report.environment.library.contentHash, /^[a-f0-9]{64}$/);
+  assert.deepEqual([report.environment.world.source, report.environment.world.worldId, report.environment.world.version], ['library', 'excalidraw-library', loadLibrary().world.version]);
+  assert.match(report.environment.world.contentHash, /^[a-f0-9]{64}$/);
+  assert.deepEqual(report.references?.tasks.map(task => [task.taskId, task.source, task.actions]), report.runs.map(run => [run.taskId, 'library', library.get(run.taskId)]));
   const path = join(directory, 'report.json'); await writeFile(path, JSON.stringify(report));
   assert.equal(verify(path).status, 0);
   const forge = async (name: string, mutate: (value: BenchReport) => void): Promise<ReturnType<typeof verify>> => {
@@ -36,17 +37,18 @@ test('report --verify re-derives the reference length, the final history and the
     assert.equal(spawnSync(process.execPath, [CLI, 'report', forged], { encoding: 'utf8' }).status, 0, `${name} passes the consistency check`);
     return verify(forged);
   };
-  // A longer reference makes the agent look five times as efficient.
-  const reference = await forge('reference', value => { for (const run of value.runs) run.referenceActions *= 5; });
-  assert.equal(reference.status, 2); assert.match(reference.stderr, /the report names a reference of \d+ actions; the library's reference solution has \d+.*\[bench_report_invalid\]/);
+  // A longer reference makes the agent look five times as efficient: the report's references and every
+  // run changed together stay consistent, but the stored reference solution has its own length.
+  const reference = await forge('reference', value => { for (const run of value.runs) run.referenceActions! *= 5; for (const task of value.references!.tasks) task.actions *= 5; });
+  assert.equal(reference.status, 2); assert.match(reference.stderr, /the report names a reference of \d+ actions; the stored reference has \d+.*\[bench_reference_invalid\]/);
   // Fewer actions than the session's history holds.
   const longest = report.runs.reduce((a, b) => (b.actions > a.actions ? b : a));
   assert.ok(longest.actions >= 2, 'a task whose reference needs at least two actions');
   const actions = await forge('actions', value => { value.runs.find(run => run.id === longest.id)!.actions = 1; });
   assert.equal(actions.status, 2); assert.match(actions.stderr, /the report counts 1 actions; the session's final history holds \d+/);
-  // Same library id and version, other content.
-  const content = await forge('content', value => { value.environment.library.contentHash = 'f'.repeat(64); });
-  assert.equal(content.status, 2); assert.match(content.stderr, /of other content/);
+  // Same library id and version, other content: the stored world says otherwise.
+  const content = await forge('content', value => { value.environment.world.contentHash = 'f'.repeat(64); });
+  assert.equal(content.status, 2); assert.match(content.stderr, /the stored world is excalidraw-library .* \(content [a-f0-9]{12}…\), the report names .*\(content ffffffffffff…\).*\[bench_world_changed\]/);
 });
 
 test('a bench agent sees no reference length of any task, even in a full observe', { timeout: 120_000 }, async () => {
@@ -55,8 +57,9 @@ test('a bench agent sees no reference length of any task, even in a full observe
   try {
     await runBench({ ...base, agent: command('tasks'), tasks: ['connect'] });
     const tasks = JSON.parse(await readFile(join(state, 'tasks.json'), 'utf8')) as Array<Record<string, unknown>>;
-    // The library has 16 tasks; the agent sees their ids and titles, never a level or a reference length.
-    assert.equal(tasks.length, loadLibrary().library.tasks.length);
+    // A bench host lists only the run's own task, by id and title: no level, no reference length,
+    // and no other task of the world.
+    assert.deepEqual(tasks.map(task => task.id), ['connect']);
     for (const task of tasks) assert.deepEqual(Object.keys(task).sort(), ['id', 'title'], JSON.stringify(task));
   } finally { delete process.env.PN_TEST_AGENT_STATE; await rm(state, { recursive: true, force: true }); }
 });

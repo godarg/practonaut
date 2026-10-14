@@ -25,6 +25,7 @@ import { AuthoringError } from '../authoring/index.ts';
 import { CheckerError } from '../checker/index.ts';
 import { commandMcp } from './mcp.ts';
 import { commandBench, commandReport } from './bench.ts';
+import { worldContentHash } from '../bench/world.ts';
 import { commandSetup } from './setup.ts';
 import { commandTasks } from './tasks.ts';
 import {PACKAGE_VERSION} from '../version.ts';
@@ -94,7 +95,7 @@ function declaredRights(pkg: WorldPackage): { license: string; privateSource: bo
   return { license: world.rights.license, privateSource: Boolean(world.provenance.privateSource), redistributionGrantVerified: false };
 }
 
-function describe(pkg: WorldPackage, path: string): Record<string, unknown> {
+function describe(pkg: WorldPackage, path: string, contentHash: string): Record<string, unknown> {
   return {
     ok: true,
     kind: pkg.kind,
@@ -102,15 +103,18 @@ function describe(pkg: WorldPackage, path: string): Record<string, unknown> {
     archive: { size: pkg.archiveSize, sha256: pkg.archiveSha256 },
     schemaVersion: pkg.manifest.schemaVersion,
     world: pkg.manifest.world,
+    // SHA-256 of the world's canonical JSON: the content hash a bench report names (PADR-0036).
+    contentHash,
     entry: pkg.manifest.entry,
     declaredRights: declaredRights(pkg),
     files: [...pkg.files.values()].map((f) => ({ path: f.path, mediaType: f.mediaType, size: f.size, sha256: f.sha256 })),
   };
 }
 
-function printPackage(pkg: WorldPackage, path: string): void {
+function printPackage(pkg: WorldPackage, path: string, contentHash: string): void {
   print(cliText("packageOk", { id: safeText(pkg.manifest.world.id), version: safeText(pkg.manifest.world.version) }));
   print(cliText("packageArchive", { path: safeText(path), size: pkg.archiveSize, hash: pkg.archiveSha256 }));
+  print(cliText("packageContentHash", { hash: contentHash }));
   print(cliText("packageManifest", { schema: pkg.manifest.schemaVersion, entry: safeText(pkg.manifest.entry) }));
   print(cliText("packageDeclaredRights", { license: declaredRights(pkg).license }));
   for (const f of pkg.files.values()) print(`  ${safeText(f.path)}  ${f.mediaType}  ${f.size} B  ${f.sha256}`);
@@ -138,17 +142,17 @@ async function cmdValidate(args: string[]): Promise<number> {
     throw new UsageError(cliText("readFailed", { path: safeText(shown), code: (e as NodeJS.ErrnoException).code ?? "error" }));
   }
   if (!isFile) throw new UsageError(cliText("regularFile", { path: safeText(shown) }));
-  let pkg: WorldPackage;
+  let pkg: WorldPackage, contentHash: string;
   try {
     pkg = await readWorldPackageFile(file);
-    loadWorldPackage(pkg);
+    contentHash = worldContentHash(loadWorldPackage(pkg));
   } catch (e) {
     if (e instanceof PackageError || e instanceof WorldError) return rejection(e, shown, json, "package");
     const code = (e as NodeJS.ErrnoException).code ?? "error";
     throw new UsageError(cliText("readFailed", { path: safeText(shown), code }));
   }
-  if (json) print(safeJson(describe(pkg, shown)));
-  else printPackage(pkg, shown);
+  if (json) print(safeJson(describe(pkg, shown, contentHash)));
+  else printPackage(pkg, shown, contentHash);
   return EXIT.OK;
 }
 
@@ -164,12 +168,13 @@ async function cmdPack(args: string[]): Promise<number> {
   let pkg: WorldPackage;
   let bytes: Buffer;
   let skipped: string[];
+  let contentHash: string;
   try {
     const r = await packWorldWithManifest(dir);
     bytes = r.bytes;
     skipped = r.skipped;
     pkg = await readWorldPackage(bytes); // self-check: the packer must emit what the reader accepts
-    loadWorldPackage(pkg);
+    contentHash = worldContentHash(loadWorldPackage(pkg));
   } catch (e) {
     if (e instanceof PackageError || e instanceof WorldError) return rejection(e, shownDir, json, "source");
     const code = (e as NodeJS.ErrnoException).code ?? "error";
@@ -186,9 +191,9 @@ async function cmdPack(args: string[]): Promise<number> {
     const code = (e as NodeJS.ErrnoException).code ?? "error";
     throw new UsageError(cliText("writeFailed", { path: safeText(shownOut), code }));
   }
-  if (json) print(safeJson({ ...describe(pkg, shownOut), source: shownDir, skipped }));
+  if (json) print(safeJson({ ...describe(pkg, shownOut, contentHash), source: shownDir, skipped }));
   else {
-    printPackage(pkg, shownOut);
+    printPackage(pkg, shownOut, contentHash);
     if (skipped.length > 0) print(cliText("packageSkipped", { files: skipped.map(safeText).join(", ") }));
   }
   return EXIT.OK;

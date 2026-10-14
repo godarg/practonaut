@@ -56,7 +56,7 @@ if(entries.some(p=>!p.startsWith('package/')||p.includes('..'))||new Set(entries
 const files=entries.map(p=>p.slice('package/'.length)).sort();
 const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.startsWith("schemas/") || p.startsWith("examples/worlds/flow-diagram/") || p.startsWith("tasks/excalidraw/") || ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md"].includes(p);
 const extra = files.filter((p) => !allowed(p));
-const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
+const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "schemas/bench.v2.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
 const missing = required.filter((p) => !files.includes(p));
 const packageMetadata = JSON.parse(execFileSync('tar',['-xOzf',tgzName,'package/package.json'],{...tarIn,encoding:'utf8',maxBuffer:1024*1024}));
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
@@ -170,6 +170,11 @@ JSON
 if [ $RC -eq 0 ] && grep -q "1 run, 1 passed" "$TMP/bench.out"; then ok "installed bench --agent oracle (MCP through the installed bridge)"; else cat "$TMP/bench.err" >&2; fail "installed bench -> exit $RC"; fi
 "$BIN" report "$TMP/bench.json" --html "$TMP/bench.html" >/dev/null; RC=$?
 if [ $RC -eq 0 ] && grep -q -- "--pn-color-bg" "$TMP/bench.html"; then ok "installed report --html inlines the design tokens"; else fail "installed report --html -> exit $RC"; fi
+"$BIN" bench --agent random --world "$TMP/flow.pnworld" --tasks T3 --mirror off --max-actions 3 >"$TMP/own.out" 2>"$TMP/own.err"; RC=$?
+if [ $RC -eq 0 ] && grep -q "no reference" "$TMP/own.out"; then ok "installed bench --world (own world, no reference)"; else cat "$TMP/own.err" >&2; fail "installed bench --world -> exit $RC"; fi
+OWN="$(ls -td "$PRACTONAUT_HOME"/bench/*/ | head -n 1)"
+"$BIN" report "${OWN}report.json" --verify >"$TMP/own-verify.out" 2>&1; RC=$?
+if [ $RC -eq 0 ] && grep -q "against the world stored in the bench folder (flow-diagram" "$TMP/own-verify.out"; then ok "installed report --verify against the stored world"; else cat "$TMP/own-verify.out" >&2; fail "installed report --verify -> exit $RC"; fi
 
 "$BIN" setup; RC=$?
 [ $RC -eq 0 ] && ok "installed explicit Chromium setup" || fail "installed setup -> exit $RC"

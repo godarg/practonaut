@@ -7,13 +7,14 @@ import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
-import { verifyBenchArtifacts } from '../bench/verify.ts';
-import { BenchReportError, validateBenchReport } from '../bench/report.ts';
+import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
+import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
+import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
 import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -36,25 +37,74 @@ function positiveInteger(raw: string | undefined, fallback: number, option: stri
   return Number(raw);
 }
 
-export interface BenchArguments { agent: string; tasks: string[]; seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; out?: string }
+/** `--seed-list 2,5`: distinct whole numbers 0 … MAX_SEED, at most 1000. */
+function seedList(raw: string): number[] {
+  const values = raw.split(',').map(value => value.trim());
+  if (!values.length || values.length > 1000 || values.some(value => !/^\d{1,9}$/.test(value))) throw new RuntimeError('usage', cliText('benchSeedList'));
+  const seeds = values.map(Number);
+  if (seeds.some(value => value > MAX_SEED) || new Set(seeds).size !== seeds.length) throw new RuntimeError('usage', cliText('benchSeedList'));
+  return seeds;
+}
+
+export interface BenchArguments {
+  agent: string;
+  /** Library task ids (resolved here), or with `--world` the requested ids or `all` (resolved once the world is loaded). */
+  tasks: string[] | 'all';
+  world?: string; oracles: string[];
+  seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; label?: string; out?: string;
+}
 export function parseBenchArguments(args: string[]): BenchArguments {
   const parsed = flags(args, VALUED);
   if (parsed.positional.length || !parsed.flags['--agent']) throw new RuntimeError('usage', cliText('benchUsage'));
-  const library = loadLibrary().library.tasks.map(task => task.id);
+  const world = parsed.flags['--world'];
+  const oracles = parsed.flags['--oracle'] === undefined ? [] : parsed.flags['--oracle'].split(',').map(value => value.trim());
+  if (oracles.some(path => !path)) throw new RuntimeError('usage', cliText('optionValue', { option: '--oracle' }));
+  // Library tasks bring their reference solutions; an oracle sidecar belongs to an own world.
+  if (oracles.length && world === undefined) throw new RuntimeError('usage', cliText('benchOracleNeedsWorld'));
   const requested = parsed.flags['--tasks'] ?? 'all';
-  const tasks = requested === 'all' ? library : requested.split(',').map(value => value.trim()).filter(Boolean).map(value => value.startsWith(LIBRARY_PREFIX) ? value.slice(LIBRARY_PREFIX.length) : value);
-  for (const task of tasks) if (!library.includes(task)) throw new RuntimeError('task_unknown', cliText('tasksUnknown', { id: safeText(task) }));
-  if (!tasks.length || new Set(tasks).size !== tasks.length) throw new RuntimeError('usage', cliText('benchTasks'));
-  const seeds = positiveInteger(parsed.flags['--seeds'], 1, '--seeds', 1000);
+  const named = requested === 'all' ? 'all' as const : requested.split(',').map(value => value.trim()).filter(Boolean);
+  let tasks: string[] | 'all';
+  if (world === undefined) {
+    const library = loadLibrary().library.tasks.map(task => task.id);
+    tasks = named === 'all' ? library : named.map(value => value.startsWith(LIBRARY_PREFIX) ? value.slice(LIBRARY_PREFIX.length) : value);
+    for (const task of tasks) if (!library.includes(task)) throw new RuntimeError('task_unknown', cliText('tasksUnknown', { id: safeText(task) }));
+    if (!tasks.length || new Set(tasks).size !== tasks.length) throw new RuntimeError('usage', cliText('benchTasks'));
+  } else {
+    tasks = named;
+    if (tasks !== 'all' && (!tasks.length || new Set(tasks).size !== tasks.length)) throw new RuntimeError('usage', cliText('benchTasks'));
+  }
+  if (parsed.flags['--seeds'] !== undefined && parsed.flags['--seed-list'] !== undefined) throw new RuntimeError('usage', cliText('benchSeedsExclusive'));
+  const seeds = parsed.flags['--seed-list'] !== undefined ? seedList(parsed.flags['--seed-list']) : Array.from({ length: positiveInteger(parsed.flags['--seeds'], 1, '--seeds', 1000) }, (_, index) => index + 1);
   const mirror = parsed.flags['--mirror'] ?? 'auto';
   if (mirror !== 'auto' && mirror !== 'required' && mirror !== 'off') throw new RuntimeError('usage', cliText('mirrorUsage'));
   const keepEnv = parsed.flags['--keep-env'] === undefined ? [] : parsed.flags['--keep-env'].split(',').map(value => value.trim());
   if (keepEnv.some(name => !ENV_NAME.test(name))) throw new RuntimeError('usage', cliText('benchKeepEnv'));
+  if (new Set(keepEnv).size !== keepEnv.length) throw new RuntimeError('usage', cliText('benchKeepEnv'));
+  const label = parsed.flags['--label'];
+  if (label !== undefined && label.length > MAX_LABEL) throw new RuntimeError('usage', cliText('benchLabel', { max: MAX_LABEL }));
   return {
-    agent: parsed.flags['--agent']!, tasks, seeds: Array.from({ length: seeds }, (_, index) => index + 1),
+    agent: parsed.flags['--agent']!, tasks, ...(world !== undefined ? { world } : {}), oracles, seeds,
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
-    maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
+    maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
   };
+}
+
+/** The world, the benched tasks and their validated references. An own world's oracle files are read,
+ * matched to its tasks and accepted only after the checker passes each for every planned seed. */
+export async function prepareBench(options: Pick<BenchArguments, 'world' | 'tasks' | 'oracles' | 'seeds'>, agent: { kind: string; name: string }): Promise<{ world: BenchWorld; tasks: string[]; references: Map<string, BenchReference> }> {
+  if (options.world === undefined) {
+    const tasks = options.tasks === 'all' ? loadLibrary().library.tasks.map(task => task.id) : options.tasks;
+    return { world: await libraryBenchWorld(), tasks, references: libraryReferences(tasks) };
+  }
+  const world = await ownBenchWorld(options.world);
+  const tasks = resolveWorldTasks(world.world, options.tasks);
+  const oracles = [];
+  for (const path of options.oracles) oracles.push({ path, oracle: await readOracleFile(path) });
+  const references = ownReferences(world.world, tasks, oracles);
+  const missing = tasks.filter(task => !references.has(task));
+  if (agent.kind === 'builtin' && agent.name === 'oracle' && missing.length) throw new RuntimeError('usage', cliText('benchOracleMissing', { tasks: missing.map(safeText).join(', ') }));
+  await validateOwnReferences(world.world, references, options.seeds);
+  return { world, tasks, references };
 }
 
 async function writeAtomic(path: string, text: string): Promise<void> {
@@ -72,9 +122,12 @@ export async function commandBench(args: string[]): Promise<number> {
   // Names only, never values: what the preset agent will not get (PADR-0034).
   const { withheld } = agentEnvironment(agent, process.env, options.keepEnv);
   if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.map(safeText).join(', ') }));
+  // World, tasks and references are settled (and an own oracle checked) before anything starts.
+  const prepared = await prepareBench(options, agent);
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
-  process.stderr.write(cliText('benchStart', { runs: options.tasks.length * options.seeds.length * options.repeats, agent: agent.name, mode: mirror.mode === 'required' ? 'real-engine' : cliText('modelOnly') }));
+  if (prepared.world.source === 'own') process.stderr.write(cliText('benchWorldOwn', { world: safeText(prepared.world.world.id), version: safeText(prepared.world.world.version), refs: prepared.references.size, tasks: prepared.tasks.length }));
+  process.stderr.write(cliText('benchStart', { runs: prepared.tasks.length * options.seeds.length * options.repeats, agent: agent.name, mode: mirror.mode === 'required' ? 'real-engine' : cliText('modelOnly') }));
   // Ctrl+C, SIGTERM and SIGHUP stop the bench in order: the running agent (its whole process group or
   // tree) is ended, its session host closes and removes its token file, and the runs that finished
   // are written as a partial report. The default handler would kill only this process. A second
@@ -90,7 +143,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {
@@ -133,19 +186,30 @@ export async function commandReport(args: string[]): Promise<number> {
     if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message);
     throw new RuntimeError('bench_report_invalid', cliText('reportJson'));
   }
-  // Without --verify only the report's own arithmetic is checked; --verify re-judges the run artifacts.
-  let verification: { level: 'consistency-checked' } | { level: 're-verified'; reverified: number; unjudged: number } = { level: 'consistency-checked' };
+  // Without --verify only the report's own arithmetic is checked; --verify re-judges the run artifacts:
+  // a /2 report against the world stored in its bench folder, a /1 report against the bundled library.
+  let verification: { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult) = { level: 'consistency-checked' };
+  let stored: VerificationResultV2 | undefined;
   if (parsed.booleans.has('--verify')) {
     const runs = parsed.flags['--runs'] ?? dirname(path);
-    try { verification = { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) }; }
-    catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
+    try {
+      if (isBenchReportV2(report)) { stored = await verifyBenchV2(report, runs, libraryWorld); verification = { level: 're-verified', ...stored }; }
+      else verification = { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+    } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
   }
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, verification, summary: report.summary }) + '\n');
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   else {
     process.stdout.write(renderTable(report, getCliLanguage()));
-    process.stdout.write(verification.level === 're-verified'
-      ? cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged })
-      : cliText('reportConsistencyOnly'));
+    if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
+    else if (stored === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
+    else {
+      const world = { world: safeText(stored.world.id), version: safeText(stored.world.version) };
+      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: stored.world.contentHash, runs: stored.reverified, unjudged: stored.unjudged, references: stored.references }));
+      // What the stored world is anchored to: this Practonaut's library, or only the bench's own record.
+      process.stdout.write(stored.library === undefined ? cliText('reportWorldOwn')
+        : stored.library.status === 'same' ? cliText('reportLibrarySame', world)
+        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${stored.library.shipped.id} ${stored.library.shipped.version}`) }));
+    }
   }
   const html = parsed.flags['--html'];
   if (html) {

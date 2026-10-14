@@ -1008,6 +1008,54 @@
               ],
               "additionalProperties": false
             }
+          },
+          "generatedBy": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "parameters": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z][A-Za-z0-9_-]{0,31}$"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "seed",
+              "parameters"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

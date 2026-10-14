@@ -53,6 +53,22 @@ Output: `my-task/world/world.json` (a `practonaut.world/2` world, see [world for
 and `my-task/oracle.json` beside it (reference solution and near misses; never shown to agents).
 Drawing elements the model does not cover (for example images) are reported as ignored.
 
+**Bench it.** Score any MCP agent on your task, with the oracle as its reference
+([benchmarks](benchmarks/README.md)):
+
+```bash
+npx practonaut bench --agent oracle --world my-task/world --oracle my-task/oracle.json      # solvable through MCP?
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --seed-list 1,2
+npx practonaut report ~/.practonaut/bench/<id>/report.json --verify
+```
+
+Before any run the checker must accept the oracle for every seed (`bench_oracle_invalid` otherwise);
+it never reaches the agent, and the report's efficiency compares each run with its length. Without
+`--oracle` a task is benched with "no reference". The bench folder stores the world and the
+reference, so `report --verify` re-judges it anywhere, also after `my-task/` was edited or deleted.
+Keep `oracle.json` beside the world folder, not inside it: a world folder packs only `world.json`
+and allowed assets, and `bench` refuses anything else in it.
+
 The bundled library in `tasks/excalidraw/` is built exactly this way: each task is a folder with
 `start.excalidraw`, `goal.excalidraw` and a `task.json` (title and prompt in EN/DE, difficulty,
 options, two label variants). After editing one, run `npm run library:write`;
