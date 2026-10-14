@@ -71,6 +71,7 @@ npx practonaut bench --agent oracle --tasks all --seeds 2            # reference
 npx practonaut bench --agent random --tasks all --max-actions 30       # random actions: the floor
 npx practonaut bench --agent claude-code --tasks excalidraw/insert-between --repeats 3
 npx practonaut bench --agent "my-agent --mcp {mcp_config} --prompt {prompt}"   # any agent
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json   # your own task
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify     # re-judge from the run files
 ```
@@ -86,8 +87,8 @@ reference solution. The JSON report has a schema. `report` checks that every pas
 follows from the verdicts in the file — consistency, not proof: a file edited consistently still
 passes, and `report` says "consistency-checked, not re-verified". `report --verify` re-runs the
 checker on the session and the real-app export kept in the bench folder, whose SHA-256 the report
-records, re-derives each run's actions and reference length and the library's content hash, and
-refuses any difference; host calls and times are marked as reported by the runner. Nothing is
+records, against the world and reference solutions stored in that folder (so a moved folder still
+verifies), re-derives each run's actions and reference length, and refuses any difference by name; host calls and times are marked as reported by the runner. Nothing is
 signed: whoever can write the bench folder can replace those files too.
 
 <picture>

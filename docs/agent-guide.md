@@ -149,7 +149,7 @@ discarding another person's work; `confirmed: true` expresses that deliberate ch
 **Practice** uses only visible tasks and conditions. `check_result` is public feedback, the same
 as the Player's Check button.
 
-**Bench.** `practonaut bench` scores an agent on the task library: every run in a fresh session,
+**Bench.** `practonaut bench` scores an agent on the task library or a world of your own (`--world`): every run in a fresh session,
 the agent through MCP only, the verdict from a separate checker process after the agent stops.
 Built-in `oracle` and `random` baselines need no model; `--agent claude-code` uses the Claude Code
 CLI limited to the Practonaut tools; any other agent runs from a command template with
