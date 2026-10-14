@@ -17,6 +17,7 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 
 ### Changed
 

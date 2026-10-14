@@ -48,7 +48,8 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 Refused before any run starts, by name: `--oracle` without `--world`; an oracle file that is not
 one, belongs to another world or to a task that is not benched, or two for one task; an oracle the
 checker does not accept (`bench_oracle_invalid`, exit 2); the `oracle` agent on a task without a
-reference; two task ids that differ only in case; `--seeds` with `--seed-list`.
+reference; two task ids that differ only in case; `--seeds` with `--seed-list`; references whose
+stored form would be larger than the 64 MiB `report --verify` reads (`bench_references_too_large`).
 
 ## 2. Agents
 
@@ -169,14 +170,22 @@ public goal conditions as met or unmet. The report counts how often it was calle
   pre-empting the artifacts, not from rewriting a finished bench folder later (see §5).
 - Reference solutions, near misses and checker bundles are not reachable through MCP (tested).
   The agent sees what a human player sees, including the public goal conditions and their formal
-  form (each goal clause written out). An `--oracle` file is not part of the world, is never given to
-  the host, and is copied into the bench folder (`references.json`) only after the last agent has
-  ended (tested with an agent that searches the bench folder and every MCP reply).
-- The agent runs as the same OS user. An agent with file or shell tools could read the task
-  library on disk, including its reference solutions, an author's `oracle.json`, or the
-  `references.json` of a finished bench folder. The `claude-code` preset disables every tool except
-  Practonaut's; for other agents this is the agent author's responsibility, and the report says so
-  (`template-unrestricted`). A model name in the report is what the client said about itself.
+  form (each goal clause written out). An `--oracle` file is not part of the world and is never given
+  to the host. A bench host lists only the run's own task and refuses a change to another task, so a
+  world that holds several instances shows an agent only the one it is on.
+- While the agents of a bench run, its folder holds neither the world package nor the references:
+  the hosts load the world from bytes kept in memory (hashed before the first run), and
+  `world.pnworld` and `references.json` (the action sequences only, no near misses) are written after
+  the last agent has ended. Tested with an agent that searches the whole bench folder and every MCP
+  reply for the reference solution.
+- The agent runs as the same OS user, and a bench is not sealed. An agent with file or shell tools
+  could read your own `--world` folder and `oracle.json`, the task library on disk with its
+  reference solutions, or the folders of finished benches; one that escapes its process group (for
+  example with `setsid`) and outlives its run could read this bench's folder afterwards. Practonaut
+  cannot prevent that without a sealed runner. The `claude-code` preset disables every tool except
+  Practonaut's, so it cannot read files; for other agents this is the agent author's responsibility,
+  and the report says so (`template-unrestricted`). A model name in the report is what the client
+  said about itself.
 - Runs are sequential. Results depend on the agent's provider and model at run time; a bench
   report describes those runs, not the model in general.
 
@@ -198,9 +207,9 @@ outside it is referenced, so it can be moved, archived or handed over:
 
 | Entry | Written | Content |
 |---|---|---|
-| `world.pnworld` | before the first run; every run's host loads the world from these bytes | the public world |
 | `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), logs, and the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json` |
-| `references.json` | after the last agent has ended | `practonaut.bench-references/1`: the reference solutions of the referenced tasks |
+| `world.pnworld` | after the last agent has ended; the runs' hosts loaded the world from the same bytes, hashed before the first run | the public world |
+| `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
 
 `practonaut report` reads `/2` and `/1` reports (from 0.1.0; schema
@@ -224,23 +233,32 @@ Two levels of checking, and the output always says which one ran:
   judged run keeps its committed session (`session.json`), the real-app export
   (`native.excalidraw`, with the mirror) and the checker output (`checker.json`) in its run folder,
   and the report records their SHA-256 (`runs[].artifacts`). For a `/2` report `--verify` judges
-  against the world stored in the bench folder, never the bundled library, so it works on another
-  machine and with a later Practonaut. It checks, and refuses with exit 2 and a named code on the
+  against the world stored in the bench folder, so a moved folder verifies on another machine and
+  with a later Practonaut. It checks, in this order, and refuses with exit 2 and a named code on the
   first difference:
   - `bench_world_changed`: `world.pnworld` is missing, its bytes differ from the bound hash, the
     package reader refuses it, or its id, version, content hash or generator metadata differ from
-    the report's;
-  - `bench_artifact_changed`: a run artifact or `references.json` is missing or differs from its
-    bound hash;
+    the report's; for a library bench whose id and version are those of the library this Practonaut
+    ships, its content hash must be that library's;
+  - `bench_artifact_changed`: `references.json` or a run artifact is missing, larger than its limit
+    or differs from its bound hash;
   - `bench_reference_invalid`: a stored reference names another task, has another length than the
-    report says, or is not accepted by the checker on the stored world for every seed of the plan;
+    report says, or is not accepted by the checker on the stored world for a seed a run used;
   - `bench_report_invalid`: the session's task and seed; `actions` equals the length of the
     session's final history; the independent checker, re-run on the session and the export in a
     separate process, gives the stored checker output and the report's verdicts.
 
+  What the stored world is anchored to, `--verify` says: a library bench of this Practonaut's library
+  version is this Practonaut's library; a library bench of another version, and every own world,
+  only agree with their report. The report output shows the world's content hash (the SHA-256 of
+  its canonical JSON); to know that a handed-over folder holds the world you expect, compare it with
+  `practonaut validate <world.pnworld> --json` (or `pack --json`) on that world.
+
   A `/1` report is re-verified as in 0.1.0: against the library this Practonaut ships (id, version
   and content hash must be equal, every `referenceActions` must equal the library's reference
-  length), then the same per-run checks; every difference is `bench_report_invalid`.
+  length), then the same per-run checks; every difference is `bench_report_invalid`. So
+  re-verifying a stored `/1` report ends with the first change of the bundled library; its
+  consistency check stays.
 
   pass, pass@1, pass^k, mean actions and efficiency then follow from these values. Not
   re-verifiable and labelled *self-reported by the runner*: acceptedActions, rejected actions,
@@ -254,8 +272,9 @@ artifact hashes (the example below, reports from earlier builds) can only be con
 `/2` report always binds the artifacts of every judged run.
 
 `--html` writes one static page (design system v1, no script, no external asset) that names the
-verification level and, for `/2`, the isolation level and the world; `--json` prints the schema, the
-summary and `verification`. Text from a report (label, agent name, model, command) is shown with
+verification level and, for `/2`, the isolation level, the world and its content hash, and where the
+model name came from; `--json` prints the schema, the summary and `verification` (for `/2` with the
+world's content hash and, for a library bench, whether it is this Practonaut's library). Text from a report (label, agent name, model, command) is shown with
 control and bidi characters escaped, in the terminal and in HTML.
 
 ## 6. Example
