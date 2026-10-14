@@ -32,7 +32,7 @@ Practice:
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
   bench --agent <a>  score an agent on the task library or your own world (independent checker)
   report <file>      show a bench report as a table or a static HTML page
-  setup              download Chromium once for the real Excalidraw mirror
+  setup              download the Chromium headless shell once for the real Excalidraw mirror
   doctor             check the environment
 
 Worlds and results:
@@ -63,7 +63,7 @@ Verwendung:
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
   bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
   report <Datei>     Bench-Bericht als Tabelle oder statische HTML-Seite zeigen
-  setup              Chromium einmalig für die echte Excalidraw-Spiegelung laden
+  setup              Chromium Headless Shell einmalig für die echte Excalidraw-Spiegelung laden
   doctor             Umgebung prüfen
 
 Welten und Ergebnisse:
@@ -245,12 +245,14 @@ bench_world_changed, bench_artifact_changed, bench_reference_invalid oder bench_
   setup: {
     en: `Usage: practonaut setup
 
-Downloads the pinned Playwright Chromium once (or reuses its cache). Without it, practice runs model-only.
-Installing Practonaut never downloads a browser by itself.`,
+Downloads the one thing the real Excalidraw mirror needs, Playwright's pinned Chromium headless shell
+(about 100 to 125 MB depending on the platform; the exact size is printed first), or reuses its cache.
+Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.`,
     de: `Verwendung: practonaut setup
 
-Lädt das gepinnte Playwright-Chromium einmalig (oder nutzt den Cache). Ohne Chromium läuft Übung nur im Modell.
-Die Installation von Practonaut lädt nie selbst einen Browser.`,
+Lädt das Einzige, was die echte Excalidraw-Spiegelung braucht: Playwrights gepinnte Chromium Headless Shell
+(etwa 100 bis 125 MB je nach Plattform; die genaue Größe steht vorher da), oder nutzt den Cache.
+Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.`,
   },
   doctor: {
     en: `Usage: practonaut doctor [--adapter] [--dev] [--json]

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { lstat, readdir } from 'node:fs/promises';
+import { HEADLESS_SHELL, headlessShellMegabytes } from './chromium-download.ts';
 
 /** Explicit provisioning only: installing Practonaut never invokes this command. */
 export async function commandSetup(args: string[]): Promise<number> {
@@ -29,21 +30,23 @@ export async function commandSetup(args: string[]): Promise<number> {
   // arguments); nothing else about the install changes.
   const loader = `process.argv.splice(1, 0, 'playwright'); require(${JSON.stringify(cli)});`;
   const run = (options: string[]): Promise<number> => new Promise(resolve => {
-    const child = spawn(process.execPath, ['-e', loader, 'install', 'chromium', ...options], { stdio: 'inherit' });
+    // Only the headless shell: the mirror never starts a headed Chromium (see chromium-download.ts).
+    const child = spawn(process.execPath, ['-e', loader, 'install', '--only-shell', 'chromium', ...options], { stdio: 'inherit' });
     child.once('error', () => resolve(3));
     child.once('close', code => resolve(code === 0 ? 0 : 3));
   });
-  process.stdout.write(cliText("setupStart"));
-  // The dry run names the actual pinned sources, including when all downloads are cached.
+  // The download is named with its size before anything is fetched; the dry run then names the
+  // actual pinned sources and the cache folder, including when everything is cached already.
+  process.stdout.write(cliText('setupStart', { name: HEADLESS_SHELL.name, version: HEADLESS_SHELL.browserVersion, size: headlessShellMegabytes() }));
   if (await run(['--dry-run']) !== 0) return 3;
   if (await run([]) !== 0) return 3;
-  const installed = await installedChromium();
-  process.stdout.write(installed ? cliText('setupDoneAt', { path: safeText(displayPath(installed.directory)), size: (installed.bytes / 1024 / 1024).toFixed(0) }) : cliText("setupDone"));
+  const installed = await installedHeadlessShell();
+  process.stdout.write(installed ? cliText('setupDoneAt', { name: HEADLESS_SHELL.name, path: safeText(displayPath(installed.directory)), size: (installed.bytes / 1024 / 1024).toFixed(0) }) : cliText("setupDone"));
   return 0;
 }
 
-/** Where the pinned Chromium now lives and how much disk it takes (browser and headless shell). */
-async function installedChromium(): Promise<{ directory: string; bytes: number } | undefined> {
+/** Where the pinned headless shell now lives and how much disk it takes. */
+async function installedHeadlessShell(): Promise<{ directory: string; bytes: number } | undefined> {
   try {
     const { chromium } = await import('playwright-core') as { chromium: { executablePath(): string } };
     let revision = dirname(chromium.executablePath());
@@ -51,10 +54,8 @@ async function installedChromium(): Promise<{ directory: string; bytes: number }
     if (!/^chromium-\d+$/.test(basename(revision))) return undefined;
     const shell = join(dirname(revision), basename(revision).replace('chromium-', 'chromium_headless_shell-'));
     let bytes = 0;
-    for (const root of [revision, shell]) {
-      for (const entry of await readdir(root, { recursive: true, withFileTypes: true }).catch(() => [])) {
-        if (entry.isFile()) bytes += (await lstat(join(entry.parentPath, entry.name)).catch(() => ({ size: 0 }))).size;
-      }
+    for (const entry of await readdir(shell, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) bytes += (await lstat(join(entry.parentPath, entry.name)).catch(() => ({ size: 0 }))).size;
     }
     return { directory: dirname(revision), bytes };
   } catch { return undefined; }

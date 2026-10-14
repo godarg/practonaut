@@ -10,6 +10,7 @@ import { packWorld, readWorldPackage, readWorldPackageFile } from '../package/in
 import { loadWorldPackage } from '../world/index.ts';
 import { RuntimeError } from './runtime.ts';
 import { chromiumCheck } from './doctor.ts';
+import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
 import { chromiumSandboxFallbackActive } from '../adapters/excalidraw/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
@@ -68,7 +69,7 @@ const defaultProbes: MirrorProbes = { installed: async () => (await chromiumChec
 export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes = defaultProbes): Promise<MirrorResolution> {
   if (choice === 'off') return { mode: 'off', fallback: false };
   if (!await probes.installed()) {
-    if (choice === 'required') throw new RuntimeError('browser_runtime_missing', cliText('browserRuntimeMissing'));
+    if (choice === 'required') throw new RuntimeError('browser_runtime_missing', cliText('browserRuntimeMissing', headlessShellDownload()));
     return { mode: 'off', fallback: true, reason: 'missing' };
   }
   const started = await probes.starts();
@@ -82,7 +83,7 @@ export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes =
 /** The stderr notice for a model-only fallback. */
 export function fallbackNotice(mirror: MirrorResolution): string {
   if (!mirror.fallback) return mirror.mode === 'required' && mirror.sandbox === false ? cliText('sandboxFallbackNotice') : '';
-  return mirror.reason === 'start' ? cliText('mirrorStartFallback', { detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback');
+  return mirror.reason === 'start' ? cliText('mirrorStartFallback', { detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback', headlessShellDownload());
 }
 
 /**
