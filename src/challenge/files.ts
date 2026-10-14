@@ -17,7 +17,7 @@ import { verifyBenchV2 } from '../bench/verify.ts';
 import { ReferencesFileSchema, TaskOracleSchema, worldFromPackage } from '../bench/world.ts';
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, type ChallengeSet } from './build.ts';
-import { GENERATOR_VERSION, generatorId, type Family } from './families.ts';
+import { generatorId, generatorVersion, type Family } from './families.ts';
 import { computeGate, GateInputError, renderGate, type GateResult } from './gate.ts';
 import { libraryWorld } from '../bench/run.ts';
 import { isDeepStrictEqual } from 'node:util';
@@ -47,7 +47,7 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   const bench = FAMILY_BENCH[meta.family];
   const args = ['bench', '--world', join(out, 'world'), '--oracle', oraclePaths.join(','), '--seed-list', '1', '--repeats', '1', '--max-actions', String(bench.maxActions), '--timeout', String(bench.timeoutSeconds)];
   const instances = {
-    schema: SET_SCHEMA, generator: { id: generatorId(meta.family), version: GENERATOR_VERSION }, practonaut: PACKAGE_VERSION,
+    schema: SET_SCHEMA, generator: { id: generatorId(meta.family), version: generatorVersion(meta.family) }, practonaut: PACKAGE_VERSION,
     family: meta.family, set: meta.set, ...(meta.round !== undefined ? { round: meta.round } : {}), difficulty: meta.difficulty, seeds: meta.seeds,
     world: { id: set.world.id, version: set.world.version, contentHash: sha256Hex(canonicalJson(set.world)) },
     instances: set.instances.map(instance => ({ taskId: instance.taskId, seed: instance.draft.seed, difficulty: instance.draft.difficulty, referenceActions: instance.oracle.steps.length, minimal: instance.minimal, nearMisses: instance.oracle.nearMisses.length, verdictFuel: instance.fuel, ...(instance.task.limits ? { limits: instance.task.limits } : {}), parameters: instance.draft.parameters })),

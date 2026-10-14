@@ -4,8 +4,8 @@
  * A set is one world with one task per instance. Every instance is checked before it is returned:
  * its reference has the length its edits add up to, the independent checker accepts the reference
  * and rejects the start and every near miss (from-scenes' verification), its board text never
- * reaches a title, prompt or hint, its goal stays within half the checker's budget on a stress board,
- * and a tight-budget instance's budget is a proven minimal length.
+ * reaches a title, prompt or hint, a verdict stays within half the checker's budget on every stress
+ * board (stressFuel), and a tight-budget instance's budget is a proven minimal length.
  */
 import { fromStates, verifyTask, type TaskOracle } from '../authoring/from-scenes.ts';
 import { AuthoringError } from '../authoring/project.ts';
@@ -14,9 +14,9 @@ import { taskWorld } from '../library/index.ts';
 import { evaluate } from '../predicate/index.ts';
 import { validateWorld } from '../world/schema.ts';
 import { RUNTIME_LIMITS } from '../world/limits.ts';
-import type { State, Task, World } from '../world/types.ts';
+import type { State, Task, TaskLimits, World } from '../world/types.ts';
 import { toState, type Diagram } from './diagram.ts';
-import { FAMILIES, GENERATOR_VERSION, MAKERS, generatorId, type Difficulty, type Draft, type Family } from './families.ts';
+import { FAMILIES, MAKERS, generatorId, generatorVersion, type Difficulty, type Draft, type Family } from './families.ts';
 import { createRandom, deriveSeed } from './random.ts';
 
 /** Seed ranges (PADR-0040): development, throwaway self-checks, held-out gate sets. */
@@ -26,15 +26,19 @@ export type SeedSet = keyof typeof SEED_RANGES;
 export const MAX_LIVE_OBJECTS = 56;
 /** The checker's budget per verdict and the share a generated goal may use on a stress board. */
 export const FUEL_SHARE = 0.5;
-/** Extra steps and arrows on the stress board, per family: what an agent may add within the
- * recommended bench action cap (FAMILY_BENCH.maxActions) before its board leaves the tested range. */
-export const STRESS_EXTRAS: Readonly<Record<Family, number>> = Object.freeze({ repair: 20, injection: 20, 'long-horizon': 20, 'limited-checks': 20, 'tight-budget': 15 });
 /** Recommended bench settings per family (the gate preregistration may tighten them on development
  * runs before a round). */
 export const FAMILY_BENCH: Readonly<Record<Family, { maxActions: number; timeoutSeconds: number }>> = Object.freeze({
-  repair: { maxActions: 50, timeoutSeconds: 600 }, injection: { maxActions: 50, timeoutSeconds: 600 }, 'long-horizon': { maxActions: 120, timeoutSeconds: 1200 },
+  repair: { maxActions: 50, timeoutSeconds: 600 }, injection: { maxActions: 50, timeoutSeconds: 600 }, 'long-horizon': { maxActions: 90, timeoutSeconds: 1200 },
   'limited-checks': { maxActions: 60, timeoutSeconds: 600 }, 'tight-budget': { maxActions: 50, timeoutSeconds: 600 },
 });
+
+/** Objects an agent can add to a board within a run: one per action, up to the recommended bench
+ * action cap or the task's own action limit when it is smaller. */
+export const stressObjects = (family: Family, limits?: TaskLimits): number => Math.min(FAMILY_BENCH[family].maxActions, limits?.actions ?? Number.POSITIVE_INFINITY);
+/** How the stress boards split those objects between new steps and new arrows: none, a quarter, half,
+ * three quarters or all of them are steps, the rest arrows. */
+export const STRESS_SPLITS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 
 export interface Instance { taskId: string; task: Task; oracle: TaskOracle; goal: State; draft: Draft; fuel: number; minimal: boolean }
 export class ChallengeError extends Error {
@@ -47,17 +51,28 @@ export const worldIdOf = (family: Family, set: string): string => `challenge-${f
 
 const liveCount = (diagram: Diagram): number => diagram.steps.length + diagram.arrows.length + diagram.frames.length;
 
-/** The stress board: the goal plus `extras` steps and as many arrows between them and the goal. */
-function stressState(goal: State, extras: number): State {
+/** A stress board: the goal plus `steps` new steps and `arrows` new arrows (each from a new step while
+ * there are any, else from a goal step, to a goal step). */
+export function stressState(goal: State, steps: number, arrows: number): State {
   const state = structuredClone(goal);
   const anchors = Object.values(goal.objects).filter(object => object.type === 'step' && !object.deleted).map(object => object.id);
-  for (let i = 0; i < extras; i++) {
+  for (let i = 0; i < steps; i++) {
     const id = `stress-s${i}`;
     state.objects[id] = { id, type: 'step', deleted: false, frameId: null, label: `Stress ${i}`, x: 0, y: 0, width: 160, height: 80, shape: 'rectangle', groupId: null, stroke: 'black', fill: 'none' };
-    const target = anchors[i % Math.max(1, anchors.length)] ?? id;
-    state.objects[`stress-a${i}`] = { id: `stress-a${i}`, type: 'arrow', deleted: false, frameId: null, from: id, to: target };
+  }
+  for (let i = 0; i < arrows; i++) {
+    const from = i < steps ? `stress-s${i}` : anchors[i % Math.max(1, anchors.length)] ?? null;
+    const to = anchors[(i + 1) % Math.max(1, anchors.length)] ?? null;
+    // An arrow belongs to the common frame of its ends (as the state format requires).
+    const frameOf = (id: string | null): string | null => id === null ? null : (state.objects[id] as { frameId: string | null }).frameId;
+    state.objects[`stress-a${i}`] = { id: `stress-a${i}`, type: 'arrow', deleted: false, frameId: frameOf(from) === frameOf(to) ? frameOf(from) : null, from, to };
   }
   return state;
+}
+/** The most expensive verdict over the family's stress boards (STRESS_SPLITS of stressObjects). */
+export function stressFuel(task: Task, goal: State, family: Family): number {
+  const objects = stressObjects(family, task.limits);
+  return Math.max(...STRESS_SPLITS.map(split => { const steps = Math.round(objects * split); return verdictFuel(task, stressState(goal, steps, objects - steps)); }));
 }
 /** Steps the checker spends on one verdict at most: every goal clause and every error class costed
  * separately (as if none short-circuited) on each counter-probe and on the judged board. */
@@ -75,21 +90,26 @@ function stepsOf(predicate: Task['goal'], state: State): number {
 
 /** One instance: the family's draft for this seed and attempt, built and checked. */
 function attempt(family: Family, seed: number, difficulty: Difficulty, worldId: string, tryIndex: number): Instance {
-  const random = createRandom(deriveSeed(generatorId(family), GENERATOR_VERSION, seed, difficulty, tryIndex));
-  const draft = MAKERS[family](random, difficulty, seed);
+  const random = createRandom(deriveSeed(generatorId(family), generatorVersion(family), seed, difficulty, tryIndex));
+  return buildDraft(MAKERS[family](random, difficulty, seed), worldId);
+}
+/** A draft built into an instance and checked; every check names its failure. `fuelBudget` is the
+ * share of the checker's budget a verdict on a stress board may use. */
+export function buildDraft(draft: Draft, worldId: string, fuelBudget = RUNTIME_LIMITS.checkerFuel * FUEL_SHARE): Instance {
+  const family = draft.family, seed = draft.seed;
   const taskId = taskIdOf(family, seed);
   if (liveCount(draft.start) > MAX_LIVE_OBJECTS || liveCount(draft.goal) > MAX_LIVE_OBJECTS) throw new ChallengeError('too_large', `${taskId}: board larger than ${MAX_LIVE_OBJECTS} objects`);
   const result = fromStates(toState(draft.start), toState(draft.goal), {
     worldId, taskId, version: '1.0.0', title: draft.title, prompt: draft.prompt, hints: draft.hints,
-    generatedBy: { id: generatorId(family), version: GENERATOR_VERSION, seed, parameters: draft.parameters },
-    ...(draft.limits ? { limits: draft.limits } : {}),
+    generatedBy: { id: generatorId(family), version: generatorVersion(family), seed, parameters: draft.parameters },
+    ...(draft.limits ? { limits: draft.limits } : {}), ...(draft.pinUnchanged ? { pinUnchanged: true } : {}),
   });
   if (result.oracle.steps.length !== draft.expectedLength) throw new ChallengeError('length_mismatch', `${taskId}: the reference has ${result.oracle.steps.length} actions, the edits add up to ${draft.expectedLength}`);
   // Board text is data: it never becomes part of what we tell the agent.
   const ours = JSON.stringify([result.task.title, result.task.prompt, result.task.hints]);
   for (const text of draft.boardText) if (ours.includes(text)) throw new ChallengeError('board_text_leak', `${taskId}: board text reached the task text`);
-  const fuel = verdictFuel(result.task, stressState(result.goal, STRESS_EXTRAS[family]));
-  if (fuel > RUNTIME_LIMITS.checkerFuel * FUEL_SHARE) throw new ChallengeError('fuel', `${taskId}: a verdict on the stress board needs ${fuel} steps, more than ${RUNTIME_LIMITS.checkerFuel * FUEL_SHARE}`);
+  const fuel = stressFuel(result.task, result.goal, family);
+  if (fuel > fuelBudget) throw new ChallengeError('fuel', `${taskId}: a verdict on a stress board needs ${fuel} steps, more than ${fuelBudget}`);
   const length = analyseLength(result.world, taskId, 0, result.oracle.steps.length);
   if (family === 'tight-budget' && (length.kind !== 'minimal' || draft.limits?.actions !== length.length)) throw new ChallengeError('not_minimal', `${taskId}: the budget is not a proven minimal length (${length.kind === 'minimal' ? 'mismatch' : length.reason})`);
   return { taskId, task: result.task, oracle: result.oracle, goal: result.goal, draft, fuel, minimal: length.kind === 'minimal' };

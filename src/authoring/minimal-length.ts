@@ -175,13 +175,25 @@ function permutations<T>(items: T[]): T[][] {
  * Whether a reference of `referenceLength` actions is a minimal solution of `taskId` for this seed's
  * variant. `minimal` is a proof; `reference` says why there is none.
  */
+/** A from-scenes pin of an unchanged step (`pinClause`): `exists step u` with a label and near x, y,
+ * width and height. */
+function isPin(clause: Predicate): boolean {
+  if (clause.op !== 'exists' || clause.type !== 'step' || clause.as !== 'u') return false;
+  const parts = args(clause.where);
+  return parts.length === 5 && fieldEquals(parts[0]!)?.[0] === 'label' && typeof fieldEquals(parts[0]!)?.[1] === 'string'
+    && (['x', 'y', 'width', 'height'] as const).every((field, index) => { const part = parts[index + 1]!; return part.op === 'near' && fieldOf(part.left) === field && typeof literal(part.right) === 'number'; });
+}
+
 export function analyseLength(world: World, taskId: string, seed: number, referenceLength: number, nodeCap = MINIMAL_SEARCH_NODES): LengthAnalysis {
   const unproven = (reason: Extract<LengthAnalysis, { kind: 'reference' }>['reason']): LengthAnalysis => ({ kind: 'reference', length: referenceLength, reason });
   if (world.schema !== 'practonaut.world/2' || !Number.isSafeInteger(referenceLength) || referenceLength < 1) return unproven('not-applicable');
   const variant = generateVariant(world, seed), task = variant.tasks.find(value => value.id === taskId);
   if (!task) return unproven('not-applicable');
   const start = task.initialState ?? variant.initialState;
-  const spec = readGoal(task.goal);
+  // Pins of unchanged steps only remove solutions: no solution shorter than the reference without
+  // them means none with them. They are set aside; the rest must be exactly a from-scenes goal.
+  const goal: Predicate = { op: 'all', args: args(task.goal).filter(clause => !isPin(clause)) };
+  const spec = readGoal(goal);
   if (!spec) return unproven('not-applicable');
   const rebuilt = specState(spec);
   if (!rebuilt) return unproven('not-applicable');
@@ -189,7 +201,7 @@ export function analyseLength(world: World, taskId: string, seed: number, refere
   if (spec.steps.some(step => step.size && step.size.tolerance !== tolerance)) return unproven('not-applicable');
   // The same clauses (a conjunction, so in any order: variant labels reorder them) or no claim.
   const clauses = (goal: Predicate): string[] => args(goal).map(clause => canonicalJson(clause)).sort();
-  if (!isDeepStrictEqual(clauses(goalPredicateOf(rebuilt.state, spec.frames, { tolerance }, rebuilt.resized)), clauses(task.goal))) return unproven('not-applicable');
+  if (!isDeepStrictEqual(clauses(goalPredicateOf(rebuilt.state, spec.frames, { tolerance }, rebuilt.resized)), clauses(goal))) return unproven('not-applicable');
   const steps = liveOf<StepV2>(start, 'step'), arrows = liveOf<Arrow>(start, 'arrow'), frames = liveOf<Frame>(start, 'frame');
   if (steps.some(step => step.groupId !== null)) return unproven('not-applicable');
   // Frames cannot be created or deleted: their number must already match.

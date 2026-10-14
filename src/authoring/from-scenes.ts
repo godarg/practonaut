@@ -76,8 +76,26 @@ interface Clause { predicate: Predicate; text: Localized }
 export function goalPredicateOf(goal: State, frames: boolean, options: { tolerance: number; layout?: 'relative'; align?: boolean }, resized: ReadonlySet<string> = new Set()): Predicate {
   return all(...goalClauses(goal, frames, options, label => label, resized).map(clause => clause.predicate));
 }
+/** The pin of a step the task leaves as it is (`pinUnchanged`): `exists step u` with its label and
+ * its x, y, width and height (± tolerance). The minimal-length analysis recognises exactly this form. */
+export function pinClause(label: string, step: { x: number; y: number; width: number; height: number }, tolerance: number): Predicate {
+  return { op: 'exists', type: 'step', as: 'u', where: all(eq(fld('u', 'label'), lit(label)),
+    ...(['x', 'y', 'width', 'height'] as const).map((field): Predicate => ({ op: 'near', left: fld('u', field), right: lit(step[field]), tolerance }))) };
+}
+/** Steps the task leaves exactly as they are: in both states under the same id with every attribute
+ * equal (label, shape, line, fill, frame, group, position, size), uniquely and non-empty labelled
+ * in the goal. */
+function unchangedSteps(start: State, goal: State): StepV2[] {
+  const labels = new Map<string, number>();
+  for (const step of liveSteps(goal)) labels.set(step.label, (labels.get(step.label) ?? 0) + 1);
+  return liveSteps(goal).filter(step => {
+    const before = start.objects[step.id];
+    return step.label !== '' && labels.get(step.label) === 1 && before?.type === 'step' && !before.deleted
+      && (['label', 'shape', 'stroke', 'fill', 'frameId', 'groupId', 'x', 'y', 'width', 'height'] as const).every(key => (before as StepV2)[key] === step[key]);
+  });
+}
 /** Exact multiset of step, arrow and frame signatures, plus group, order and alignment facts. */
-function goalClauses(goal: State, frames: boolean, options: Required<Pick<FromScenesOptions, 'tolerance'>> & FromScenesOptions, tok: Tokens['of'], resized: ReadonlySet<string> = new Set()): Clause[] {
+function goalClauses(goal: State, frames: boolean, options: Required<Pick<FromScenesOptions, 'tolerance'>> & FromScenesOptions, tok: Tokens['of'], resized: ReadonlySet<string> = new Set(), pinned: readonly StepV2[] = []): Clause[] {
   const steps = liveSteps(goal), arrows = liveArrows(goal), frameList = liveFrames(goal);
   const q = (label: string) => ({ en: `“${tok(label)}”`, de: `„${tok(label)}“` });
   const clauses: Clause[] = [];
@@ -154,6 +172,11 @@ function goalClauses(goal: State, frames: boolean, options: Required<Pick<FromSc
     clauses.push({ predicate: { op: 'exists', type: 'step', as: 'z', where: all(eq(fld('z', 'label'), lit(tok(step.label))),
       { op: 'near', left: fld('z', 'width'), right: lit(step.width), tolerance: options.tolerance }, { op: 'near', left: fld('z', 'height'), right: lit(step.height), tolerance: options.tolerance }) },
       text: words(`${q(step.label).en} is ${step.width} × ${step.height} (± ${options.tolerance} px).`, `${q(step.label).de} ist ${step.width} × ${step.height} groß (± ${options.tolerance} px).`) });
+  }
+  // "Change nothing else" (PADR-0040 injection): a step the task leaves as it is keeps its place and size.
+  for (const step of [...pinned].sort((a, b) => a.label.localeCompare(b.label))) {
+    clauses.push({ predicate: pinClause(tok(step.label), step, options.tolerance),
+      text: words(`${q(step.label).en} stays where it is: at (${step.x}, ${step.y}), ${step.width} × ${step.height} (± ${options.tolerance} px).`, `${q(step.label).de} bleibt, wo es ist: bei (${step.x}, ${step.y}), ${step.width} × ${step.height} groß (± ${options.tolerance} px).`) });
   }
   if (options.layout === 'relative') {
     const ordered = [...named].sort((a, b) => a.x - b.x || a.label.localeCompare(b.label));
@@ -397,7 +420,12 @@ export function fromScenes(startScene: string | Uint8Array, goalScene: string | 
 
 /** Options of the state-based core: those of from-scenes, plus what a generator records on the task
  * (PADR-0036 `generatedBy`) and the task's public limits (PADR-0040). */
-export interface FromStatesOptions extends FromScenesOptions { generatedBy?: GeneratedBy; limits?: TaskLimits }
+export interface FromStatesOptions extends FromScenesOptions {
+  generatedBy?: GeneratedBy; limits?: TaskLimits;
+  /** Pin the place and size of every step the task leaves exactly as it is (its other attributes
+   * are pinned by its signature), so "change nothing else" is part of the goal (PADR-0040). */
+  pinUnchanged?: boolean;
+}
 /**
  * The state-based core of from-scenes: a world/2 task from a start and a goal state (world/2 states,
  * as the checker's scene parser produces them), with goal clauses, error classes, a reference
@@ -425,7 +453,7 @@ export function fromStates(startInput: State, goalInput: State, options: FromSta
   // Uniquely labelled steps present in both scenes whose size differs: the solution resizes them.
   const unique = (state: State) => { const all_ = liveSteps(state), seen = new Map<string, number>(); for (const s of all_) seen.set(s.label, (seen.get(s.label) ?? 0) + 1); return new Map(all_.filter(s => s.label !== '' && seen.get(s.label) === 1).map(s => [s.label, s])); };
   const before = unique(start.state), resized = new Set([...unique(goalState)].filter(([label, s]) => { const b = before.get(label); return b !== undefined && (b.width !== s.width || b.height !== s.height); }).map(([label]) => label));
-  const clauses = goalClauses(goalState, frames, { ...options, tolerance }, tokens.of, resized);
+  const clauses = goalClauses(goalState, frames, { ...options, tolerance }, tokens.of, resized, options.pinUnchanged ? unchangedSteps(start.state, goalState) : []);
   const goalPredicate = all(...clauses.map(c => c.predicate));
   const tokenize = (state: State): State => {
     const out = structuredClone(state);

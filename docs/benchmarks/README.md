@@ -414,8 +414,8 @@ with `node tools/challenge.ts`, not through the `practonaut` command.
 | Family | What makes it hard | Instances (difficulty 1 / 2 / 3) |
 |---|---|---|
 | `repair` | find 3–5 subtle defects against the goal list: colours, shapes, a misspelled label, a reversed arrow, an arrow end on a look-alike step, a missing or extra arrow, a stray copy, swapped labels, a step in the wrong frame | 3 / 4 / 5 defects on boards of 6–15 steps |
-| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such texts (notes; at difficulty 3 one is a frame name) |
-| `long-horizon` | 20–60 required actions among look-alike labels | 20–26 / 30–40 / 45–60 actions |
+| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is, including the place and size of every step the task does not touch | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such texts (notes; at difficulty 3 one is a frame name) |
+| `long-horizon` | reference lengths 20–60 among look-alike labels | 20–26 / 30–40 / 45–60 actions |
 | `limited-checks` | build the missing part of a diagram with only `limits.checks` checks | 8–11 / 11–14 / 14–18 actions; 2 / 1 / 1 checks |
 | `tight-budget` | reach the goal within `limits.actions` = the **proven minimal** length: one `set_style` for three attributes, one `reconnect_end` instead of two actions, no undo | 4–6 / 7–9 / 10–13 actions |
 
@@ -427,8 +427,12 @@ task carries `generatedBy` (generator id `challenge-<family>`, version, seed, di
 structural parameters). Instances differ in structure, not only in labels: topology (chain, decision
 branch, fork, lanes in frames), size, which objects carry which defect or edit. Before an instance is
 written, the generator also checks that injection notes never reach a title, prompt or hint, that a
-verdict on a **stress board** (the goal plus 15–20 extra steps and arrows) needs at most half of the
-checker's 10⁶-step budget, and, for `tight-budget`, that its budget is a proven minimal length.
+verdict on each of five **stress boards** needs at most half of the checker's 10⁶-step budget, and,
+for `tight-budget`, that its budget is a proven minimal length. A stress board is the goal plus as
+many new objects as the recommended `--max-actions` allows (or the task's own action limit when
+smaller), split 0, ¼, ½, ¾ or all as new steps ("Stress n", default style, outside frames) and the
+rest as new arrows to goal steps; that is exactly what is checked. Each family has its own
+generator version (1.0.0; `injection` 1.1.0), and a golden test pins one instance per family to it.
 
 ```bash
 node tools/challenge.ts generate repair --set dev --out .local/challenge/dev/repair        # seeds 1…8
@@ -441,7 +445,7 @@ folder, never seen by an agent) and `instances.json` with every instance's facts
 arguments (`bench.args`: `--world`, `--oracle`, `--seed-list 1 --repeats 1`, the family's
 recommended `--max-actions` and `--timeout`). Seeds: development 1–999 (default 1…8), throwaway
 self-checks 10 000–19 999 (default 10 001…10 024), held-out ≥ 1 000 000. `--difficulty 1|2|3|mixed`
-(default `mixed`: 1, 2, 3, 1, …). Long-horizon runs need `--max-actions 120` (recommended in
+(default `mixed`: 1, 2, 3, 1, …). Long-horizon runs need `--max-actions 90` (recommended in
 `instances.json`).
 
 **Model-free checks** (measured 2026-10-14, generator 1.0.0, no language model). Development sets
