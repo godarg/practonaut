@@ -579,6 +579,10 @@ export const CLI_CATALOG = {
     "en": "run {id}: a condition trace and a trace error must not appear together, and a missing trace needs its error",
     "de": "Lauf {id}: Bedingungsverlauf und Verlaufsfehler dürfen nicht zusammen stehen, und ein fehlender Verlauf braucht seinen Fehler"
   },
+  "benchReportTraceWithoutLog": {
+    "en": "run {id} binds a condition trace without the mutation log it is re-derived from",
+    "de": "Lauf {id} bindet einen Bedingungsverlauf ohne das Änderungsprotokoll, aus dem er nachgerechnet wird"
+  },
   "benchReportMutations": {
     "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo and reset calls",
     "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo und reset"

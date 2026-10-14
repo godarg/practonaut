@@ -53,12 +53,13 @@ const en = {
   finalBoard: 'Final board', finalEngine: 'Exported by the real Excalidraw {version} at the end of the run.',
   finalSchematic: 'Schematic of the judged state — not the real Excalidraw.', reasonModelOnly: 'The bench ran model only (no mirror).', reasonNoPicture: 'No picture of the real Excalidraw was taken.', reasonPictureUnreadable: 'The real Excalidraw’s picture could not be read safely.', reasonPictureChanged: 'The real Excalidraw’s picture differs from the hash the report binds.',
   target: 'Example target', targetCaption: 'One board that meets every condition: a schematic of the checked reference solution for this seed.', noTarget: 'No example target: this task has no validated reference.', targetUnreadable: 'No example target: the stored reference cannot be read.',
+  objectsTitle: 'On the board (from the judged state, labels in full)', arrowLine: 'arrow {from} → {to}', stepGeometry: '{width} × {height} at ({x}, {y})', stepLine: 'line {stroke}', stepFill: 'fill {fill}', stepNoFill: 'no fill', stepFrame: 'in frame {name}',
   groups: 'Groups (from the judged state; an export does not show them)', noGroups: 'No groups.', group: 'Group', frames: 'Frames', frameMembers: '{name}: {members}', emptyFrame: '{name}: no steps', loose: 'loose end',
   trajectoryHead: '#', trajectoryAction: 'action', trajectoryResult: 'result', trajectoryMet: 'conditions met', trajectoryBy: 'client',
   accepted: 'step {step}', rejectedAs: 'rejected: {code}', metAfter: '{met} of {total}', gained: 'now met: {list}', lost: 'lost: {list}',
   trajectoryMissing: 'No trajectory: {reason}', trajectoryEmpty: 'No act, undo or reset call reached the session.',
   callsLine: '{calls} {calls:call|calls} · {bytes} of results · bridge median {bridge} ms · {client}', clientMedian: 'client median {ms} ms', clientUnavailable: 'client timing unavailable (not Practonaut’s own client)',
-  callsTools: 'by tool: {list}', callsCodes: 'not ok: {list}', callsDropped: '{n} unreadable {n:line|lines} left out', callsMissing: 'No call log: {reason}',
+  callsTools: 'by tool: {list}', callsCodes: 'not ok: {list}', callsDropped: '{n} unreadable {n:line|lines} left out', callsOmitted: '{n} {n:line|lines} beyond the log limit not summarised here; the bridge’s own file calls.bridge.jsonl keeps them', callsMissing: 'No call log: {reason}',
   callsMissingNone: 'the agent’s bridge wrote none', callsNote: 'Recorded by the agent’s own bridge process: evidence about the run, not proof.',
   clientLine: '{parts} — self-reported by the client', clientModel: 'model {model}',
   rejectCodes: '{code} ×{n}',
@@ -83,7 +84,8 @@ const en = {
   compareRules: 'How this is compared (PADR-0039): the unit is the instance (task × seed); judged repeats aggregate to one outcome per side (a pass when at least half passed); an instance regression needs three judged repeats on each side, all passed on the baseline and all failed on the candidate; a rate claim needs an exact McNemar test on the discordant instances at α = 0.05.',
   instance: 'instance', baselineOutcome: 'baseline', candidateOutcome: 'candidate', outcomePass: 'pass {p}/{n}', outcomeFail: 'fail {p}/{n}', outcomeNone: 'not judged', outcomeMissing: 'no run',
   instancesHeading: 'Instances', rulesHeading: 'How this is compared', regressionCount: '{n} instance {n:regression|regressions}',
-  flipRegression: 'instance regression', flipFix: 'instance fix', flipSingle: 'single run — not a regression signal', flipNone: 'same outcome',
+  flipRegression: 'instance regression', flipFix: 'instance fix', flipSingle: 'single run — not a regression signal', flipChanged: 'outcome changed, not in every repeat — not a regression signal', flipNone: 'same outcome',
+  changedFlips: 'Outcome changed, not in every repeat — not a regression signal', changedDown: '{task} · seed {seed}: passed on the baseline ({bp}/{bn}), failed on the candidate ({cp}/{cn})', changedUp: '{task} · seed {seed}: failed on the baseline ({bp}/{bn}), passed on the candidate ({cp}/{cn})',
 } as const;
 
 type Catalog = { readonly [K in keyof typeof en]: string };
@@ -134,12 +136,13 @@ const de: Catalog = {
   finalBoard: 'Zeichnung am Ende', finalEngine: 'Exportiert vom echten Excalidraw {version} am Ende des Laufs.',
   finalSchematic: 'Schema des beurteilten Zustands — nicht das echte Excalidraw.', reasonModelOnly: 'Die Bench lief nur mit dem Modell (keine Spiegelung).', reasonNoPicture: 'Es wurde kein Bild des echten Excalidraw aufgenommen.', reasonPictureUnreadable: 'Das Bild des echten Excalidraw ließ sich nicht sicher lesen.', reasonPictureChanged: 'Das Bild des echten Excalidraw weicht vom Hash ab, den der Bericht bindet.',
   target: 'Beispielziel', targetCaption: 'Eine Zeichnung, die jede Bedingung erfüllt: ein Schema der geprüften Referenzlösung für diesen Seed.', noTarget: 'Kein Beispielziel: Diese Aufgabe hat keine geprüfte Referenz.', targetUnreadable: 'Kein Beispielziel: Die gespeicherte Referenz lässt sich nicht lesen.',
+  objectsTitle: 'Auf der Zeichnung (aus dem beurteilten Zustand, Beschriftungen vollständig)', arrowLine: 'Pfeil {from} → {to}', stepGeometry: '{width} × {height} bei ({x}, {y})', stepLine: 'Linie {stroke}', stepFill: 'Füllung {fill}', stepNoFill: 'keine Füllung', stepFrame: 'im Rahmen {name}',
   groups: 'Gruppen (aus dem beurteilten Zustand; ein Export zeigt sie nicht)', noGroups: 'Keine Gruppen.', group: 'Gruppe', frames: 'Rahmen', frameMembers: '{name}: {members}', emptyFrame: '{name}: keine Schritte', loose: 'loses Ende',
   trajectoryHead: 'Nr.', trajectoryAction: 'Aktion', trajectoryResult: 'Ergebnis', trajectoryMet: 'erfüllte Bedingungen', trajectoryBy: 'Client',
   accepted: 'Schritt {step}', rejectedAs: 'abgelehnt: {code}', metAfter: '{met} von {total}', gained: 'jetzt erfüllt: {list}', lost: 'verloren: {list}',
   trajectoryMissing: 'Kein Verlauf: {reason}', trajectoryEmpty: 'Kein Aufruf von act, undo oder reset erreichte die Sitzung.',
   callsLine: '{calls} {calls:Aufruf|Aufrufe} · {bytes} Antworten · Bridge-Median {bridge} ms · {client}', clientMedian: 'Client-Median {ms} ms', clientUnavailable: 'Client-Zeit nicht verfügbar (nicht der eigene Client von Practonaut)',
-  callsTools: 'nach Werkzeug: {list}', callsCodes: 'nicht ok: {list}', callsDropped: '{n} unlesbare {n:Zeile|Zeilen} ausgelassen', callsMissing: 'Kein Aufrufprotokoll: {reason}',
+  callsTools: 'nach Werkzeug: {list}', callsCodes: 'nicht ok: {list}', callsDropped: '{n} unlesbare {n:Zeile|Zeilen} ausgelassen', callsOmitted: '{n} {n:Zeile|Zeilen} jenseits der Protokollgrenze hier nicht zusammengefasst; die Datei der Bridge, calls.bridge.jsonl, enthält sie', callsMissing: 'Kein Aufrufprotokoll: {reason}',
   callsMissingNone: 'die Bridge des Agenten hat keines geschrieben', callsNote: 'Aufgezeichnet vom Bridge-Prozess des Agenten selbst: ein Beleg über den Lauf, kein Beweis.',
   clientLine: '{parts} — Selbstauskunft des Clients', clientModel: 'Modell {model}',
   rejectCodes: '{code} ×{n}',
@@ -162,7 +165,8 @@ const de: Catalog = {
   compareRules: 'So wird verglichen (PADR-0039): Einheit ist die Instanz (Aufgabe × Seed); bewertete Wiederholungen ergeben je Seite ein Ergebnis (bestanden, wenn mindestens die Hälfte bestand); eine Instanz-Regression braucht drei bewertete Wiederholungen je Seite, alle bestanden bei der Basis und alle nicht bestanden beim Kandidaten; eine Aussage über Raten braucht einen exakten McNemar-Test auf den abweichenden Instanzen bei α = 0,05.',
   instance: 'Instanz', baselineOutcome: 'Basis', candidateOutcome: 'Kandidat', outcomePass: 'bestanden {p}/{n}', outcomeFail: 'nicht bestanden {p}/{n}', outcomeNone: 'nicht bewertet', outcomeMissing: 'kein Lauf',
   instancesHeading: 'Instanzen', rulesHeading: 'So wird verglichen', regressionCount: '{n} {n:Instanz-Regression|Instanz-Regressionen}',
-  flipRegression: 'Instanz-Regression', flipFix: 'Instanz-Korrektur', flipSingle: 'Einzellauf — kein Regressionssignal', flipNone: 'gleiches Ergebnis',
+  flipRegression: 'Instanz-Regression', flipFix: 'Instanz-Korrektur', flipSingle: 'Einzellauf — kein Regressionssignal', flipChanged: 'Ergebnis geändert, nicht in jeder Wiederholung — kein Regressionssignal', flipNone: 'gleiches Ergebnis',
+  changedFlips: 'Ergebnis geändert, nicht in jeder Wiederholung — kein Regressionssignal', changedDown: '{task} · Seed {seed}: bestanden bei der Basis ({bp}/{bn}), nicht bestanden beim Kandidaten ({cp}/{cn})', changedUp: '{task} · Seed {seed}: nicht bestanden bei der Basis ({bp}/{bn}), bestanden beim Kandidaten ({cp}/{cn})',
 };
 
 export type Words = Catalog;

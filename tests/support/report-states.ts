@@ -84,6 +84,8 @@ async function germanWorld(dir: string): Promise<{ world: string; taskId: string
 
 export interface Fixtures {
   failing: Bench; solved: Bench; timeout: Bench; unjudged: Bench; german: Bench;
+  /** An agent that acted and then exited with code 7. */
+  crashed: Bench;
   /** Two command-template benches on the same grid, three repeats: for compare. */
   good: Bench; bad: Bench;
   /** With the real mirror (only when asked for). */
@@ -97,13 +99,14 @@ export async function fixtureBenches(dir: string, options: { mirror?: boolean } 
   const solved = await bench({ ...base, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] });
   const timeout = await bench({ ...base, agent: template('sleep'), tasks: ['connect'], timeoutSeconds: 2 });
   const unjudged = await bench({ ...base, agent: template('plant-dir'), tasks: ['connect'] });
+  const crashed = await bench({ ...base, agent: template('crash'), tasks: ['connect'] });
   const authored = await germanWorld(dir);
   // Benched without its oracle: no reference, so no efficiency and no example target.
   const world = await ownBenchWorld(authored.world);
   const german = await scripted(dir, 'german', { [authored.taskId]: { steps: [{ act: 'rename_step', params: { id: 'a', label: 'Kreditorenstammdatenänderungsantragsprüfung' } }, { act: 'set_style', params: { id: 'b', shape: 'rectangle', stroke: 'black', fill: 'yellow' } }] } }, { world, tasks: [authored.taskId], label: 'Langer deutscher Name: Rechnungseingangsprüfung' });
   const good = await scripted(dir, 'good', SOLVING, { repeats: 3 });
   const bad = await scripted(dir, 'bad', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, { repeats: 3 });
-  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, good, bad };
+  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed, good, bad };
   if (options.mirror) {
     const mirrored = { mirrorRequested: 'required' as const, mirror: 'required' as const };
     fixtures.engine = {
@@ -134,6 +137,7 @@ export async function reportStates(fixtures: Fixtures): Promise<ReportState[]> {
     { id: 'report-reverified-pass', html: language => reportPage(fixtures.solved, language, 're-verified') },
     { id: 'report-timeout', html: language => reportPage(fixtures.timeout, language) },
     { id: 'report-unjudged', html: language => reportPage(fixtures.unjudged, language) },
+    { id: 'report-agent-failed', html: language => reportPage(fixtures.crashed, language) },
     { id: 'report-long-german', html: language => reportPage(fixtures.german, language) },
     { id: 'report-no-folder', html: language => reportPage({ report: fixtures.failing.report, directory: null }, language) },
     { id: 'report-v1', html: language => reportPage({ report: v1, directory: null }, language) },

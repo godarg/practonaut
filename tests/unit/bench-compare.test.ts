@@ -47,6 +47,16 @@ test('instance regression: three repeats a side, all passed on the baseline, all
   assert.deepEqual(comparison.fixes.map(pair => pair.seed), [3]);
   // Seed 2: 3/3 → 2/3 passes on both aggregates (at least half): not a flip at all.
   assert.equal(comparison.pairs[1]!.flip, null);
+  // A majority flip with three repeats a side that not every repeat shows: named, never a regression,
+  // and one of McNemar's discordant instances. Baseline [pass, pass, fail] → candidate [fail, fail, pass].
+  const changed = compareReports(report(instances([[true, true, false]])), report(instances([[false, false, true]])));
+  assert.deepEqual([changed.pairs[0]!.flip, changed.regressions.length, changed.discordant.baselineOnly], ['changed-down', 0, 1]);
+  assert.deepEqual(changed.changedFlips.map(pair => pair.seed), [1]);
+  const changedText = renderCompareTable({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed);
+  assert.match(changedText, /Outcome changed, not in every repeat — not a regression signal:\n  T · seed 1: passed on the baseline \(2\/3\), failed on the candidate \(1\/3\)/);
+  const changedHtml = renderCompareHtml({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed, ':root{}');
+  assert.match(changedHtml, /<td class="text">outcome changed, not in every repeat — not a regression signal<\/td>/);
+  assert.equal(changedHtml.includes('same outcome'), false);
   assert.equal(comparison.regressionSignal, true);
   // b = 1 (seed 1), c = 1 (seed 3): p = min(1, 2 · P(X ≤ 1 | n = 2)) = min(1, 2 · 3/4) = 1.
   assert.deepEqual([comparison.discordant, comparison.p, comparison.verdict], [{ baselineOnly: 1, candidateOnly: 1 }, 1, 'not_distinguishable']);
@@ -82,6 +92,11 @@ test('rate verdicts: exact McNemar on the discordant instances at α = 0.05', ()
   assert.ok(Math.abs(declined.p - 20 / 512) < 1e-12);
   const text = renderCompareTable({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close);
   assert.match(text, /Verdict: not distinguishable at this n \(exact McNemar p = 0\.063; 0 only on the baseline, 5 only on the candidate\)/);
+  // Each side carries its mirror, isolation level and verification status (vision §6, principle 4).
+  assert.match(text, /^Baseline: generic · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
+  assert.match(text, /^Candidate: generic · .* · model only \(no mirror\) · template: tools not restricted by Practonaut · consistency-checked, not re-verified · /m);
+  const page = renderCompareHtml({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close, ':root{}', 'de');
+  assert.equal((page.match(/nur Modell \(keine Spiegelung\) · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt/g) ?? []).length, 2);
   assert.match(text, /Baseline: 5\/10 instances passed · 95 % interval 23–77 % over the 10 instances judged on both sides/);
 });
 

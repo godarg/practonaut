@@ -18,6 +18,8 @@ import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
 import type { ConditionDetail, ReportDetails, RunDetail, TrajectoryRow } from './details.ts';
+import type { BoardObject } from './schematic.ts';
+import { styleNames } from '../world/style-names.ts';
 
 export type Verification = 'consistency-checked' | 're-verified';
 
@@ -259,6 +261,19 @@ function conditionsHtml(detail: RunDetail, language: Language): string {
   return `<ol class="conditions">${items}</ol>${note}`;
 }
 
+/** One line per object of the judged state, every goal-relevant attribute in words, labels in full. */
+export function objectLines(objects: readonly BoardObject[], language: Language): string[] {
+  const t = TEXT[language], names = styleNames[language] as Record<string, string>;
+  const quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
+  return objects.map(object => {
+    if (object.kind === 'arrow') return fill(language, t.arrowLine, { from: object.from === null ? t.loose : quoted(object.from), to: object.to === null ? t.loose : quoted(object.to) });
+    const geometry = fill(language, t.stepGeometry, { width: object.width, height: object.height, x: object.x, y: object.y });
+    const style = object.shape === null ? [] : [names[object.shape] ?? object.shape, fill(language, t.stepLine, { stroke: names[object.stroke!] ?? object.stroke! }), object.fill === 'none' ? t.stepNoFill : fill(language, t.stepFill, { fill: names[object.fill!] ?? object.fill! })];
+    const place = [...(object.frame !== null ? [fill(language, t.stepFrame, { name: quoted(object.frame) })] : []), ...(object.group !== null ? [`${t.group} ${object.group}`] : [])];
+    return `${quoted(object.label)} — ${[...style, geometry, ...place].join(', ')}`;
+  });
+}
+
 function boardHtml(detail: RunDetail, report: BenchReport, language: Language): string {
   const t = TEXT[language], picture = detail.picture;
   const reason = picture?.kind === 'schematic' ? { 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason] : '';
@@ -266,6 +281,7 @@ function boardHtml(detail: RunDetail, report: BenchReport, language: Language): 
   const legend: string[] = [];
   legend.push(`<p class="legend-title">${esc(t.groups)}</p>`);
   legend.push(detail.groups.length ? `<ul class="legend">${detail.groups.map(group => `<li>${esc(`${group.name}: ${group.members.map(member => `“${member}”`).join(', ')}`)}</li>`).join('')}</ul>` : `<p class="meta">${esc(t.noGroups)}</p>`);
+  if (detail.objects.length) legend.push(`<p class="legend-title">${esc(t.objectsTitle)}</p><ul class="legend">${objectLines(detail.objects, language).map(line => `<li>${esc(line)}</li>`).join('')}</ul>`);
   if (detail.frames.length) legend.push(`<p class="legend-title">${esc(t.frames)}</p><ul class="legend">${detail.frames.map(frame => `<li>${esc(frame.members.length ? fill(language, t.frameMembers, { name: `“${frame.name}”`, members: frame.members.map(member => `“${member}”`).join(', ') }) : fill(language, t.emptyFrame, { name: `“${frame.name}”` }))}</li>`).join('')}</ul>`);
   const final = picture ? `<figure class="board-figure"><div class="board-scroll" role="region" tabindex="0" aria-label="${esc(t.finalBoard)}">${picture.markup}</div><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${esc(caption)}</figcaption>${legend.join('')}</figure>` : '';
   const target = detail.target ? `<figure class="board-figure"><div class="board-scroll" role="region" tabindex="0" aria-label="${esc(t.target)}">${detail.target}</div><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption></figure>`
@@ -296,6 +312,7 @@ function callsHtml(detail: RunDetail, language: Language): string {
     fill(language, t.callsTools, { list: calls.byTool.map(([tool, count]) => `${tool} ${count}`).join(', ') || t.none })];
   if (calls.codes.length) lines.push(fill(language, t.callsCodes, { list: calls.codes.map(([code, count]) => `${code} ${count}`).join(', ') }));
   if (calls.dropped) lines.push(fill(language, t.callsDropped, { n: calls.dropped }));
+  if (calls.omitted) lines.push(fill(language, t.callsOmitted, { n: calls.omitted }));
   return `${lines.map(line => `<p class="meta">${esc(line)}</p>`).join('')}<p class="note">${esc(t.callsNote)}</p>`;
 }
 

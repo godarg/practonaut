@@ -12,6 +12,7 @@
 // init    : print a stream-json system/init line (model pn-test-model, apiKeySource none), then solve.
 // snoop   : look for the reference solution (PN_SNOOP_NEEDLE) everywhere it can reach: every file in the bench folder
 //           (PRACTONAUT_HOME/../..) and every MCP reply; findings go to PRACTONAUT_HOME/snoop.json.
+// crash   : draw the connect arrow, then exit with code 7 (an agent that fails after acting).
 // script  : play the steps PN_TEST_AGENT_SCRIPT (a JSON file) names for the observed task:
 //           { "<task id>": { "clients"?: [names], "print"?: [stdout lines], "steps": [step, …] } }
 //           step: { "act": name, "params": {…}, "client"?: n } | { "undo": true } | { "reset": true }
@@ -98,5 +99,5 @@ else {
   const view = observed.value;
   const reply = await client.call('act', { name: 'connect', params: { from: 'a', to: 'b' }, baseStep: view.step, expectedRevision: view.revision });
   await client.close();
-  process.exit(reply.ok ? 0 : 4);
+  process.exit(mode === 'crash' ? 7 : reply.ok ? 0 : 4);
 }

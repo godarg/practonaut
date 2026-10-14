@@ -13,7 +13,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { lstat, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { arch, homedir, release } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +32,7 @@ import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { StdioMcpClient, type ClientCall, type McpServerEntry } from './mcp-client.ts';
-import { clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
@@ -225,23 +225,21 @@ async function stdoutTail(path: string): Promise<string> {
   const size = 256 * 1024;
   return open(path, 'r').then(async handle => { try { const length = (await handle.stat()).size, start = Math.max(0, length - size); const read = await handle.read(Buffer.alloc(size), 0, size, start); const text = read.buffer.subarray(0, read.bytesRead).toString('utf8'); return start > 0 ? text.slice(text.indexOf('\n') + 1) : text; } finally { await handle.close(); } }).catch(() => '');
 }
-/** A regular file's text, at most `max` bytes; null when it is missing, not a regular file or larger. */
-async function boundedText(path: string, max: number): Promise<string | null> {
-  try { const info = await lstat(path); if (!info.isFile() || info.size > max) return null; return await readFile(path, 'utf8'); } catch { return null; }
-}
 
 /** The run's evidence beside its judged artifacts (PADR-0039): the normalised call log (with the
  * bench client's round trips for built-in agents) and the mutation log, each bound by hash. */
 async function writeRunLogs(home: string, recorder: MutationRecorder, clientCalls: readonly ClientCall[] | undefined): Promise<NonNullable<BenchRunV2['logs']>> {
   const mutations = recorder.text();
   await writeRunArtifact(home, RUN_EVIDENCE.mutations, mutations);
-  const raw = await boundedText(join(home, RUN_EVIDENCE.calls), MAX_LOG_BYTES);
+  // The bridge's own file stays as it wrote it; its first MAX_LOG_BYTES are normalised, and every line
+  // beyond what is kept is counted (`omitted`).
+  const raw = await readLogHead(join(home, RUN_EVIDENCE.bridgeCalls), MAX_LOG_BYTES);
   let calls: NonNullable<BenchRunV2['logs']>['calls'] = null;
   if (raw !== null) {
-    const normalised = normaliseCallLog(raw, clientCalls);
+    const normalised = normaliseCallLog(raw.text, clientCalls, raw.unreadLines);
     await writeRunArtifact(home, RUN_EVIDENCE.calls, normalised.text);
-    calls = { sha256: sha256Hex(normalised.text), entries: normalised.records.length, dropped: normalised.dropped, clientTiming: normalised.records.some(record => record.clientMs !== null) };
-  } else await rm(join(home, RUN_EVIDENCE.calls), { recursive: true, force: true }).catch(() => {});
+    calls = { sha256: sha256Hex(normalised.text), entries: normalised.records.length, dropped: normalised.dropped, omitted: normalised.omitted, clientTiming: normalised.records.some(record => record.clientMs !== null) };
+  }
   return { calls, mutations: { sha256: sha256Hex(mutations), entries: recorder.records.length, omitted: recorder.omitted } };
 }
 
@@ -301,7 +299,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, singleTask: true, taskInfo: {}, tokenDirectory: join(home, 'host'), controllerFactory: factory });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       // The bridge's call log goes into the run folder, outside the agent's own folder (PADR-0039).
-      const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile, '--call-log', join(home, RUN_EVIDENCE.calls)], env: { PRACTONAUT_HOME: agentDirectory } };
+      const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile, '--call-log', join(home, RUN_EVIDENCE.bridgeCalls)], env: { PRACTONAUT_HOME: agentDirectory } };
       const configPath = join(agentDirectory, 'mcp.json');
       await writeFile(configPath, JSON.stringify({ mcpServers: { practonaut: { type: 'stdio', ...entry } } }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
       // The agent's data folder is its own subdirectory, not the run directory the artifacts go to.

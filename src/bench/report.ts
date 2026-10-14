@@ -140,8 +140,10 @@ export const MAX_LABEL = 128;
 
 /** The run's call log and mutation log in its run folder (PADR-0039 A.1–2), bound by hash. */
 const RunLogsSchema = z.strictObject({
-  /** `calls.jsonl`, written by the agent's bridge and normalised by the runner; null: none was written. */
-  calls: z.strictObject({ sha256, entries: count, dropped: count, clientTiming: z.boolean() }).nullable(),
+  /** `calls.jsonl`, normalised by the runner from what the agent's bridge wrote (`calls.bridge.jsonl`,
+   * kept unchanged); null: none was written. `dropped`: unreadable lines; `omitted`: lines beyond the
+   * log limits, counted but not kept in `calls.jsonl`. */
+  calls: z.strictObject({ sha256, entries: count, dropped: count, omitted: count.optional(), clientTiming: z.boolean() }).nullable(),
   /** `mutations.jsonl`, written by the runner's host-side wrapper; `omitted`: budget refusals only counted. */
   mutations: z.strictObject({ sha256, entries: count, omitted: count }),
 });
@@ -380,12 +382,16 @@ export function validateBenchReportV2(raw: unknown): BenchReportV2 {
 
 /** The /2 evidence fields of one run (PADR-0039): a picture only with the mirror, a trace error only
  * without a trace, a mutation log that holds every counted act, undo and reset call, client timing
- * only from Practonaut's own client, client figures only from an external agent's own output. */
+ * only from Practonaut's own client, client figures only from an external agent's own output; a
+ * condition trace only beside the mutation log it is re-derived from. */
 function checkRunEvidence(report: BenchReportV2, run: BenchRunV2, fail: (message: string) => never): void {
   const artifacts = run.artifacts, mirror = report.environment.mirror, kind = report.agent.kind;
   if (artifacts?.board !== undefined && artifacts.board !== null && mirror === 'off') fail(cliText('benchReportBoard', { id: run.id }));
   if (artifacts?.traceError !== undefined && artifacts.trace !== null) fail(cliText('benchReportTraceError', { id: run.id }));
   if (artifacts?.trace === null && artifacts.traceError === undefined) fail(cliText('benchReportTraceError', { id: run.id }));
+  // A condition trace is re-derived at --verify from the session and the mutation log: without the log
+  // it could not be checked, so it is not accepted at all.
+  if (typeof artifacts?.trace === 'string' && !run.logs) fail(cliText('benchReportTraceWithoutLog', { id: run.id }));
   if (run.logs) {
     const calls = run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset;
     if (run.logs.mutations.entries + run.logs.mutations.omitted !== calls) fail(cliText('benchReportMutations', { id: run.id, entries: run.logs.mutations.entries + run.logs.mutations.omitted, calls }));

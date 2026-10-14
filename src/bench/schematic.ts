@@ -32,6 +32,27 @@ export function groupsOf(state: State, word = 'Group'): GroupLegend[] {
   for (const step of live(state).steps) if (isStepV2(step) && step.groupId !== null) groups.set(step.groupId, [...(groups.get(step.groupId) ?? []), step.label]);
   return [...groups.values()].map((members, index) => ({ name: `${word} ${index + 1}`, members }));
 }
+/** Every live object of the judged state with each goal-relevant attribute, as data for the legend
+ * under a picture: a drawing cuts long labels, the legend never does. */
+export type BoardObject =
+  | { kind: 'step'; label: string; shape: string | null; stroke: string | null; fill: string | null; width: number; height: number; x: number; y: number; frame: string | null; group: number | null }
+  | { kind: 'arrow'; from: string | null; to: string | null };
+export function boardObjects(state: State): BoardObject[] {
+  const { steps, frames, arrows } = live(state);
+  const groupIndex = new Map<string, number>();
+  for (const step of steps) if (isStepV2(step) && step.groupId !== null && !groupIndex.has(step.groupId)) groupIndex.set(step.groupId, groupIndex.size + 1);
+  const frameName = new Map(frames.map(frame => [frame.id, frame.name]));
+  const label = new Map(steps.map(step => [step.id, step.label]));
+  return [
+    ...steps.map((step): BoardObject => {
+      const v2 = isStepV2(step);
+      return { kind: 'step', label: step.label, shape: v2 ? step.shape : null, stroke: v2 ? step.stroke : null, fill: v2 ? step.fill : null, width: step.width, height: step.height, x: step.x, y: step.y,
+        frame: step.frameId === null ? null : frameName.get(step.frameId) ?? null, group: v2 && step.groupId !== null ? groupIndex.get(step.groupId)! : null };
+    }),
+    ...arrows.map((arrow): BoardObject => ({ kind: 'arrow', from: arrow.from === null ? null : label.get(arrow.from) ?? null, to: arrow.to === null ? null : label.get(arrow.to) ?? null })),
+  ];
+}
+
 /** Frames of the judged state with the steps inside them. */
 export function framesOf(state: State): FrameLegend[] {
   const { steps, frames } = live(state);

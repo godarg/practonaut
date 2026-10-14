@@ -9,7 +9,8 @@
  *    there is listed and left out.
  * 3. An instance regression has at least three judged repeats on each side, every baseline repeat
  *    passed and every candidate repeat failed (the mirror image is a fix). With fewer repeats a flip
- *    is a single run, never a regression.
+ *    is a single run, never a regression; with three or more a changed outcome that is not unanimous
+ *    is named as changed, never a regression. Every flip is one of McNemar's discordant instances.
  * 4. A rate claim needs the exact two-sided McNemar test on the discordant instances at α = 0.05;
  *    otherwise the verdict is "not distinguishable at this n".
  */
@@ -50,12 +51,13 @@ export function differences(baseline: BenchReport, candidate: BenchReport): Diff
 }
 
 export type PairKind = 'paired' | 'missing' | 'unjudged';
-export type Flip = 'regression' | 'fix' | 'single-down' | 'single-up' | null;
+export type Flip = 'regression' | 'fix' | 'single-down' | 'single-up' | 'changed-down' | 'changed-up' | null;
 export interface InstancePair {
   taskId: string; seed: number; kind: PairKind;
   baseline: InstanceAggregate | null; candidate: InstanceAggregate | null;
   /** For a paired instance whose outcome differs: an instance regression or fix (≥ 3 judged repeats a
-   * side), or a single-run flip down or up. */
+   * side), a single-run flip (fewer repeats), or a changed outcome that not every repeat shows (three
+   * or more repeats a side); down when the baseline passed. Null: the same outcome. */
   flip: Flip;
   /** For an instance that is not compared: the side that lacks it (missing) or has no judged run. */
   side?: 'baseline' | 'candidate' | 'both';
@@ -70,6 +72,8 @@ export interface Comparison {
   discordant: { baselineOnly: number; candidateOnly: number };
   p: number; alpha: number; verdict: RateVerdict;
   regressions: InstancePair[]; fixes: InstancePair[]; singleFlips: InstancePair[];
+  /** Outcome changed with at least three judged repeats a side, but not in every repeat. */
+  changedFlips: InstancePair[];
   notCompared: InstancePair[];
   /** True when at least one paired instance has the repeats an instance regression needs on both sides. */
   regressionSignal: boolean;
@@ -105,7 +109,7 @@ export function compareReports(baseline: BenchReport, candidate: BenchReport): C
     }
     const flip: Flip = isInstanceRegression(baselineAggregate!, candidateAggregate!) ? 'regression' : isInstanceFix(baselineAggregate!, candidateAggregate!) ? 'fix'
       : baselineAggregate!.outcome === candidateAggregate!.outcome ? null
-        : baselineAggregate!.judged >= REGRESSION_REPEATS && candidateAggregate!.judged >= REGRESSION_REPEATS ? null
+        : baselineAggregate!.judged >= REGRESSION_REPEATS && candidateAggregate!.judged >= REGRESSION_REPEATS ? (baselineAggregate!.outcome === 'pass' ? 'changed-down' : 'changed-up')
           : baselineAggregate!.outcome === 'pass' ? 'single-down' : 'single-up';
     return { taskId, seed, kind: 'paired', baseline: baselineAggregate, candidate: candidateAggregate, flip };
   });
@@ -126,6 +130,7 @@ export function compareReports(baseline: BenchReport, candidate: BenchReport): C
     discordant: { baselineOnly, candidateOnly }, p, alpha: ALPHA, verdict,
     regressions: paired.filter(pair => pair.flip === 'regression'), fixes: paired.filter(pair => pair.flip === 'fix'),
     singleFlips: paired.filter(pair => pair.flip === 'single-down' || pair.flip === 'single-up'),
+    changedFlips: paired.filter(pair => pair.flip === 'changed-down' || pair.flip === 'changed-up'),
     notCompared: pairs.filter(pair => pair.kind !== 'paired'),
     regressionSignal: paired.some(pair => pair.baseline!.judged >= REGRESSION_REPEATS && pair.candidate!.judged >= REGRESSION_REPEATS),
     caveats,

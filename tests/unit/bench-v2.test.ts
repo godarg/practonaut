@@ -102,6 +102,8 @@ test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client tim
   refused(value => { value.runs[0]!.artifacts!.board = hash('b'); }, /binds a picture of the real engine, but the bench ran without the mirror/);
   refused(value => { value.runs[0]!.artifacts!.traceError = 'checker_timeout'; }, /trace and a trace error must not appear together/);
   refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
+  // A trace without the mutation log that re-derives it could never be re-verified: refused outright.
+  refused(value => { delete value.runs[0]!.logs; }, /binds a condition trace without the mutation log it is re-derived from/);
   refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
   refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
   refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);

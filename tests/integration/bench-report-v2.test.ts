@@ -88,6 +88,11 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   const unjudged = runText(await reportPage(fixtures.unjudged, 'en'), 'connect-s1-r1');
   assert.match(unjudged, /Not judged — the run could not be judged \(.+\); it counts as not passed, so an infrastructure fault never raises a score\./, 'unjudged');
   assert.equal(fixtures.unjudged.report.runs[0]!.checker, null);
+  // An agent that acted and then failed: its board is judged (the arrow it drew passes connect).
+  const crashed = fixtures.crashed.report.runs[0]!;
+  assert.deepEqual([crashed.status, crashed.agentExitCode, crashed.pass], ['agent_failed', 7, true]);
+  const crashedText = runText(await reportPage(fixtures.crashed, 'en'), crashed.id);
+  assert.ok(crashedText.includes('Agent failed — the agent ended with exit code 7; the board it left was judged.'), crashedText.slice(0, 300));
   // Long German names, in German: the authored labels, the agent's long label and the task without a reference.
   const german = await reportPage(fixtures.german, 'de'), germanRun = runText(german, fixtures.german.report.runs[0]!.id);
   for (const name of ['Rechnungseingangsprüfung', 'Zahlungsfreigabeverfahrensdokumentation', 'Kreditorenstammdatenänderungsantragsprüfung']) assert.ok(germanRun.includes(name), name);
@@ -149,6 +154,25 @@ test('a bench folder that was changed or crafted removes an explanation, never f
   const text = JSON.stringify(session); await writeFile(join(copy, run.id, 'session.json'), text); run.artifacts!.session = createHash('sha256').update(text).digest('hex');
   page = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
   assert.ok(page.includes('The conditions cannot be shown: the file cannot be read'), page.slice(0, 400));
+});
+
+test('a forged condition trace bound by its hash is never shown as history', { timeout: 120_000 }, async () => {
+  const copy = join(dir, 'forged-trace'); await cp(fixtures.failing.directory, copy, { recursive: true });
+  const report = structuredClone(fixtures.failing.report), run = report.runs.find(entry => entry.taskId === 'connect')!;
+  const original = JSON.parse(await readFile(join(copy, run.id, 'trace.json'), 'utf8')) as { points: Array<{ seq: number; met: string }> };
+  const before = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
+  assert.ok(before.includes('last lost after action 3'), 'the genuine trace gives the history');
+  // Every condition met after a mutation the log does not have (seq 999): bound by a recomputed hash.
+  const forged = { ...original, points: [...original.points, { seq: 999, step: 9, met: '11111' }] };
+  const text = JSON.stringify(forged) + '\n'; await writeFile(join(copy, run.id, 'trace.json'), text);
+  run.artifacts!.trace = createHash('sha256').update(text).digest('hex');
+  const page = runText(await reportPage({ report, directory: copy }, 'en'), run.id);
+  assert.equal(page.includes('last lost after action') || page.includes('met since action'), false, 'no history from a forged trace');
+  assert.ok(page.includes('The conditions cannot be shown: the file cannot be read'));
+  // And --verify refuses it by name.
+  await writeFile(join(copy, 'report.json'), JSON.stringify(report));
+  const refused = spawnSync(process.execPath, [CLI, 'report', join(copy, 'report.json'), '--verify'], { encoding: 'utf8' });
+  assert.equal(refused.status, 2); assert.match(refused.stderr, /condition trace.*\[bench_report_invalid\]/);
 });
 
 test('CLI: report renders details from the bench folder, --runs names it without --verify, and the HTML has one hashed style and no script', { timeout: 300_000 }, async () => {

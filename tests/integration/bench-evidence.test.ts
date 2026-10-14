@@ -28,6 +28,9 @@ test('built-in agent: client round trips joined to the bridge log, every mutatio
   for (const run of report.runs) {
     const folder = join(bench.directory, run.id);
     const calls = parseCallLog(await readFile(join(folder, 'calls.jsonl'), 'utf8'));
+    // The bridge's own file stays beside the normalised copy, line for line.
+    const bridged = (await readFile(join(folder, 'calls.bridge.jsonl'), 'utf8')).trim().split('\n');
+    assert.equal(bridged.length, calls.length); assert.deepEqual([run.logs?.calls?.dropped, run.logs?.calls?.omitted], [0, 0]);
     assert.ok(calls.length >= run.referenceActions! + 2, run.id);
     assert.equal(calls.every(call => call.clientMs !== null && call.clientMs + 0.2 >= call.bridgeMs && call.resultBytes > 0), true, 'every call of the bench client has its round trip, which contains the bridge time');
     assert.deepEqual(calls.filter(call => call.tool === 'act').length, run.toolCalls.act);

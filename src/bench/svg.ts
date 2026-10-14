@@ -111,14 +111,19 @@ function parse(text: string): Element {
 
 const escapeText = (value: string): string => value.replace(/[&<>]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[char]!);
 
-/** A kept attribute value, with local references renamed; null drops the attribute. */
+/** Functions a kept value may call: the transforms. CSS names functions case-insensitively. */
+const FUNCTIONS = new Set(['translate', 'rotate', 'scale', 'matrix', 'skewx', 'skewy']);
+/** A kept attribute value, with local references renamed; null drops the attribute. Backslashes,
+ * quotes and colons cannot occur (VALUE), so no CSS escape can hide a function name. */
 function keptValue(key: string, value: string, prefix: string): string | null {
   if (key === 'id') return IDENT.test(value) ? `${prefix}-${value}` : null;
   if (value.length > 200_000 || !VALUE.test(value) || /javascript|expression|data/i.test(value)) return null;
-  if (!value.includes('url(')) return value;
-  // Only a whole local reference: url(#name).
-  const local = /^url\(#([A-Za-z0-9_-]{1,64})\)$/.exec(value.trim());
-  return local ? `url(#${prefix}-${local[1]})` : null;
+  // Only a whole local reference, in any letter case: url(#name), written back as url(#prefix-name).
+  const local = /^url\(\s*#([A-Za-z0-9_-]{1,64})\s*\)$/i.exec(value.trim());
+  if (local) return `url(#${prefix}-${local[1]})`;
+  // Any other function call (url( to anything else, image(, var(, env( …) drops the attribute.
+  for (const call of value.matchAll(/([A-Za-z_-][A-Za-z0-9_-]*)\s*\(/g)) if (!FUNCTIONS.has(call[1]!.toLowerCase())) return null;
+  return value;
 }
 
 function serialise(node: Element, prefix: string, root: boolean): string {

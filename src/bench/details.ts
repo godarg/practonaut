@@ -25,7 +25,7 @@ import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFil
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES } from './svg.ts';
-import { framesOf, groupsOf, schematicSvg, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { boardObjects, framesOf, groupsOf, schematicSvg, type BoardObject, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -41,7 +41,7 @@ export interface TrajectoryRow {
   /** After an accepted mutation, from the trace: conditions met (as numbers 1 …), and which changed. */
   met: number | null; gained: number[]; lost: number[];
 }
-export interface CallSummary { calls: number; byTool: Array<[string, number]>; codes: Array<[string, number]>; resultBytes: number; bridgeMedianMs: number | null; clientMedianMs: number | null; dropped: number }
+export interface CallSummary { calls: number; byTool: Array<[string, number]>; codes: Array<[string, number]>; resultBytes: number; bridgeMedianMs: number | null; clientMedianMs: number | null; dropped: number; omitted: number }
 export type PictureReason = 'model-only' | 'no-picture' | 'picture-unreadable' | 'picture-changed';
 export type Picture = { kind: 'engine'; markup: string } | { kind: 'schematic'; markup: string; reason: PictureReason };
 /** A part that could not be shown, and why. */
@@ -52,6 +52,8 @@ export interface RunDetail {
   errors: Array<{ id: string; explanation: Localized }>;
   trajectory: TrajectoryRow[] | null; trajectoryMissing: Missing | null;
   picture: Picture | null; groups: GroupLegend[]; frames: FrameLegend[];
+  /** Every object of the judged state with its attributes in full (labels are never cut here). */
+  objects: BoardObject[];
   target: string | null; targetMissing: 'no-reference' | 'unreadable' | null;
   calls: CallSummary | null; callsMissing: Missing | null;
   /** Distinct MCP client names that changed the board (from the mutation log). */
@@ -132,14 +134,14 @@ const median = (values: number[]): number | null => {
   const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle]! : Math.round(((sorted[middle - 1]! + sorted[middle]!) / 2) * 10) / 10;
 };
-function summarizeCalls(records: readonly CallRecord[], dropped: number): CallSummary {
+function summarizeCalls(records: readonly CallRecord[], dropped: number, omitted: number): CallSummary {
   const tally = (key: (record: CallRecord) => string | null): Array<[string, number]> => {
     const counts = new Map<string, number>();
     for (const record of records) { const value = key(record); if (value !== null) counts.set(value, (counts.get(value) ?? 0) + 1); }
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   };
   const client = records.flatMap(record => record.clientMs === null ? [] : [record.clientMs]);
-  return { calls: records.length, byTool: tally(record => record.tool), codes: tally(record => record.code === 'ok' ? null : record.code), resultBytes: records.reduce((sum, record) => sum + record.resultBytes, 0), bridgeMedianMs: median(records.map(record => record.bridgeMs)), clientMedianMs: median(client), dropped };
+  return { calls: records.length, byTool: tally(record => record.tool), codes: tally(record => record.code === 'ok' ? null : record.code), resultBytes: records.reduce((sum, record) => sum + record.resultBytes, 0), bridgeMedianMs: median(records.map(record => record.bridgeMs)), clientMedianMs: median(client), dropped, omitted };
 }
 
 /** The stored world as the report binds it, or why it cannot be used. */
@@ -180,7 +182,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
   for (const [index, run] of report.runs.entries()) {
-    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], target: null, targetMissing: null, calls: null, callsMissing: null, clients: [], rejected: [] };
+    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
@@ -195,25 +197,32 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       if ('text' in read) { try { const parsed = TraceSchema.safeParse(JSON.parse(read.text)); if (parsed.success && parsed.data.conditions.length === conditions.length && [parsed.data.start, ...parsed.data.points.map(point => point.met)].every(met => met.length === conditions.length)) trace = parsed.data; else detail.conditionsMissing = 'unreadable'; } catch { detail.conditionsMissing = 'unreadable'; } }
       else detail.conditionsMissing = read.missing;
     }
+    // A trace without the mutation log it follows is not shown (it could not be re-derived).
+    if (trace && !v2?.logs) { trace = null; detail.conditionsMissing = 'unreadable'; }
     if (v2?.logs) {
       const read = await bound(folder, run.id, RUN_EVIDENCE.mutations, v2.logs.mutations.sha256, MAX_LOG_BYTES);
       if ('text' in read) {
         try {
           const records = parseMutations(read.text);
+          // Its points must be exactly the accepted mutations, in order, with their steps.
+          const accepted = records.filter(record => record.outcome === 'accepted');
+          if (trace && (trace.points.length !== accepted.length || trace.points.some((point, at) => point.seq !== accepted[at]!.seq || point.step !== accepted[at]!.step))) { trace = null; detail.conditionsMissing = 'unreadable'; }
           detail.trajectory = trajectoryOf(records, world, run, trace);
           detail.clients = [...new Set(records.flatMap(record => record.client === null ? [] : [record.client]))];
           const rejected = new Map<string, number>();
           for (const record of records) if (record.outcome === 'rejected' && record.op === 'act') rejected.set(record.code ?? 'rejected', (rejected.get(record.code ?? 'rejected') ?? 0) + 1);
           detail.rejected = [...rejected.entries()].sort((a, b) => b[1] - a[1]);
-        } catch { detail.trajectoryMissing = 'unreadable'; }
-      } else detail.trajectoryMissing = read.missing;
+        } catch { detail.trajectoryMissing = 'unreadable'; trace = null; detail.conditionsMissing ??= 'unreadable'; }
+      } else { detail.trajectoryMissing = read.missing; trace = null; detail.conditionsMissing ??= read.missing; }
       if (v2.logs.calls) {
         const calls = await bound(folder, run.id, RUN_EVIDENCE.calls, v2.logs.calls.sha256, MAX_LOG_BYTES);
-        if ('text' in calls) { try { detail.calls = summarizeCalls(parseCallLog(calls.text), v2.logs.calls.dropped); } catch { detail.callsMissing = 'unreadable'; } }
+        if ('text' in calls) { try { detail.calls = summarizeCalls(parseCallLog(calls.text), v2.logs.calls.dropped, v2.logs.calls.omitted ?? 0); } catch { detail.callsMissing = 'unreadable'; } }
         else detail.callsMissing = calls.missing;
       } else detail.callsMissing = 'not-recorded';
     } else { detail.trajectoryMissing = 'not-recorded'; detail.callsMissing = 'not-recorded'; }
-    if (!run.checker || !run.artifacts) { detail.conditionsMissing = 'not-judged'; continue; }
+    // A run without a verdict was not judged; a judged run of an older report may bind no artifacts.
+    if (!run.checker) { detail.conditionsMissing = 'not-judged'; continue; }
+    if (!run.artifacts) { detail.conditionsMissing = 'not-recorded'; continue; }
     const session = await bound(folder, run.id, ARTIFACT.session, run.artifacts.session);
     let state: State | null = null;
     // The judged state, validated again before anything is drawn from it.
@@ -234,7 +243,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       const evaluated = evaluate(condition.predicate, state!);
       return { id: condition.id, text: condition.text, formal: condition.formalText ?? null, met: evaluated.ok ? evaluated.value : null, history: { kind: 'unknown' } };
     });
-    detail.groups = groupsOf(state, words.group); detail.frames = framesOf(state);
+    detail.groups = groupsOf(state, words.group); detail.frames = framesOf(state); detail.objects = boardObjects(state);
     // Ids inside the pictures are unique on the page by the run's position, whatever its id's length.
     const schematic = (reason: PictureReason): Picture => ({ kind: 'schematic', reason, markup: schematicSvg(state!, { prefix: `run${index}-final`, label: words.finalBoard, words }) });
     const board = v2?.artifacts?.board;

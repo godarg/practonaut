@@ -3,7 +3,10 @@
 // strings are derived by hand from the task's condition sentences, written out next to each case.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clientResult, MAX_RECORDED_REFUSALS, MAX_REJECTED_TEXT, mutationCounts, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, timelineOf } from '../../src/bench/evidence.ts';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { clientResult, MAX_LOG_LINES, MAX_RECORDED_REFUSALS, MAX_REJECTED_TEXT, mutationCounts, readLogHead, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, timelineOf } from '../../src/bench/evidence.ts';
 import { goalClauses, traceSession, type TraceEntry } from '../../src/checker/trace.ts';
 import { loadLibrary } from '../../src/library/index.ts';
 import { Session } from '../../src/core/session.ts';
@@ -27,6 +30,26 @@ test('call log: well-formed bridge lines in order, numbered, client round trip j
   // Another client: nothing to join, every client time is null ("client timing unavailable").
   assert.equal(normaliseCallLog(raw).records.every(record => record.clientMs === null), true);
   assert.throws(() => parseCallLog(built.text.replace('"seq":1', '"seq":7')), /line 2/);
+  // Lines beyond the line limit, and lines the caller could not read, are counted, never lost silently.
+  const line = JSON.stringify({ id: 1, tool: 'observe', code: 'ok', resultBytes: 1, bridgeMs: 1 });
+  const many = normaliseCallLog(Array.from({ length: MAX_LOG_LINES + 5 }, () => line).join('\n') + '\nbroken', undefined, 3);
+  assert.deepEqual([many.records.length, many.dropped, many.omitted], [MAX_LOG_LINES, 0, 5 + 1 + 3]);
+});
+
+test('reading a call log: the head up to its last whole line, every line beyond it counted', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pn-log-head-'));
+  try {
+    const path = join(dir, 'calls.bridge.jsonl'), line = (n: number) => JSON.stringify({ id: n, tool: 'act', code: 'ok', resultBytes: 1, bridgeMs: 1 });
+    const text = Array.from({ length: 10 }, (_, n) => line(n)).join('\n') + '\n';
+    await writeFile(path, text);
+    // 3.5 lines fit: three are kept, the cut fourth and the six after it are counted.
+    const limit = Math.floor(line(0).length * 3.5) + 3;
+    const head = await readLogHead(path, limit);
+    assert.equal(head!.text.trim().split('\n').length, 3); assert.equal(head!.unreadLines, 7);
+    const all = await readLogHead(path, 1024 * 1024);
+    assert.deepEqual([all!.text, all!.unreadLines], [text, 0]);
+    assert.equal(await readLogHead(join(dir, 'missing'), 10), null);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test('mutation recorder: rejected parameters cut and scalar, budget refusals capped, positions read only when kept', () => {
@@ -59,6 +82,9 @@ test('client figures: the last stream-json result event, every field plain or nu
   assert.deepEqual(clientResult(out), { turns: 7, costUsd: 0.123457, tokens: { input: 12, output: 456, cacheRead: 7890, cacheCreation: 3456 } });
   assert.deepEqual(clientResult(JSON.stringify({ type: 'result', num_turns: -1, total_cost_usd: 'free', usage: { input_tokens: 1.5 } })), { turns: null, costUsd: null, tokens: null });
   assert.deepEqual(clientResult('no events at all'), { turns: null, costUsd: null, tokens: null });
+  // A later line that only mentions "result" and "type" is not the result event.
+  const chatter = [JSON.stringify(result), JSON.stringify({ type: 'assistant', message: { content: 'the result type is fine' } }), '{"type": "res', '"result" "type"'].join('\n');
+  assert.deepEqual(clientResult(chatter), { turns: 7, costUsd: 0.123457, tokens: { input: 12, output: 456, cacheRead: 7890, cacheCreation: 3456 } });
 });
 
 const { world } = loadLibrary();

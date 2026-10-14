@@ -7,7 +7,8 @@ import { BENCH_SCHEMA_V2, summarize, validateBenchReportV2, type BenchReportV2, 
 import { renderHtml, renderTable } from '../../src/bench/render.ts';
 import { intervalPercent, percentDigits, rateText } from '../../src/bench/rates.ts';
 import { engineSvgMarkup, SvgRefused } from '../../src/bench/svg.ts';
-import { framesOf, groupsOf, schematicSvg } from '../../src/bench/schematic.ts';
+import { boardObjects, framesOf, groupsOf, schematicSvg } from '../../src/bench/schematic.ts';
+import { objectLines } from '../../src/bench/render.ts';
 import type { State } from '../../src/world/types.ts';
 
 const hash = (c: string): string => c.repeat(64);
@@ -80,6 +81,12 @@ test('engine SVG: only geometry and paint survive; scripts, links, styles, fonts
   assert.match(markup, /<text x="29.3" y="18.9" font-size="20px" fill="#1e1e1e" text-anchor="middle">&lt;img src=x onerror=alert\(3\)&gt; &amp; &lt;b&gt;<\/text>/);
   // A reference to anything but a local id is dropped, the element stays.
   assert.match(markup, /<rect x="1" y="1" width="2" height="2"><\/rect>/);
+  // CSS names functions in any letter case: URL(…) and Url(…) are references too; only local ones stay,
+  // written back with the prefix; every other function but the transforms drops its attribute.
+  const cased = engineSvgMarkup('<svg viewBox="0 0 9 9"><mask id="m"/><rect x="1" y="1" width="1" height="1" fill="URL(evil.svg)" stroke="Url( evil.svg )" mask="URL(#m)"/><g transform="Translate(1 2) ROTATE(0 1 1)" fill="image(x.png)" stroke="Var(--x)"/></svg>', { prefix: 'p', label: 'x', classes: 'engine-board' });
+  assert.match(cased, /<rect x="1" y="1" width="1" height="1" mask="url\(#p-m\)"><\/rect>/);
+  assert.match(cased, /<g transform="Translate\(1 2\) ROTATE\(0 1 1\)"><\/g>/);
+  assert.equal(/evil|image\(|Var\(/i.test(cased), false);
   for (const [refused, why] of [
     ['<!DOCTYPE svg [<!ENTITY x "y">]><svg viewBox="0 0 1 1"/>', /DOCTYPE/], ['<svg viewBox="0 0 1 1"><text>&x;</text></svg>', /entity/], ['<svg viewBox="0 0 1 1"><text><![CDATA[<script>]]></text></svg>', /CDATA/],
     ['<html viewBox="0 0 1 1"></html>', /root/], ['<svg><rect/></svg>', /viewBox/], ['<svg viewBox="0 0 1 1"><g></svg>', /end tag|unclosed/], ['<svg viewBox="0 0 1 1" a="1" a="2"/>', /repeated/],
@@ -119,4 +126,19 @@ test('schematic: shape, line, fill, size, position, frames and groups from the j
   assert.equal(schematicSvg(ungrouped, { prefix: 'r1', label: 'Final board', words }).includes('sch-group'), false);
   assert.notEqual(schematicSvg(blue, { prefix: 'r1', label: 'Final board', words }), svg);
   assert.deepEqual(groupsOf(ungrouped), []);
+});
+
+test('the legend keeps every label in full and every attribute in words: boards that differ in a label tail differ on the page', () => {
+  const long = (tail: string): State => { const value = structuredClone(board); (value.objects.c as { label: string }).label = `Very long label that wraps over more than three lines in the drawing ${tail}`; return value; };
+  const one = long('ending one'), two = long('ending two');
+  // The drawing cuts after three lines, so the pictures alone may agree …
+  assert.equal(schematicSvg(one, { prefix: 'r', label: 'x', words }), schematicSvg(two, { prefix: 'r', label: 'x', words }));
+  // … the legend under them does not.
+  const [lineOne, lineTwo] = [objectLines(boardObjects(one), 'en'), objectLines(boardObjects(two), 'en')];
+  assert.notDeepEqual(lineOne, lineTwo);
+  assert.ok(lineOne.includes('“Very long label that wraps over more than three lines in the drawing ending one” — rectangle, line blue, fill green, 200 × 100 at (700, 300)'));
+  assert.ok(lineOne.includes('“Start & <b>go</b>” — ellipse, line red, fill yellow, 180 × 90 at (100, 100), in frame “Lane <one>”, Group 1'));
+  assert.ok(lineOne.includes('“Check” — diamond, line black, no fill, 180 × 90 at (400, 100), in frame “Lane <one>”, Group 1'));
+  assert.ok(lineOne.includes('arrow “Check” → loose end'));
+  assert.ok(objectLines(boardObjects(one), 'de').includes('„Check“ — Raute, Linie schwarz, keine Füllung, 180 × 90 bei (400, 100), im Rahmen „Lane <one>“, Gruppe 1'));
 });

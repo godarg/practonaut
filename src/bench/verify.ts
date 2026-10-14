@@ -101,6 +101,8 @@ async function evidenceHashes(run: BenchRunV2, directory: string): Promise<{ mut
 /** The mutation log agrees with the run's counters, and the checker re-derives the stored trace from
  * the session and that log. */
 async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string | null, texts: { mutations: string | null; trace: string | null }): Promise<void> {
+  // A trace is only ever accepted with the mutation log that re-derives it.
+  if (texts.trace !== null && (texts.mutations === null || !run.logs)) throw new BenchReportError(cliText('verifyTrace', { run: run.id }));
   if (texts.mutations === null || !run.logs) return;
   let records;
   try { records = parseMutations(texts.mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }

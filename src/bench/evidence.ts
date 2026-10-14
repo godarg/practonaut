@@ -5,13 +5,16 @@
  * an agent could write to: it is parsed with strict, bounded schemas and a line that does not fit is
  * dropped (call log) or refuses the file (mutation log).
  */
+import { constants } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { z } from 'zod';
 import type { ClientCall } from './mcp-client.ts';
 import type { Action, Scalar } from '../world/types.ts';
 import { ACTOR_CLIENT } from '../host/protocol.ts';
 
-/** File names of the evidence next to the judged artifacts in a run folder. */
-export const RUN_EVIDENCE = Object.freeze({ calls: 'calls.jsonl', mutations: 'mutations.jsonl', trace: 'trace.json', board: 'board.svg' });
+/** File names of the evidence next to the judged artifacts in a run folder. `bridgeCalls` is the file
+ * the agent's bridge appends to; it is left as written. `calls` is the runner's normalised copy. */
+export const RUN_EVIDENCE = Object.freeze({ bridgeCalls: 'calls.bridge.jsonl', calls: 'calls.jsonl', mutations: 'mutations.jsonl', trace: 'trace.json', board: 'board.svg' });
 /** The largest call or mutation log read back. */
 export const MAX_LOG_BYTES = 16 * 1024 * 1024;
 /** The most lines a log keeps. */
@@ -37,12 +40,14 @@ const lines = (text: string): string[] => text.split('\n').filter(line => line.t
 /**
  * The bridge's raw call log, normalised: well-formed lines in order, numbered, with the client's
  * round trip joined by request id where Practonaut's own client made the call (built-in agents).
- * Lines that do not fit the bridge's format are dropped and counted.
+ * Lines that do not fit the bridge's format are counted as `dropped`; lines beyond MAX_LOG_LINES (and
+ * any the caller could not read, `unread`) as `omitted`. Nothing is lost without being counted.
  */
-export function normaliseCallLog(raw: string, client?: readonly ClientCall[]): { records: CallRecord[]; dropped: number; text: string } {
+export function normaliseCallLog(raw: string, client?: readonly ClientCall[], unread = 0): { records: CallRecord[]; dropped: number; omitted: number; text: string } {
   const timing = new Map((client ?? []).map(call => [call.id, call.ms]));
   const records: CallRecord[] = []; let dropped = 0;
-  for (const line of lines(raw)) {
+  const all = raw.split('\n').filter(line => line.trim() !== '');
+  for (const line of all.slice(0, MAX_LOG_LINES)) {
     let parsed: unknown;
     try { parsed = JSON.parse(line); } catch { dropped++; continue; }
     const entry = BridgeLineSchema.safeParse(parsed);
@@ -50,7 +55,38 @@ export function normaliseCallLog(raw: string, client?: readonly ClientCall[]): {
     const id = entry.data.id ?? null;
     records.push({ seq: records.length, id, tool: entry.data.tool, code: entry.data.code, resultBytes: entry.data.resultBytes, bridgeMs: entry.data.bridgeMs, clientMs: client && typeof id === 'number' ? timing.get(id) ?? null : null });
   }
-  return { records, dropped, text: records.map(record => JSON.stringify(record)).join('\n') + (records.length ? '\n' : '') };
+  return { records, dropped, omitted: Math.max(0, all.length - MAX_LOG_LINES) + unread, text: records.map(record => JSON.stringify(record)).join('\n') + (records.length ? '\n' : '') };
+}
+
+/** A regular file's first `max` bytes up to its last complete line, and how many lines lie beyond
+ * them (counted by reading the rest, never kept); null when it is missing or not a regular file. */
+export async function readLogHead(path: string, max: number): Promise<{ text: string; unreadLines: number } | null> {
+  let handle;
+  try { handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0)); } catch { return null; }
+  try {
+    if (!(await handle.stat()).isFile()) return null;
+    const head = Buffer.alloc(max);
+    const { bytesRead } = await handle.read(head, 0, max, 0);
+    let text = head.subarray(0, bytesRead).toString('utf8'), unreadLines = 0, position = bytesRead;
+    if (bytesRead === max) {
+      // Cut at the last newline; the partial line and everything after it are counted, not kept.
+      const cut = text.lastIndexOf('\n');
+      const rest = text.slice(cut + 1); text = text.slice(0, cut + 1);
+      let pending = rest.trim() !== '';
+      const chunk = Buffer.alloc(1024 * 1024);
+      for (;;) {
+        const read = await handle.read(chunk, 0, chunk.length, position);
+        if (!read.bytesRead) break;
+        position += read.bytesRead;
+        for (let index = 0; index < read.bytesRead; index++) {
+          const byte = chunk[index]!;
+          if (byte === 10) { if (pending) unreadLines++; pending = false; } else if (byte !== 13 && byte !== 32 && byte !== 9) pending = true;
+        }
+      }
+      if (pending) unreadLines++;
+    }
+    return { text, unreadLines };
+  } catch { return null; } finally { await handle.close(); }
 }
 
 export function parseCallLog(text: string): CallRecord[] {
@@ -156,11 +192,15 @@ const nonNegativeInteger = (value: unknown): number | null => typeof value === '
  * or not a plain non-negative number is null. Never verified. */
 export function clientResult(stdout: string): Omit<ClientFigures, 'model'> {
   const none = { turns: null, costUsd: null, tokens: null };
-  const found = stdout.split('\n').reverse().find(line => line.includes('"result"') && line.includes('"type"'));
-  if (!found) return none;
+  // Every line is parsed; the last one that is a JSON object with type "result" counts.
   let event: unknown;
-  try { event = JSON.parse(found); } catch { return none; }
-  if (event === null || typeof event !== 'object' || (event as { type?: unknown }).type !== 'result') return none;
+  for (const line of stdout.split('\n').reverse()) {
+    if (!line.trimStart().startsWith('{')) continue;
+    let parsed: unknown;
+    try { parsed = JSON.parse(line); } catch { continue; }
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && (parsed as { type?: unknown }).type === 'result') { event = parsed; break; }
+  }
+  if (event === undefined) return none;
   const { num_turns: turns, total_cost_usd: cost, usage } = event as { num_turns?: unknown; total_cost_usd?: unknown; usage?: Record<string, unknown> };
   const tokens = usage && typeof usage === 'object' ? { input: nonNegativeInteger(usage.input_tokens), output: nonNegativeInteger(usage.output_tokens), cacheRead: nonNegativeInteger(usage.cache_read_input_tokens), cacheCreation: nonNegativeInteger(usage.cache_creation_input_tokens) } : null;
   return {
