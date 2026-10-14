@@ -6,6 +6,18 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Bench your own tasks.** `practonaut bench --world <dir|.pnworld> [--oracle <file>]` scores any
+  MCP agent on a world of your own, for example one made with `tasks from-scenes`, with its
+  `oracle.json` as the reference once the checker accepts it; `--seed-list 2,5` and `--label` as well.
+- **Report `practonaut.bench/2`** ([PADR-0036](docs/adr/0036-bench-report-v2-any-world-stored-world.md)):
+  the world is stored in the bench folder and `report --verify` re-judges against it (named codes
+  `bench_world_changed`, `bench_artifact_changed`, `bench_reference_invalid`); every agent has an
+  isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
+  a command template's model are recorded. `/1` reports are still read and verified as before.
+- World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+
 ### Changed
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
