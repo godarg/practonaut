@@ -1,6 +1,6 @@
 # PADR-0036 — Bench report v2: any world, the world stored with the runs, isolation level, optional reference; generated instances are materialised
 
-Status: proposed · Date: 2026-10-14 · Refines the report and verification of
+Status: accepted 2026-10-14 after independent review (pull request #30) · Date: 2026-10-14 · Refines the report and verification of
 [PADR-0030](0030-bench-replaces-unsealed-eval.md); records what
 [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) deferred to bench/2
 
