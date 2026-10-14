@@ -27,8 +27,21 @@ export type Verification = 'consistency-checked' | 're-verified';
 
 /** Report text is data from a file: control, format and bidi characters are shown escaped, never interpreted by a terminal. */
 const shown = (value: string): string => readableText(value);
-export const escapeHtml = (value: string): string => readableText(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+/** Quoted text (a label, a name) inside a sentence: kept as written. */
+const QUOTED = /([“„«‚‘"][^“”„«»‚‘’"]*[”“»’"])/u;
+/** A number and the word it counts, or a word and its number ("6 runs", "seed 1", "after #3"), stay on
+ * one line: a no-break space joins them, outside quoted data, which keeps its own characters. */
+const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0')).join('');
+export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const esc = escapeHtml;
+/** Escaped prose whose quoted parts (labels, names) and the given ids are data: never hyphenated. */
+export function prose(value: string, ids: readonly string[] = []): string {
+  const names = [...new Set(ids)].filter(Boolean).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = names.length ? new RegExp(`(${names.join('|')})`, 'u') : null;
+  const data = (part: string): string => `<span class="data">${esc(part)}</span>`;
+  return readableText(value).split(QUOTED).map((part, index) => index % 2 ? data(part)
+    : pattern ? part.split(pattern).map((piece, at) => at % 2 ? data(piece) : esc(piece)).join('') : esc(part)).join('');
+}
 
 /** Words for the details loader (picture labels and legends) in the page's language. */
 export function detailWords(language: Language): { group: string; loose: string; finalBoard: string; target: string } {
@@ -40,7 +53,8 @@ export function detailWords(language: Language): { group: string; loose: string;
 const SHAPES = {
   pass: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/>',
   fail: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M9 9l6 6M15 9l-6 6" stroke="var(--pn-color-surface)" stroke-width="2.2"/>',
-  unknown: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+  // No verdict: the kit's dashed ring (a dash means "not known", design-language §7.4).
+  unknown: '<circle cx="12" cy="12" r="9" stroke-dasharray="2.4 3"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01" stroke-width="2.6"/>',
 } as const;
 /** A status mark next to its word (the word is what a screen reader reads). */
@@ -56,13 +70,14 @@ export function banner(tone: 'neutral' | 'unknown' | 'warning', title: string, b
 export function chips(label: string, facts: readonly string[]): string {
   return `<ul class="chips" aria-label="${esc(label)}">${facts.map(fact => `<li class="chip">${esc(fact)}</li>`).join('')}</ul>`;
 }
-/** A table that stacks into one block per row below 40rem: every cell names its column. */
-export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>): string {
+/** A table that stacks into one block per row below 40rem (`many` columns: below 60rem): every cell
+ * names its column. `capped` bounds a column of lists (it wraps instead of widening the table). */
+export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false): string {
   const region = labelledBy ? `aria-labelledby="${labelledBy}"` : `aria-label="${esc(label)}"`;
-  const header = head.map(cell => `<th scope="col"${cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
+  const header = head.map(cell => `<th scope="col"${cell.capped ? ' class="text capped"' : cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
   const kind = (cell: { numeric?: boolean; wide?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : ' class="text"';
   const body = rows.map(row => `<tr>${row.map((cell, index) => `<td data-label="${esc(head[index]!.text)}"${kind(head[index]!)}>${cell}</td>`).join('')}</tr>`).join('');
-  return `<div class="scroll stack" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="scroll ${many ? 'stack-many' : 'stack'}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 /** The first sentence of an explanation (the factual part); the full text stays under Technical details. */
 export function firstSentence(text: string): string {
@@ -264,7 +279,8 @@ export function renderTable(report: BenchReport, language: Language = 'en', deta
   if (failed.length) {
     lines.push('', fill(language, t.failuresHead, { n: failed.length, runs: fill(language, t.runCount, { n: s.runs }) }));
     for (const run of failed.slice(0, 20)) {
-      lines.push(`✗ ${shown(run.id)}  ${statusWords(run, t)}`);
+      // "?" marks a run without a verdict (counted as not passed), "✗" a judged failure.
+      lines.push(`${run.checker === null ? '?' : '✗'} ${shown(run.id)}  ${run.checker === null ? t.noVerdictCounted : statusWords(run, t)}`);
       for (const state of runStates(run, details?.runs.get(run.id), details, report, language)) {
         lines.push(shown(`    ${state.name}${state.why ? `: ${state.why}${state.code ?? ''}${state.tail ?? ''}` : ''}`));
         for (const item of state.list ?? []) lines.push(shown(`      ${item}`));
@@ -311,6 +327,8 @@ ${body}
 }
 
 const result = (pass: boolean, t: Words): string => `<span class="result ${pass ? 'pass' : 'fail'}">${statusIcon(pass ? 'pass' : 'fail')}${esc(pass ? t.pass : t.fail)}</span>`;
+/** A run's result: pass, fail, or — when the checker gave no verdict — the unknown mark, counted as not passed. */
+const runResult = (run: BenchRun, t: Words): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
 const figure = (label: string, value: string, detail?: string): string => `<div class="figure"><dt>${esc(label)}</dt><dd>${esc(value)}</dd>${detail ? `<dd class="detail">${esc(detail)}</dd>` : ''}</div>`;
 /** A "Technical details" disclosure holding label/value pairs (identifiers, codes, hashes). */
 function technical(t: Words, facts: ReadonlyArray<[string, string]>): string {
@@ -322,13 +340,13 @@ function conditionsHtml(detail: RunDetail, language: Language): string {
   const t = TEXT[language];
   const missing = (reason: RunDetail['conditionsMissing']): string => reason === 'changed' ? t.missingChanged : reason === 'unreadable' ? t.missingUnreadable : reason === 'not-judged' ? t.missingNotJudged : t.missingNotRecorded;
   if (!detail.conditions) return `<p class="note">${esc(fill(language, t.conditionsMissing, { reason: missing(detail.conditionsMissing) }))}</p>`;
-  const items = detail.conditions.map(condition => {
+  const items = detail.conditions.map((condition, index) => {
     const kind = condition.met === null ? 'unknown' : condition.met ? 'pass' : 'fail';
     const word = condition.met === null ? t.conditionUnknown : condition.met ? t.conditionMet : t.conditionUnmet;
-    return `<li class="condition">${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${esc(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${esc(condition.formal[language])}</span>` : ''}</div></li>`;
+    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${esc(condition.formal[language])}</span>` : ''}</div></li>`;
   }).join('');
   const note = detail.traceError ? `<p class="note">${esc(t.traceMissing)}</p>` : detail.conditionsMissing ? `<p class="note">${esc(fill(language, t.conditionsMissing, { reason: missing(detail.conditionsMissing) }))}</p>` : '';
-  return `<ul class="conditions">${items}</ul>${note}`;
+  return `<ol class="conditions">${items}</ol>${note}`;
 }
 
 /** One line per object of a state, every goal-relevant attribute in words, labels in full. */
@@ -348,11 +366,13 @@ function boardHtml(detail: RunDetail, report: BenchReport, language: Language): 
   const t = TEXT[language], picture = detail.picture;
   const quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
   const reason = picture?.kind === 'schematic' ? { 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason] : '';
-  const caption = picture?.kind === 'engine' ? fill(language, t.finalEngine, { version: report.environment.excalidraw }) : `${t.finalSchematic} ${reason}`;
-  const list = (title: string, items: string[]): string => `<p class="legend-title">${esc(title)}</p><ul class="legend">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
-  // A picture wider than the column scrolls inside its frame; a faded edge and a line say so.
+  const caption = picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.excalidraw })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`;
+  const list = (title: string, items: string[]): string => `<p class="legend-title">${esc(title)}</p><ul class="legend">${items.map(item => `<li>${prose(item)}</li>`).join('')}</ul>`;
+  // A picture wider than the column scrolls inside its frame; a faded edge and a line say so. When the
+  // first difference from the target lies in the right half, both frames open at that end (F3).
   const overflow = { none: 'fits', narrow: 'overflows-phone', wide: 'overflows-desktop' }[detail.overflow];
-  const frame = (markup: string, label: string): string => `<div class="board-scroll ${overflow}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${detail.overflow === 'none' ? '' : `<p class="scroll-hint ${overflow}">${esc(t.scrollHint)}</p>`}`;
+  const end = detail.overflow !== 'none' && detail.fromEnd ? ' from-end' : '';
+  const frame = (markup: string, label: string): string => `<div class="board-scroll ${overflow}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${detail.overflow === 'none' ? '' : `<p class="scroll-hint ${overflow}">${esc(t.scrollHint)}</p>`}`;
   const legend: string[] = [];
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));
   legend.push(detail.groups.length ? list(t.groups, detail.groups.map(group => `${group.name}: ${group.members.map(quoted).join(', ')}`)) : `<p class="legend-title">${esc(t.groups)}</p><p class="meta">${esc(t.noGroups)}</p>`);
@@ -409,9 +429,10 @@ const opensByDefault = (run: BenchRun): boolean => !run.pass || run.status !== '
 function runHtml(run: BenchRun, report: BenchReport, details: ReportDetails | undefined, language: Language): string {
   const t = TEXT[language], detail = details?.runs.get(run.id);
   const states = runStates(run, detail, details, report, language);
-  const summary = `<span class="run-title">${result(run.pass, t)}<span>${esc(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }))}</span></span><span class="run-meta">${esc([fill(language, t.actionCount, { n: run.actions }), statusWords(run, t)].join(' · '))}</span>`;
+  const summary = `<span class="run-title">${runResult(run, t)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span><span class="run-meta">${esc([fill(language, t.actionCount, { n: run.actions }), statusWords(run, t)].join(' · '))}</span>`;
   const parts: string[] = [];
-  if (states.length) parts.push(`<h3>${esc(run.pass ? t.whatHappened : t.why)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${esc(state.name)}${state.why ? ':' : ''}</span>${state.why ? ` ${esc(state.why)}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
+  const heading = run.checker === null ? t.whyNoVerdict : run.pass ? t.whatHappened : t.why;
+  if (states.length) parts.push(`<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${esc(state.name)}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why)}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${prose(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
   if (detail) {
     parts.push(`<h3>${esc(t.conditions)}</h3>${conditionsHtml(detail, language)}`);
     if (detail.picture || detail.target || detail.targetMissing) parts.push(`<h3>${esc(t.board)}</h3>${boardHtml(detail, report, language)}`);
@@ -444,12 +465,15 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
   const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language)), esc(fixed(task.meanActions, 1, language)), esc(referenceCell(task.referenceActions, t)), task.referenceActions === null ? esc(t.noReference) : esc(fixed(task.efficiency, 2, language))]);
   const ordered = failuresFirst(report.runs);
   // Result first, so a stacked row on a phone leads with it (F2); error classes wrap.
-  const runRows = ordered.map(run => [result(run.pass, t), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
+  const runRows = ordered.map(run => [runResult(run, t), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
   const ended = report.runs.filter(run => run.status !== 'completed');
   const endedList = (['agent_failed', 'timeout', 'infra_error'] as const).flatMap(status => { const count = ended.filter(run => run.status === status).length; return count ? [`${count} ${statusWords({ status } as BenchRun, t)}`] : []; });
   const folderReason = details === undefined || details.folder === 'missing' ? t.folderMissing : details.folder === 'world-changed' ? t.folderWorldChanged : details.folder === 'world-unreadable' ? t.folderWorldUnreadable : null;
   const partial = folderReason ? banner('unknown', t.partialTitle, `<p>${esc(folderReason)} ${esc(t.partialShown)}</p><p>${esc(t.partialFix)} <code>${esc(t.partialCommand)}</code></p>`) : '';
   const facts = [...provenance(report, language, verification), report.createdAt.slice(0, 10)];
+  // Failed runs, linked from the top: on a phone the first "why" is otherwise screens away.
+  const failed = ordered.filter(run => !run.pass), shownFailed = failed.slice(0, 12);
+  const jump = failed.length ? `<nav class="jump" aria-label="${esc(t.jumpFailed)}"><span class="jump-title">${esc(t.jumpFailed)}:</span> ${shownFailed.map(run => `<a href="#run-${esc(run.id)}">${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</a>`).join('<span aria-hidden="true"> · </span>')}${failed.length > shownFailed.length ? ` ${esc(fill(language, t.jumpMore, { n: failed.length - shownFailed.length }))}` : ''}</nav>\n` : '';
   const kind = { builtin: t.kindBuiltin, preset: t.kindPreset, command: t.kindCommand }[report.agent.kind];
   const body = `<header>
 <p class="eyebrow">${esc(t.title)}</p>
@@ -457,11 +481,11 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
 <p class="headline">${esc(headlineResult(report, language).join(' · '))}</p>
 ${chips(t.provenance, facts)}
 ${isBenchReportV2(report) && report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
-${ended.length ? `<p class="meta">${esc(fill(language, t.endedNote, { n: ended.length, list: endedList.join(', ') }))}</p>\n` : ''}</header>
-<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
+${ended.length ? `<p class="meta">${esc(fill(language, t.endedNote, { n: ended.length, list: endedList.join(', ') }))} <a href="#run-${esc(ended[0]!.id)}">${esc(fill(language, t.endedLink, { n: ended.length }))}</a></p>\n` : ''}${jump}</header>
+${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }, { text: t.actions, numeric: true }, { text: t.reference, numeric: true }, { text: t.efficiency, numeric: true }], taskRows)}</section>
-<section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.actions, numeric: true }, { text: t.rejected, numeric: true }, { text: t.undo, numeric: true }, { text: t.reset, numeric: true }, { text: t.calls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true }], runRows)}</section>
-<section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${partial}${ordered.map(run => runHtml(run, report, details, language)).join('')}</section>
+<section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.actions, numeric: true }, { text: t.rejected, numeric: true }, { text: t.undo, numeric: true }, { text: t.reset, numeric: true }, { text: t.calls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
+<section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${ordered.map(run => runHtml(run, report, details, language)).join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
 <dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>

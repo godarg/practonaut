@@ -162,12 +162,14 @@ const numeral = (value: number): string => String(Math.round(value * 100) / 100)
  * The export's drawing as inline SVG markup: `<svg viewBox class role aria-label>` around the
  * allowlisted content. `label` becomes the accessible name (escaped here); `classes` the class list.
  * With `offset` the drawing is moved by that many board units and shown in `viewBox` (the union with
- * the picture beside it), so a pair shares one coordinate system and one scale.
+ * the picture beside it), so a pair shares one coordinate system and one scale; `overlay` (trusted
+ * markup the report draws, never from the file) is laid over it in those units.
  */
-export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box }): string {
+export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string }): string {
   const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
-  const content = options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content;
+  // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
+  const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
   return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(view.width)}" role="img" aria-label="${label}">${content}</svg>`;
 }

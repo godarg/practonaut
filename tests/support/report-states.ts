@@ -5,7 +5,7 @@
 // checker do, exactly as for a real agent.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { libraryWorld, runBench, type BenchOptions } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
@@ -93,27 +93,42 @@ export interface Fixtures {
   engine?: { solved: Bench; failing: Bench };
 }
 
-/** Runs every fixture bench once (model-only unless `mirror`). Takes a minute or two. */
-export async function fixtureBenches(dir: string, options: { mirror?: boolean } = {}): Promise<Fixtures> {
+/** Refuses a fixture bench that did not play as its script says: a fixture whose agent could not run
+ * would make every state built from it show the wrong thing (and still pass a scan). */
+function expectBench(name: string, bench: Bench, expected: { status: BenchReportV2['runs'][number]['status']; pass?: boolean; acted?: boolean }): Bench {
+  for (const run of bench.report.runs) {
+    const problem = run.status !== expected.status ? `ended ${run.status} (exit ${run.agentExitCode}), expected ${expected.status}`
+      : expected.pass !== undefined && run.pass !== expected.pass ? `${run.pass ? 'passed' : 'failed'}, expected ${expected.pass ? 'a pass' : 'a failure'}` : null;
+    if (problem) throw new Error(`fixture bench ${name}: run ${run.id} ${problem}${run.note ? ` (${run.note})` : ''}`);
+  }
+  if (expected.acted && bench.report.runs.every(run => run.acceptedActions + run.rejectedActions === 0)) throw new Error(`fixture bench ${name}: no run reached the session`);
+  return bench;
+}
+
+/** Runs every fixture bench once (model-only unless `mirror`), and checks that each played as its
+ * script says. Takes a minute or two. `dir` may be relative: it is resolved first, because the scripted
+ * agents read their script from inside their own folder. */
+export async function fixtureBenches(folder: string, options: { mirror?: boolean } = {}): Promise<Fixtures> {
+  const dir = resolve(folder);
   await mkdir(dir, { recursive: true });
-  const failing = await scripted(dir, 'failing', FAILING, {});
-  const solved = await bench({ ...base, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] });
-  const timeout = await bench({ ...base, agent: template('sleep'), tasks: ['connect'], timeoutSeconds: 2 });
-  const unjudged = await bench({ ...base, agent: template('plant-dir'), tasks: ['connect'] });
-  const crashed = await bench({ ...base, agent: template('crash'), tasks: ['connect'] });
+  const failing = expectBench('failing', await scripted(dir, 'failing', FAILING, {}), { status: 'completed', pass: false, acted: true });
+  const solved = expectBench('solved', await bench({ ...base, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] }), { status: 'completed', pass: true, acted: true });
+  const timeout = expectBench('timeout', await bench({ ...base, agent: template('sleep'), tasks: ['connect'], timeoutSeconds: 2 }), { status: 'timeout', pass: false });
+  const unjudged = expectBench('unjudged', await bench({ ...base, agent: template('plant-dir'), tasks: ['connect'] }), { status: 'infra_error', pass: false, acted: true });
+  const crashed = expectBench('crashed', await bench({ ...base, agent: template('crash'), tasks: ['connect'] }), { status: 'agent_failed', pass: true, acted: true });
   const authored = await germanWorld(dir);
   // Benched without its oracle: no reference, so no efficiency and no example target.
   const world = await ownBenchWorld(authored.world);
-  const german = await scripted(dir, 'german', { [authored.taskId]: { steps: [{ act: 'rename_step', params: { id: 'a', label: 'Kreditorenstammdatenänderungsantragsprüfung' } }, { act: 'set_style', params: { id: 'b', shape: 'rectangle', stroke: 'black', fill: 'yellow' } }] } }, { world, tasks: [authored.taskId], label: 'Langer deutscher Name: Rechnungseingangsprüfung' });
+  const german = expectBench('german', await scripted(dir, 'german', { [authored.taskId]: { steps: [{ act: 'rename_step', params: { id: 'a', label: 'Kreditorenstammdatenänderungsantragsprüfung' } }, { act: 'set_style', params: { id: 'b', shape: 'rectangle', stroke: 'black', fill: 'yellow' } }] } }, { world, tasks: [authored.taskId], label: 'Langer deutscher Name: Rechnungseingangsprüfung' }), { status: 'completed', pass: false, acted: true });
   // Seeds 1–3: six instances, so six instance flips are enough for an exact McNemar verdict (p = 2 · 2⁻⁶).
-  const good = await scripted(dir, 'good', SOLVING, { seeds: [1, 2, 3], repeats: 3 });
-  const bad = await scripted(dir, 'bad', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, { seeds: [1, 2, 3], repeats: 3 });
+  const good = expectBench('good', await scripted(dir, 'good', SOLVING, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: true, acted: true });
+  const bad = expectBench('bad', await scripted(dir, 'bad', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: false, acted: true });
   const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed, good, bad };
   if (options.mirror) {
     const mirrored = { mirrorRequested: 'required' as const, mirror: 'required' as const };
     fixtures.engine = {
-      solved: await bench({ ...base, ...mirrored, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] }),
-      failing: await scripted(dir, 'engine-failing', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, mirrored),
+      solved: expectBench('engine solved', await bench({ ...base, ...mirrored, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] }), { status: 'completed', pass: true, acted: true }),
+      failing: expectBench('engine failing', await scripted(dir, 'engine-failing', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, mirrored), { status: 'completed', pass: false, acted: true }),
     };
   }
   return fixtures;
@@ -169,6 +184,8 @@ export async function reportStates(fixtures: Fixtures): Promise<ReportState[]> {
     { id: 'report-agent-failed', html: language => reportPage(fixtures.crashed, language) },
     { id: 'report-long-german', html: language => reportPage(fixtures.german, language) },
     { id: 'report-no-folder', html: language => reportPage({ report: fixtures.failing.report, directory: null }, language) },
+    // Repeats: pass^k and the instance outcome in the headline.
+    { id: 'report-repeats', html: language => reportPage(fixtures.good, language) },
     { id: 'report-v1', html: language => reportPage({ report: v1, directory: null }, language) },
     { id: 'compare-regression', html: compared(good, bad) },
     { id: 'compare-improvement', html: compared(bad, good) },

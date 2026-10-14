@@ -116,7 +116,15 @@ test('every run counts: a run that was not judged counts as not passed, is named
   assert.deepEqual(comparison.withUnjudged.map(pair => pair.seed), [1, 2, 3]);
   assert.deepEqual(comparison.incomplete.map(pair => pair.seed), [1, 2, 3]);
   const text = renderCompareTable({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison);
-  assert.match(text, /Runs not judged:\n  T · seed 1: 1 run not judged on the candidate, counted as not passed\n  T · seed 2: 3 runs not judged on the candidate, counted as not passed/);
+  // Seed 2 had no verdict at all on the candidate: it did not fail there, so it is never "failed on the
+  // candidate (0/3)" — it is named with the runs not judged, under "?".
+  assert.match(text, /Runs not judged:\n  \? T · seed 1: 1 run not judged on the candidate, counted as not passed\n  \? T · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate \(3 of 3 runs not judged, counted as not passed\)/);
+  assert.equal(text.includes('failed on the candidate (0/3)'), false);
+  const page = renderCompareHtml({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison, ':root{}').replace(/\u00a0/g, ' ');
+  // In the instance table and the list: the unknown mark (a dashed ring) with "no verdict", never the fail mark.
+  assert.match(page, /<td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray="2\.4 3"\/><\/svg>no verdict \(3 of 3 runs not judged\), counted as not passed<\/span><\/td><td data-label="change" class="text">no verdict on one side — not a regression signal<\/td>/);
+  assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><span class="data">T<\/span> · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate/);
+  assert.equal(page.includes('failed on the candidate (0/3)'), false);
   assert.match(text, /The candidate is incomplete: 3 instances are missing, cut short or hold a run that was not judged\./);
   assert.deepEqual(compareReports(baseline, baseline).incomplete, [], 'a complete candidate');
   // An interrupted candidate: the instance it never ran is listed, left out and incomplete.
@@ -181,7 +189,7 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     const refused = cli(baseline, other, '--html', join(dir, 'refused.html'));
     assert.equal(refused.status, 2); assert.match(refused.stderr, /the action budget differs \(50 on the baseline, 10 on the candidate\).*\[compare_incomparable\]/);
     // With --html the refusal is a page that names every difference.
-    const refusal = readFileSync(join(dir, 'refused.html'), 'utf8');
+    const refusal = readFileSync(join(dir, 'refused.html'), 'utf8').replace(/\u00a0/g, ' ');
     assert.match(refusal, /<p class="headline">Not comparable\.<\/p>/); assert.match(refusal, /<p class="banner-title">What differs<\/p>/); assert.match(refusal, /action budget: 50 on the baseline, 10 on the candidate/);
     assert.equal(existsSync(join(dir, 'refused.html')) && !/<script|style="/i.test(refusal), true);
     const json = JSON.parse(cli(baseline, candidate, '--json').stdout);

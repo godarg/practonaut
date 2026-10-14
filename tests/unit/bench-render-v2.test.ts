@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BENCH_SCHEMA_V2, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
-import { renderHtml, renderTable } from '../../src/bench/render.ts';
+import { escapeHtml, prose, renderHtml, renderTable } from '../../src/bench/render.ts';
+import { firstDifference } from '../../src/bench/details.ts';
 import { intervalPercent, percentDigits, rateText } from '../../src/bench/rates.ts';
 import { engineSvgMarkup, SvgRefused } from '../../src/bench/svg.ts';
 import { boardObjects, framesOf, groupsOf, lines, pictureSizeClass, schematicSvg, unionBox } from '../../src/bench/schematic.ts';
@@ -49,7 +50,7 @@ test('no rate is shown finer than 1/n, in the terminal or on the page, in Englis
   for (const [n, passed] of [[6, 5], [98, 50], [150, 113], [1200, 1001]] as const) {
     const value = report(n, passed);
     for (const language of ['en', 'de'] as const) {
-      const texts = [renderTable(value, language), renderHtml(value, ':root{}', language).replace(/<style>[\s\S]*<\/style>/, '').replace(/<[^>]+>/g, ' ')];
+      const texts = [renderTable(value, language), renderHtml(value, ':root{}', language).replace(/<style>[\s\S]*<\/style>/, '').replace(/<[^>]+>/g, ' ').replace(/\u00a0/g, ' ')];
       for (const text of texts) {
         // Remove the confidence level and the interval range: they are estimates, not observed rates.
         const rest = text.replace(/95(-| )%(-Intervall| interval) \d+–\d+ %/g, '').replace(/95 %|95-%/g, '');
@@ -162,20 +163,46 @@ test('schematic: two arrows between the same steps are drawn apart, never as one
   assert.equal(Math.sign(first[2]! - first[0]!), -Math.sign(second[2]! - second[0]!));
   // One arrow alone stays on the centre line.
   assert.match(schematicSvg(board, { prefix: 'r1', label: 'x', words }), /<line x1="283" y1="145" x2="395" y2="145" class="sch-edge" marker-end/);
+  // The offset lines meet each shape's own outline, without a gap: at 9 units off the centre line the
+  // diamond b (centre 490, half-width 90, half-height 45) is 90 · (1 − 9/45) = 72 wide each side, so its
+  // left outline is at 418; the ellipse a (centre 190, radii 90 × 45) reaches 90 · √(1 − (9/45)²) = 88.18,
+  // so its right outline is at 278.18. Arrow ends keep their gap (3 at the start, 5 at the tip).
+  const fromA = between.find(line => line[0]! < line[2]!)!, fromB = between.find(line => line[0]! > line[2]!)!;
+  assert.ok(Math.abs(fromA[0]! - 281.2) < 0.15 && Math.abs(fromA[2]! - 413) < 0.15, `a→b ${fromA.join(' ')}`);
+  assert.ok(Math.abs(fromB[0]! - 415) < 0.15 && Math.abs(fromB[2]! - 283.2) < 0.15, `b→a ${fromB.join(' ')}`);
 });
 
-test('pictures of a pair share one viewBox and size class; long words split with a hyphen, punctuation stays with its word', () => {
+test('board text is data: quoted labels and task ids never hyphenate; a number stays with its word', () => {
+  // Quoted parts and named ids are wrapped as data; the rest stays prose (hyphenated in the page's language).
+  assert.equal(prose('One rectangle “Review” in the default style.', []), 'One rectangle <span class="data">“Review”</span> in the default style.');
+  assert.equal(prose('connect · seed 1', ['connect']), '<span class="data">connect</span> · seed\u00a01');
+  assert.equal(prose('„Archive“ & <b>', ['data']), '<span class="data">„Archive“</span> &amp; &lt;b&gt;', 'an id never matches inside markup');
+  // A no-break space joins a number and its word on the page, but quoted data keeps its own characters.
+  assert.equal(escapeHtml('6 runs · seed 2 · after #3 · “Wrong 1”'), '6\u00a0runs · seed\u00a02 · after\u00a0#3 · “Wrong 1”');
+});
+
+test('pictures of a pair share one viewBox and size class; long words split evenly with no hyphen drawn, punctuation stays with its word', () => {
   const target = structuredClone(board); (target.objects.c as { x: number }).x = 1400;
   const view = unionBox({ x: -10, y: 0, width: 500, height: 300 }, { x: 100, y: -50, width: 900, height: 100 });
   assert.deepEqual(view, { x: -10, y: -50, width: 1010, height: 350 });
   const one = schematicSvg(board, { prefix: 'a', label: 'x', words, viewBox: view }), two = schematicSvg(target, { prefix: 'b', label: 'x', words, viewBox: view });
   for (const svg of [one, two]) assert.match(svg, /^<svg viewBox="-10 -50 1010 350" class="schematic pw-11" /);
+  // Where a scrolling pair opens: at the first object that differs from the target. Step c (x 700–900) has
+  // another fill in the target: its centre is 800, right of the middle of a 1010-wide view from −10.
+  const recoloured = structuredClone(board); (recoloured.objects.c as { fill: string }).fill = 'blue';
+  assert.equal(firstDifference(board, recoloured), 800);
+  assert.equal(firstDifference(board, structuredClone(board)), null, 'the same board: nothing to open at');
+  // A label the final board lacks is the first difference, at the target's step (a: x 100–280, centre 190).
+  const relabelled = structuredClone(board); (relabelled.objects.a as { label: string }).label = 'Begin';
+  assert.equal(firstDifference(board, relabelled), 190);
   // Size classes: k × 100 units, at least 3 and at most 60.
   assert.deepEqual([100, 300, 301, 1010, 6000, 9000].map(pictureSizeClass), ['pw-3', 'pw-3', 'pw-4', 'pw-11', 'pw-60', 'pw-60']);
   // A 180-unit box holds 13 monospace characters of 20 units: "„Genehmigung“" fits whole, with both quotes;
-  // the 25-letter word is split into even pieces of at most 12 letters plus a hyphen; after three lines the
-  // drawing cuts with an ellipsis (the legend keeps the label in full).
-  assert.deepEqual(lines('„Genehmigung“ Freigabeprüfungsverfahren', 180, 20), ['„Genehmigung“', 'Freigabep-', 'rüfungsve…']);
+  // the 25-letter word is split into two even pieces (13 + 12 letters) and no hyphen is drawn into the
+  // label (it is data); past three lines the drawing cuts with an ellipsis (the legend keeps it in full).
+  assert.deepEqual(lines('„Genehmigung“ Freigabeprüfungsverfahren', 180, 20), ['„Genehmigung“', 'Freigabeprüfu', 'ngsverfahren']);
+  // 43 letters at 13 a line: four even pieces of 11; the label runs past three lines, so the third ends in "…".
+  assert.deepEqual(lines('Kreditorenstammdatenänderungsantragsprüfung Rechnung Zahlung', 180, 20), ['Kreditorens', 'tammdatenän', 'derungsantr…']);
   assert.deepEqual(lines('Prüfung (Stufe 2)', 180, 20), ['Prüfung', '(Stufe 2)']);
 });
 

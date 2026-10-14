@@ -42,7 +42,7 @@ export function differences(baseline: BenchReport, candidate: BenchReport): Diff
   const found: Difference[] = [];
   if (worldHashOf(baseline) !== worldHashOf(candidate)) found.push({ field: 'world', baseline: worldName(baseline), candidate: worldName(candidate) });
   if (!sameSet(baseline.settings.tasks, candidate.settings.tasks) || !sameSet(baseline.settings.seeds, candidate.settings.seeds)) {
-    const grid = (report: BenchReport): string => `${sorted(report.settings.tasks).join(', ')} × seeds ${sorted(report.settings.seeds).join(', ')}`;
+    const grid = (report: BenchReport): string => `${sorted(report.settings.tasks).join(', ')} × ${report.settings.seeds.length === 1 ? 'seed' : 'seeds'} ${sorted(report.settings.seeds).join(', ')}`;
     found.push({ field: 'grid', baseline: grid(baseline), candidate: grid(candidate) });
   }
   if (baseline.environment.mirror !== candidate.environment.mirror) found.push({ field: 'mirror', baseline: baseline.environment.mirror, candidate: candidate.environment.mirror });

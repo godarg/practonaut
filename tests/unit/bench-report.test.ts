@@ -132,8 +132,8 @@ test('the HTML names its verification level; the command line, home folder as ~,
   const local = fixture(); local.agent = { kind: 'command', name: 'mine', command: [join(homedir(), 'agents', 'run.sh'), '{mcp_config}'], model: null, modelSource: 'none' };
   const shared = renderHtml(local, ':root{}');
   assert.match(shared, /<code>~[/\\]agents[/\\]run\.sh \{mcp_config\}<\/code>/); assert.equal(shared.includes(homedir()), false, 'the home folder is not named');
-  assert.match(plain, /n = 8 runs · 2 seeds · 2 repeats/);
-  assert.match(renderHtml(value, ':root{}', 'de'), /n = 8 Läufe · 2 Seeds · 2 Wiederholungen/);
+  assert.match(plain, /n = 8\u00a0runs · 2\u00a0seeds · 2\u00a0repeats/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /n = 8\u00a0Läufe · 2\u00a0Seeds · 2\u00a0Wiederholungen/);
   const one = report([run('connect', 1, 1, true)], 1, ['connect'], [1]);
   assert.match(renderTable(one), /^n = 1 run · 1 seed · 1 repeat$/m);
   assert.match(renderTable(one), /^1 task × 1 seed × 1 repeat, timeout/m);
@@ -145,13 +145,26 @@ test('an interrupted report holds fewer runs than planned, says so, and cannot c
   const partial = { ...value, interrupted: { plannedRuns: 4 } };
   assert.doesNotThrow(() => validateBenchReport(partial));
   assert.match(renderTable(partial), /Interrupted: 2 of 4 planned runs finished/);
-  assert.match(renderHtml(partial, ':root{}'), /Interrupted: 2 of 4 planned runs finished/);
+  assert.match(renderHtml(partial, ':root{}'), /Interrupted: 2\u00a0of\u00a04\u00a0planned runs finished/);
   assert.throws(() => validateBenchReport({ ...value, interrupted: { plannedRuns: 5 } }), /interrupted report holds 2 runs, but its settings plan 4/);
   const full = report([run('connect', 1, 1, true), run('connect', 1, 2, false)], 2, ['connect'], [1]);
   assert.throws(() => validateBenchReport({ ...full, interrupted: { plannedRuns: 2 } }), /interrupted report holds 2 runs/);
   // A run outside the plan is still rejected without expanding it.
   const stray = structuredClone(partial); stray.runs[1] = run('decision', 7, 1, true); stray.summary = summarize(stray.runs, 2);
   assert.throws(() => validateBenchReport(stray), /not one of the planned/);
+});
+
+test('a run without a verdict shows the unknown mark and says so, never the fail mark or "Why it failed"', () => {
+  const value = report([run('connect', 1, 1, true), run('connect', 2, 1, null)], 1, ['connect'], [1, 2]);
+  const html = renderHtml(value, ':root{}'), card = html.slice(html.indexOf('<details class="run" id="run-connect-s2-r1"'));
+  const mark = '<span class="result unknown"><svg class="status-icon unknown" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" stroke-dasharray="2.4 3"/></svg>no verdict, counted as not passed</span>';
+  // In the runs table and on the card: the dashed ring (unknown, design-language §7.3) and the words.
+  assert.equal(html.split(mark).length - 1, 2);
+  assert.match(card, /<h3>Why there is no verdict<\/h3>/); assert.equal(card.slice(0, card.indexOf('</details>')).includes('Why it failed'), false);
+  assert.match(card, /<span class="state">No verdict:<\/span> the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score\./);
+  assert.equal((html.match(/class="result fail"/g) ?? []).length, 0, 'no fail mark for a run that was not judged');
+  // The terminal marks it with "?", not with the cross of a judged failure.
+  assert.match(renderTable(value), /^\? connect-s2-r1  no verdict, counted as not passed$/m);
 });
 
 test('a run that could not be judged stays in the denominator of pass@1 and pass^k', () => {
@@ -167,12 +180,12 @@ test('summary cards show each figure once: pass^k only from k = 2, the passed co
   const single = report([run('connect', 1, 1, true), run('decision', 1, 1, true)], 1, ['connect', 'decision'], [1]);
   const one = renderHtml(single, ':root{}');
   assert.deepEqual(cards(one).map(card => card.split('=')[0]), ['pass@1', 'mean actions', 'efficiency vs reference', 'mean time per run']);
-  assert.match(one, /<dl class="figures n4">/); assert.match(one, /<dd>2\/2<\/dd><dd class="detail">2 runs counted<\/dd>/);
-  assert.match(renderHtml(report([run('connect', 1, 1, true)], 1, ['connect'], [1]), ':root{}'), /<dd>1\/1<\/dd><dd class="detail">1 run counted<\/dd>/);
+  assert.match(one, /<dl class="figures n4">/); assert.match(one, /<dd>2\/2<\/dd><dd class="detail">2\u00a0runs counted<\/dd>/);
+  assert.match(renderHtml(report([run('connect', 1, 1, true)], 1, ['connect'], [1]), ':root{}'), /<dd>1\/1<\/dd><dd class="detail">1\u00a0run counted<\/dd>/);
   assert.equal(/pass\^1/.test(one), false, 'pass^1 equals pass@1 and is not shown twice');
   const two = renderHtml(fixture(), ':root{}');
   assert.deepEqual(cards(two).map(card => card.split('=')[0]), ['pass@1', 'pass^2', 'mean actions', 'efficiency vs reference', 'mean time per run']);
-  assert.match(two, /<dl class="figures n5">/); assert.match(two, /1 not judged \(infrastructure\), counted as not passed/);
+  assert.match(two, /<dl class="figures n5">/); assert.match(two, /1\u00a0not judged \(infrastructure\), counted as not passed/);
   // No grid width leaves one card alone in a row: 4 cards = 2 × 2 or 4 × 1; 5 cards = 1 + 2 + 2, 3 + 2 or 5 × 1.
   assert.match(two, /\.figures\.n5 \.figure:first-child\{grid-column:1\/-1\}/);
   assert.match(two, /\.figures\.n5\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}\.figures\.n5 \.figure\{grid-column:span 2\}\.figures\.n5 \.figure:nth-child\(-n\+2\)\{grid-column:span 3\}/);
