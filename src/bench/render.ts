@@ -188,7 +188,7 @@ export function renderTable(report: BenchReport, language: Language = 'en', deta
     for (const run of failed.slice(0, 20)) {
       lines.push(`✗ ${shown(run.id)}${statusWords(run, t) ? `  ${statusWords(run, t)}` : ''}`);
       for (const state of runStates(run, details?.runs.get(run.id), report, language)) {
-        lines.push(shown(`    ${state.name}: ${state.why}`));
+        lines.push(shown(`    ${state.name}${state.why ? `: ${state.why}` : ''}`));
         for (const item of state.list ?? []) lines.push(shown(`      ${item}`));
       }
     }
@@ -302,7 +302,7 @@ function runHtml(run: BenchRun, report: BenchReport, details: ReportDetails | un
   const states = runStates(run, detail, report, language);
   const summary = `${result(run.pass, t)} <span>${esc(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }))}</span> · ${esc(fill(language, t.actionCount, { n: run.actions }))}${statusWords(run, t) ? ` · ${esc(statusWords(run, t))}` : ''}`;
   const parts: string[] = [];
-  if (states.length) parts.push(`<h3>${esc(run.pass ? t.whatHappened : t.why)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${esc(state.name)}</span> — ${esc(state.why)}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
+  if (states.length) parts.push(`<h3>${esc(run.pass ? t.whatHappened : t.why)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${esc(state.name)}</span>${state.why ? ` — ${esc(state.why)}` : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
   if (detail) {
     parts.push(`<h3>${esc(t.conditions)}</h3>${conditionsHtml(detail, language)}`);
     if (detail.picture || detail.target || detail.targetMissing) parts.push(`<h3>${esc(t.board)}</h3>${boardHtml(detail, report, language)}`);

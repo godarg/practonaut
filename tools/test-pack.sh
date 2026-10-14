@@ -168,7 +168,9 @@ JSON
 
 "$BIN" bench --agent oracle --tasks connect --mirror off --out "$TMP/bench.json" >"$TMP/bench.out" 2>"$TMP/bench.err"; RC=$?
 if [ $RC -eq 0 ] && grep -q "^1/1 passed · 95 % interval" "$TMP/bench.out"; then ok "installed bench --agent oracle (MCP through the installed bridge)"; else cat "$TMP/bench.out" "$TMP/bench.err" >&2; fail "installed bench -> exit $RC"; fi
-"$BIN" report "$TMP/bench.json" --html "$TMP/bench.html" >/dev/null; RC=$?
+# The report was written elsewhere with --out: --runs names its bench folder for the run details.
+FIRST="$(ls -td "$PRACTONAUT_HOME"/bench/*/ | head -n 1)"
+"$BIN" report "$TMP/bench.json" --runs "$FIRST" --html "$TMP/bench.html" >/dev/null; RC=$?
 if [ $RC -eq 0 ] && grep -q -- "--pn-color-bg" "$TMP/bench.html" && grep -q "\.sch-step{" "$TMP/bench.html" && grep -q 'class="schematic"' "$TMP/bench.html"; then ok "installed report --html inlines the design tokens and the report stylesheet and draws the board"; else fail "installed report --html -> exit $RC"; fi
 "$BIN" compare "$TMP/bench.json" "$TMP/bench.json" --fail-on-regression >"$TMP/compare.out"; RC=$?
 if [ $RC -eq 0 ] && grep -q "not distinguishable at this n" "$TMP/compare.out"; then ok "installed compare (a report against itself: no regression)"; else cat "$TMP/compare.out" >&2; fail "installed compare -> exit $RC"; fi
