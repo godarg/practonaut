@@ -7,9 +7,11 @@
 #                           four-action reference under a budget of three actions: every repeat ends
 #                           with an extra arrow, compare --fail-on-regression exits 2
 #                           (instance_regression) and the job fails. The artifact is uploaded either way.
-# The steps are the recipe's, with three differences: Practonaut is this checkout, packed (the recipe
+# The steps are the recipe's, with these differences: Practonaut is this checkout, packed (the recipe
 # pins a published version); the agent is the oracle on the fixture world with --max-actions 3, as the
-# baseline was made; the commands run outside the checkout, whose own package.json is Practonaut's.
+# baseline was made, so no client is installed and no secret is used; the run is started by hand, so the
+# baseline is the checkout's (the recipe reads a pull request's baseline from its base commit); the
+# commands run outside the checkout, whose own package.json is Practonaut's.
 # tests/integration/ci-recipe.test.ts runs the same commands locally.
 name: CI recipe check
 
@@ -46,15 +48,18 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Pack this checkout (stands in for practonaut@<version>)
+        env:
+          npm_config_ignore_scripts: 'true'
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
-          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.out"
+          npm pack --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.out"
           echo "PRACTONAUT=$RUNNER_TEMP/$(tail -n 1 "$RUNNER_TEMP/pack.out")" >> "$GITHUB_ENV"
       - name: Folders for Practonaut's data and the results
         run: |
           echo "PRACTONAUT_HOME=$RUNNER_TEMP/practonaut-home" >> "$GITHUB_ENV"
           echo "OUT=$RUNNER_TEMP/practonaut-out" >> "$GITHUB_ENV"
+          echo "npm_config_ignore_scripts=true" >> "$GITHUB_ENV"
       - name: Choose the candidate's reference
         env:
           PLANT: ${{ inputs.plant_regression }}
@@ -71,18 +76,20 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           mkdir -p "$OUT"
+          status=0
           npx --yes --package "$PRACTONAUT" -- practonaut bench --agent oracle \
             --world "$WORLD" --oracle "$ORACLE" --seed-list 1,2 --repeats 3 --max-actions 3 --mirror required \
-            --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml"
-          report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json)"
-          cp "$report" "$OUT/report.json"
-          echo "BENCH=$(dirname "$report")" >> "$GITHUB_ENV"
+            --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml" --fail-on-agent-error || status=$?
+          if report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json 2>/dev/null)"; then
+            cp "$report" "$OUT/report.json"
+            echo "BENCH=$(dirname "$report")" >> "$GITHUB_ENV"
+          fi
+          exit "$status"
       - name: Render the report
         if: ${{ !cancelled() && env.BENCH != '' }}
         working-directory: ${{ runner.temp }}
         run: npx --yes --package "$PRACTONAUT" -- practonaut report "$BENCH/report.json" --html "$OUT/report.html"
       - name: Compare with the baseline (fails on an instance regression)
-        if: ${{ !cancelled() && env.BENCH != '' }}
         working-directory: ${{ runner.temp }}
         run: npx --yes --package "$PRACTONAUT" -- practonaut compare "$BASELINE" "$BENCH/report.json" --fail-on-regression --html "$OUT/compare.html"
       - name: Upload JUnit XML, the report and the HTML pages

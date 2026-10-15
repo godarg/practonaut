@@ -388,15 +388,17 @@ repeats, which need no sample of that size to name one instance that broke.
 ## 7. CI: gate on instance regressions
 
 [`examples/ci/practonaut-bench.yml`](../../examples/ci/practonaut-bench.yml) is a GitHub Actions
-workflow to copy into `.github/workflows/` of your repository. It installs Node, runs an exact
-Practonaut version with `npx` (`practonaut@0.2.0`; actions are pinned by commit SHA), downloads Chromium
-with `practonaut setup` and checks that it starts, installs an exact Claude Code version, benches the
-`claude-code` preset on your world with three repeats per instance and `--mirror required`, writes
-JUnit XML (`--junit`) and the HTML report, and compares the result with a committed baseline report:
+workflow to copy into `.github/workflows/` of your repository; it needs Practonaut 0.2.0 or later. It
+installs Node, runs an exact Practonaut version with `npx` (`practonaut@0.2.0`, installed without install
+scripts; actions are pinned by commit SHA), downloads Chromium with `practonaut setup` and checks that it
+starts, installs an exact Claude Code version (with its own install scripts, which this recipe did not
+check it can do without), benches the `claude-code` preset on your world with three repeats per instance
+and `--mirror required`, writes JUnit XML (`--junit`) and the HTML report, and compares the result with a
+committed baseline report:
 
 ```bash
 npx practonaut bench --agent claude-code --world practonaut/world --oracle practonaut/oracle.json \
-  --seed-list 1,2 --repeats 3 --mirror required --junit out/junit.xml
+  --seed-list 1,2 --repeats 3 --mirror required --junit out/junit.xml --fail-on-agent-error
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html out/report.html
 npx practonaut compare practonaut/baseline.json ~/.practonaut/bench/<id>/report.json --fail-on-regression
 ```
@@ -407,36 +409,46 @@ The JUnit file, the report and both HTML pages are uploaded as one artifact, als
 seeds, mirror, action budget and agent kind; `compare` refuses anything else, exit 2) and commit its
 `report.json` as `practonaut/baseline.json`. A report alone is consistency-checked on `compare`, not
 re-verified; keep its bench folder (for example as an artifact) if you want `compare --verify` later.
-A new Practonaut or client version can change results: bench a new baseline with it.
+A new Practonaut or client version can change results: bench a new baseline with it. For a pull request
+the workflow reads the baseline from the pull request's base commit (`git show <base sha>:<path>`), so a
+pull request cannot weaken the baseline it is compared with; commit a new baseline on its own, to the
+base branch first.
 
 **Credentials.** The agent uses your own account; nothing is sent anywhere else. The `claude-code`
 preset withholds provider keys and tokens (§2): put the subscription's token from `claude setup-token`
 into a repository secret `CLAUDE_CODE_OAUTH_TOKEN`; the workflow passes it to the bench step as an
 environment variable, never on a command line, and nothing prints it. To bill an API key instead, on
 purpose, pass `ANTHROPIC_API_KEY` from a secret and add `--keep-env ANTHROPIC_API_KEY` to the bench
-command; without it the preset withholds the key. GitHub does not pass secrets to workflows that run for
-pull requests from forks.
+command; without it the preset withholds the key. GitHub passes no secrets to workflows that run for
+pull requests from forks, so the job does not run for them. A missing or expired token makes every run
+end `agent_failed`; those runs are still judged on the board the agent left and would read as instance
+regressions, so the bench step uses `--fail-on-agent-error` and fails first (below).
 
-**What fails the job.** `compare --fail-on-regression` exits 2 with a named code:
+**What fails the job.** `bench --fail-on-agent-error` and then `compare --fail-on-regression` exit 2
+with a named code:
 
 | Code | When |
 |---|---|
+| `agent_failed` | a run's agent exited with an error or could not start (for example without a valid login); the bench writes its report, JUnit file and folder first, and compare does not run |
 | `instance_regression` | an instance with at least three judged repeats on each side passed in every baseline repeat and failed in every candidate repeat |
 | `compare_incomplete` | a candidate instance is missing, cut short, or holds a run without a verdict: a missing verdict could hide a regression, so the gate never passes it |
 | `compare_incomparable` | the two reports differ in world content, grid, mirror, action budget or isolation level |
 
-`bench` itself exits 0 when every planned run ended, whatever the verdicts (130 when it was stopped,
-2 for a refused world or oracle, 3 without a Chromium that starts under `--mirror required`).
+Without `--fail-on-agent-error`, `bench` exits 0 when every planned run ended, whatever the verdicts and
+however the agents ended (130 when it was stopped, 2 for a refused world or oracle, 3 without a Chromium
+that starts under `--mirror required`). A timed-out run is a result, not an agent failure: it does not
+trip the flag.
 
 **JUnit XML.** `bench --junit <file>` writes it next to the report; `report <report.json> --junit
 <file>` writes it for any report (with `--verify`, from the re-verified one). The format is the Apache
-Ant JUnit schema as Windy Road publishes it (`JUnit.xsd`), which CI test views read:
+Ant JUnit schema as Windy Road publishes it (`JUnit.xsd`, the version of commit `332b8f3f`), which CI test
+views read:
 
 | Run | JUnit |
 |---|---|
 | passed | a `<testcase>` without child |
 | judged, not passed | `<failure>`: `type` names the error classes (or `goal-not-met`), the message names each unmet goal condition with the action after which it was last lost, each error class with the first sentence of its explanation, and every other state by name (timed out, rejected actions, …); the body adds the run id and the runner's note |
-| no verdict (not judged) | `<error type="no-verdict">`: JUnit's form for a test that could not be evaluated. Never a failure, because there is no verdict to give a reason for; never skipped, because the run counts as not passed |
+| no verdict (not judged) | `<error type="no-verdict">`: JUnit's form for a test that could not be evaluated. Never a failure, because there is no verdict to give a reason for; never `<skipped>`, which means a test that did not run and is left out of a pass/fail count, while this run ran and counts as not passed |
 
 One `<testsuite>` per task in plan order, one `<testcase>` per run by seed (plan order) and repeat;
 `classname` is the instance (`<world>.<task>.seed-<seed>`), so a test view groups its repeats. Every

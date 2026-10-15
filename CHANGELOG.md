@@ -40,7 +40,9 @@ All notable changes are recorded here. The format follows
   instance regression or an incomplete candidate; JUnit XML and the HTML pages are uploaded.
   `bench --junit <file>` and `report --junit <file>` write JUnit XML: one test case per run, a run that
   did not pass as a failure naming its unmet conditions and error classes, a run without a verdict as an
-  error. A manual workflow (`.github/workflows/ci-recipe-check.yml`) proves the recipe with the oracle
+  error. `bench --fail-on-agent-error` exits 2 (`agent_failed`) when an agent failed or could not start,
+  so a missing login stops the job instead of reading as regressions; for a pull request the recipe takes
+  the baseline from the base commit and skips forks. A manual workflow (`.github/workflows/ci-recipe-check.yml`) proves the recipe with the oracle
   agent and a planted instance regression.
 - **Result card and badge.** `practonaut report <report.json> --card <out>` writes a 1280 × 640 card as
   SVG and PNG, light and dark (the PNG drawn by the local Chromium); `--badge <out.svg>` a one-line badge.
