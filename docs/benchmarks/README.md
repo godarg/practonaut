@@ -532,10 +532,10 @@ pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; deve
 reported as a sanity check and never change it.
 
 **Operator procedure.** Run one family at a time on an otherwise idle machine on mains power that
-does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a branch of its own for the round
-(`git switch -c challenge/<family>-round-<k>` from the commit to be gated, also from a detached
-checkout, then `git push -u origin HEAD`). The declaration is committed and pushed on that branch,
-and the gate runs there before any squash or rebase. **Keep the branch** (never delete it): the
+does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a
+branch of its own for the round (`git switch -c challenge/<family>-round-<k>` from the commit to be
+gated, also from a detached checkout, then `git push -u origin HEAD`). The declaration is committed
+and pushed on that branch, and the gate runs there before any squash or rebase. **Keep the branch** (never delete it): the
 held-out set records the declaration's commit, which must stay reachable. After the round's branch
 is squash-merged into main, `gate` is not expected to run again on main.
 Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
@@ -547,7 +547,7 @@ from that model. To stop a bench, press Ctrl+C **once** and wait for its partial
 it lists the run in progress as not judged and names the tasks to resume the same way. A second
 Ctrl+C, kill -9, power loss or the machine running out of memory leave no report; then end the
 bench's agent if it still runs (`kill -9 -$(cat <run folder>/agent.pid)`) and recover the report
-before anything else, with the bench's own arguments:
+before anything else, with the bench's own arguments (a development bench's with its `--mirror`):
 `node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args <set> [--tasks …]) --recover <bench folder>`;
 it names the tasks to resume. Pass every report, recovered ones included, to the tool. Do not rerun
 a task that was judged: the gate finds every run folder under the bench roots, refuses best-of-N
