@@ -113,6 +113,8 @@ const ASCII = [352, 401, 459, 838, 636, 1076, 780, 275, 454, 454, 636, 838, 364,
 const OTHER: Readonly<Record<string, number>> = { '·': 364, '–': 636, '—': 1000, '…': 1000, '“': 518, '”': 518, '„': 518, '‘': 318, '’': 318, '‚': 318, '«': 644, '»': 644, '×': 838, '→': 838, 'ß': 630, '€': 636, '°': 542, '\u00a0': 352 };
 /** Bold faces of both are about 15 % wider; SAFETY covers rounding and kerning. */
 const SAFETY = 1.02, BOLD = 1.15;
+/** The wide estimate over the middle of common fonts (narrow ones are about 15 % below it). */
+const BADGE_MIDDLE = 1.08;
 function advance(char: string): number {
   const code = char.codePointAt(0)!;
   if (code >= 32 && code <= 126) return ASCII[code - 32]!;
@@ -313,8 +315,10 @@ export function renderBadge(report: BenchReport, tokensCss: string, language: La
     ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
   const rest = ` · ${parts.join(' · ')}`;
   const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);
-  // The text is held to its estimated width (textLength), so it fits its chip in any font.
-  const textWidth = Math.ceil(width(t.badgeName, name) + width(rest, metrics)), total = textWidth + 2 * pad;
+  // The text is held to its width by textLength, so it fits its chip in any font. That width sits
+  // between narrow fonts (SF Pro, Segoe UI) and the wide ones the card's estimate covers (DejaVu Sans,
+  // Verdana): spacing grows or shrinks by a few percent instead of opening up in a narrow font.
+  const textWidth = Math.ceil((width(t.badgeName, name) + width(rest, metrics)) / BADGE_MIDDLE), total = textWidth + 2 * pad;
   const label = xmlEscape(accessibleName(report, language, verification));
   const style = `${stylesheet(tokens, ['badge-'])}@media (prefers-color-scheme:dark){${stylesheet(themes.dark, ['badge-'])}}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${height}" viewBox="0 0 ${total} ${height}" role="img" aria-label="${label}" xml:lang="${language}">`
