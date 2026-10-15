@@ -582,7 +582,7 @@ The **result card** (`report --card`, 1280 × 640, light and dark, SVG and PNG) 
 preview). The reader's next action: decide whether to open the report. The card sets the fraction in
 Display, the interval and n in Subhead, the evidence in a list where each fact has its evidence mark
 (§7.4: a filled accent disc with a check for confirmed, a dashed ring for not confirmed, never colour
-alone), and the caveat in Footnote at the foot; the badge is a chip (a fact, never an action). Both are
+alone; without re-verification every fact is a claim of the file and gets the dashed ring), and the caveat in Footnote at the foot; the badge is a chip (a fact, never an action). Both are
 drawn from `src/bench/card.css` with the tokens resolved into each SVG; no script, image, link or font; text
 is SVG text, never cut when it is a caveat (lines that do not fit in Subhead are set in Footnote; only what
 still does not fit is drawn smaller as a whole).
