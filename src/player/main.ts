@@ -773,7 +773,9 @@ function renderBar(): void {
   const nodes: Node[] = [brand];
   // The same three workspaces on every route; one that this window cannot open says why (tooltip and accessible name).
   if (current) {
-    const mode = phase3?.mode() ?? 'board';
+    // The workspace being prepared shows as chosen at once; while it prepares the others wait (and say
+    // so), so a second click is never dropped on a segment that only looks current.
+    const mode = phase3?.target() ?? 'board';
     nodes.push(h('div', { class: 'shell-modes' }, segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
