@@ -6,6 +6,8 @@ import {banner,button,card,h} from './ui/components.ts';
 interface Context{
  current():HostView|undefined;request(expectedRevision:number):Promise<HostReply<CurrentSessionExport>>;
  message(key:Message):string;working():boolean;setWorking(value:boolean):void;render():void;announce(text:string):void;
+ /** The attempt belongs to the bundled example's demonstration: never saved as anyone's result. */
+ demonstration():boolean;
 }
 async function bytesHash(utf8:string):Promise<string>{
  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(utf8));
@@ -47,11 +49,13 @@ export function createExportControl(context:Context):{view():HTMLElement}{
   const current=context.current(),modelOnly=current?.mirror!=='required',stale=prepared&&(prepared.revision!==current?.revision||prepared.hash!==current?.hash);
   const panel=card({title:m('exportTitle'),level:2});panel.dataset.testid='export-panel';
   panel.append(h('p',{class:'export-status',text:m('exportExplanation')}));
-  if(modelOnly)panel.append(banner({tone:'unknown',text:m('exportNeedsReal'),testid:'export-model-only'}));
+  const demonstration=context.demonstration();
+  if(modelOnly)panel.append(banner({tone:'accent',text:m('exportNeedsReal'),testid:'export-model-only'}));
+  else if(demonstration)panel.append(banner({tone:'accent',text:m('exportDemonstration'),testid:'export-demonstration'}));
   else if(loading)panel.append(h('p',{class:'export-status',testid:'export-loading',text:m('exportLoading'),attrs:{role:'status'}}));
   else if(error)panel.append(banner({tone:'danger',text:m(error),testid:'export-error',role:'alert'}));
   else if(prepared)panel.append(stale?banner({tone:'warning',text:m('exportStale'),testid:'export-stale'}):h('p',{class:'export-status',testid:'export-ready',text:m('exportReady').replace('{n}',String(prepared.revision)),attrs:{role:'status'}}));
-  const actions=h('div',{class:'export-actions'},button({label:m('exportPrepare'),testid:'export-prepare',variant:'secondary',size:'sm',disabled:modelOnly||context.working(),onClick:()=>{void prepare();}}));
+  const actions=h('div',{class:'export-actions'},button({label:m('exportPrepare'),testid:'export-prepare',variant:'secondary',size:'sm',disabled:modelOnly||demonstration||context.working(),onClick:()=>{void prepare();}}));
   if(prepared)actions.append(button({label:m('exportSession'),testid:'export-session',icon:'download',variant:'secondary',size:'sm',disabled:Boolean(stale)||context.working(),onClick:()=>download('session')}),button({label:m('exportNative'),testid:'export-native',icon:'download',variant:'secondary',size:'sm',disabled:Boolean(stale)||context.working(),onClick:()=>download('native')}));
   panel.append(actions);return panel;
  }};

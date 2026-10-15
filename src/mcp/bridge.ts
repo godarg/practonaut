@@ -58,7 +58,7 @@ const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const localized = z.strictObject({ en: z.string().max(8192), de: z.string().max(8192) });
 const diagnosis = z.array(z.strictObject({ id: z.string(), explanation: localized }));
 const condition = z.strictObject({ id: z.string(), text: localized, formalText: localized.optional() });
-const checkSchema = z.strictObject({ scope: z.literal("end-state-only"), hash: z.string(), revision: integer, passed: z.boolean(), conditions: z.array(condition.extend({ met: z.boolean() })), errors: diagnosis, mode: z.enum(["real-engine", "model-only"]), practiceEvidence: z.boolean(), checksRemaining: integer.optional() });
+const checkSchema = z.strictObject({ scope: z.literal("end-state-only"), hash: z.string(), revision: integer, passed: z.boolean(), conditions: z.array(condition.extend({ met: z.boolean() })), errors: diagnosis, mode: z.enum(["real-engine", "model-only"]), practiceEvidence: z.boolean(), checksRemaining: integer.optional(), demonstration: z.literal(true).optional() });
 /** The attempt's limits (PADR-0040): only the counts, never anything about the solution. */
 const limitCount = z.strictObject({ limit: integer, used: integer });
 const limitsSchema = z.strictObject({ actions: limitCount.optional(), checks: limitCount.optional() });
@@ -70,11 +70,11 @@ export const publicViewSchema = z.strictObject({
   task: z.strictObject({ id: z.string(), title: localized, prompt: localized, conditions: z.array(condition), hintCount: integer }),
   tasks: z.array(z.strictObject({ id: z.string(), title: localized, level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(), referenceActions: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional() })), state: AnyStateSchema, hash: z.string(), step: integer,
   log: z.array(z.strictObject({ action, hash: z.string() })),
-  history: z.array(z.strictObject({ description: localized, actor: z.union([z.strictObject({ kind: z.literal('human') }), z.strictObject({ kind: z.literal('agent'), client: z.string().max(64) })]), step: integer, action, hash: z.string(), effects: z.array(z.strictObject({ kind: z.string(), id: z.string() })), consequences: diagnosis, ruleIds: z.array(z.string()), mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative() })),
+  history: z.array(z.strictObject({ description: localized, actor: z.union([z.strictObject({ kind: z.literal('human') }), z.strictObject({ kind: z.literal('agent'), client: z.string().max(64) }), z.strictObject({ kind: z.literal('demonstration') })]), step: integer, action, hash: z.string(), effects: z.array(z.strictObject({ kind: z.string(), id: z.string() })), consequences: diagnosis, ruleIds: z.array(z.string()), mirrorConfirmed: z.boolean(), latencyMs: z.number().nonnegative() })),
   // Either era's public action and rule shapes; a world/1 view is still held to world/1 exactly.
   actions: z.union([WorldSchema.shape.actions, z.array(ActionDefinitionSchemaV2).max(32)]), rules: z.union([WorldSchema.shape.rules, z.array(RuleSchemaV2).max(128)]), mirror: z.enum(["required", "off"]),
   mirrorHealth: z.strictObject({ status: z.enum(["available", "unavailable", "closed", "model-only"]), recoveries: integer }),
-  practiceEvidence: z.boolean(), attempt: integer, hintsOpened: integer, hints: z.array(localized), result: checkSchema.nullable(), errors: diagnosis,
+  practiceEvidence: z.boolean(), attempt: integer, hintsOpened: integer, demonstration: z.literal(true).optional(), hints: z.array(localized), result: checkSchema.nullable(), errors: diagnosis,
   limits: limitsSchema.optional(),
 });
 const effect = z.strictObject({ kind: z.string(), id: z.string() });

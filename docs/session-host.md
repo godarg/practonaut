@@ -63,8 +63,8 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 
 | Method/route | Input | Result |
 |---|---|---|
-| POST `/api/bootstrap` | `{code}` | token and initial public view; code consumed once |
-| GET `/api/resume` | token header; no query | current public view and local editor address; no new token or state mutation |
+| POST `/api/bootstrap` | `{code}` | token and initial public view (plus the Player metadata below); code consumed once |
+| GET `/api/resume` | token header; no query | current public view, local editor address and Player metadata; no new token or state mutation |
 | GET `/api/observe` | token header | state/hash/log/history, task/public conditions, rules/provenance, hints, mirror mode |
 | POST `/api/act` | revision, `{action:{name,params}}`, optional `actor:{kind:"agent",client}` (set by the MCP bridge; absent = a person), optional `reply:"delta"` | atomic action, new view (history entry with its actor), delta, mirror confirmation and measured latency |
 | POST `/api/undo` | revision, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | last committed action removed in core and mirror |
@@ -72,8 +72,10 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 | POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed |
 | POST `/api/hint` | revision | next public hint, never hidden data |
 | POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict; with a check limit also `checksRemaining` |
-| GET `/api/events` | token header via fetch | SSE ready/changed/rejected/heartbeat; never browser-supplied confirmation |
+| GET `/api/events` | token header via fetch | SSE ready/changed/rejected/heartbeat/demonstration; never browser-supplied confirmation |
 | GET `/api/tool.png` | token header | host-rendered image/png with nosniff; no SVG or HTML |
+| POST `/api/demonstration` | revision, `confirmed:true` | bundled example only: a new attempt, then its demonstration plays (see below); returns its status at once |
+| POST `/api/demonstration/stop` | `{}` | stops after the action in flight; idempotent |
 
 `changed` contains the committed view. `rejected` contains the unchanged revision/hash and a
 named error. When the attempt has limits (a task's `limits`, or `--checks` on `play`/`serve`,
@@ -87,6 +89,32 @@ result: the view's `errors`, every mutation delta's `errors` and history consequ
 they cannot serve as a free partial check. Heartbeat contains revision only. Practice does not load a checker bundle.
 Quantified predicates remain whole public conditions so different witnesses cannot incorrectly
 satisfy split fragments. Every result is explicitly end-state-only, not learner attestation.
+
+**Player metadata.** Bootstrap and resume replies may also carry `modelOnly` (why a session runs
+without the mirror, set by the CLI: `missing` with the `setup` command and the named download and
+its size, `start` with `doctor --adapter`, or `off` for `--mirror off`) and, in a session of the
+bundled example, `demonstration` (`tasks` that have one and its current `status`). Neither is part
+of `observe`, so agents read nothing new.
+
+**Demonstration** (`src/host/demonstration.ts`, roadmap 0.2.0 Should 7). Only `practonaut` and
+`play` without a world offer it, and the host also checks that the world is the bundled example
+(never a library or bench task) and that no check limit applies (`--checks` would let it spend the
+attempt's changes and checks). Hidden data stays hidden: what it plays is a solution derived from
+each task's public third hint, never a checker fixture, and the host enforces the world (its id and
+version) as well as the CLI flag. It starts an attempt of its own (a reset or variant afterwards
+continues the person's attempt count as if it had not run) and plays the current task's third hint
+through the session's own `act` with the actor `{kind:"demonstration"}` (no request can claim
+it), about one action a second, then runs the same result check as the Check button. The real
+mirror confirms each action when the session has one. The script never travels as a whole; the
+Player sees each action only once it is committed. Its status (`running`, `finished` with
+`passed`, `stopped`, `failed` with the refusal's code, plus `done` of `total` actions) arrives as a
+`demonstration` event; a new stream gets the current one after `ready`. While it runs, every other
+mutation, check and the tool image are refused with `demonstration_running` (409). Afterwards the
+attempt stays the demonstration's until a reset or variant: act, undo, hints, editor input and the
+export are refused with `demonstration_attempt` (409), so its board is never continued or saved as
+anyone's result. Every view of that attempt (bootstrap, resume, observe, events) and every check of it
+carries `demonstration: true` and `practiceEvidence: false`, its last result too; a verdict that a Stop
+overtook while the check read the real tool back is never published.
 
 ## Atomic mirror and diagnostics
 
@@ -118,7 +146,7 @@ before a new record exceeds the cap. An oversized single record or write failure
 `diagnostic_limit`/`diagnostic_unavailable` and still rolls back. Remove an unneeded private log
 locally; it can contain world labels. No automatic upload or recording of the real desktop occurs.
 
-`--mirror auto` is the `serve` default: it resolves to `required` when Playwright Chromium is installed and otherwise to `off`, with a warning in the terminal and a Player note naming `practonaut setup`. `--mirror required` refuses to start without Chromium. `--mirror off` never starts an engine, is labelled
+`--mirror auto` is the `serve` default: it resolves to `required` when Playwright Chromium is installed and otherwise to `off`, with a warning in the terminal and a Player banner ("Not yet checked against the real Excalidraw") naming `practonaut setup` and its one download, the Chromium headless shell, with its size. `--mirror required` refuses to start without Chromium. `--mirror off` never starts an engine, is labelled
 **model only** and sets practice evidence false for every view/result even when conditions pass.
 
 ## Named budgets and failure paths
@@ -141,7 +169,7 @@ These are fixed constants, not environment overrides. Tests exercise each releva
 | Check limit (PADR-0040) | a task's `limits.checks` and `--checks`, the smaller one: evaluated checks per attempt | check_budget_exhausted (HTTP 429) |
 
 Other named guards include token_required/token_invalid/token_in_query, host_rejected,
-origin_rejected, json_required, invalid_request, token_file_unsafe, stale_base, session_busy,
+origin_rejected, json_required, invalid_request, token_file_unsafe, stale_base, session_busy, demonstration_running, demonstration_attempt,
 replay_mismatch and the core's explicit unmodeled/failure codes. Internal exception messages are
 not returned to the browser. The short-lived URL should be opened by the local user only.
 

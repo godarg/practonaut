@@ -177,7 +177,10 @@ A change that breaks one of these is a release blocker. Tests guard each of them
 - **Hidden data stays hidden.** Reference solutions, near misses and held-out tasks are not in the
   practice package and not reachable through the Player or MCP. The goal conditions are public:
   Player and agent get the same sentences and the same formal form of each goal clause. The agent
-  has no stronger success signal than the human's Check button.
+  has no stronger success signal than the human's Check button. The one exception by design: the
+  bundled example's demonstration plays a solution derived from each task's public third hint
+  (never a checker fixture, never a library or bench task), enforced on the host by the world's id
+  and version and by the CLI flag that only `practonaut` and `play` without a world set.
 - **Checker independence.** The checker does not import runtime transition code; it evaluates the
   final state or the exported file itself.
 - **Package containment.** Archive entries cannot escape the extraction root, sizes and ratios are

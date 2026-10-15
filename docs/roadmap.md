@@ -200,7 +200,8 @@ with a measurement and ends with its acceptance line measured.
    checked against the real Excalidraw" banner; the mirror download is a named step with its size;
    a **public, unscored demonstration on the bundled example world** (never a library or bench task,
    whose reference solutions stay hidden) shows actions landing, the mirror confirming and the
-   checker judging. *Acceptance:* time from the command to the first visible action ≤ 30 s with a warm
+   checker judging (the Player's result check, the same evaluation as the Check button; the
+   independent checker never loads in a practice session). *Acceptance:* time from the command to the first visible action ≤ 30 s with a warm
    npx cache, measured; an e2e test shows the banner and the demonstration; no library or bench
    reference reaches the Player (test).
 8. **Spike for application #2: draw.io** (M, timeboxed, in its own git worktree; preregistered in
