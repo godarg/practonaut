@@ -511,6 +511,10 @@ export const CLI_CATALOG = {
     "en": "--seed-list needs distinct whole numbers from 0 to 999999999, comma-separated (at most 1000)",
     "de": "--seed-list braucht verschiedene ganze Zahlen von 0 bis 999999999, durch Kommas getrennt (höchstens 1000)"
   },
+  "benchSeedsShareVariant": {
+    "en": "practonaut bench: notice seeds_share_variant: {n:task|tasks} {tasks} {n:has|have} {variants} {variants:variant|variants}, but the {count} seeds give only {distinct} distinct {distinct:board|boards} per task. Seeds that pick the same variant bench the same board, and each still counts as an instance of its own (in the interval and in compare). For more runs of one board, give one seed per variant and add --repeats\n",
+    "de": "practonaut bench: Hinweis seeds_share_variant: {n:Aufgabe|Aufgaben} {tasks} {n:hat|haben} {variants} {variants:Variante|Varianten}, die {count} Seeds ergeben aber nur {distinct} {distinct:Arbeitsfläche|verschiedene Arbeitsflächen} je Aufgabe. Seeds, die dieselbe Variante wählen, benchen dieselbe Arbeitsfläche, und jeder zählt trotzdem als eigene Instanz (im Intervall und in compare). Für mehr Läufe derselben Arbeitsfläche einen Seed je Variante angeben und --repeats ergänzen\n"
+  },
   "benchLabel": {
     "en": "--label needs a text of 1 to {max} characters",
     "de": "--label braucht einen Text mit 1 bis {max} Zeichen"

@@ -24,9 +24,13 @@ Your own task, made from two drawings ([authoring guide](../authoring-guide.md) 
 ```bash
 npx practonaut tasks from-scenes start.excalidraw goal.excalidraw --out my-task
 npx practonaut bench --agent oracle --world my-task/world --oracle my-task/oracle.json   # does it solve?
-npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --seed-list 1,2 --label "my task"
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --repeats 3 --label "my task"
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify
 ```
+
+A world from `tasks from-scenes` has one variant, so every seed shows the same board: run it more
+often with `--repeats`, not with more seeds. Two seeds of one board would still count as two
+instances, and `bench` says so on stderr (`seeds_share_variant`, naming the task and its variants).
 
 The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setup` once);
 `--mirror off` runs model-only and is faster, but its results are not practice evidence.
@@ -39,7 +43,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 | `--world <dir\|.pnworld>` | the task library | your own world: a world folder (packed like `practonaut pack`; anything but `world.json` and allowed assets is refused) or a world package |
 | `--tasks all\|<ids>` | `all` | tasks, comma-separated: library tasks (`connect` or `excalidraw/connect`, list with `practonaut tasks list`), or with `--world` that world's task ids |
 | `--oracle <files>` | none | with `--world`: comma-separated reference solutions, one `practonaut.task-oracle/1` file per task (the `oracle.json` that `tasks from-scenes` writes beside the world) (§3) |
-| `--seeds <n>` | 1 | seeds 1…n; the seed picks the task's variant (labels) |
+| `--seeds <n>` | 1 | seeds 1…n; the seed picks the task's variant (labels). Seeds that pick the same variant bench the same board and are named on stderr (`seeds_share_variant`); a world with one variant needs one seed and `--repeats` |
 | `--seed-list <seeds>` | none | instead of `--seeds`: the seeds themselves, distinct, 0 to 999 999 999, e.g. `2,5` |
 | `--repeats <k>` | 1 | independent repeats per task and seed (needed for pass^k with k > 1) |
 | `--timeout <s>` | 300 | wall time per run; the agent's process group is stopped after it |
@@ -439,7 +443,7 @@ committed baseline report:
 
 ```bash
 npx practonaut bench --agent claude-code --world practonaut/world --oracle practonaut/oracle.json \
-  --seed-list 1,2 --repeats 3 --mirror required --junit out/junit.xml --fail-on-agent-error
+  --seed-list 1 --repeats 3 --mirror required --junit out/junit.xml --fail-on-agent-error
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html out/report.html
 npx practonaut compare practonaut/baseline.json ~/.practonaut/bench/<id>/report.json --fail-on-regression
 ```

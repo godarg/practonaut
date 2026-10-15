@@ -91,11 +91,13 @@ jobs:
           # API billing instead, chosen deliberately: replace the line above with
           #   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # and add `--keep-env ANTHROPIC_API_KEY` to the bench command; without it the preset withholds the key.
+        # One seed: a world from `tasks from-scenes` has one variant, so a second seed would bench the
+        # same board as another instance. List one seed per variant of a world that has several.
         run: |
           mkdir -p "$OUT"
           status=0
           npx --yes --package "$PRACTONAUT" -- practonaut bench --agent claude-code \
-            --world "$WORLD" --oracle "$ORACLE" --seed-list 1,2 --repeats 3 --mirror required \
+            --world "$WORLD" --oracle "$ORACLE" --seed-list 1 --repeats 3 --mirror required \
             --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml" --fail-on-agent-error || status=$?
           # The report is kept for the artifact also when an agent failed (bench writes it first).
           if report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json 2>/dev/null)"; then

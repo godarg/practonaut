@@ -95,6 +95,10 @@ All notable changes are recorded here. The format follows
   (kill -9, power loss, a second Ctrl+C) from its run folders, re-verified as `report --verify` does.
   Model ids may carry a bracketed suffix (`[1m]`); Claude Code's version is recorded per run, and
   `report --verify` checks each run's model against the agent's own output.
+- `bench` prints a notice (`seeds_share_variant`, EN/DE) when planned seeds pick the same variant of
+  the benched tasks, naming the tasks and their variant count: such seeds bench the same board, while
+  each still counts as an instance of its own. A world from `tasks from-scenes` has one variant; the
+  docs and the CI recipe now bench it with one seed and `--repeats`.
 
 ### Changed
 

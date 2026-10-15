@@ -8,8 +8,10 @@
 #                           with an extra arrow, compare --fail-on-regression exits 2
 #                           (instance_regression) and the job fails. The artifact is uploaded either way.
 # The steps are the recipe's, with these differences: Practonaut is this checkout, packed (the recipe
-# pins a published version); the agent is the oracle on the fixture world with --max-actions 3, as the
-# baseline was made, so no client is installed and no secret is used; the run is started by hand, so the
+# pins a published version); the agent is the oracle on the fixture world with --max-actions 3 and two
+# seeds, as the baseline was made (the fixture world has one variant, so both seeds show the same board
+# and bench prints seeds_share_variant; the recipe benches one seed), so no client is installed and no
+# secret is used; the run is started by hand, so the
 # baseline is the checkout's (the recipe reads a pull request's baseline from its base commit); the
 # commands run outside the checkout, whose own package.json is Practonaut's.
 # tests/integration/ci-recipe.test.ts runs the same commands locally.

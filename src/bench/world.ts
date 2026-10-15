@@ -26,6 +26,7 @@ import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { loadWorldPackage } from '../world/index.ts';
 import { V2_ACTION_NAMES, type SessionData, type World } from '../world/types.ts';
+import { variantIndex } from '../world/variant.ts';
 import { BENCH_REFERENCES_FILE, TASK_ID } from './report.ts';
 
 export type ReferenceSource = 'library' | 'oracle-file';
@@ -76,6 +77,14 @@ export function resolveWorldTasks(world: World, requested: 'all' | readonly stri
     folded.set(task.toLowerCase(), task);
   }
   return tasks;
+}
+
+/** The variants of a world (every task has the world's variants, as `tasks show` counts them) and how
+ * many distinct ones the planned seeds select. Fewer than seeds: two seeds pick the same variant, so
+ * they bench the same board, while each still counts as an instance of its own (`bench` says so). A
+ * world from `tasks from-scenes` has one variant. */
+export function seedVariants(world: World, seeds: readonly number[]): { variants: number; distinct: number } {
+  return { variants: world.variants.cases.length, distinct: new Set(seeds.map(seed => variantIndex(world, seed))).size };
 }
 
 // ---- oracle sidecars (practonaut.task-oracle/1) ----

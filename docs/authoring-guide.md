@@ -58,9 +58,13 @@ Drawing elements the model does not cover (for example images) are reported as i
 
 ```bash
 npx practonaut bench --agent oracle --world my-task/world --oracle my-task/oracle.json      # solvable through MCP?
-npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --seed-list 1,2
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --repeats 3
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify
 ```
+
+A task from two drawings has one variant: every seed shows the same board. Run it more often with
+`--repeats`, not with more seeds, which would count the same board as several instances (`bench` says
+so on stderr, `seeds_share_variant`).
 
 Before any run the checker must accept the oracle for every seed (`bench_oracle_invalid` otherwise);
 it never reaches the agent, and the report's efficiency compares each run with its length. Without
