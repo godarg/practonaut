@@ -28,8 +28,10 @@ on:
 permissions:
   contents: read
 
+# One group per ref and mode: the clean and the planted run, dispatched back to back, both finish;
+# a second dispatch of the same mode replaces the first.
 concurrency:
-  group: ci-recipe-check-${{ github.ref }}
+  group: ci-recipe-check-${{ github.ref }}-${{ inputs.plant_regression }}
   cancel-in-progress: true
 
 env:
