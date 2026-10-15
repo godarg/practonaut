@@ -103,6 +103,29 @@ which lies outside the agent's own folder (§3). The agent's data
 folder and working directory are the run folder's `agent/` subfolder, which starts empty; the
 judged artifacts go into the run folder itself, after the agent has ended (§5).
 
+Name every file in a template by its absolute path: the agent starts in that empty folder, where a
+relative path does not resolve. What the agent prints is kept as `<run folder>/agent.stdout` and
+`<run folder>/agent.stderr`. An agent that cannot start (a script not found, a missing module) ends as
+`infra_error` "without a single tool call", and only its `agent.stderr` says why. Every template is
+reported as the agent `generic` (kind `command`): give each configuration its own `--label`, which the
+report shows and `compare` uses to name the two sides.
+
+A minimal agent without a language model,
+[`examples/agents/minimal-agent.mjs`](../../examples/agents/minimal-agent.mjs) (in the repository, not
+in the npm package), shows the plumbing: it reads `{mcp_config}`, starts `mcpServers.practonaut`
+(`command`, `args`, `env`) over stdio with the MCP SDK client, calls `observe`, plays each action with
+`act`, passing `baseStep` and `expectedRevision` from the latest reply, and ends with `check_result`.
+Its actions come from a plan file; an `oracle.json` has that shape, so on your own task it checks the
+wiring (it is handed the reference on purpose: its score says nothing about a model), and
+`--mistake` leaves out the last action to show a failed run. A real agent chooses each action from
+the replies. `tests/integration/bench-example-agent.test.ts` runs it as a template.
+
+```bash
+npm install @modelcontextprotocol/client@2.3.1     # in the folder you copied minimal-agent.mjs to
+npx practonaut bench --agent "node '$PWD/minimal-agent.mjs' {mcp_config} '$PWD/my-task/oracle.json'" \
+  --world my-task/world --oracle my-task/oracle.json --label "minimal agent"
+```
+
 **Codex.** There is no `codex` preset. Codex reads MCP servers from its own TOML configuration
 (not from a JSON file path), and we found no switch that limits it to MCP tools: its built-in
 shell and file tools stay available, so a Codex score is not comparable to an MCP-only score.

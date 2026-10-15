@@ -154,6 +154,11 @@ All notable changes are recorded here. The format follows
   goal conditions as a person and act through semantic actions, not the GUI.
 - [PADR-0035](docs/adr/0035-no-design-capture-or-invariants-until-needed.md): `design:capture` and
   `design:invariants`, named in PADR-0020, are not built until a review needs them.
+- [`examples/agents/minimal-agent.mjs`](examples/agents/minimal-agent.mjs): a minimal command-template
+  agent without a model (MCP SDK client; observe, act with `baseStep` and `expectedRevision` from the
+  latest reply, check_result), run as a template by `tests/integration/bench-example-agent.test.ts`.
+  The benchmark docs say to name a template's files by absolute path, where an agent's own errors
+  land (`agent.stderr`) and that every template is reported as `generic` (use `--label`).
 
 ## [0.1.0] - 2026-10-13
 
