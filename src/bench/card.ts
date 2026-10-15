@@ -239,7 +239,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   parts.push(`<line class="card-divider" x1="${padX}" y1="${num(y)}" x2="${right}" y2="${num(y)}"/>`);
   const top = y + space(4);
 
-  // Footer, from the bottom: the world, then the caveat that this is not a ranking of models.
+  // Footer, from the bottom: the world, then the caveat about what these runs describe and that they are not sealed.
   const footer = m('card-footer');
   const caveat = wrap(t.cardCaveat, contentWidth, footer);
   const caveatTop = VIEW.height - padY - caveat.length * footer.leading, worldTop = caveatTop - footer.leading;

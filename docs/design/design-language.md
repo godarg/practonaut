@@ -584,7 +584,8 @@ Display, the interval and n in Subhead, the evidence in a list where each fact h
 (§7.4: a filled accent disc with a check for confirmed, a dashed ring for not confirmed, never colour
 alone), and the caveat in Footnote at the foot; the badge is a chip (a fact, never an action). Both are
 drawn from `src/bench/card.css` with the tokens resolved into each SVG; no script, image, link or font; text
-is SVG text, never cut when it is a caveat (a column that would not fit is drawn smaller as a whole).
+is SVG text, never cut when it is a caveat (lines that do not fit in Subhead are set in Footnote; only what
+still does not fit is drawn smaller as a whole).
 
 ## 11. States
 
