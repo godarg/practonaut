@@ -507,8 +507,11 @@ Every caveat is SVG text, not a picture of text; the accessible name (`<title>`)
 header line. No ranking words, no praise. Why a run failed is on the report page, not on the card.
 
 The files need nothing from outside: no script, no link, no image, no font (the reader's system font
-draws the text, so lines are broken by a conservative width estimate; lines that do not fit in Subhead are
-set in Footnote, the next role, and only what still does not fit is drawn smaller as a whole, never cut); the rules of `src/bench/card.css` are copied into each SVG with every
+draws the text, so lines are broken by a width estimate that no common font exceeds: for each character
+the wider of DejaVu Sans and Verdana, the widest common sans fonts, so a narrower font such as SF Pro or
+Segoe UI leaves room at the end of a line; lines that do not fit in Subhead are set in Footnote and the
+fraction in Large Title, one role down, and only what still does not fit is drawn smaller as a whole,
+never cut); the rules of `src/bench/card.css` are copied into each SVG with every
 token replaced by its value from `design/tokens.css`. Text from the report (agent name, label, model,
 world id) is escaped, control and bidi characters shown as `\u{…}`; a long name is cut with an ellipsis.
 The card and the badge depend only on the report, the language and the verification level: the same

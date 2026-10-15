@@ -63,7 +63,7 @@ function classes(node: XmlElement, out = new Set<string>()): Set<string> {
 function factMarks(svg: string): Array<[string, 'confirmed' | 'open']> {
   const out: Array<[string, 'confirmed' | 'open']> = [];
   const walk = (node: XmlElement): void => {
-    const children = childElements(node), fact = children.find(child => child.name === 'text' && child.attributes.get('class') === 'card-fact');
+    const children = childElements(node), fact = children.find(child => child.name === 'text' && /^card-fact(-compact)?$/.test(child.attributes.get('class') ?? ''));
     if (fact) { out.push([textContent(fact), classes(children.find(child => child.name === 'g')!).has('mark-confirmed') ? 'confirmed' : 'open']); return; }
     for (const child of children) walk(child);
   };
@@ -96,12 +96,12 @@ test('the card carries n, the interval, verification, mirror, isolation and the 
 test('a report that is only consistency-checked yields a card and a badge that say so', () => {
   const value = report();
   const checked = card(value), verified = card(value, 'en', 're-verified');
-  assert.ok(hasText(checked, 'Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged'));
+  assert.ok(hasText(checked, 'Consistency-checked only: the runs were not re-judged'));
   assert.equal(hasText(checked, 'Re-verified'), false);
   assert.equal(hasText(verified, 'Consistency-checked'), false);
   assert.equal(factMarks(checked)[0]![1], 'open', 'not re-judged: the dashed ring, not the confirmed mark');
   assert.equal(factMarks(verified)[0]![1], 'confirmed');
-  assert.ok(hasText(card(value, 'de'), 'Nur auf Stimmigkeit geprüft: Die Urteile im Bericht gehen auf, die Läufe wurden aber nicht neu beurteilt'));
+  assert.ok(hasText(card(value, 'de'), 'Nur auf Stimmigkeit geprüft: Die Läufe wurden nicht neu beurteilt'));
   assert.ok(hasText(badge(value), 'consistency-checked only'));
   assert.ok(hasText(badge(value, 'en', 're-verified'), 're-verified'));
   assert.equal(hasText(badge(value, 'en', 're-verified'), 'consistency'), false);
@@ -112,7 +112,7 @@ test('runs without a verdict are counted on the card and the badge, never hidden
   const svg = card(value);
   // Instances: seed 1 has 2 of 3 passed (at least half: passed), seed 2 has 1 of 3: 1/2 instances, 3/6 runs.
   // Wilson 1/2 (by hand): centre 0.5, half-width 0.4054, so 0.0946 … 0.9054, shown 9–91 %.
-  for (const phrase of ['1/2', 'instances passed', '3/6 runs passed', '1 run without a verdict, counted as not passed', 'An instance passed when at least half of all its runs passed; a run without a verdict counts as not passed.']) assert.ok(hasText(svg, phrase), `${phrase}\n${texts(svg).join('\n')}`);
+  for (const phrase of ['1/2', 'instances passed', 'n = 6 runs, 3/6 passed · 2 seeds · 3 repeats', '1 run without a verdict, counted as not passed', 'An instance passed when at least half of all its runs passed.']) assert.ok(hasText(svg, phrase), `${phrase}\n${texts(svg).join('\n')}`);
   assert.deepEqual(factMarks(svg).find(([text]) => text.includes('without a verdict'))?.[1], 'open');
   assert.ok(hasText(badge(value), '1/2 instances passed · 95 % interval 9–91 % · consistency-checked only · built-in baseline · model only · 1 without a verdict'));
   assert.ok(hasText(card(value, 'de'), '1 Lauf ohne Urteil, als nicht bestanden gezählt'));
@@ -143,7 +143,7 @@ test('a single run shows 1/1 with its interval; no percentage below n = 100 and 
       if (n < 100) assert.equal(/%/.test(rest), false, `n = ${n}: ${rest}`);
     }
   }
-  assert.ok(hasText(card(report({ outcomes: Array.from({ length: 1200 }, (_, index) => index < 1001 ? 'pass' : 'fail'), repeats: 2 })), '1001/1200 (83.4 %) runs passed'));
+  assert.ok(hasText(card(report({ outcomes: Array.from({ length: 1200 }, (_, index) => index < 1001 ? 'pass' : 'fail'), repeats: 2 })), 'n = 1200 runs, 1001/1200 (83.4 %) passed · 600 seeds · 2 repeats'));
   assert.ok(hasText(card(report({ outcomes: Array.from({ length: 150 }, (_, index) => index < 113 ? 'pass' : 'fail') })), '113/150 (75 %)'));
 });
 
@@ -158,11 +158,11 @@ test('model-only, a self-reported model and an unrestricted template are open ev
   // The same preset report, only consistency-checked: mirror and isolation are the file's claims, not confirmed.
   assert.deepEqual(factMarks(card(report({ kind: 'preset', mirror: 'required' }))).map(([, kind]) => kind), ['open', 'open', 'open', 'open']);
   assert.deepEqual(factMarks(card(report({ kind: 'builtin', mirror: 'required' }))).map(([text, kind]) => `${kind}: ${text}`), [
-    'open: Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged', 'open: Real Excalidraw mirror: every action confirmed in the real app', 'open: Built-in baseline: no language model, MCP only',
+    'open: Consistency-checked only: the runs were not re-judged', 'open: Real Excalidraw mirror: every action confirmed in the real app', 'open: Built-in baseline: no language model, MCP only',
   ]);
   const template = factMarks(card(report({ kind: 'command', model: null })));
   assert.deepEqual(template.map(([text, kind]) => `${kind}: ${text}`), [
-    'open: Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged', 'open: Model only: not checked against the real Excalidraw',
+    'open: Consistency-checked only: the runs were not re-judged', 'open: Model only: not checked against the real Excalidraw',
     'open: Template: tools not restricted by Practonaut', 'open: Model not reported',
   ]);
   assert.ok(hasText(card(report({ kind: 'command' })), 'Model, self-reported in the command output: pn-model-7'));
@@ -240,8 +240,8 @@ test('long names are cut with an ellipsis in the card; the caveats are never cut
   const all = texts(svg);
   const label = all.find(text => text.startsWith('Bezeichnung: '))!;
   assert.ok(label.endsWith('…'), label);
-  for (const phrase of ['Nur auf Stimmigkeit geprüft: Die Urteile im Bericht gehen auf, die Läufe wurden aber nicht neu beurteilt', 'Vorlage: Werkzeuge nicht von Practonaut eingeschränkt', 'Nur Modell: nicht mit dem echten Excalidraw geprüft',
-    '1 Lauf ohne Urteil, als nicht bestanden gezählt', 'Eine Instanz gilt als bestanden, wenn mindestens die Hälfte all ihrer Läufe bestand; ein Lauf ohne Urteil zählt als nicht bestanden.',
+  for (const phrase of ['Nur auf Stimmigkeit geprüft: Die Läufe wurden nicht neu beurteilt', 'Vorlage: Werkzeuge nicht von Practonaut eingeschränkt', 'Nur Modell: nicht mit dem echten Excalidraw geprüft',
+    '1 Lauf ohne Urteil, als nicht bestanden gezählt', 'Eine Instanz gilt als bestanden, wenn mindestens die Hälfte all ihrer Läufe bestand.',
     'Beschreibt diese Läufe, nicht den Agenten oder sein Modell im Allgemeinen. Nicht versiegelt: Der Agent lief unter demselben Benutzer wie Practonaut.']) assert.ok(all.some(text => text.includes(phrase)), `${phrase}\n${all.join('\n')}`);
   // Every line starts inside the card.
   for (const match of svg.matchAll(/<tspan x="([\d.]+)"/g)) assert.ok(Number(match[1]) >= 0 && Number(match[1]) <= 800, match[0]);

@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type LaunchOptions } from 'playwright-core';
 import { CARD_URL, renderCardPngs } from '../../src/bench/card-png.ts';
-import { renderCard } from '../../src/bench/card.ts';
+import { renderBadge, renderCard } from '../../src/bench/card.ts';
 import { validateBenchReport } from '../../src/bench/report.ts';
 import { launchBrowser } from '../support/browser.ts';
 
@@ -120,29 +120,49 @@ test('the PNG is drawn with JavaScript off and every request but the card blocke
   } finally { await browser.close(); server.close(); }
 });
 
-test('hostile names are measured as they are shown: no line of the card leaves its column', { timeout: 120_000 }, async () => {
-  const report = JSON.parse(readFileSync(REPORT, 'utf8')) as Record<string, any>;
+test('every line of the card stays in its column and the badge text in its chip, in the system font and in a wide fallback font', { timeout: 180_000 }, async () => {
+  const base = JSON.parse(readFileSync(REPORT, 'utf8')) as Record<string, any>;
   // Control and bidi characters are drawn as \u{…} escapes, eight characters each.
-  report.label = `${'\u0007'.repeat(40)} ${'‮'.repeat(40)} end`;
-  report.environment.world.worldId = `${'‮'.repeat(30)}x`;
-  const value = validateBenchReport(report);
+  const hostile = structuredClone(base);
+  hostile.label = `${'\u0007'.repeat(40)} ${'‮'.repeat(40)} end`;
+  hostile.environment.world.worldId = `${'‮'.repeat(30)}x`;
+  // A command template with a long self-reported model: the facts column at its fullest.
+  const template = structuredClone(base);
+  template.label = 'Monatsabschluss Kreditorenbuchhaltung: Rechnungseingangsprüfung und Zahlungsfreigabeverfahrensdokumentation';
+  template.agent = { kind: 'command', name: 'generic', command: ['my-agent', '{mcp_config}'], isolation: 'template-unrestricted', model: 'claude-opus-5-5-20261001-extended-thinking-preview-variant', modelSource: 'command-output', apiKeySource: null, keptEnv: [] };
+  // Only Practonaut's own client measures its round trip: a template's call log has no client timing.
+  for (const run of template.runs) if (run.logs?.calls) run.logs.calls.clientTiming = false;
+  const reports = [validateBenchReport(hostile), validateBenchReport(template), validateBenchReport(base)];
   const tokens = readFileSync(new URL('../../design/tokens.css', import.meta.url), 'utf8');
+  // The reader's system font, and a wide one forced over it: Verdana where installed (macOS, Windows),
+  // else DejaVu Sans (the default sans on Ubuntu).
+  const fonts = { system: '', wide: '<style>svg text, svg tspan { font-family: Verdana, "DejaVu Sans", sans-serif !important; }</style>' };
+  const left = new Set(['card-fraction', 'card-fraction-compact', 'card-words', 'card-interval', 'card-sample', 'card-rule-text']);
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 640 } });
-    for (const language of ['en', 'de'] as const) {
-      await page.setContent(`<!doctype html><body style="margin:0">${renderCard(value, tokens, 'light', language)}</body>`);
-      // Right edge of every text in the card's own units (800 × 400, drawn at 1280 × 640).
+    for (const [font, style] of Object.entries(fonts)) for (const value of reports) for (const language of ['en', 'de'] as const) for (const verification of ['consistency-checked', 're-verified'] as const) {
+      await page.setContent(`<!doctype html><head>${style}</head><body style="margin:0">${renderCard(value, tokens, 'light', language, verification)}</body>`);
+      // Edges of every text in the card's own units (800 × 400, drawn at 1280 × 640).
       const edges = await page.evaluate(() => {
         const svg = document.querySelector('svg')!, box = svg.getBoundingClientRect(), scale = 800 / box.width;
-        return [...svg.querySelectorAll('text')].map(text => { const rect = text.getBoundingClientRect(); return { cls: text.getAttribute('class') ?? '', text: text.textContent ?? '', right: (rect.right - box.left) * scale }; });
+        return [...svg.querySelectorAll('text')].map(text => { const rect = text.getBoundingClientRect(); return { cls: text.getAttribute('class') ?? '', text: text.textContent ?? '', right: (rect.right - box.left) * scale, bottom: (rect.bottom - box.top) * scale }; });
       });
-      const left = new Set(['card-fraction', 'card-words', 'card-interval', 'card-sample', 'card-rule-text']);
+      const where = `${font} font, ${language}, ${verification}`;
       for (const edge of edges) {
-        // The content area ends at 760 (40 units of margin); the left column at 346 (its 306 units after the margin).
-        assert.ok(edge.right <= (left.has(edge.cls) ? 346 : 760) + 0.5, `${language} ${edge.cls} ends at ${edge.right.toFixed(1)}: ${edge.text.slice(0, 60)}`);
+        // The content area ends at 768 (32 units of margin); the left column at 32 + 0.47 × (736 − 32) ≈ 362.9.
+        assert.ok(edge.right <= (left.has(edge.cls) ? 362.9 : 768) + 0.5, `${where}: ${edge.cls} ends at ${edge.right.toFixed(1)}: ${edge.text.slice(0, 60)}`);
+        assert.ok(edge.bottom <= 400, `${where}: ${edge.cls} reaches ${edge.bottom.toFixed(1)}`);
       }
-      assert.ok(edges.some(edge => edge.cls === 'card-label' && edge.text.endsWith('…')), 'the long label is cut with an ellipsis');
+      if (value === reports[0]) assert.ok(edges.some(edge => edge.cls === 'card-label' && edge.text.endsWith('…')), 'the long label is cut with an ellipsis');
+    }
+    for (const [font, style] of Object.entries(fonts)) for (const value of reports) for (const language of ['en', 'de'] as const) {
+      await page.setContent(`<!doctype html><head>${style}</head><body style="margin:0">${renderBadge(value, tokens, language)}</body>`);
+      const fit = await page.evaluate(() => {
+        const chip = document.querySelector('rect')!.getBoundingClientRect(), text = document.querySelector('text')!.getBoundingClientRect();
+        return { left: text.left - chip.left, right: chip.right - text.right };
+      });
+      assert.ok(fit.left >= 0 && fit.right >= 0, `badge (${font} font, ${language}): the text leaves its chip by ${Math.min(fit.left, fit.right).toFixed(1)}`);
     }
   } finally { await browser.close(); }
 });
