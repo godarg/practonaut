@@ -69,7 +69,7 @@ imperatives.
 | Exercise | Übung | A playable task with a visible goal, checked conditions, feedback and a result. |
 | Project | Projekt | Named local author work: recordings, supported rules, task intent and reviewed examples. It can be saved and resumed. |
 | World | Welt (Übungswelt) | The executable package underlying an exercise. |
-| Demonstration | Vorführung | An explicitly recorded sequence with source and rights. It supplies observations for supported behaviour. |
+| Demonstration | Vorführung | An explicitly recorded sequence with source and rights. It supplies observations for supported behaviour. In Practice the bundled example also plays a scripted demonstration of its task (the task's third hint, once); it is labelled as such and is never anyone's attempt or result. |
 | Task | Aufgabe | What to achieve, in plain words. |
 | Goal | Ziel | The short list of checkable statements about the result. Any result that meets them all counts. |
 | Board | Arbeitsfläche | The area where the objects lie and where you act. |
@@ -429,6 +429,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Icon | `icon()` | 24-unit grid, 1.75 stroke, round caps, `currentColor`, always `aria-hidden`. A new icon is drawn in `icons.ts` and shown in the gallery. |
 | Key cap | `<kbd>` | Shows a keyboard shortcut next to its action. |
 | Stepper | `stepper()`, `step()` (`ui/stepper.ts`) | Vertical, numbered list of steps for a guided flow. Each step is a native `<details>` card with a marker (number, check when done, ring when current), a one-line summary when collapsed and a connecting line. Only the current step is open; the others stay editable. At most one filled button per open step. |
+| Step list | `stepList()` (`ui/stepper.ts`) | Static, numbered list of the parts of something that runs by itself (the demonstration): the stepper's marker grammar (number, ring when current, check when done) with a noun title and one line that says the state in words, so the marker never carries it alone. Not interactive; nothing opens. Shown in the gallery running and ended. |
 | Miniature diagram | `miniature()` (`ui/miniature.ts`) | Small read-only SVG of a process (steps with wrapped labels, arrows, loose ends as rings), used for before/after, the prepared case and examples. Always paired with a text alternative; never interactive. |
 | Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens. Player and gallery draw the same scene; behaviour is attached through `decorate`. |
 
@@ -458,7 +459,8 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
 - **One filled button.** Exactly one filled (accent) button is visible, chosen by state: "Check
   result" during the work (tinted before the first action and after a failed check until the board
   changes), "New variant" once the result has passed (placed in the Goal card under the verdict;
-  "Check again" becomes secondary).
+  "Check again" becomes secondary), "Start your own attempt" on a demonstration's board (and none while
+  it plays: the one Stop is the way out).
 - **Canvas** (`canvas`): a 28 px card with the SVG board. The coach pill floats at the top (one
   sentence of guidance derived from the state: what a pending preview needs, how many arrow ends
   are loose, otherwise "choose a step or a connection"; on narrow screens, where the palette shows
@@ -490,6 +492,31 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   world consequence ("what this changed") is neutral information (info tone), not an error; danger
   is reserved for "not met", a rejected action and loose ends; "not yet modelled" is the hatched
   unknown banner with a short title and one explanatory sentence.
+- **Model only.** A session without the real tool says so once, above the head and the inspector
+  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" with
+  one sentence on what gets the real engine (the command in the mono voice, the one download named
+  with its size; or why Chromium did not start; or that `--mirror off` was chosen). It stays for the
+  whole session. One wording family everywhere: the banner, the line under the board ("This is a
+  practice model. In this session the real Excalidraw does not check it.") and "How this is checked"
+  say the same thing in plain words, never "mirrored" or "evidence".
+- **Demonstration** (bundled example only). The head offers "Watch a demonstration" as a plain
+  button beside "New variant"; below 48em it takes its own line, in words, flush with the text
+  above, never a bare symbol. It asks first only when unsolved own work would be cleared ("clears
+  the board and solves this task once"). While it plays the board is its board: the head line
+  beside "Task" reads "Demonstration · n actions" (it never uses up one of the person's attempt
+  numbers), the coach counts its actions, the object the last action touched carries the selection
+  ring until the next one, the palette offers only the one Stop with its key cap (Escape too, but
+  not from Create), every other control is disabled, and a **Demonstration** card at the top of the
+  inspector names the three parts of every result in a step list (section 9) with noun titles that
+  are true in every session ("Actions on the board", "Check in the real Excalidraw", "Result check")
+  and each state in words ("1 of 3", "1 confirmed" or "Not checked in this session", the verdict).
+  A chip says running, finished, stopped or stopped early; stopped early is one sentence for people
+  with the refusal's code under Technical details. History entries carry a "Demonstration" chip. At
+  its end the focus and the scroll go to the Demonstration card's title. The Goal card's verdict
+  says whose board it judged ("The demonstration's board meets all conditions."); there is no Check
+  on its board, and the one filled button is "Start your own attempt" (never "New variant": its pass
+  is not the person's). Leaving its board (own attempt, Reset, task or variant) asks nothing. Its
+  board offers no tools and cannot be exported (an information banner says why).
 - **Narrow screens.** The board is cropped to its content and drawn with larger labels and thicker
   strokes with a minimum SVG width so labels never fall below 12 CSS px. The drawing may
   scroll inside its labelled horizontal region; the page itself reflows. The tray remains the text
@@ -715,3 +742,10 @@ and 390 px (round 2 also at 768 px), with German for the longest pages, on 2026-
 group outline missing on the engine export) and nine smaller ones; all were fixed and the fixes
 checked on new captures before the change was merged
 ([pull request #31](https://github.com/godarg/practonaut/pull/31)).
+
+The first-minute screens of 0.2.0 (model-only banner, the demonstration and its states, the
+refusals on the demonstration's board) were reviewed on captures of every state, light and dark, at
+1280 and 390 px, with German for the longest strings, on 2026-10-15: one must-fix (a refused
+demonstration step shown with the person-facing message) and twelve smaller findings, all fixed and
+checked on new captures; the demonstration's step list joined the kit (§9)
+([pull request #33](https://github.com/godarg/practonaut/pull/33)).

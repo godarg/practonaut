@@ -25,12 +25,14 @@ history marks each change as yours or as the agent's (*Agent · claude-code*).
 Requires Node.js 22.18 or newer (macOS, Linux or Windows).
 
 ```bash
-npx practonaut setup           # once: Chromium for the real Excalidraw engine (about 550 MB)
-npx practonaut                 # opens the example task in your browser
+npx practonaut                 # opens the example task in your browser at once
+npx practonaut setup           # once: the Chromium headless shell for the real Excalidraw engine (about 105–130 MB)
 ```
 
-Without `setup` everything still works, model-only: actions are not confirmed in the real app, and
-Practonaut says so when it starts.
+**Watch a demonstration** in the Player solves the example task once: actions land on the board,
+the real Excalidraw confirms each one, and the result check judges the end. It is never your
+result; Stop or Escape ends it. Before `setup` everything works model-only: actions are not
+confirmed in the real app, and a banner says so and names the download.
 
 Let an agent practise (Claude Code shown; any MCP client works):
 
@@ -179,7 +181,7 @@ reference solution, the near misses and held-out checker data never reach it ove
 ## Requirements
 
 - Node.js ≥ 22.18 and npm.
-- Optional: `npx practonaut setup` downloads Playwright's Chromium once for the real
+- Optional: `npx practonaut setup` downloads Playwright's Chromium headless shell once for the real
   engine. Nothing is downloaded on install; the package has no install script.
 - Local data lives in `~/.practonaut` (or `PRACTONAUT_HOME`). No telemetry, no account. Practonaut's
   own process makes no network calls while practising (`npx` fetches the package and `setup` fetches

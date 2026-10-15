@@ -54,6 +54,10 @@ Node version that ships a recent npm. See npm's
    | `src/checker/state.ts` | add the version to the known session writers (`toolVersion`); keep the earlier ones, so their sessions stay readable |
    | `examples/ci/practonaut-bench.yml` | `PRACTONAUT: practonaut@X.Y.Z`, the exact version the CI recipe installs: it names the first version that has the recipe's commands (0.2.0) and is set to the release being cut at each release, never to a `-dev` version (`tests/unit/ci-workflows.test.ts` requires an exact `X.Y.Z`) |
 
+   After a Playwright update since the last release, the headless-shell download size that `setup`
+   names must belong to the pinned Playwright: `node tools/measure-headless-shell.ts --write`
+   (`tests/unit/setup.test.ts` fails until it has run).
+
    Tests guard the coupling: `--version` must equal `package.json` (`tests/unit/cli.test.ts`),
    `npm run check` compares `server.json` with `package.json`, and the checker must accept a session
    written by the current version (`tests/unit/checker.test.ts`). Then move the `Unreleased`

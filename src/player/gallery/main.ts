@@ -9,7 +9,7 @@ import { drawBoard } from '../ui/board-art.ts';
 import type { BoardScene } from '../ui/board-art.ts';
 import type { IconName } from '../ui/icons.ts';
 import { miniature } from '../ui/miniature.ts';
-import { step, stepper } from '../ui/stepper.ts';
+import { step, stepList, stepper } from '../ui/stepper.ts';
 
 declare const __TOKENS__: { colors: string[]; text: string[]; radii: string[]; space: string[] };
 const root = document.getElementById('app')!;
@@ -130,7 +130,18 @@ function flow(): HTMLElement {
     miniature({ steps: graph.steps.slice(0, 2), arrows: [{ id: 'loop', from: 'a', to: 'a' }, { id: 'free', from: null, to: null }] }, { label: 'Selbstschleife und freier Pfeil', caption: 'Sonderfälle' }),
     miniature(after, { label: 'Schmal', caption: 'Schmal', slots, anchors, narrow: true }),
     miniature(after, { label: '', slots, anchors, compact: true }));
-  return section('Create flow', steps, minis);
+  // Step list (kit): the static parts of something that runs, here the demonstration while it plays and when it ended.
+  const playing = stepList({ label: 'Vorführung läuft' }, [
+    { title: 'Aktionen auf der Arbeitsfläche', detail: '1 von 3', state: 'current' },
+    { title: 'Prüfung im echten Excalidraw', detail: evidence('confirmed', '1 bestätigt'), state: 'current' },
+    { title: 'Ergebnisprüfung', detail: h('span', { class: 'demo-state' }, statusIcon('pending'), h('span', { text: 'Folgt nach der letzten Aktion' })), state: 'upcoming' },
+  ]);
+  const ended = stepList({ label: 'Vorführung beendet' }, [
+    { title: 'Aktionen auf der Arbeitsfläche', detail: '3 von 3', state: 'done' },
+    { title: 'Prüfung im echten Excalidraw', detail: evidence('observed', 'In dieser Sitzung nicht geprüft'), state: 'upcoming' },
+    { title: 'Ergebnisprüfung', detail: h('span', { class: 'demo-state' }, statusIcon('met'), h('span', { text: 'Alle Bedingungen erfüllt.' })), state: 'done' },
+  ]);
+  return section('Create flow', steps, minis, h('div', { class: 'gallery-pair' }, h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Step list: running' }), playing), h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Step list: ended, model only' }), ended)));
 }
 
 function paint(): void {

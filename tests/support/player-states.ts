@@ -15,25 +15,60 @@ import { chromium, type Browser, type BrowserContext, type CDPSession, type Fram
 import { launchBrowser } from "./browser.ts";
 import { startHost } from "../../src/host/server.ts";
 import { validateWorld } from "../../src/world/schema.ts";
-import { TOKEN_HEADER, type HostReply, type HostView, type RunningHost } from "../../src/host/protocol.ts";
+import { TOKEN_HEADER, type DemonstrationStatus, type HostReply, type HostView, type ModelOnlyNotice, type RunningHost } from "../../src/host/protocol.ts";
 
 export type Theme = "light" | "dark";
 export type Language = "en" | "de";
+
+/**
+ * Paces the bundled example's demonstration from the test (the host's pause seam): open, it runs
+ * without waiting; held, it waits before each step until `next()`; `fail()` makes the waiting step
+ * fail, so the Player's "stopped early" state is reachable without a broken real tool.
+ */
+export interface DemonstrationGate {
+  pause(milliseconds: number, signal: AbortSignal): Promise<void>;
+  hold(): void; open(): void; next(): void; fail(): void; waiting(): number;
+}
+export function demonstrationGate(): DemonstrationGate {
+  let held = false;
+  const queue: Array<{ resolve(): void; reject(error: Error): void }> = [];
+  return {
+    pause(_milliseconds, signal) {
+      if (!held || signal.aborted) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const entry = { resolve, reject }; queue.push(entry);
+        signal.addEventListener("abort", () => { const index = queue.indexOf(entry); if (index >= 0) queue.splice(index, 1); resolve(); }, { once: true });
+      });
+    },
+    hold() { held = true; },
+    open() { held = false; for (const entry of queue.splice(0)) entry.resolve(); },
+    next() { queue.shift()?.resolve(); },
+    fail() { queue.shift()?.reject(new Error("demonstration probe failure")); },
+    waiting() { return queue.length; },
+  };
+}
+/** What `npx practonaut` without Chromium tells the Player. */
+export const MISSING_CHROMIUM: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup", download: { name: "Chromium headless shell", megabytes: 105 } };
 
 export interface PlayerSession {
   localDirectory: string; host: RunningHost; browser: Browser; context: BrowserContext; page: Page; cdp: CDPSession;
   /** Requests to anything but the host and its editor origin (aborted and recorded). */
   external: string[];
+  /** The demonstration's pace, held or open by the states that show it. */
+  demonstration: DemonstrationGate;
   observe(): Promise<HostView>;
   post(route: string, extra?: object): Promise<HostReply<unknown>>;
   close(): Promise<void>;
 }
 
-/** Host with the editor and the create flow (phase3), Chromium with reduced motion, offline. */
-export async function startPlayer(options: { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off' } = {}): Promise<PlayerSession> {
+/** Host with the editor and the create flow (phase3), Chromium with reduced motion, offline. Like
+ * `npx practonaut`, the bundled example offers its demonstration, and a model-only session says why. */
+export async function startPlayer(options: { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off'; modelOnly?: ModelOnlyNotice } = {}): Promise<PlayerSession> {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "pn-design-"));
   const world = validateWorld(JSON.parse(readFileSync("examples/worlds/flow-diagram/world.json", "utf8")));
-  const host = await startHost(world, { phase3: options.phase3??true,mirror:options.mirror??'required',taskId: "T3", seed: 42, localDirectory: directory, tokenDirectory: join(directory, "credentials"), requireOffline: process.env.PN_REQUIRE_OFFLINE === "1" });
+  const gate = demonstrationGate(), mirror = options.mirror ?? 'required';
+  const host = await startHost(world, { phase3: options.phase3??true,mirror,taskId: "T3", seed: 42, localDirectory: directory, tokenDirectory: join(directory, "credentials"), requireOffline: process.env.PN_REQUIRE_OFFLINE === "1",
+    demonstration: true, demonstrationPause: gate.pause, ...(mirror === 'off' ? { modelOnly: options.modelOnly ?? MISSING_CHROMIUM } : {}) });
   const browser = options.browser ?? await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: options.width ?? 1280, height: options.height ?? 900 }, colorScheme: options.theme ?? "light", reducedMotion: "reduce", serviceWorkers: "block" });
   const external: string[] = [];
@@ -66,9 +101,28 @@ export async function startPlayer(options: { width?: number; height?: number; th
     return await response.json() as HostReply<unknown>;
   };
   return {
-    localDirectory: directory, host, browser, context, page, cdp, external, observe, post,
-    async close() { await context.close(); if (!options.browser) await browser.close(); await host.close(); await rm(directory, { recursive: true, force: true }); },
+    localDirectory: directory, host, browser, context, page, cdp, external, demonstration: gate, observe, post,
+    async close() { gate.open(); await context.close(); if (!options.browser) await browser.close(); await host.close(); await rm(directory, { recursive: true, force: true }); },
   };
+}
+
+/** The demonstration status the Player would get on a reload. */
+export async function demonstrationStatus(s: PlayerSession): Promise<DemonstrationStatus | null> {
+  const reply = await (await fetch(s.host.origin + "/api/resume", { headers: { [TOKEN_HEADER]: s.host.token } })).json() as HostReply<{ demonstration?: { status: DemonstrationStatus | null } }>;
+  if (!reply.ok) throw new Error(reply.error.code);
+  return reply.value.demonstration?.status ?? null;
+}
+/** A running demonstration is stopped and its pace opened, so the next state starts from a plain attempt. */
+async function endDemonstration(s: PlayerSession): Promise<boolean> {
+  const status = await demonstrationStatus(s);
+  if (!status) return false;
+  if (status.state === "running") {
+    await fetch(s.host.origin + "/api/demonstration/stop", { method: "POST", headers: { "Content-Type": "application/json", [TOKEN_HEADER]: s.host.token }, body: "{}" });
+    s.demonstration.open();
+    for (let i = 0; i < 200 && (await demonstrationStatus(s))?.state === "running"; i++) await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  s.demonstration.open();
+  return true;
 }
 
 /** Two animation frames: a paint turn after SSE data or a re-render. */
@@ -112,7 +166,7 @@ export async function closeNativeOverlay(page: Page): Promise<void> {
   nativeOverlays.delete(page);
 }
 
-async function mode(page: Page, id: "board" | "editor" | "author"): Promise<void> {
+export async function mode(page: Page, id: "board" | "editor" | "author"): Promise<void> {
   await closeNativeOverlay(page);
   await closeSheets(page);
   if (await page.getByTestId("mode-" + id).getAttribute("aria-pressed") !== "true") await page.getByTestId("mode-" + id).click();
@@ -133,8 +187,10 @@ export async function practiceBaseline(s: PlayerSession): Promise<void> {
   await restoreEventStream(s);
   await mode(s.page, "board");
   await s.page.keyboard.press("Escape");
+  // A demonstration's attempt is never a baseline, even when it stopped before its first action.
+  const demonstrated = await endDemonstration(s);
   const view = await s.observe();
-  if (view.step || view.hintsOpened || view.log.length) {
+  if (demonstrated || view.step || view.hintsOpened || view.log.length) {
     const reply = await s.post("reset", { confirmed: true });
     if (!reply.ok) throw new Error(`reset refused: ${JSON.stringify(reply)}`);
     const after = await s.observe();
@@ -151,6 +207,34 @@ export async function practiceBaseline(s: PlayerSession): Promise<void> {
 async function act(s: PlayerSession, action: object): Promise<void> {
   const reply = await s.post("act", { action });
   if (!reply.ok) throw new Error(`action refused: ${JSON.stringify(reply)}`);
+}
+
+async function until(condition: () => boolean | Promise<boolean>, what: string, ms = 15_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!await condition()) { if (Date.now() > deadline) throw new Error(`not reached: ${what}`); await new Promise(resolve => setTimeout(resolve, 20)); }
+}
+/** Plays the bundled example's demonstration from the Player's own button up to `stage`: one action
+ * landed and the next one waiting (`running`), its end with the verdict (`finished`), stopped by
+ * the Stop button after one action (`stopped`), or a step that fails after one action (`failed`). */
+export async function demonstrate(s: PlayerSession, stage: "running" | "finished" | "stopped" | "failed"): Promise<void> {
+  if (stage === "finished") s.demonstration.open(); else s.demonstration.hold();
+  await s.page.getByTestId("demo-start").click();
+  const card = s.page.getByTestId("demonstration");
+  if (stage === "finished") { await card.and(s.page.locator("[data-state=finished]")).waitFor(); await s.page.locator(".verdict.pass").waitFor(); return; }
+  await until(() => s.demonstration.waiting() === 1, "the demonstration waits before its first action");
+  s.demonstration.next();
+  await until(() => s.demonstration.waiting() === 1, "the first action landed and the next one waits");
+  await until(async () => await s.page.getByTestId("history-entry").count() === 1 && await card.getAttribute("data-done") === "1", "the Player shows the first action");
+  if (stage === "stopped") { await s.page.getByTestId("demo-stop").click(); await card.and(s.page.locator("[data-state=stopped]")).waitFor(); }
+  if (stage === "failed") { s.demonstration.fail(); await s.page.getByTestId("demo-failed").waitFor(); }
+  await settle(s.page);
+}
+/** Model-only sessions run without the create flow: a fresh attempt without the workspace waits. */
+export async function modelBaseline(s: PlayerSession): Promise<void> {
+  const demonstrated = await endDemonstration(s);
+  const view = await s.observe();
+  if (demonstrated || view.step || view.hintsOpened) { const reply = await s.post("reset", { confirmed: true }); if (!reply.ok) throw new Error(`reset refused: ${JSON.stringify(reply)}`); }
+  await s.page.reload(); await s.page.getByTestId("board").waitFor(); await settle(s.page);
 }
 
 async function checkResult(s: PlayerSession, verdict: "pass" | "fail"): Promise<void> {
@@ -368,6 +452,19 @@ export const PLAYER_STATES: StateDef[] = [
     await practiceBaseline(s);await s.page.route('**/api/export',route=>route.fulfill({status:413,json:{ok:false,error:{code:'result_too_large',message:'Export reply exceeded its limit'}}}));
     try{await s.page.getByTestId('export-prepare').click();await s.page.getByTestId('export-error').waitFor();}finally{await s.page.unroute('**/api/export');}
   }},
+  // The bundled example's demonstration (roadmap 0.2.0, Should 7), here with the real tool mirrored.
+  { id: "demo-confirm", label: "Demonstration asks before it clears the person's own work", workspace: "board", async enter(s) {
+    await practiceBaseline(s); await act(s, { name: "move_step", params: { id: "a", x: 60, y: 160 } });
+    await s.page.getByTestId("history-entry").first().waitFor();
+    await s.page.getByTestId("demo-start").click(); await s.page.getByTestId("demo-confirm").waitFor();
+  } },
+  { id: "demo-running", label: "Demonstration playing: an action landed, confirmed by the real tool", workspace: "board", view: ".canvas", async enter(s) { await practiceBaseline(s); await demonstrate(s, "running"); } },
+  { id: "demo-finished", label: "Demonstration finished: the result check's verdict and an own attempt", workspace: "board", view: "[data-testid=check-result]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "finished"); } },
+  { id: "demo-stopped", label: "Demonstration stopped after its first action", workspace: "board", view: "[data-testid=demonstration]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "stopped"); } },
+  { id: "demo-failed", label: "Demonstration stopped early by a refused step", workspace: "board", view: "[data-testid=demonstration]", async enter(s) { await practiceBaseline(s); await demonstrate(s, "failed"); } },
+  { id: "practice-export-demonstration", label: "A demonstration's board cannot be saved as a result", workspace: "board", view: "[data-testid=export-panel]", async enter(s) {
+    await practiceBaseline(s); await demonstrate(s, "finished"); await s.page.getByTestId("export-demonstration").waitFor();
+  } },
   { id: "practice-unmodelled", label: "Not yet modelled (practice)", workspace: "board", async enter(s) {
     await practiceBaseline(s);
     // An action outside the world's declared actions, as an agent could send it; the host
@@ -396,6 +493,17 @@ export const PLAYER_STATES: StateDef[] = [
     await moreToolsState(s);
   } },
   ...NATIVE_SPREADSHEET_PROBES.map(probe=>({id:'editor-spreadsheet-preview-range-'+probe.rangeIndex,label:'Native spreadsheet preview, original range '+probe.rangeIndex,workspace:'editor' as const,view:'[data-testid=real-editor]',reenterOnViewportChange:true,nativeFixture:{textSha256:createHash('sha256').update(spreadsheetFixture(probe.rangeIndex)).digest('hex'),rangeIndex:probe.rangeIndex,codepoints:probe.codepoints,originalFontSha256:probe.sourceSha256,rangeManifestSha256:NATIVE_SPREADSHEET_MANIFEST_SHA,glyphUsage:'UNBEKANNT' as const},async enter(session:PlayerSession){await spreadsheetState(session,probe.rangeIndex);}})),
+  // Last of the editor states: it leaves the demonstration's attempt behind (the next state's baseline resets it).
+  { id: "editor-demonstration", label: "Excalidraw workspace on the demonstration's board: an edit is refused and says why", workspace: "editor", async enter(s) {
+    await practiceBaseline(s); await demonstrate(s, "finished");
+    await mode(s.page, "editor");
+    await wide(s.page, async () => {
+      const frame = await editorFrame(s.page);
+      const p = await editorPoint(s.page, frame, "a"); await s.page.mouse.click(p.x, p.y);
+      await frame.getByTestId("color-top-pick-#e03131").click();
+      await s.page.locator('[data-testid="phase3-status"].error').filter({ hasText: /demonstration|Vorführung/ }).waitFor({ timeout: 15_000 });
+    });
+  } },
 ];
 
 /**
@@ -641,7 +749,13 @@ export const CREATE_PROGRESS_STATES: StateDef[] = CREATE_STEPS.slice(1).map((_, 
 export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',label:'Model-only host refuses the native/session pair',workspace:'board',view:'[data-testid=export-panel]',async enter(s){
   if((await s.observe()).mirror!=='off')throw new Error('model-only state requires a real model-only host');
   await s.page.getByTestId('export-model-only').waitFor();
-}}];
+}},
+// `npx practonaut` without Chromium: the Player opens at once and says what it does not check yet.
+{ id: 'model-only-banner', label: 'Model-only session: not yet checked against the real Excalidraw, with the named download', workspace: 'board', async enter(s) {
+  await modelBaseline(s); await s.page.getByTestId('model-only-banner').waitFor();
+} },
+{ id: 'demo-running-model-only', label: 'Demonstration playing in a model-only session', workspace: 'board', view: '.canvas', async enter(s) { await modelBaseline(s); await demonstrate(s, 'running'); } },
+{ id: 'demo-finished-model-only', label: 'Demonstration finished in a model-only session', workspace: 'board', view: '[data-testid=check-result]', async enter(s) { await modelBaseline(s); await demonstrate(s, 'finished'); } }];
 
 /** Shell states need a fresh page whose bootstrap is held (loading) or already spent (failure). */
 export async function shellStates(s: PlayerSession, theme: Theme, language: Language, viewport: { width: number; height: number }, visit: (state: "shell-loading" | "shell-error", page: Page) => Promise<void>): Promise<void> {

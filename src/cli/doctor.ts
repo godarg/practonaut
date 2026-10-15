@@ -2,10 +2,11 @@ import { cliText } from './messages.ts';
 // Environment checks. `runtime` is what the installed CLI needs; `dev` adds the repository
 // tool chain (used by `practonaut doctor --dev` and `npm run doctor`).
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { spawnable } from "../platform/spawnable.ts";
 import { browserAdvice, chromiumStarts, type StartResult } from "./browser-start.ts";
+import { headlessShellDownload } from "./chromium-download.ts";
 
 export const MIN_NODE: readonly [number, number] = [22, 18];
 
@@ -32,20 +33,27 @@ export function nodeVersionOk(version: string): boolean {
   return major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
 }
 
-/** Playwright installs the headless shell next to Chromium as chromium_headless_shell-<revision>. */
+const SHELL_EXECUTABLES = ['chrome-headless-shell', 'chrome-headless-shell.exe', 'headless_shell', 'headless_shell.exe'];
+/**
+ * Playwright installs the headless shell next to Chromium as chromium_headless_shell-<revision>,
+ * whether or not the headed browser (`executable`) was installed too. The mirror only starts
+ * Chromium headless, which is the headless shell, so this is the one thing it needs.
+ */
 export function headlessShellInstalled(executable: string): boolean {
   let directory = dirname(executable);
   while (dirname(directory) !== directory && !/^chromium-\d+$/.test(basename(directory))) directory = dirname(directory);
   if (!/^chromium-\d+$/.test(basename(directory))) return false;
-  try { return statSync(join(dirname(directory), basename(directory).replace('chromium-', 'chromium_headless_shell-'))).isDirectory(); } catch { return false; }
+  const shell = join(dirname(directory), basename(directory).replace('chromium-', 'chromium_headless_shell-'));
+  try {
+    return readdirSync(shell, { withFileTypes: true }).some(entry => entry.isDirectory() && SHELL_EXECUTABLES.some(file => existsSync(join(shell, entry.name, file))));
+  } catch { return false; }
 }
 export async function chromiumCheck(required: boolean): Promise<Check> {
   const name = "playwright chromium (cache)";
   try {
     const pw = (await import("playwright-core")) as { chromium: { executablePath(): string } };
-    const p = pw.chromium.executablePath();
-    const ok = existsSync(p) && headlessShellInstalled(p);
-    return { name, required, ok, detail: ok ? cliText("chromiumPresent") : cliText("chromiumAbsent") };
+    const ok = headlessShellInstalled(pw.chromium.executablePath());
+    return { name, required, ok, detail: ok ? cliText("chromiumPresent") : cliText("chromiumAbsent", headlessShellDownload()) };
   } catch {
     return { name, required, ok: false, detail: cliText("playwrightAbsent") };
   }

@@ -276,8 +276,8 @@ export const CLI_CATALOG = {
     "de": "--client benötigt einen absoluten Pfad"
   },
   "setupHelp": {
-    "en": "Usage: {cli} setup\nExplicitly download the pinned Playwright Chromium runtime, or reuse its existing cache.\n",
-    "de": "Verwendung: {cli} setup\nGepinntes Playwright-Chromium ausdrücklich herunterladen oder vorhandenen Cache verwenden.\n"
+    "en": "Usage: {cli} setup\nExplicitly download the Chromium headless shell for the real Excalidraw mirror, or reuse Playwright's cache.\n",
+    "de": "Verwendung: {cli} setup\nChromium Headless Shell für die echte Excalidraw-Spiegelung ausdrücklich herunterladen oder Playwrights Cache verwenden.\n"
   },
   "setupUsage": {
     "en": "{cli} setup takes no arguments.\n",
@@ -288,12 +288,12 @@ export const CLI_CATALOG = {
     "de": "setup: Gepinnte Playwright-Laufzeit fehlt. Gelockte Abhängigkeiten erneut installieren.\n"
   },
   "setupStart": {
-    "en": "setup: explicit Chromium provisioning; download sources and cache locations follow.\n",
-    "de": "setup: Chromium ausdrücklich bereitstellen; Downloadquellen und Cache-Pfade folgen.\n"
+    "en": "setup: one download for the real Excalidraw mirror: {name} {version}, about {size} MB (nothing is fetched when Playwright's cache already has it). Sources and the cache folder follow.\n",
+    "de": "setup: ein Download für die echte Excalidraw-Spiegelung: {name} {version}, etwa {size} MB (nichts wird geladen, wenn Playwrights Cache sie schon hat). Quellen und Cache-Ordner folgen.\n"
   },
   "setupDoneAt": {
-    "en": "setup: Chromium is ready in {path} ({size} MB for the browser and its headless shell). Practice can now run offline with the real Excalidraw mirror.\n",
-    "de": "setup: Chromium liegt bereit in {path} ({size} MB für Browser und Headless-Shell). Üben läuft nun offline mit echter Excalidraw-Spiegelung.\n"
+    "en": "setup: the {name} is ready in {path} ({size} MB on disk). Practice now runs offline with the real Excalidraw mirror; start {cli} again.\n",
+    "de": "setup: Die {name} liegt bereit in {path} ({size} MB auf der Festplatte). Üben läuft nun offline mit echter Excalidraw-Spiegelung; {cli} neu starten.\n"
   },
   "setupDone": {
     "en": "setup: Chromium provisioning completed. Runtime may now operate offline.\n",
@@ -804,8 +804,8 @@ export const CLI_CATALOG = {
     "de": "Der Link gilt einmal und läuft nach 5 Minuten ab. o und Enter erzeugt einen neuen Link; Ctrl+C beendet die Sitzung.\nAgent anbinden: {cli} mcp --host {origin} --token-file {path}\n"
   },
   "mirrorFallback": {
-    "en": "practonaut: Chromium is not installed, so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence. Run {cli} setup once to enable the mirror.\n",
-    "de": "practonaut: Chromium ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup ausführen, um die Spiegelung einzuschalten.\n"
+    "en": "practonaut: Chromium is not installed, so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence. Run {cli} setup once to enable the mirror (one download: {name}, about {size} MB).\n",
+    "de": "practonaut: Chromium ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup ausführen, um die Spiegelung einzuschalten (ein Download: {name}, etwa {size} MB).\n"
   },
   "openFailed": {
     "en": "practonaut: could not open a browser; open this link yourself: {url}\n",
@@ -880,12 +880,12 @@ export const CLI_CATALOG = {
     "de": "Vorhanden (echte Excalidraw-Spiegelung verfügbar)"
   },
   "chromiumAbsent": {
-    "en": "not installed: practice runs model-only (run {cli} setup; explicit download)",
-    "de": "Nicht installiert: Übung läuft nur im Modell ({cli} setup ausführen; ausdrücklicher Download)"
+    "en": "not installed: practice runs model-only (run {cli} setup; explicit download: {name}, about {size} MB)",
+    "de": "Nicht installiert: Übung läuft nur im Modell ({cli} setup ausführen; ausdrücklicher Download: {name}, etwa {size} MB)"
   },
   "browserRuntimeMissing": {
-    "en": "Chromium is not installed, but this command needs the real Excalidraw mirror. Run {cli} setup once (an explicit download), then retry, or use --mirror off for a model-only session.",
-    "de": "Chromium ist nicht installiert, dieser Befehl braucht aber die echte Excalidraw-Spiegelung. Einmal {cli} setup ausführen (ausdrücklicher Download) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
+    "en": "Chromium is not installed, but this command needs the real Excalidraw mirror. Run {cli} setup once (an explicit download: {name}, about {size} MB), then retry, or use --mirror off for a model-only session.",
+    "de": "Chromium ist nicht installiert, dieser Befehl braucht aber die echte Excalidraw-Spiegelung. Einmal {cli} setup ausführen (ausdrücklicher Download: {name}, etwa {size} MB) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
   },
   "playwrightAbsent": {
     "en": "playwright-core not installed",
