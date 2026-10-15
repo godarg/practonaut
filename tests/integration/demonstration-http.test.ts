@@ -29,27 +29,40 @@ async function post(host: RunningHost, route: string, body: unknown, extra: Reco
   return { status: response.status, ...(reply.error ? { code: reply.error.code } : {}), ...(reply.ok ? { value: reply.value } : {}) };
 }
 async function revision(host: RunningHost): Promise<number> { return (await (await fetch(host.origin + '/api/observe', { headers: headers(host) })).json()).value.revision; }
-/** The Player's event stream, read until `until` holds for the demonstration events seen. */
-async function events(host: RunningHost, until: (statuses: Array<DemonstrationStatus | null>) => boolean): Promise<Array<DemonstrationStatus | null>> {
-  const controller = new AbortController(); const statuses: Array<DemonstrationStatus | null> = [];
-  const response = await fetch(host.origin + '/api/events', { headers: headers(host), signal: controller.signal });
-  const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = '';
-  // Generous: on a loaded CI runner the real mirror confirms each step slowly.
-  const deadline = setTimeout(() => controller.abort(), 90_000);
-  try {
-    while (!until(statuses)) {
-      const chunk = await reader.read(); if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      let split: number;
-      while ((split = buffer.indexOf('\n\n')) >= 0) {
-        const data = buffer.slice(0, split).split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5)).join('\n'); buffer = buffer.slice(split + 2);
-        const event = JSON.parse(data) as HostEvent;
-        if (event.type === 'demonstration') statuses.push(event.status);
+/**
+ * The Player's event stream, read until `until` holds for the demonstration events seen. A new stream
+ * first gets the current status; `subscribed` resolves when it has, so a request sent afterwards is
+ * seen by this stream. (A request sent before could reach the host first: the stream then starts
+ * after it and waits for an event that already happened; CI saw that as an AbortError at the deadline.)
+ */
+function events(host: RunningHost, until: (statuses: Array<DemonstrationStatus | null>) => boolean): { subscribed: Promise<void>; statuses: Promise<Array<DemonstrationStatus | null>> } {
+  let ready!: () => void; const subscribed = new Promise<void>(resolve => { ready = resolve; });
+  const statuses = (async () => {
+    const controller = new AbortController(); const seen: Array<DemonstrationStatus | null> = [];
+    const response = await fetch(host.origin + '/api/events', { headers: headers(host), signal: controller.signal });
+    const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = '';
+    // A bound for a broken stream only: model-only, the demonstration's own pacing takes 5.4 s.
+    const deadline = setTimeout(() => controller.abort(), 30_000);
+    try {
+      while (!until(seen)) {
+        const chunk = await reader.read(); if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let split: number;
+        while ((split = buffer.indexOf('\n\n')) >= 0) {
+          const data = buffer.slice(0, split).split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5)).join('\n'); buffer = buffer.slice(split + 2);
+          const event = JSON.parse(data) as HostEvent;
+          if (event.type === 'demonstration') { seen.push(event.status); ready(); }
+        }
       }
-    }
-  } finally { clearTimeout(deadline); controller.abort(); }
-  return statuses;
+    } finally { clearTimeout(deadline); controller.abort(); ready(); }
+    return seen;
+  })();
+  // A stream that fails before its first event releases the waiter; the failure surfaces from `statuses`.
+  void statuses.catch(() => ready());
+  return { subscribed, statuses };
 }
+/** The demonstration has ended, however it ended (a failed or stopped one shows in the assertion, not as a wait). */
+const ended = (statuses: Array<DemonstrationStatus | null>): boolean => statuses.some(status => status !== null && status.state !== 'running');
 
 test('the bundled example offers the demonstration: Player metadata, confirmation, ownership, stop and the event stream', { timeout: 240_000 }, async () => {
   const f = await fixture(await example(), { demonstration: true, modelOnly: notice });
@@ -79,11 +92,12 @@ test('the bundled example offers the demonstration: Player metadata, confirmatio
     assert.deepEqual(await post(f.host, '/api/act', { expectedRevision: 0, action: { name: 'add_step', params: { frameId: 'flow-frame', label: 'x', x: 0, y: 0, width: 180, height: 100, fontFamily: 3 } }, actor: { kind: 'demonstration' } }), { status: 400, code: 'invalid_request' });
     assert.equal(await revision(f.host), 0, 'every refusal left the session unchanged');
 
-    const watched = events(f.host, statuses => statuses.some(status => status?.state === 'finished'));
+    const watched = events(f.host, ended);
+    await watched.subscribed;
     const started = await post(f.host, '/api/demonstration', { expectedRevision: 0, confirmed: true });
     assert.equal(started.status, 200); assert.deepEqual(started.value, { state: 'running', taskId: 'T1', attempt: 2, total: 5, done: 0 });
     assert.deepEqual(await post(f.host, '/api/act', { expectedRevision: await revision(f.host), action: { name: 'move_step', params: { id: 'x', x: 0, y: 0 } } }), { status: 409, code: 'demonstration_running' });
-    const statuses = await watched;
+    const statuses = await watched.statuses;
     assert.deepEqual(statuses[0], null, 'a new stream first learns the current demonstration status');
     assert.deepEqual(statuses.filter(status => status?.state === 'running').map(status => status!.done), [0, 1, 2, 3, 4, 5]);
     assert.deepEqual(statuses.at(-1), { state: 'finished', taskId: 'T1', attempt: 2, total: 5, done: 5, passed: true });
@@ -107,8 +121,9 @@ test('the bundled example offers the demonstration: Player metadata, confirmatio
     assert.deepEqual([checked.value.passed, checked.value.demonstration, checked.value.practiceEvidence], [true, true, false]);
     assert.deepEqual(await post(f.host, '/api/demonstration/stop', {}), { status: 200, value: statuses.at(-1) }, 'stop after the end changes nothing');
     const released = events(f.host, statuses => statuses.length >= 2);
+    await released.subscribed;
     assert.equal((await post(f.host, '/api/reset', { expectedRevision: view.revision, confirmed: true })).status, 200);
-    assert.deepEqual(await released, [statuses.at(-1), null], 'a reset ends the demonstration attempt');
+    assert.deepEqual(await released.statuses, [statuses.at(-1), null], 'a reset ends the demonstration attempt');
     const resumedAfter = await (await fetch(f.host.origin + '/api/resume', { headers: headers(f.host) })).json();
     assert.equal(resumedAfter.value.demonstration.status, null);
   } finally { await f.close(); }
