@@ -484,21 +484,24 @@ npx practonaut report ~/.practonaut/bench/<id>/report.json --verify --card out/c
 
 `--card <out>` writes a 1280 × 640 card (2:1, the size of a GitHub social preview) four times:
 `<out>-light.svg`, `<out>-dark.svg`, `<out>-light.png` and `<out>-dark.png` (a `.svg` or `.png` at the
-end of `<out>` is dropped first). The PNGs are drawn from the same SVGs by the local headless Chromium
+end of `<out>` is dropped first); when `<out>` ends with a separator or is a folder, the files are
+`card-light.svg` … inside it. The PNGs are drawn from the same SVGs by the local headless Chromium
 that `practonaut setup` downloads, started like the mirror's ([PADR-0032](../adr/0032-chromium-sandbox-stays-on.md):
 sandbox first, said when Linux refuses it), with JavaScript off and every request but the card aborted.
 Without a Chromium that starts, `--card` exits 3 (`browser_runtime_missing` or `browser_start_failed`)
-and writes nothing. `--badge <out.svg>` writes one line in a chip, light by default and dark where the
+and writes no card file (other outputs of the same command, such as `--html`, may already be written). `--badge <out.svg>` writes one line in a chip, light by default and dark where the
 reader's system prefers it; it needs no browser. Both work with `--lang de`.
 
-What they show, and nothing more: the fraction (of instances when there are repeats, with the runs
-beside it on the card) and its 95 % Wilson interval, as in the report (§5: whole percent, rounded outward;
+What they show, and nothing more: the fraction in one unit, the instance (with one run per instance
+"16/16 passed … over 16 instances (one run each)"; with repeats the instances, and the runs beside them
+on the card) and its 95 % Wilson interval, as in the report (§5: whole percent, rounded outward;
 a percentage of the fraction only from 100 runs); n (runs, seeds, repeats); the verification status —
 consistency-checked unless `--verify` re-judged the runs, and a consistency-checked report says so on
 both; the mirror; the isolation level; the model the client reported about itself (card); runs without
 a verdict, by count; an interruption. On the card each of these facts has its evidence mark (a filled
 disc with a check where it is confirmed, a dashed ring where it is not: not re-judged, model only, tools
-not restricted, self-reported, no verdict), so status is never colour alone, and a footer says that the
+not restricted, self-reported, no verdict; without `--verify` the mirror and the isolation level are the
+file's claims and get the dashed ring too), so status is never colour alone, and a footer says that the
 card describes these runs, not the agent or its model in general, and that the bench is not sealed.
 Every caveat is SVG text, not a picture of text; the accessible name (`<title>`) is the report's whole
 header line. No ranking words, no praise. Why a run failed is on the report page, not on the card.
