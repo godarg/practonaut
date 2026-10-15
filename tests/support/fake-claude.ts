@@ -19,9 +19,10 @@
 //   fakeClaude(dir) writes an executable `claude` into dir; put dir first on PATH.
 import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const CLIENT = fileURLToPath(new URL('../../src/bench/mcp-client.ts', import.meta.url));
+// A file: URL, not a path: on Windows the ESM loader refuses an absolute path ("C:" is no URL
+// scheme), the stand-in would end before its first tool call and every run would be an infra_error.
+const CLIENT = new URL('../../src/bench/mcp-client.ts', import.meta.url).href;
 
 export async function fakeClaude(dir: string): Promise<void> {
   const script = join(dir, 'fake-claude.mjs');

@@ -5,9 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from '../../src/challenge/git.ts';
 
 test('a declaration is used only committed, unchanged and pushed; its versions are counted', { timeout: 120_000 }, async () => {
@@ -32,6 +32,14 @@ test('a declaration is used only committed, unchanged and pushed; its versions a
     git(work, 'remote', 'add', 'origin', remote); git(work, 'push', '-u', 'origin', 'main');
     const pushed = declarationCommit(file);
     assert.deepEqual(pushed, { commit: git(work, 'rev-parse', 'HEAD'), versions: 1 });
+    // A path spelled otherwise than git's top level names the same file (Windows spells the temporary
+    // folder with an 8.3 short name; a case-insensitive disk takes another letter case).
+    const respelled = join(dirname(dir), basename(dir).toUpperCase(), 'work', 'docs', 'benchmarks', 'challenge', 'repair-round-1.declaration.json');
+    if (existsSync(respelled)) {
+      assert.deepEqual(declarationCommit(respelled), pushed);
+      assert.deepEqual(declarationVersions(respelled).map(version => version.commit), [pushed.commit]);
+      assert.equal(declarationAtCommit(respelled, pushed.commit), '{"round":1}\n');
+    }
     assert.deepEqual(committedFiles(folder), ['repair-round-1.declaration.json']);
     // Changed in the working tree, staged or not: refused.
     await writeFile(file, '{"round":2}\n');

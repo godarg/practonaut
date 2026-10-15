@@ -174,7 +174,8 @@ test('a set is one world with one task per seed; seeds are distinct and held-out
     assert.equal(made.status, 0, made.stderr);
     const args = tool(['args', join(dir, 'dev')]);
     assert.equal(args.status, 0, args.stderr);
-    assert.match(args.stdout, /^--world \S+\/world --oracle \S+tight-budget-1\.json,\S+tight-budget-2\.json --seed-list 1 --repeats 1 --max-actions 50 --timeout 600 --stop-on-infra\n$/);
+    // The paths as the platform spells them (backslashes on Windows).
+    assert.equal(args.stdout, `--world ${join(dir, 'dev', 'world')} --oracle ${join(dir, 'dev', 'oracles', 'tight-budget-1.json')},${join(dir, 'dev', 'oracles', 'tight-budget-2.json')} --seed-list 1 --repeats 1 --max-actions 50 --timeout 600 --stop-on-infra\n`);
     const checked = tool(['verify', join(dir, 'dev')]);
     assert.equal(checked.status, 0, checked.stderr);
     assert.match(checked.stdout, /references passed 2\/2; near misses failed 8\/8/);

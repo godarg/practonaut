@@ -274,7 +274,7 @@ holds the checker's output is listed as judged and re-verified exactly as `repor
 folder whose artifacts or evidence were changed is refused, naming the run), every other run as an
 `infra_error` (`interrupted`, or the limit its client reported), and the output names the tasks to
 bench again. It refuses while the killed bench's agent still runs (`agent.pid` in the run folder:
-end its process group first), a folder that already holds a report, and run folders outside the
+end its process group first, on Windows its process tree with `taskkill /T /F /PID <pid>`), a folder that already holds a report, and run folders outside the
 plan of the given arguments. The world and the references enter the folder only then, as with any
 report.
 
@@ -677,9 +677,12 @@ reported as a sanity check and never change it.
 does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a
 branch of its own for the round (`git switch -c challenge/<family>-round-<k>` from the commit to be
 gated, also from a detached checkout, then `git push -u origin HEAD`). The declaration is committed
-and pushed on that branch, and the gate runs there before any squash or rebase. **Keep the branch** (never delete it): the
-held-out set records the declaration's commit, which must stay reachable. After the round's branch
-is squash-merged into main, `gate` is not expected to run again on main.
+and pushed on that branch, and the gate runs there before any squash or rebase. **Keep the
+branch** (never delete it): the held-out set records the declaration's commit, which must stay
+reachable. After the round's branch is squash-merged into main, `gate` is not expected to run again
+on main. The commands below are for a POSIX shell (bash or zsh; on Windows Git Bash or WSL):
+`$(node tools/challenge.ts args …)` relies on the shell splitting the printed arguments, which
+PowerShell and cmd do not do, and `args` refuses a set whose paths contain white space.
 Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
 settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, a login or billing
 error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`

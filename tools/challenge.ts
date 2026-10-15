@@ -25,7 +25,7 @@ const usage = `usage:
   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
   node tools/challenge.ts generate <family> --set heldout --declaration <file> --out <dir> [--force]
   node tools/challenge.ts verify <dir>
-  node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: practonaut bench --agent <a> $(…))
+  node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: practonaut bench --agent <a> $(…) in a POSIX shell)
   node tools/challenge.ts declare --family <f> --round <k> --difficulty 1|2|3|mixed --dev <report.json,…> [--maintainer-approved <model,…>] [--bench-root <dir,…>] --out <file> [--force]
   node tools/challenge.ts gate --preflight --declaration <file> --set <held-out dir> --dev <report.json,…> --oracle <report.json,…> --random <report.json,…> [--bench-root <dir,…>]
   node tools/challenge.ts gate --declaration <file> --set <held-out dir> --dev <…> --oracle <…> --random <…> --ladder <report.json,…>

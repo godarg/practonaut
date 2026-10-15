@@ -5,7 +5,7 @@
  * in the history. Reads only; runs `git` without a shell in the declaration's own repository.
  */
 import { execFileSync } from 'node:child_process';
-import { basename, dirname, relative } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { realpathSync } from 'node:fs';
 
 export class DeclarationGitError extends Error {
@@ -18,52 +18,56 @@ const git = (cwd: string, args: string[]): { ok: boolean; out: string } => {
   catch (error) { return { ok: false, out: String((error as { stdout?: unknown }).stdout ?? '') }; }
 };
 
+/**
+ * The file's folder, its name and its path in the repository as git spells it (relative to the top
+ * level, with forward slashes), or null outside a repository. Git says where the file is, not the
+ * path as given: one spelled otherwise than git's top level (an 8.3 short name or backslashes on
+ * Windows, another letter case on a case-insensitive disk) still names the file. Every command runs
+ * in the file's folder and names the file by a top-anchored literal pathspec.
+ */
+function located(path: string): { folder: string; name: string; rel: string; spec: string } | null {
+  const file = realpathSync(path), folder = dirname(file), name = basename(file);
+  const prefix = git(folder, ['rev-parse', '--show-prefix']);
+  if (!prefix.ok) return null;
+  const rel = prefix.out.trim() + name;
+  return { folder, name, rel, spec: `:(top,literal)${rel}` };
+}
+
 /** The commit that holds the declaration as it is now, and how many versions of it git has. Refuses
  * a declaration outside a repository, not committed, changed since its commit (staged or not) or
  * whose commit no remote-tracking branch contains. */
 export function declarationCommit(path: string): { commit: string; versions: number } {
-  const file = realpathSync(path), folder = dirname(file), name = basename(file);
-  const top = git(folder, ['rev-parse', '--show-toplevel']);
-  if (!top.ok) throw new DeclarationGitError(`${name} is not in a git repository; commit and push it first`);
-  // Paths are given relative to the repository's top level, and every command runs there.
-  const root = realpathSync(top.out.trim()), rel = relative(root, file);
-  if (!git(root, ['ls-files', '--error-unmatch', '--', rel]).ok) throw new DeclarationGitError(`${name} is not committed; commit and push it first`);
-  if (!git(root, ['diff', '--quiet', 'HEAD', '--', rel]).ok) throw new DeclarationGitError(`${name} has changes that are not committed`);
-  const history = git(root, ['log', '--format=%H', '--', rel]);
+  const at = located(path), name = basename(path);
+  if (!at) throw new DeclarationGitError(`${name} is not in a git repository; commit and push it first`);
+  if (!git(at.folder, ['ls-files', '--error-unmatch', '--', at.spec]).ok) throw new DeclarationGitError(`${name} is not committed; commit and push it first`);
+  if (!git(at.folder, ['diff', '--quiet', 'HEAD', '--', at.spec]).ok) throw new DeclarationGitError(`${name} has changes that are not committed`);
+  const history = git(at.folder, ['log', '--format=%H', '--', at.spec]);
   const commits = history.out.split('\n').filter(Boolean);
   if (!history.ok || !commits.length) throw new DeclarationGitError(`${name} has no commit`);
   const commit = commits[0]!;
-  const remote = git(root, ['branch', '-r', '--contains', commit]);
+  const remote = git(at.folder, ['branch', '-r', '--contains', commit]);
   if (!remote.ok || !remote.out.trim()) throw new DeclarationGitError(`${name} is committed in ${commit.slice(0, 12)}, which no remote-tracking branch contains; push it first`);
   return { commit, versions: commits.length };
-}
-
-/** The repository's top level and the file's path in it, or null outside a repository. */
-function located(path: string): { root: string; rel: string } | null {
-  const file = realpathSync(path), top = git(dirname(file), ['rev-parse', '--show-toplevel']);
-  if (!top.ok) return null;
-  const root = realpathSync(top.out.trim());
-  return { root, rel: relative(root, file) };
 }
 /** Every committed version of the declaration file, newest first: commit and committer date. */
 export function declarationVersions(path: string): Array<{ commit: string; date: string }> {
   const at = located(path);
   if (!at) return [];
-  const listed = git(at.root, ['log', '--format=%H %cI', '--', at.rel]);
+  const listed = git(at.folder, ['log', '--format=%H %cI', '--', at.spec]);
   return listed.ok ? listed.out.split('\n').filter(Boolean).map(line => { const [commit, date] = line.split(' '); return { commit: commit!, date: date ?? '' }; }) : [];
 }
 /** The declaration file's content in a commit, or null when the commit or the file is not there. */
 export function declarationAtCommit(path: string, commit: string): string | null {
   const at = located(path);
   if (!at || !/^[0-9a-f]{40}$/.test(commit)) return null;
-  const shown = git(at.root, ['show', `${commit}:${at.rel}`]);
+  const shown = git(at.folder, ['show', `${commit}:${at.rel}`]);
   return shown.ok ? shown.out : null;
 }
 /** Whether a remote-tracking branch contains the commit (it was pushed and stays reachable). */
 export function commitPushed(path: string, commit: string): boolean {
   const at = located(path);
   if (!at || !/^[0-9a-f]{40}$/.test(commit)) return false;
-  const remote = git(at.root, ['branch', '-r', '--contains', commit]);
+  const remote = git(at.folder, ['branch', '-r', '--contains', commit]);
   return remote.ok && remote.out.trim() !== '';
 }
 
