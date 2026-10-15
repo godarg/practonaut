@@ -359,9 +359,45 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
     "de": "practonaut bench: abgebrochen, bevor der erste Lauf endete; kein Bericht geschrieben (Laufprotokolle: {logs}).\n"
   },
-  "reportRunsNeedsVerify": {
-    "en": "--runs names the run directory for --verify; add --verify",
-    "de": "--runs nennt das Laufverzeichnis für --verify; --verify ergänzen"
+  "compareUsage": {
+    "en": "compare needs two bench reports: {cli} compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]",
+    "de": "compare braucht zwei Bench-Berichte: {cli} compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]"
+  },
+  "compareIncomparable": {
+    "en": "the reports are not comparable (PADR-0039): {differences}. Bench the baseline again with the candidate's settings",
+    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+  },
+  "compareDifference": {
+    "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",
+    "de": "{field} unterscheidet sich ({baseline} bei der Basis, {candidate} beim Kandidaten)"
+  },
+  "compareField_world": {
+    "en": "the world content",
+    "de": "der Inhalt der Welt"
+  },
+  "compareField_grid": {
+    "en": "the grid of tasks and seeds",
+    "de": "das Raster aus Aufgaben und Seeds"
+  },
+  "compareField_mirror": {
+    "en": "the mirror",
+    "de": "die Spiegelung"
+  },
+  "compareField_budget": {
+    "en": "the action budget",
+    "de": "das Aktionsbudget"
+  },
+  "compareField_isolation": {
+    "en": "the isolation level",
+    "de": "die Isolationsstufe"
+  },
+  "compareIncomplete": {
+    "en": "the candidate is incomplete: {n} {n:instance is|instances are} missing, cut short or {n:holds|hold} a run that was not judged ({list}); a missing verdict could hide a regression. Bench the candidate again",
+    "de": "der Kandidat ist unvollständig: {n} {n:Instanz fehlt|Instanzen fehlen}, {n:wurde|wurden} abgebrochen oder {n:enthält|enthalten} einen nicht bewerteten Lauf ({list}); ein fehlendes Urteil könnte eine Regression verbergen. Den Kandidaten erneut benchen"
+  },
+  "compareRegression": {
+    "en": "{n} instance {n:regression|regressions} (passed in every baseline repeat, failed in every candidate repeat): {list}",
+    "de": "{n} {n:Instanz-Regression|Instanz-Regressionen} (bei jeder Wiederholung der Basis bestanden, bei jeder des Kandidaten nicht): {list}"
   },
   "reportTooLarge": {
     "en": "the bench report is larger than {size} MiB",
@@ -526,6 +562,42 @@ export const CLI_CATALOG = {
   "benchReportRunId": {
     "en": "run {id} is not named after its task, seed and repeat ({expected})",
     "de": "der Lauf {id} ist nicht nach Aufgabe, Seed und Wiederholung benannt ({expected})"
+  },
+  "verifyMutationsFormat": {
+    "en": "run {run}: mutations.jsonl is not a mutation log",
+    "de": "Lauf {run}: mutations.jsonl ist kein Änderungsprotokoll"
+  },
+  "verifyMutationsCounters": {
+    "en": "run {run}: the mutation log does not agree with the run's counted act, undo and reset calls",
+    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo und reset des Laufs"
+  },
+  "verifyTrace": {
+    "en": "run {run}: the checker does not re-derive the stored condition trace from the session and the mutation log",
+    "de": "Lauf {run}: der Prüfer leitet den gespeicherten Bedingungsverlauf nicht aus Sitzung und Änderungsprotokoll her"
+  },
+  "benchReportBoard": {
+    "en": "run {id} binds a picture of the real engine, but the bench ran without the mirror",
+    "de": "Lauf {id} bindet ein Bild der echten Engine, die Bench lief aber ohne Spiegelung"
+  },
+  "benchReportTraceError": {
+    "en": "run {id}: a condition trace and a trace error must not appear together, and a missing trace needs its error",
+    "de": "Lauf {id}: Bedingungsverlauf und Verlaufsfehler dürfen nicht zusammen stehen, und ein fehlender Verlauf braucht seinen Fehler"
+  },
+  "benchReportTraceWithoutLog": {
+    "en": "run {id} binds a condition trace without the mutation log it is re-derived from",
+    "de": "Lauf {id} bindet einen Bedingungsverlauf ohne das Änderungsprotokoll, aus dem er nachgerechnet wird"
+  },
+  "benchReportMutations": {
+    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo and reset calls",
+    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo und reset"
+  },
+  "benchReportClientTiming": {
+    "en": "run {id}: client timing comes only from Practonaut's own client (built-in agents)",
+    "de": "Lauf {id}: Client-Zeiten stammen nur vom eigenen Client von Practonaut (eingebaute Agenten)"
+  },
+  "benchReportClient": {
+    "en": "run {id}: client figures come only from an external agent's own output, with the source its kind ({kind}) allows",
+    "de": "Lauf {id}: Client-Angaben stammen nur aus der Ausgabe eines externen Agenten, mit der Quelle, die seine Art ({kind}) erlaubt"
   },
   "benchReportRunReference": {
     "en": "run {id} names a reference of {given} actions; the report's references give {expected}",

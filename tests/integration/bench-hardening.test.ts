@@ -84,3 +84,19 @@ test('files an agent leaves under the artifact names cannot block judging; an un
   for (const local of [blocked.directory, tmpdir(), process.env.PRACTONAUT_HOME!]) assert.equal(failed.note!.includes(local), false, `note ${failed.note} names ${local}`);
   assert.equal(/(?:^|[\s'"])\/[^\s'"]*\//.test(failed.note!), false, `note ${failed.note} holds an absolute path`);
 });
+
+test('evidence that cannot be written never changes a verdict: no trace without its log, no picture, still judged', { timeout: 300_000 }, async () => {
+  // A folder where the mutation log goes: the log is left out, so the trace (which follows the log) is
+  // left out too and says why; the run is judged as usual and the report verifies.
+  const logBlocked = await runBench({ ...base, agent: command('plant-log'), tasks: ['connect'] });
+  const run = logBlocked.report!.runs[0]!;
+  assert.deepEqual([run.status, run.pass, run.checker?.session.passed, run.logs, run.artifacts?.trace, run.artifacts?.traceError], ['completed', true, true, undefined, null, 'log_unwritten'], run.note);
+  const path = join(logBlocked.directory, 'report.json'); await writeFile(path, JSON.stringify(logBlocked.report));
+  const verified = verify(path); assert.equal(verified.status, 0, verified.stderr);
+  // A folder where the engine's picture goes (mirror): the picture is left out; the verdict is the same.
+  const boardBlocked = await runBench({ ...base, mirrorRequested: 'required', mirror: 'required', agent: command('plant-board'), tasks: ['connect'] });
+  const pictured = boardBlocked.report!.runs[0]!;
+  assert.deepEqual([pictured.status, pictured.pass, pictured.checker?.native?.passed, pictured.artifacts?.board], ['completed', true, true, null], pictured.note);
+  assert.equal(typeof pictured.artifacts?.trace, 'string', 'the trace does not depend on the picture');
+  await rm(logBlocked.directory, { recursive: true, force: true }); await rm(boardBlocked.directory, { recursive: true, force: true });
+});

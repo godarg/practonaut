@@ -16,6 +16,8 @@ export interface PracticeMirror {
   snapshot(context?:TransactionContext): Promise<State>;
   png(context?:TransactionContext): Promise<Uint8Array>;
   exportNative?(context?:TransactionContext):Promise<string>;
+  /** The real engine's SVG export of its current scene (bench report pictures, PADR-0039). */
+  exportPicture?(context?:TransactionContext):Promise<string>;
   recover(state: State): Promise<void>;
   close(): Promise<void>;
 }
@@ -59,6 +61,7 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
     snapshot: context => bounded(engine => engine.snapshot(),context),
     png: context => bounded(engine => engine.renderPng(),context),
     exportNative:context=>bounded(async(engine,remaining)=>(await engine.exportArtifact({timeoutMs:remaining})).native,context),
+    exportPicture:context=>bounded(async(engine,remaining)=>(await engine.exportArtifact({timeoutMs:remaining})).svg,context),
     recover: state => serial(async () => {
       if (closed) throw unavailable();
       try {

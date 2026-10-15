@@ -17,9 +17,31 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- **Results you can act on** ([PADR-0039](docs/adr/0039-results-you-can-act-on-evidence-report-compare.md)).
+  Each run folder keeps the bridge's call log (with the bench client's round trip for `oracle` and
+  `random`), the runner's log of every act, undo and reset, the checker's trace of the goal conditions
+  after every accepted mutation, and with the mirror the real Excalidraw's SVG of the final board;
+  tokens, turns and cost come from the client's own output, labelled self-reported. `report --verify`
+  checks and re-derives them; evidence that cannot be written never changes a verdict. Report pages and
+  the terminal show the fraction with a 95 % Wilson interval (no rate finer than 1/n; every run counts,
+  a run that was not judged as not passed), failures first and open with why each failed (unmet
+  conditions with the action after which they were last lost, error classes, states by name), the
+  trajectory, the final board above an example target at one scale (never below 12 px text; Excalidraw's
+  own dark-mode colours in dark mode), and the call log; codes, hashes and the command sit under
+  "Technical details".
+- **`practonaut compare a.json b.json [--html] [--fail-on-regression] [--verify]`**: refuses
+  incomparable reports by name (with `--html`, on a page), aggregates all repeats per instance, names
+  instance regressions and gives an exact McNemar verdict ("rate difference not distinguishable at this
+  n" when the sample cannot tell). `--fail-on-regression` also fails on an incomplete candidate
+  (`compare_incomplete`: an instance missing, cut short or with a run that was not judged).
 - `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
+- The MCP bridge names the agent's client on `undo` and `reset` too (the host accepts an optional
+  `actor` on both), so the bench's mutation log names the client of every change.
 
 ### Changed
+
+- `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
+  works without `--verify` (it names where the run details come from).
 
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
   tokens and billing switches in your environment from the preset agent (`*_API_KEY`,

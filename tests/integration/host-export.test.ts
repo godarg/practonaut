@@ -40,6 +40,12 @@ test('world/2 export: a library task with a tombstone binds its native drawing t
   const view=controller.view();assert.equal(Object.values(view.state.objects).some(object=>object.deleted),true,'the session keeps a tombstone');
   const reply=await controller.export({expectedRevision:view.revision});assert.equal(reply.ok,true,JSON.stringify(reply));if(!reply.ok)return;
   assert.equal(nativeMatchesState(w.schema,reply.value.native.utf8,view.state),true);
+  // The engine's picture comes only when an in-process caller asks (the bench, PADR-0039), from the same confirmed scene.
+  assert.equal(reply.value.picture,undefined);
+  const pictured=await controller.export({expectedRevision:view.revision},undefined,{picture:true});assert.equal(pictured.ok,true,JSON.stringify(pictured));if(!pictured.ok)return;
+  assert.match(pictured.value.picture!.utf8,/^<svg[\s>]/);assert.equal(pictured.value.picture!.sha256,sha256Hex(pictured.value.picture!.utf8));
+  for(const object of Object.values(view.state.objects))if(object.type==='step'&&!object.deleted)assert.ok(pictured.value.picture!.utf8.includes(`>${object.label}<`),object.label);
+  assert.equal(pictured.value.native.utf8,reply.value.native.utf8);assert.deepEqual(committed(controller.view()),committed(view));
   const changed=JSON.parse(reply.value.native.utf8);{const text=changed.elements.find((element:{type:string;isDeleted:boolean})=>element.type==='text'&&!element.isDeleted);text.text='Not the label';text.originalText='Not the label';}
   assert.equal(nativeMatchesState(w.schema,JSON.stringify(changed),view.state),false,'a different live drawing does not bind');
   assert.equal(nativeMatchesState(w.schema,'{"type":"excalidraw"',view.state),false);

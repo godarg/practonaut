@@ -143,7 +143,8 @@ export async function createBridge(config: McpBridgeConfig): Promise<McpBridge> 
       reply = shape(admitted(await request(HOST_ROUTES.act, { expectedRevision: value.expectedRevision, action: { name: value.name, params: value.params, baseStep: value.baseStep }, actor: { kind: 'agent', client: agentClientName(context.client) }, reply: 'delta' }), deltaReplySchema), delta => mutationResult(delta as never, lang));
     } else if (name === "undo" || name === "reset") {
       const { lang: _lang, ...body } = checked.data as McpToolInputs["undo"] | McpToolInputs["reset"];
-      reply = shape(admitted(await request(name === "undo" ? HOST_ROUTES.undo : HOST_ROUTES.reset, { ...body, reply: 'delta' }), deltaReplySchema), delta => mutationResult(delta as never, lang));
+      // An undo or reset through MCP is an agent's too: the bench's mutation log names its client.
+      reply = shape(admitted(await request(name === "undo" ? HOST_ROUTES.undo : HOST_ROUTES.reset, { ...body, actor: { kind: 'agent', client: agentClientName(context.client) }, reply: 'delta' }), deltaReplySchema), delta => mutationResult(delta as never, lang));
     } else if (name === "check_result") {
       reply = shape(admitted(await request(HOST_ROUTES.check, { expectedRevision: (checked.data as McpToolInputs["check_result"]).expectedRevision }), checkSchema), check => checkResult(check as never, lang));
     } else {

@@ -67,8 +67,8 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 | GET `/api/resume` | token header; no query | current public view and local editor address; no new token or state mutation |
 | GET `/api/observe` | token header | state/hash/log/history, task/public conditions, rules/provenance, hints, mirror mode |
 | POST `/api/act` | revision, `{action:{name,params}}`, optional `actor:{kind:"agent",client}` (set by the MCP bridge; absent = a person), optional `reply:"delta"` | atomic action, new view (history entry with its actor), delta, mirror confirmation and measured latency |
-| POST `/api/undo` | revision, optional `reply:"delta"` | last committed action removed in core and mirror |
-| POST `/api/reset` | revision, `confirmed:true`, optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
+| POST `/api/undo` | revision, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | last committed action removed in core and mirror |
+| POST `/api/reset` | revision, `confirmed:true`, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
 | POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed |
 | POST `/api/hint` | revision | next public hint, never hidden data |
 | POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict |
