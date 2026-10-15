@@ -34,6 +34,14 @@ All notable changes are recorded here. The format follows
   instance regressions and gives an exact McNemar verdict ("rate difference not distinguishable at this
   n" when the sample cannot tell). `--fail-on-regression` also fails on an incomplete candidate
   (`compare_incomplete`: an instance missing, cut short or with a run that was not judged).
+- **CI recipe.** [`examples/ci/practonaut-bench.yml`](examples/ci/practonaut-bench.yml) benches your
+  agent on your own world in GitHub Actions (exact versions, actions pinned by commit SHA, your own
+  credentials from a repository secret), compares with a committed baseline and fails the job on an
+  instance regression or an incomplete candidate; JUnit XML and the HTML pages are uploaded.
+  `bench --junit <file>` and `report --junit <file>` write JUnit XML: one test case per run, a run that
+  did not pass as a failure naming its unmet conditions and error classes, a run without a verdict as an
+  error. A manual workflow (`.github/workflows/ci-recipe-check.yml`) proves the recipe with the oracle
+  agent and a planted instance regression.
 - `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 - The MCP bridge names the agent's client on `undo` and `reset` too (the host accepts an optional
   `actor` on both), so the bench's mutation log names the client of every change.

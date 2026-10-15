@@ -385,7 +385,86 @@ The whole 16-task library at one seed is 16 instances: below six discordant inst
 can be significant (2 · 2⁻⁵ = 0.0625). Use more seeds, or rely on instance regressions with three
 repeats, which need no sample of that size to name one instance that broke.
 
-## 7. Example
+## 7. CI: gate on instance regressions
+
+[`examples/ci/practonaut-bench.yml`](../../examples/ci/practonaut-bench.yml) is a GitHub Actions
+workflow to copy into `.github/workflows/` of your repository. It installs Node, runs an exact
+Practonaut version with `npx` (`practonaut@0.2.0`; actions are pinned by commit SHA), downloads Chromium
+with `practonaut setup` and checks that it starts, installs an exact Claude Code version, benches the
+`claude-code` preset on your world with three repeats per instance and `--mirror required`, writes
+JUnit XML (`--junit`) and the HTML report, and compares the result with a committed baseline report:
+
+```bash
+npx practonaut bench --agent claude-code --world practonaut/world --oracle practonaut/oracle.json \
+  --seed-list 1,2 --repeats 3 --mirror required --junit out/junit.xml
+npx practonaut report ~/.practonaut/bench/<id>/report.json --html out/report.html
+npx practonaut compare practonaut/baseline.json ~/.practonaut/bench/<id>/report.json --fail-on-regression
+```
+
+The JUnit file, the report and both HTML pages are uploaded as one artifact, also when the gate fails.
+
+**The baseline.** Bench the agent configuration you trust with the same command (same world, tasks,
+seeds, mirror, action budget and agent kind; `compare` refuses anything else, exit 2) and commit its
+`report.json` as `practonaut/baseline.json`. A report alone is consistency-checked on `compare`, not
+re-verified; keep its bench folder (for example as an artifact) if you want `compare --verify` later.
+A new Practonaut or client version can change results: bench a new baseline with it.
+
+**Credentials.** The agent uses your own account; nothing is sent anywhere else. The `claude-code`
+preset withholds provider keys and tokens (§2): put the subscription's token from `claude setup-token`
+into a repository secret `CLAUDE_CODE_OAUTH_TOKEN`; the workflow passes it to the bench step as an
+environment variable, never on a command line, and nothing prints it. To bill an API key instead, on
+purpose, pass `ANTHROPIC_API_KEY` from a secret and add `--keep-env ANTHROPIC_API_KEY` to the bench
+command; without it the preset withholds the key. GitHub does not pass secrets to workflows that run for
+pull requests from forks.
+
+**What fails the job.** `compare --fail-on-regression` exits 2 with a named code:
+
+| Code | When |
+|---|---|
+| `instance_regression` | an instance with at least three judged repeats on each side passed in every baseline repeat and failed in every candidate repeat |
+| `compare_incomplete` | a candidate instance is missing, cut short, or holds a run without a verdict: a missing verdict could hide a regression, so the gate never passes it |
+| `compare_incomparable` | the two reports differ in world content, grid, mirror, action budget or isolation level |
+
+`bench` itself exits 0 when every planned run ended, whatever the verdicts (130 when it was stopped,
+2 for a refused world or oracle, 3 without a Chromium that starts under `--mirror required`).
+
+**JUnit XML.** `bench --junit <file>` writes it next to the report; `report <report.json> --junit
+<file>` writes it for any report (with `--verify`, from the re-verified one). The format is the Apache
+Ant JUnit schema as Windy Road publishes it (`JUnit.xsd`), which CI test views read:
+
+| Run | JUnit |
+|---|---|
+| passed | a `<testcase>` without child |
+| judged, not passed | `<failure>`: `type` names the error classes (or `goal-not-met`), the message names each unmet goal condition with the action after which it was last lost, each error class with the first sentence of its explanation, and every other state by name (timed out, rejected actions, …); the body adds the run id and the runner's note |
+| no verdict (not judged) | `<error type="no-verdict">`: JUnit's form for a test that could not be evaluated. Never a failure, because there is no verdict to give a reason for; never skipped, because the run counts as not passed |
+
+One `<testsuite>` per task in plan order, one `<testcase>` per run by seed (plan order) and repeat;
+`classname` is the instance (`<world>.<task>.seed-<seed>`), so a test view groups its repeats. Every
+suite carries the report's facts as properties (`practonaut.runs`, `practonaut.runs.unjudged`,
+`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror`, world and content hash, label,
+self-reported model) and the header line as `system-out`. The schema requires a timestamp without zone
+and a host name: the timestamp is the report's creation time in UTC, the host name is always
+`localhost`, never the machine's. Text from the report and the bench folder is escaped; characters XML
+1.0 does not allow are written as `\u{…}`, as in the terminal. The same report gives the same bytes.
+A JUnit failure is a run that did not pass, not a regression: an agent that fails a task in the
+baseline and the candidate alike regressed nothing. Gate on `compare`, not on the JUnit counts.
+
+**Limits.** A bench is not sealed: the agent runs as the runner's user (§4). An instance regression
+needs at least three judged repeats on each side ([PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md));
+with fewer, a flip is "single runs — not a regression signal", and the gate cannot fail on it. An
+instance whose repeats disagree (2 of 3 passed before, 1 of 3 after) is not a regression either; only
+"always passed, now always fails" is. A rate difference needs far more instances than a CI job usually
+runs (§6). Every job costs tasks × seeds × 3 agent runs on your account.
+
+**The repository's own check.** `.github/workflows/ci-recipe-check.yml` runs the same steps by hand
+(`workflow_dispatch`, outside the required checks) with the `oracle` agent on a small fixture world
+(`tests/fixtures/ci-recipe/`: one task made with `tasks from-scenes`, two seeds × three repeats, budget
+three actions) against its committed baseline, with Practonaut packed from the checkout. With
+`plant_regression` the candidate plays a valid reference that needs four actions, so every repeat ends
+with an extra arrow and `compare` fails with `instance_regression`. `tests/integration/ci-recipe.test.ts`
+runs the same commands locally and validates both JUnit files against the schema.
+
+## 9. Example
 
 [`example-report.json`](example-report.json) and [`example-report.html`](example-report.html) are a
 real `practonaut.bench/1` run on 2026-10-13 with Practonaut 0.1.0 (library 1.1.0): `--agent claude-code --tasks excalidraw/connect,excalidraw/insert-between,excalidraw/decision --repeats 2`,

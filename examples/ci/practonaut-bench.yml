@@ -1,0 +1,95 @@
+# Practonaut in CI: bench your agent on your own tasks and fail the job on an instance regression.
+#
+# Copy this file to .github/workflows/ in your repository and adjust the env block below. You need:
+#   - a world folder and its oracle.json (`npx practonaut tasks from-scenes` writes both),
+#   - a baseline report made with the same settings, committed (docs/benchmarks/README.md, section 7),
+#   - for the claude-code preset, a repository secret CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`).
+#
+# The job installs Node and an exact Practonaut version, downloads Chromium for the real Excalidraw
+# mirror, benches the agent with three repeats per instance, writes JUnit XML and the HTML report,
+# compares the result with the baseline and uploads the files as an artifact. `compare
+# --fail-on-regression` exits 2, and the job fails, on an instance regression (an instance that passed
+# in every baseline repeat fails in every candidate repeat), on an incomplete candidate (a run without
+# a verdict or a missing instance: compare_incomplete) and on reports that cannot be compared.
+#
+# Limits: a bench is not sealed (the agent runs as the runner's user); a regression needs at least
+# three judged repeats on each side (PADR-0039), so every job runs tasks × seeds × 3 agent runs on
+# your subscription or API account; results describe these runs, not the model in general.
+# Secrets are not passed to workflows that run for pull requests from forks; there the bench step
+# fails at the agent's login.
+name: Practonaut bench
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'practonaut/**'   # narrow this to what changes your agent: prompts, tool descriptions, configuration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: practonaut-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Exact versions. A new Practonaut or client version can change results: bench a new baseline with it.
+  PRACTONAUT: practonaut@0.2.0
+  CLAUDE_CODE: '@anthropic-ai/claude-code@2.1.296'
+  WORLD: practonaut/world                # your world folder
+  ORACLE: practonaut/oracle.json         # its reference solution (optional: drop --oracle below)
+  BASELINE: practonaut/baseline.json     # the committed baseline report, benched with the flags below
+
+jobs:
+  bench:
+    name: practonaut bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Folders for Practonaut's data and the results
+        run: |
+          echo "PRACTONAUT_HOME=$RUNNER_TEMP/practonaut-home" >> "$GITHUB_ENV"
+          echo "OUT=$RUNNER_TEMP/practonaut-out" >> "$GITHUB_ENV"
+      - name: Download Chromium for the real Excalidraw mirror
+        run: npx --yes --package "$PRACTONAUT" -- practonaut setup
+      - name: Check that Chromium starts
+        run: npx --yes --package "$PRACTONAUT" -- practonaut doctor --adapter
+      - name: Install the agent's client
+        run: npm install --global --no-audit --no-fund "$CLAUDE_CODE"
+      - name: Bench the agent (three repeats per instance)
+        env:
+          # The subscription's own token reaches Claude Code: the preset withholds provider keys and
+          # tokens (*_API_KEY, *_AUTH_TOKEN, ...) but not CLAUDE_CODE_OAUTH_TOKEN. Never echo it.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # API billing instead, chosen deliberately: replace the line above with
+          #   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # and add `--keep-env ANTHROPIC_API_KEY` to the bench command; without it the preset withholds the key.
+        run: |
+          mkdir -p "$OUT"
+          npx --yes --package "$PRACTONAUT" -- practonaut bench --agent claude-code \
+            --world "$WORLD" --oracle "$ORACLE" --seed-list 1,2 --repeats 3 --mirror required \
+            --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml"
+          report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json)"
+          cp "$report" "$OUT/report.json"
+          echo "BENCH=$(dirname "$report")" >> "$GITHUB_ENV"
+      - name: Render the report
+        if: ${{ !cancelled() && env.BENCH != '' }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut report "$BENCH/report.json" --html "$OUT/report.html"
+      - name: Compare with the baseline (fails on an instance regression)
+        if: ${{ !cancelled() && env.BENCH != '' }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut compare "$BASELINE" "$BENCH/report.json" --fail-on-regression --html "$OUT/compare.html"
+      - name: Upload JUnit XML, the report and the HTML pages
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: practonaut-${{ github.run_id }}
+          path: ${{ runner.temp }}/practonaut-out/
+          if-no-files-found: warn
+          retention-days: 14

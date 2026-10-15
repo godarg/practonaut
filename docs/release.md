@@ -52,6 +52,7 @@ Node version that ships a recent npm. See npm's
    | `server.json` | `version` and `packages[0].version` |
    | `src/version.ts` | `PACKAGE_VERSION` (what `--version`, MCP `serverInfo`, sessions and bench reports name) |
    | `src/checker/state.ts` | add the version to the known session writers (`toolVersion`); keep the earlier ones, so their sessions stay readable |
+   | `examples/ci/practonaut-bench.yml` | `PRACTONAUT: practonaut@X.Y.Z`, the exact version the CI recipe installs (it stays on the last release between releases; `tests/unit/ci-workflows.test.ts` requires an exact version) |
 
    Tests guard the coupling: `--version` must equal `package.json` (`tests/unit/cli.test.ts`),
    `npm run check` compares `server.json` with `package.json`, and the checker must accept a session
