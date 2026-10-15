@@ -155,7 +155,9 @@ checker (never by the agent):
   model can do is an `infra_error` and is not judged: its client's own stream reports a usage or
   rate limit (a `rate_limit_event` that is not `allowed`, an `is_error` result naming a limit or
   status 429) or an API error (an `is_error` result naming one, or an assistant message the client
-  marks as an API error), or the agent ended without completing and without a single tool call. An
+  marks as an API error), or the agent ended without completing and without a single tool call
+  (the bridge's start-up read counts as one, so this is an agent that never started its MCP server,
+  or a command that could not start). An
   `error_max_turns` result or another error of the agent's own stays `agent_failed` and is judged.
   The client's model and Claude Code's version from its init event are recorded per run, and
   `report --verify` checks the model against the agent's own `agent.stdout`.

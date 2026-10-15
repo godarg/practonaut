@@ -2,7 +2,8 @@
 //   node tests/support/bench-agent.ts <mode> <mcp-config>
 // solve   : read the generated MCP config, start the server it names, draw the connect arrow.
 // claim   : act on nothing and print a forged success line (output must never be scored).
-// sleep   : never finish (timeout path).
+// sleep   : never finish, never start the MCP server (an infra_error: no tool call at all).
+// observe-sleep: start the MCP server, observe once, then never finish (timeout path).
 // plant   : leave files named like the judged artifacts in PRACTONAUT_HOME and its parent, then solve.
 // plant-dir: put a folder where the run's checker.json goes (PRACTONAUT_HOME/..), then solve.
 // plant-log: put a folder where the run's mutation log goes, then solve.
@@ -39,6 +40,13 @@ if (mode === 'family') {
   setInterval(() => {}, 1000);
 }
 else if (mode === 'sleep') { setInterval(() => {}, 1000); }
+// Starts its MCP server (the bridge's start-up read reaches the host), observes once, then sleeps:
+// a timeout of an agent that did work, not an infrastructure error (PADR-0040).
+else if (mode === 'observe-sleep') {
+  const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
+  await client.call('observe', {});
+  setInterval(() => {}, 1000);
+}
 else if (mode === 'stubborn') {
   process.on('SIGTERM', () => {});
   writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'pids.json'), JSON.stringify({ agent: process.pid }));

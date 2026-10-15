@@ -103,7 +103,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.ok(runText(failing, 'restyle-flow-s1-r1').includes('Schematic of the judged state, not the real Excalidraw. The bench ran model only (no mirror).'), 'model-only picture');
   assert.ok(plain(failing).includes('consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)'));
   assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances re-verified from the artifacts model only/);
-  assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 2 s, the run’s time limit; the board it left was judged.'), 'timeout');
+  assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 6 s, the run’s time limit; the board it left was judged.'), 'timeout');
   const unjudgedPage = await reportPage(fixtures.unjudged, 'en'), unjudged = runText(unjudgedPage, 'connect-s1-r1');
   assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score.'), 'unjudged');
   // No verdict is not a failure: the unknown mark (a dashed ring) and the words, in the table and on the card.

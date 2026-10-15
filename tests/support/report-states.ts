@@ -114,7 +114,8 @@ export async function fixtureBenches(folder: string, options: { mirror?: boolean
   await mkdir(dir, { recursive: true });
   const failing = expectBench('failing', await scripted(dir, 'failing', FAILING, {}), { status: 'completed', pass: false, acted: true });
   const solved = expectBench('solved', await bench({ ...base, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] }), { status: 'completed', pass: true, acted: true });
-  const timeout = expectBench('timeout', await bench({ ...base, agent: template('sleep'), tasks: ['connect'], timeoutSeconds: 2 }), { status: 'timeout', pass: false });
+  // The agent observes before it stalls: one that never reaches the host is an infra_error (PADR-0040).
+  const timeout = expectBench('timeout', await bench({ ...base, agent: template('observe-sleep'), tasks: ['connect'], timeoutSeconds: 6 }), { status: 'timeout', pass: false });
   const unjudged = expectBench('unjudged', await bench({ ...base, agent: template('plant-dir'), tasks: ['connect'] }), { status: 'infra_error', pass: false, acted: true });
   const crashed = expectBench('crashed', await bench({ ...base, agent: template('crash'), tasks: ['connect'] }), { status: 'agent_failed', pass: true, acted: true });
   const authored = await germanWorld(dir);

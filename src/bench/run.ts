@@ -352,7 +352,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
           const failure = clientFailure((await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '');
           const calls = counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check;
           if (failure) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the client reported ${failure.reason === 'usage_limit' ? 'a usage or rate limit' : 'an API error'} (${failure.detail})` };
-          else if (outcome.status !== 'completed' && calls === 0) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the agent ended (${outcome.status}) without a single tool call` };
+          else if (outcome.status !== 'completed' && calls === 0) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: outcome.note ? `${outcome.note}; the agent ended without a single tool call` : `the agent ended (${outcome.status}) without a single tool call` };
         }
       }
       wallMs = Math.round(performance.now() - started);

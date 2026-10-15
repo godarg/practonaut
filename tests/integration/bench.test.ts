@@ -63,10 +63,14 @@ test('external command agents: MCP through the generated config, opaque output, 
   // A forged success on stdout changes nothing: the checker sees the untouched start state.
   const claim = (await runBench({ ...base, agent: command('claim'), tasks: ['connect'] })).report!.runs[0]!;
   assert.deepEqual([claim.status, claim.pass, claim.actions, claim.checker?.session.passed], ['completed', false, 0, false]);
-  const slow = (await runBench({ ...base, agent: command('sleep'), tasks: ['connect'], timeoutSeconds: 2 })).report!.runs[0]!;
+  // An agent that worked and then stalled times out and is judged; one that never reached the host
+  // (it never started, or never started its MCP server) is an infra_error and is not (PADR-0040).
+  const slow = (await runBench({ ...base, agent: command('observe-sleep'), tasks: ['connect'], timeoutSeconds: 6 })).report!.runs[0]!;
   assert.deepEqual([slow.status, slow.pass], ['timeout', false]); assert.ok(slow.checker);
+  const silent = (await runBench({ ...base, agent: command('sleep'), tasks: ['connect'], timeoutSeconds: 2 })).report!.runs[0]!;
+  assert.deepEqual([silent.status, silent.checker], ['infra_error', null]); assert.match(silent.note ?? '', /the agent ended \(timeout\) without a single tool call/);
   const missing = (await runBench({ ...base, agent: resolveAgent('practonaut-no-such-agent-binary {mcp_config}'), tasks: ['connect'] })).report!.runs[0]!;
-  assert.deepEqual([missing.status, missing.pass], ['agent_failed', false]);
+  assert.deepEqual([missing.status, missing.pass], ['infra_error', false]); assert.match(missing.note ?? '', /agent command could not start: practonaut-no-such-agent-binary; the agent ended without a single tool call/);
 });
 
 test('report --verify re-judges every run from its artifacts; a consistent forgery passes the consistency check only', { timeout: 300_000 }, async () => {

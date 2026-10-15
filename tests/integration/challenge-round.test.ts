@@ -4,7 +4,8 @@
 // declaration, and the gate's refusals of changed set files. The whole round through the preflight
 // and the gate (oracle, random and three ladder benches on 26 instances, one stopped by a usage limit
 // and resumed, every report re-verified, every near miss replayed, a hidden rerun found) takes about
-// twenty minutes on a busy machine; it runs with PN_CHALLENGE_ROUND=1.
+// twenty minutes on a busy machine, longer than test:integration gives a file; run it on its own:
+//   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -23,13 +24,14 @@ const OPUS = 'claude-opus-5-5', SONNET = 'claude-sonnet-5-5', HAIKU = 'claude-ha
 type Json = Record<string, any>;
 const json = async (path: string): Promise<Json> => JSON.parse(await readFile(path, 'utf8')) as Json;
 const sha256 = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
-const benchRoot = (): string => join(process.env.PRACTONAUT_HOME!, 'bench');
 
 /** A tight-budget round up to its declaration: a repository with a bare remote, development benches. */
 async function developedRound(dir: string) {
   const bin = join(dir, 'bin'); await mkdir(bin); await fakeClaude(bin);
   const pathKey = Object.keys(process.env).find(name => name.toUpperCase() === 'PATH') ?? 'PATH';
-  const env = { ...process.env, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
+  // Each round has its own data folder: the gate counts every model run in its bench folders.
+  const home = join(dir, 'home'), benchRoot = (): string => join(home, 'bench');
+  const env = { ...process.env, PRACTONAUT_HOME: home, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
   const tool = (args: string[]) => spawnSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', env });
   const git = (...args: string[]) => {
     const result = spawnSync('git', ['-c', 'user.name=Practonaut Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd: repo, encoding: 'utf8' });
