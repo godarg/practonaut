@@ -562,7 +562,7 @@ runs (§6). Every job costs tasks × seeds × 3 agent runs on your account.
 
 **The repository's own check.** `.github/workflows/ci-recipe-check.yml` runs the same steps by hand
 (`workflow_dispatch`, outside the required checks) with the `oracle` agent on a small fixture world
-(`tests/fixtures/ci-recipe/`: one task made with `tasks from-scenes`, two seeds × three repeats, budget
+(`tests/fixtures/ci-recipe/`: one task made with `tasks from-scenes`, one seed × three repeats, budget
 three actions) against its committed baseline, with Practonaut packed from the checkout. With
 `plant_regression` the candidate plays a valid reference that needs four actions, so every repeat ends
 with an extra arrow and `compare` fails with `instance_regression`. `tests/integration/ci-recipe.test.ts`
