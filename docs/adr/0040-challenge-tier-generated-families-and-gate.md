@@ -1,6 +1,6 @@
 # PADR-0040 — Challenge tier: seeded families of materialised instances, task limits, minimal length and a preregistered gate
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 4 · Builds on
+Status: accepted 2026-10-15 after independent review (Codex and four Opus rounds, pull request #32), before any ladder run · Date: 2026-10-14 · Roadmap 0.2.0, Must 4 · Builds on
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) (materialised instances, bench/2),
 [PADR-0013](0013-bounded-predicates.md) (goal predicates) and
 [PADR-0038](0038-lean-mcp-replies.md) (agent replies)
