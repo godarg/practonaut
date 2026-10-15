@@ -61,6 +61,8 @@ All notable changes are recorded here. The format follows
 - **Bench infrastructure errors.** A run whose client reports a usage or rate limit or an API error,
   or whose agent ends without completing and without a tool call, is `infra_error` and not judged;
   `--stop-on-infra` stops the bench there with a partial report naming the tasks to resume (exit 75).
+  `bench … --recover <bench folder>` rebuilds the report of a bench killed before writing one
+  (kill -9, power loss, a second Ctrl+C) from its run folders, re-verified as `report --verify` does.
   Model ids may carry a bracketed suffix (`[1m]`); Claude Code's version is recorded per run, and
   `report --verify` checks each run's model against the agent's own output.
 

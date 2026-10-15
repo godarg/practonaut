@@ -884,6 +884,10 @@
         "additionalProperties": false
       }
     },
+    "recovered": {
+      "type": "boolean",
+      "const": true
+    },
     "interrupted": {
       "type": "object",
       "properties": {

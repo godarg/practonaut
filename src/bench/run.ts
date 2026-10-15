@@ -12,8 +12,9 @@
  * agent has ended (PADR-0036), so no agent finds them there while it runs.
  */
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { arch, homedir, release } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,11 +34,11 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 import { StdioMcpClient, type ClientCall, type McpServerEntry } from './mcp-client.ts';
-import { clientFailure, clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientFailure, clientResult, MAX_LOG_BYTES, mutationCounts, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
-import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
 import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
 
@@ -171,6 +172,13 @@ export function infraNote(error: unknown): string {
 
 /** Agent processes that are running now; a forced stop (second Ctrl+C) ends their groups at once. */
 const runningAgents = new Set<number>();
+/** The running agent's process id (its process group's on POSIX), in the run folder. */
+const AGENT_PID_FILE = 'agent.pid';
+/** Whether the agent whose id a run folder records still runs (POSIX: anything of its process group). */
+function agentAlive(pid: number): boolean {
+  try { process.kill(process.platform === 'win32' ? pid : -pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
 export function killRunningAgents(): void { for (const pid of runningAgents) killProcessTree(pid, 'SIGKILL'); }
 
 export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: boolean; errorClasses: string[] } {
@@ -208,6 +216,8 @@ async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, 
       const { command, args, windowsVerbatimArguments } = spawnable(argv);
       const child = spawn(command, args, { cwd, env, stdio: ['pipe', stdout.fd, stderr.fd], detached: posix, windowsHide: true, ...(windowsVerbatimArguments ? { windowsVerbatimArguments } : {}) });
       if (child.pid !== undefined) runningAgents.add(child.pid);
+      // Beside the run's logs: `bench --recover` refuses while the agent of a killed bench still runs.
+      if (child.pid !== undefined) try { writeFileSync(join(logs, AGENT_PID_FILE), `${child.pid}\n`, { mode: 0o600 }); } catch { /* recovery then cannot tell */ }
       let timedOut = false, interrupted = false, settled = false, hardKill: ReturnType<typeof setTimeout> | undefined;
       const stop = (): void => { killProcessTree(child.pid, 'SIGTERM'); hardKill = setTimeout(() => killProcessTree(child.pid, 'SIGKILL'), 3_000); hardKill.unref(); };
       const timer = setTimeout(() => { timedOut = true; stop(); }, deadlineMs);
@@ -412,7 +422,18 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
   if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
-  // Every agent of this bench has ended: only now do the world and the references enter the bench folder.
+  const report = await assembleReport({ options, mirror: options.mirror, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client, planned: plan.length, partial: interrupted && runs.length < plan.length, ...(stopped ? { stopped } : {}) });
+  return { report, directory, interrupted, planned: plan.length };
+}
+
+/** The report of a bench's runs: the world and the references enter the bench folder only now, after
+ * every agent of the bench has ended (or, for a recovered bench, after it was killed). */
+async function assembleReport(input: {
+  options: Pick<BenchOptions, 'tasks' | 'seeds' | 'repeats' | 'timeoutSeconds' | 'maxActions' | 'mirrorRequested' | 'agent' | 'keepEnv' | 'label' | 'checks'>;
+  mirror: MirrorMode; prepared: BenchWorld; world: World; worldBytes: Buffer; worldSha256: string; references: ReadonlyMap<string, BenchReference>; referencesFile: string | null;
+  directory: string; runs: BenchRunV2[]; client: { model: string | null; apiKeySource: string | null }; planned: number; partial: boolean; stopped?: { run: string; remaining: string[] }; recovered?: true; createdAt?: string;
+}): Promise<BenchReportV2> {
+  const { options, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client } = input;
   await storeWorld(directory, worldBytes, worldSha256);
   let referencesBinding: BenchReportV2['references'] = null;
   if (referencesFile !== null) {
@@ -424,9 +445,9 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
   const limits = taskLimitsOf(world, options.tasks);
   const model = options.agent.kind === 'builtin' ? null : client.model;
   const report: BenchReportV2 = {
-    schema: BENCH_SCHEMA, createdAt: new Date().toISOString(), ...(options.label !== undefined ? { label: options.label } : {}),
+    schema: BENCH_SCHEMA, createdAt: input.createdAt ?? new Date().toISOString(), ...(options.label !== undefined ? { label: options.label } : {}),
     environment: {
-      practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: options.mirror,
+      practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: input.mirror,
       world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated, ...(limits.length ? { limits } : {}) },
     },
     agent: {
@@ -437,7 +458,110 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT, ...(options.checks !== undefined ? { checks: options.checks } : {}) },
     references: referencesBinding,
     // A report that holds every planned run (the last one interrupted) is not a partial report.
-    runs, ...(interrupted && runs.length < plan.length ? { interrupted: { plannedRuns: plan.length, ...(stopped ? { stopped } : {}) } } : {}), summary: summarize(runs, options.repeats),
+    runs, ...(input.partial ? { interrupted: { plannedRuns: input.planned, ...(input.stopped ? { stopped: input.stopped } : {}) } } : {}),
+    ...(input.recovered ? { recovered: true as const } : {}), summary: summarize(runs, options.repeats),
   };
-  return { report: validateBenchReportV2(report), directory, interrupted, planned: plan.length };
+  return validateBenchReportV2(report);
+}
+
+/**
+ * `bench --recover <bench folder>` (PADR-0040): a bench that was killed (kill -9, power loss, a second
+ * Ctrl+C) leaves its run folders but no report. This rebuilds the partial report from them with the
+ * bench's own arguments (world, references, agent, settings): in plan order up to the first run
+ * without a folder, a run whose folder holds the checker's output is listed as judged, from its
+ * judged artifacts and evidence exactly as `report --verify` re-judges them (the caller verifies the
+ * report before it is written); a run without it is an infra_error, "interrupted" (or the limit or
+ * API error its client reported). Its counters come from the host-side mutation log, its client
+ * figures from the agent's own output; the agent's exit status is read from that output (a result
+ * event: completed or agent_failed; none: timeout). The report is dated by the last file the bench
+ * wrote, so a bench resumed before the recovery still merges after it.
+ */
+export async function recoverBench(options: BenchOptions, directory: string): Promise<{ report: BenchReportV2; remaining: string[] }> {
+  const prepared = options.world ?? await libraryBenchWorld();
+  const references: ReadonlyMap<string, BenchReference> = options.references ?? (prepared.source === 'library' ? libraryReferences(options.tasks) : new Map());
+  const referencesFile = references.size ? referencesText(references, options.tasks) : null;
+  const { world, bytes: worldBytes, sha256: worldSha256 } = await benchedWorld(prepared);
+  const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
+  // Every run folder of the bench folder is recovered: one outside these arguments' plan, or after a
+  // planned run without a folder, would be left out of the report (and refuse a challenge round).
+  const folders = (await readdir(directory, { withFileTypes: true }).catch(() => { throw new BenchReportError('the bench folder cannot be read'); })).filter(entry => entry.isDirectory() && /-s\d+-r\d+$/.test(entry.name)).map(entry => entry.name);
+  const planned = new Set(plan.map(entry => `${entry.taskId}-s${entry.seed}-r${entry.repeat}`));
+  const foreign = folders.find(name => !planned.has(name));
+  if (foreign !== undefined) throw new BenchReportError(`run folder ${foreign} is not in the plan of these arguments; recover with the bench's own arguments (world, tasks, seed list, repeats)`);
+  const runs: BenchRunV2[] = [];
+  let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null }, native = false, lastActivity = 0;
+  const file = async (home: string, name: string): Promise<string | null> => readFile(join(home, name), 'utf8').catch(() => null);
+  const external = options.agent.kind !== 'builtin';
+  for (const item of plan) {
+    const runId = `${item.taskId}-s${item.seed}-r${item.repeat}`, home = join(directory, runId);
+    const started = await stat(home).catch(() => null);
+    if (!started?.isDirectory()) break;
+    try {
+      // The bench was killed after the last file of its folders was written.
+      for (const entry of await readdir(home, { withFileTypes: true })) if (entry.isFile()) lastActivity = Math.max(lastActivity, (await stat(join(home, entry.name))).mtimeMs);
+      const stdout = external ? (await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '' : '';
+      const head = external ? await stdoutHead(join(home, 'agent.stdout')) : '', tail = external ? await stdoutTail(join(home, 'agent.stdout')) : '', init = clientInit(head);
+      if (external && client.model === null && client.apiKeySource === null) client = init;
+      const figures = external ? clientResult(tail) : null;
+      const runClient: BenchRunV2['client'] = external && figures && (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null)
+        ? { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures, ...(init.version !== null ? { version: init.version } : {}) } : undefined;
+      // The host-side mutation log gives the counters, the normalised call log the reads; both are
+      // written when a run ends, so a run the kill cut short has neither.
+      const mutationsText = await file(home, RUN_EVIDENCE.mutations), callsText = await file(home, RUN_EVIDENCE.calls);
+      const records = mutationsText === null ? [] : parseMutations(mutationsText), counted = mutationCounts(records);
+      const calls = callsText === null ? [] : parseCallLog(callsText);
+      const reads = calls.filter(call => call.tool === 'observe' || call.tool === 'list_actions' || call.tool === 'explain_result').length + (calls.length ? 1 : 0);
+      const toolCalls = { observe: reads, act: counted.act, undo: counted.undoCalls, reset: counted.resetCalls, check: counted.checkCalls, total: reads + counted.act + counted.undoCalls + counted.resetCalls + counted.checkCalls };
+      const bridge = await readLogHead(join(home, RUN_EVIDENCE.bridgeCalls), MAX_LOG_BYTES);
+      const normalised = bridge === null ? null : normaliseCallLog(bridge.text, undefined, bridge.unreadLines);
+      const logs: BenchRunV2['logs'] | undefined = mutationsText === null ? undefined : {
+        calls: callsText === null ? null : { sha256: sha256Hex(callsText), entries: calls.length, dropped: normalised?.dropped ?? 0, omitted: normalised?.omitted ?? 0, clientTiming: calls.some(call => call.clientMs !== null) },
+        mutations: { sha256: sha256Hex(mutationsText), entries: records.length, omitted: 0 },
+      };
+      const sessionText = await file(home, RUN_ARTIFACTS.session), checkerText = await file(home, RUN_ARTIFACTS.checker), nativeText = await file(home, RUN_ARTIFACTS.native);
+      const ended = (await stat(join(home, external ? 'agent.stdout' : RUN_ARTIFACTS.checker)).catch(() => null))?.mtimeMs ?? started.birthtimeMs;
+      const base = {
+        id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, pass: false,
+        acceptedActions: counted.accepted, rejectedActions: counted.rejected, undos: counted.undos, resets: counted.resets, toolCalls,
+        wallMs: Math.max(0, Math.round(ended - started.birthtimeMs)), referenceActions: references.get(item.taskId)?.steps.length ?? null, agentExitCode: null,
+        ...(runClient ? { client: runClient } : {}),
+      };
+      if (sessionText === null || checkerText === null) {
+        // The world and the references enter the bench folder only once every agent of the bench has
+        // ended: an agent the kill left running (its own process group) is ended first.
+        const pid = Number((await file(home, AGENT_PID_FILE))?.trim());
+        if (Number.isSafeInteger(pid) && pid > 0 && agentAlive(pid)) throw new BenchReportError(`run ${runId}: its agent (process ${pid}) still runs; end it and its process group (kill -9 -${pid}) and recover again`);
+        // Not judged: what the client's own stream reports (a limit, an API error), else interrupted.
+        const failure = external ? clientFailure(stdout) : null;
+        const note = failure ? scrubPaths(`the client reported ${CLIENT_FAILURE_WORDS[failure.reason]} (${failure.detail})`.replaceAll(homedir(), '~')).slice(0, 256) : 'interrupted';
+        runs.push({ ...base, status: 'infra_error', actions: 0, checker: null, note, ...(logs ? { logs } : {}) });
+        continue;
+      }
+      const session = JSON.parse(sessionText) as SessionData, raw = JSON.parse(checkerText) as { session: CheckerVerdict; native: CheckerVerdict | null };
+      if (!Array.isArray(session?.log)) throw new Error(`${RUN_ARTIFACTS.session} holds no session`);
+      if (nativeText !== null) native = true;
+      const trace = await file(home, RUN_EVIDENCE.trace), board = await file(home, RUN_EVIDENCE.board);
+      const status: BenchRunV2['status'] = !external ? 'completed' : /"type"\s*:\s*"result"/.test(tail) ? (/"is_error"\s*:\s*true/.test(tail) ? 'agent_failed' : 'completed') : 'timeout';
+      runs.push({
+        ...base, status, actions: session.log.length,
+        checker: { session: verdictOf(raw.session, item.taskId), native: raw.native === null ? null : verdictOf(raw.native, item.taskId) },
+        note: 'recovered from the run folder', ...(logs ? { logs } : {}),
+        artifacts: { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText),
+          ...(trace !== null && logs ? { trace: sha256Hex(trace) } : { trace: null, traceError: logs ? 'interrupted' : 'log_unwritten' }), board: board === null ? null : sha256Hex(board) },
+      });
+    } catch (error) {
+      if (error instanceof BenchReportError) throw error;
+      throw new BenchReportError(`run ${runId}: its folder cannot be recovered (${error instanceof Error ? error.message.slice(0, 200) : 'unreadable'})`);
+    }
+  }
+  const unplanned = folders.find(name => !runs.some(run => run.id === name));
+  if (unplanned !== undefined) throw new BenchReportError(`run folder ${unplanned} follows a planned run without a folder; recover with the bench's own arguments (world, tasks, seed list, repeats)`);
+  if (!runs.length) throw new BenchReportError(`the bench folder holds no run folder of these arguments' plan`);
+  // The mirror as run: a judged run with a native export ran with it; none judged, as requested.
+  const mirror: MirrorMode = native ? 'required' : runs.some(run => run.checker !== null) || options.mirrorRequested !== 'required' ? 'off' : 'required';
+  for (const run of runs) run.pass = derivedPass(run, mirror);
+  const report = await assembleReport({ options, mirror, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client, planned: plan.length, partial: runs.length < plan.length, recovered: true, createdAt: new Date(lastActivity || Date.now()).toISOString() });
+  // Tasks without a judged run for every planned seed and repeat: what a resumed bench takes.
+  const remaining = options.tasks.filter(task => plan.some(entry => entry.taskId === task && !runs.some(run => run.id === `${entry.taskId}-s${entry.seed}-r${entry.repeat}` && run.status !== 'infra_error')));
+  return { report, remaining };
 }

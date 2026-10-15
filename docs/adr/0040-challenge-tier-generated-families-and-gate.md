@@ -227,7 +227,11 @@ judged state and the error classes, and the judged state may hold whatever an ag
   stream reports a usage or rate limit or an API error, or the agent ended without completing and
   without a tool call (`error_max_turns` and other agent errors stay `agent_failed`). With
   `--stop-on-infra` a bench stops at the first one; the operator waits out the limit window and
-  benches the remaining tasks (`args <set> --tasks …`).
+  benches the remaining tasks (`args <set> --tasks …`). A bench killed without a report (kill -9,
+  power loss, a second Ctrl+C) is recovered with `bench <its arguments> --recover <bench folder>`:
+  the judged runs from their run folders, re-verified as `report --verify` does, the others as
+  `infra_error` "interrupted"; the recovered report merges like any partial report, and a judged run
+  folder no report lists still refuses the round.
 - **Resume and spend:** the gate merges an agent's reports (one per resumed bench); a task benched
   again counts its later run only when the earlier run was an `infra_error` (both are spent), any
   other repeat refuses the round (no best-of-N). The gate counts every run folder of a held-out task

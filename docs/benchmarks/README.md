@@ -249,7 +249,7 @@ outside it is referenced, so it can be moved, archived or handed over:
 
 | Entry | Written | Content |
 |---|---|---|
-| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
+| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, `agent.pid` (the agent's process id, for `--recover`), the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
 | `world.pnworld` | after the last agent has ended; the runs' hosts loaded the world from the same bytes, hashed before the first run | the public world |
 | `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
@@ -266,6 +266,17 @@ is written (exit 130). With `--stop-on-infra` the bench stops itself after the f
 run — a usage limit hits every later run too — and writes the partial report with
 `interrupted.stopped` (that run and the remaining tasks; exit 75): wait until the client's limit
 window is over, then bench the remaining tasks (`--tasks …`).
+
+A bench killed before it wrote its report (kill -9, power loss, out of memory, a second Ctrl+C)
+leaves its run folders. `bench <the bench's own arguments> --recover <bench folder>` rebuilds the
+partial report from them into that folder (`recovered: true`): in plan order, every run whose folder
+holds the checker's output is listed as judged and re-verified exactly as `report --verify` does (a
+folder whose artifacts or evidence were changed is refused, naming the run), every other run as an
+`infra_error` (`interrupted`, or the limit its client reported), and the output names the tasks to
+bench again. It refuses while the killed bench's agent still runs (`agent.pid` in the run folder:
+end its process group first), a folder that already holds a report, and run folders outside the
+plan of the given arguments. The world and the references enter the folder only then, as with any
+report.
 
 Two levels of checking, and the output always says which one ran:
 
@@ -520,8 +531,8 @@ the client reports in every run); any other model needs `--maintainer-approved <
 pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; development outcomes are
 reported as a sanity check and never change it.
 
-**Operator procedure.** Run one family at a time on an otherwise idle machine that does not sleep
-(`caffeinate -i` on macOS), with Claude Code logged in, on a branch of its own for the round
+**Operator procedure.** Run one family at a time on an otherwise idle machine on mains power that
+does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a branch of its own for the round
 (`git switch -c challenge/<family>-round-<k>` from the commit to be gated, also from a detached
 checkout, then `git push -u origin HEAD`). The declaration is committed and pushed on that branch,
 and the gate runs there before any squash or rebase. **Keep the branch** (never delete it): the
@@ -532,10 +543,15 @@ settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, 
 error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`
 keeps the loop from starting the next model; wait until the limit window is over, then bench those
 tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and continue the loop
-from that model. A bench stopped with Ctrl+C (exit 130) lists its run in progress as not judged and
-names the tasks to resume the same way; so does a bench that was killed (its unjudged run folders
-may be benched again). Pass every report to the tool. Do not rerun a task that was judged: the gate
-finds every run folder under the bench roots and refuses best-of-N.
+from that model. To stop a bench, press Ctrl+C **once** and wait for its partial report (exit 130):
+it lists the run in progress as not judged and names the tasks to resume the same way. A second
+Ctrl+C, kill -9, power loss or the machine running out of memory leave no report; then end the
+bench's agent if it still runs (`kill -9 -$(cat <run folder>/agent.pid)`) and recover the report
+before anything else, with the bench's own arguments:
+`node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args <set> [--tasks …]) --recover <bench folder>`;
+it names the tasks to resume. Pass every report, recovered ones included, to the tool. Do not rerun
+a task that was judged: the gate finds every run folder under the bench roots, refuses best-of-N
+and refuses a judged run folder that no report lists.
 
 ```bash
 F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.declaration.json
@@ -544,7 +560,7 @@ git switch -c challenge/$F-round-1 && git push -u origin HEAD
 # 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
 node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
 for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
-  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required --stop-on-infra || break
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required || break
 done
 # 2. Declaration: freezes the round; commit and push it before step 3.
 node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL

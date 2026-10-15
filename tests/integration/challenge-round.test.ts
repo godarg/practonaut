@@ -3,17 +3,19 @@
 // repository with a local bare remote, the held-out set generated only from the committed and pushed
 // declaration, and the gate's refusals of changed set files. The whole round through the preflight
 // and the gate (oracle, random and three ladder benches on 26 instances, one stopped by a usage limit
-// and resumed, every report re-verified, every near miss replayed, a hidden rerun found) takes about
+// and resumed, one killed with kill -9, recovered and resumed, every report re-verified, every near
+// miss replayed, a hidden rerun found) takes about
 // twenty minutes on a busy machine, longer than test:integration gives a file; run it on its own,
 // after the engine build:
 //   npm run engine:build
 //   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,7 +62,7 @@ async function developedRound(dir: string) {
   }
   const declarationPath = join(declarations, 'tight-budget-round-1.declaration.json');
   const declare = (reports: string[]) => tool(['declare', '--family', 'tight-budget', '--round', '1', '--difficulty', '1', '--dev', reports.join(','), '--out', declarationPath]);
-  return { env, tool, git, bench, setArgs, dev, declare, declarationPath, declarations, repo };
+  return { env, tool, git, bench, setArgs, dev, declare, declarationPath, declarations, repo, benchRoot };
 }
 
 test('a round is declared from its development benches and the committed rounds before it; its held-out set needs the declaration committed and pushed; the gate refuses changed set files', { timeout: 600_000 }, async () => {
@@ -145,10 +147,10 @@ test('a round is declared from its development benches and the committed rounds 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('the whole round: preflight, ladder benches (one stopped by a usage limit and resumed), the gate and its ledger; a hidden rerun refuses the round', { timeout: 3_000_000, skip: process.env.PN_CHALLENGE_ROUND === '1' ? false : 'about twenty minutes; run with PN_CHALLENGE_ROUND=1' }, async () => {
+test('the whole round: preflight, ladder benches (one stopped by a usage limit and resumed, one killed with kill -9, recovered and resumed), the gate and its ledger; a hidden rerun refuses the round', { timeout: 3_000_000, skip: process.env.PN_CHALLENGE_ROUND === '1' ? false : 'about twenty minutes; run with PN_CHALLENGE_ROUND=1' }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-gate-'));
   try {
-    const { tool, git, bench, setArgs, dev, declare, declarationPath, declarations } = await developedRound(dir);
+    const { env, tool, git, bench, setArgs, dev, declare, declarationPath, declarations, benchRoot } = await developedRound(dir);
     assert.equal(declare(dev).status, 0);
     git('add', '.'); git('commit', '-m', 'declare'); git('push');
     const declaration = validateDeclaration(await json(declarationPath)), seeds = heldOutSeeds(declaration);
@@ -170,21 +172,42 @@ test('the whole round: preflight, ladder benches (one stopped by a usage limit a
     const resumed = await bench('claude-code', setArgs(join(dir, 'heldout'), rest), { PN_FAKE_MODEL: OPUS });
     assert.equal(resumed.status, 0);
     const ladder = [stopped.path, resumed.path];
-    for (const model of [SONNET, HAIKU]) { const run = await bench('claude-code', heldArgs, { PN_FAKE_MODEL: model }); assert.equal(run.status, 0); ladder.push(run.path); }
+    // Sonnet: the bench is killed with kill -9 in its sixth run (the stand-in observes and sleeps);
+    // its agent is ended, the report recovered from the run folders, the named tasks resumed, and
+    // the preflight still passes (PADR-0040).
+    const sleepState = join(dir, 'sleep'); await mkdir(sleepState);
+    const before = new Set(await readdir(benchRoot()));
+    const killed = spawn(process.execPath, [CLI, 'bench', '--agent', 'claude-code', ...heldArgs], { env: { ...env, PN_FAKE_MODEL: SONNET, PN_FAKE_SLEEP_AFTER: '5', PN_FAKE_STATE: sleepState }, stdio: 'ignore' });
+    for (let waited = 0; !existsSync(join(sleepState, 'sleeper.pid')); waited += 200) { assert.ok(waited < 600_000, 'the sixth run did not start'); await new Promise(resolve => setTimeout(resolve, 200)); }
+    killed.kill('SIGKILL'); await once(killed, 'exit');
+    const sleeper = Number(await readFile(join(sleepState, 'sleeper.pid'), 'utf8'));
+    try { process.kill(-sleeper, 'SIGKILL'); } catch { /* gone */ }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const killedFolder = join(benchRoot(), (await readdir(benchRoot())).find(name => !before.has(name))!);
+    const recovered = spawnSync(process.execPath, [CLI, 'bench', '--agent', 'claude-code', ...heldArgs, '--recover', killedFolder], { encoding: 'utf8', env });
+    assert.equal(recovered.status, 0, recovered.stderr);
+    const named = /--tasks (\S+)/.exec(recovered.stdout)![1]!;
+    assert.equal(named.split(',').length, 21);
+    const sonnetRest = await bench('claude-code', setArgs(join(dir, 'heldout'), named), { PN_FAKE_MODEL: SONNET });
+    assert.equal(sonnetRest.status, 0);
+    ladder.push(join(killedFolder, 'report.json'), sonnetRest.path);
+    const again = tool(['gate', '--preflight', ...base]);
+    assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /preflight passed — the ladder may start/);
+    const haiku = await bench('claude-code', heldArgs, { PN_FAKE_MODEL: HAIKU }); assert.equal(haiku.status, 0); ladder.push(haiku.path);
     const out = join(declarations, 'tight-budget-round1.md');
     const gated = tool(['gate', ...base, '--ladder', ladder.join(','), '--out', out]);
     assert.equal(gated.status, 0, gated.stderr);
-    assert.match(gated.stdout, /tight-budget round 1: does not pass; 87 model runs spent/);
+    assert.match(gated.stdout, /tight-budget round 1: does not pass; 88 model runs spent/);
     const markdown = await readFile(out, 'utf8');
     assert.match(markdown, /\| oracle \| 26\/26 \| oracle passes 100 % \| yes \|/);
     assert.match(markdown, /\| near-misses \| (\d+)\/\1 fail \| every near miss fails \| yes \|/);
     assert.match(markdown, new RegExp(`\\| Held-out instances \\| 26 \\(generator seeds ${seeds[0]}–${seeds.at(-1)}, derived from the development runs`));
-    // 78 counted held-out runs + 9 development runs; the run the usage limit rejected before any
-    // model work is listed, not counted (third review).
-    assert.match(markdown, /\| budget \| 87 model runs spent \(78 held-out \+ 9 development\), 1 rejected by the client not counted; release 122 of 500 \|/);
+    // 79 counted held-out runs (the killed run is spent) + 9 development runs; the run the usage
+    // limit rejected before any model work is listed, not counted (third review).
+    assert.match(markdown, /\| budget \| 88 model runs spent \(79 held-out \+ 9 development\), 1 rejected by the client not counted; release 123 of 500 \|/);
     assert.match(markdown, /\| ladder \(claude-code\) \| `claude-opus-5-5` \| 0\/26 \|.*\| 0 \| 0 \| 0 \| 2 \|/);
     const ledger = await json(join(declarations, 'tight-budget-round1.ledger.json'));
-    assert.deepEqual([ledger.schema, ledger.spent, ledger.releaseRuns, ledger.heldOutRuns.length], ['practonaut.challenge-ledger/1', { development: 9, heldOut: 78, total: 87, rejected: 1 }, 122, 79]);
+    assert.deepEqual([ledger.schema, ledger.spent, ledger.releaseRuns, ledger.heldOutRuns.length], ['practonaut.challenge-ledger/1', { development: 9, heldOut: 79, total: 88, rejected: 1 }, 123, 80]);
     // A later run of one task for Haiku in the same bench folder (best-of-N): the gate finds it.
     const first = (await json(join(dir, 'heldout', 'instances.json'))).instances[0].taskId as string;
     await bench('claude-code', setArgs(join(dir, 'heldout'), first), { PN_FAKE_MODEL: HAIKU });

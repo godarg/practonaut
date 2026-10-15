@@ -13,7 +13,9 @@
 //   login-expired  an is_error result "OAuth token has expired", status 401, no tool call, exit 1
 //   silent-crash   no output and no tool call, exit 1
 // With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
-// one hits the usage limit.
+// one hits the usage limit. With PN_FAKE_SLEEP_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts
+// observe and the next one observes and then never ends (its pid in <dir>/sleeper.pid): a bench to
+// kill mid-run.
 //   fakeClaude(dir) writes an executable `claude` into dir; put dir first on PATH.
 import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -32,6 +34,13 @@ if (process.env.PN_FAKE_LIMIT_AFTER !== undefined && process.env.PN_FAKE_STATE) 
   const starts = (existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0) + 1;
   writeFileSync(counter, String(starts));
   mode = starts > Number(process.env.PN_FAKE_LIMIT_AFTER) ? 'usage-limit' : 'observe';
+}
+let sleep = false;
+if (process.env.PN_FAKE_SLEEP_AFTER !== undefined && process.env.PN_FAKE_STATE) {
+  const counter = join(process.env.PN_FAKE_STATE, 'sleep-starts');
+  const starts = (existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0) + 1;
+  writeFileSync(counter, String(starts));
+  if (starts > Number(process.env.PN_FAKE_SLEEP_AFTER)) { sleep = true; writeFileSync(join(process.env.PN_FAKE_STATE, 'sleeper.pid'), String(process.pid)); }
 }
 if (mode === 'silent-crash') process.exit(1);
 out({ type: 'system', subtype: 'init', model: process.env.PN_FAKE_MODEL ?? null, apiKeySource: 'none', claude_code_version: process.env.PN_FAKE_VERSION ?? '2.1.0' });
@@ -53,6 +62,7 @@ const at = process.argv.indexOf('--mcp-config');
 const server = JSON.parse(readFileSync(process.argv[at + 1], 'utf8')).mcpServers.practonaut;
 const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
 await client.call('observe', {});
+if (sleep) await new Promise(() => {});
 await client.close();
 if (mode === 'max-turns') { out({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 30, total_cost_usd: 0 }); process.exit(1); }
 if (mode === 'too-long') { out({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}', num_turns: 9, total_cost_usd: 0 }); process.exit(1); }

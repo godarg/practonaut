@@ -193,7 +193,7 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>] [--label <text>] [--stop-on-infra]
+                        [--keep-env <name,…>] [--label <text>] [--stop-on-infra] [--recover <bench folder>]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -212,13 +212,15 @@ CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it 
 A run whose client reports a usage or rate limit or an API error, or whose agent ends without completing and
 without a tool call, is an infra_error and is not judged. --stop-on-infra stops at the first one, writes a
 partial report naming the remaining tasks and exits 75: wait until the limit window is over, then resume.
+--recover <bench folder> with the bench's own arguments rebuilds the report of a bench that was killed (kill -9,
+power loss, a second Ctrl+C) from its run folders, verified like report --verify, and names the tasks to resume.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>] [--label <Text>] [--stop-on-infra]
+                        [--keep-env <Name,…>] [--label <Text>] [--stop-on-infra] [--recover <Bench-Ordner>]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -239,6 +241,8 @@ Ein Lauf, dessen Client ein Nutzungs- oder Ratenlimit oder einen API-Fehler meld
 Abschluss und ohne einen Werkzeugaufruf endet, ist ein infra_error und wird nicht bewertet. --stop-on-infra hält
 beim ersten an, schreibt einen Teilbericht mit den übrigen Aufgaben und endet mit 75: Warten Sie das Limitfenster
 ab und setzen Sie dann fort.
+--recover <Bench-Ordner> mit den Argumenten des Benchs baut den Bericht eines beendeten Benchs (kill -9, Stromausfall,
+zweites Strg+C) aus seinen Laufordnern neu, geprüft wie report --verify, und nennt die Aufgaben zum Fortsetzen.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },

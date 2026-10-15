@@ -355,6 +355,22 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: stopped at once (second interrupt); the agent was killed and no report was written. The run directory may hold an unfinished run.\n",
     "de": "practonaut bench: sofort beendet (zweiter Abbruch); der Agent wurde beendet, kein Bericht geschrieben. Das Laufverzeichnis kann einen unfertigen Lauf enthalten.\n"
   },
+  "benchRecovered": {
+    "en": "Recovered {runs} runs from the run folders ({judged} judged and re-verified, {unjudged} not judged, listed as infra_error “interrupted”); wrote {path}. To resume, bench the remaining tasks: --tasks {tasks}\n",
+    "de": "{runs} Läufe aus den Laufordnern wiederhergestellt ({judged} bewertet und nachgeprüft, {unjudged} nicht bewertet, als infra_error „interrupted“ geführt); {path} geschrieben. Zum Fortsetzen die übrigen Aufgaben benchen: --tasks {tasks}\n"
+  },
+  "benchRecoverOut": {
+    "en": "--recover writes the report into the bench folder; leave out --out",
+    "de": "--recover schreibt den Bericht in den Bench-Ordner; --out weglassen"
+  },
+  "benchRecoverRefused": {
+    "en": "{folder} cannot be recovered: {reason}",
+    "de": "{folder} kann nicht wiederhergestellt werden: {reason}"
+  },
+  "benchRecoverReport": {
+    "en": "{folder} already holds a report.json; --recover rebuilds the report of a bench that was killed before writing one",
+    "de": "{folder} enthält bereits eine report.json; --recover baut den Bericht eines Benchs neu, der vor dem Schreiben beendet wurde"
+  },
   "benchStopped": {
     "en": "\nStopped after run {run}: {note}. This partial report holds {runs} of {planned} planned runs. Wait until the client's limit window is over, then bench the remaining tasks: --tasks {tasks}\n",
     "de": "\nAngehalten nach Lauf {run}: {note}. Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen. Warte, bis das Limitfenster des Clients vorbei ist, und benche dann die übrigen Aufgaben: --tasks {tasks}\n"

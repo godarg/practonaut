@@ -238,6 +238,8 @@ export const BenchReportSchemaV2 = z.strictObject({
       minimal: z.boolean().optional() })).min(1).max(1000),
   }).nullable(),
   runs: z.array(BenchRunSchemaV2).min(1).max(100_000),
+  /** Rebuilt from the run folders after the bench was killed (`bench --recover`, PADR-0040). */
+  recovered: z.literal(true).optional(),
   /** `stopped`: the bench stopped itself at an infra_error run (`--stop-on-infra`, PADR-0040);
    * `remaining` are the tasks to bench again once the client's limit window is over. */
   interrupted: z.strictObject({ plannedRuns: z.number().int().min(2).max(Number.MAX_SAFE_INTEGER),

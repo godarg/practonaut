@@ -5,8 +5,9 @@ import { RuntimeError } from './runtime.ts';
 import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
-import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent } from '../bench/agents.ts';
-import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
+import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent, type AgentSpec } from '../bench/agents.ts';
+import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../bench/run.ts';
+import { existsSync } from 'node:fs';
 import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
@@ -18,7 +19,7 @@ import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--checks'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--checks', '--recover'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -60,6 +61,8 @@ export interface BenchArguments {
   checks?: number;
   /** `--stop-on-infra`: stop at the first infra_error run and write the partial report (PADR-0040). */
   stopOnInfra?: boolean;
+  /** `--recover <bench folder>`: rebuild the report of a killed bench from its run folders. */
+  recover?: string;
 }
 export function parseBenchArguments(args: string[]): BenchArguments {
   const parsed = flags(args, VALUED, ['--stop-on-infra']);
@@ -96,6 +99,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
     maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
     ...(parsed.flags['--checks'] !== undefined ? { checks: checksOption(parsed.flags['--checks']) } : {}),
     ...(parsed.booleans.has('--stop-on-infra') ? { stopOnInfra: true } : {}),
+    ...(parsed.flags['--recover'] !== undefined ? { recover: parsed.flags['--recover'] } : {}),
   };
 }
 
@@ -134,6 +138,7 @@ export async function commandBench(args: string[]): Promise<number> {
   if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.map(safeText).join(', ') }));
   // World, tasks and references are settled (and an own oracle checked) before anything starts.
   const prepared = await prepareBench(options, agent);
+  if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
   if (prepared.world.source === 'own') process.stderr.write(cliText('benchWorldOwn', { world: safeText(prepared.world.world.id), version: safeText(prepared.world.world.version), refs: prepared.references.size, tasks: prepared.tasks.length }));
@@ -172,6 +177,27 @@ export async function commandBench(args: string[]): Promise<number> {
   else if (result.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: result.planned, tasks: report.settings.tasks.filter(task => !judged(task)).join(',') }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
   return stopped ? EXIT_STOPPED : result.interrupted ? EXIT_INTERRUPTED : 0;
+}
+/**
+ * `bench … --recover <bench folder>`: the report of a bench that was killed, rebuilt from its run
+ * folders with the bench's own arguments, and verified like `report --verify` before it is written;
+ * a folder whose artifacts do not re-judge to what they hold is refused by name.
+ */
+async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepared: Awaited<ReturnType<typeof prepareBench>>): Promise<number> {
+  const folder = options.recover!;
+  // The report goes into the bench folder, where the challenge gate's spend scan reads it.
+  if (options.out !== undefined) throw new RuntimeError('usage', cliText('benchRecoverOut'));
+  if (existsSync(join(folder, 'report.json'))) throw new RuntimeError('usage', cliText('benchRecoverReport', { folder: safeText(displayPath(folder)) }));
+  let recovered: Awaited<ReturnType<typeof recoverBench>>;
+  try {
+    recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder);
+    await verifyBenchV2(recovered.report, folder, libraryWorld);
+  } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, cliText('benchRecoverRefused', { folder: safeText(displayPath(folder)), reason: error.message })); throw error; }
+  const { report, remaining } = recovered;
+  await writeAtomic(join(folder, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+  const judged = report.runs.filter(run => run.status !== 'infra_error').length;
+  process.stdout.write(cliText('benchRecovered', { runs: report.runs.length, judged, unjudged: report.runs.length - judged, path: safeText(displayPath(join(folder, 'report.json'))), tasks: remaining.length ? remaining.join(',') : '—' }));
+  return 0;
 }
 /** EX_TEMPFAIL: the bench stopped at an infra_error run (`--stop-on-infra`); resume later. */
 const EXIT_STOPPED = 75;
