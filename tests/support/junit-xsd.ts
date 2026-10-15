@@ -2,20 +2,24 @@
  * A strict validator for JUnit XML, written for the tests from the published schema, independently of
  * the code that writes the files (src/bench/junit.ts).
  *
- * Schema: the Apache Ant JUnit XML schema as published by Windy Road, `JUnit.xsd`
- * (https://github.com/windyroad/JUnit-Schema, Apache License 2.0). Its rules, as encoded below:
+ * Schema: the Apache Ant JUnit XML schema as published by Windy Road, `JUnit.xsd` of
+ * https://github.com/windyroad/JUnit-Schema at commit 332b8f3f (2018, the version that added
+ * <skipped>), Apache License 2.0. Its rules, as encoded below:
  *
  * - The root is <testsuites> (no attributes; zero or more <testsuite>) or a single <testsuite>.
  * - <testsuite> (type "testsuite"): required attributes name (xs:token, minLength 1), timestamp
  *   (xs:dateTime restricted to the pattern [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}),
- *   hostname (xs:token, minLength 1), tests, failures, errors (xs:int), time (xs:decimal); inside
+ *   hostname (xs:token, minLength 1), tests, failures, errors (xs:int), time (xs:decimal); optional
+ *   skipped (xs:int); inside
  *   <testsuites> also package (xs:token) and id (xs:int; the schema's annotation: "starts at 0 for the
  *   first testsuite and is incremented by 1"). No other attribute. Content, in this order: exactly one
  *   <properties>, zero or more <testcase>, exactly one <system-out>, exactly one <system-err>.
  * - <properties>: zero or more <property name="xs:token, minLength 1" value="xs:string"/> (empty).
  * - <testcase>: required name (xs:token), classname (xs:token), time (xs:decimal); content: optionally
- *   one <error> or one <failure>, each with text content ("pre-string"), a required type (xs:string)
- *   and an optional message (xs:string). The schema has no <skipped>.
+ *   one of <skipped>, <error> or <failure>. <error> and <failure> have text content ("pre-string"), a
+ *   required type (xs:string) and an optional message (xs:string). <skipped> is accepted with text
+ *   content and an optional message; Practonaut never writes it, so its content model is not pinned
+ *   further here.
  * - <system-out>, <system-err>: text only.
  * Element-only content may hold whitespace between elements; an element with an empty content model
  * (<property>) holds nothing at all.
@@ -179,6 +183,7 @@ export function validateJunit(text: string): string[] {
     timestamp: { required: true, valid: isTimestamp, type: 'ISO8601_DATETIME_PATTERN' },
     hostname: { required: true, valid: (v: string) => isToken(v, 1), type: 'xs:token (minLength 1)' },
     tests: { required: true, valid: isInt, type: 'xs:int' }, failures: { required: true, valid: isInt, type: 'xs:int' }, errors: { required: true, valid: isInt, type: 'xs:int' },
+    skipped: { required: false, valid: isInt, type: 'xs:int' },
     time: { required: true, valid: isDecimal, type: 'xs:decimal' },
     ...(aggregated ? { package: { required: true, valid: (v: string) => isToken(v), type: 'xs:token' }, id: { required: true, valid: isInt, type: 'xs:int' } } : {}),
   });
@@ -200,8 +205,9 @@ export function validateJunit(text: string): string[] {
       const where = `${path}/testcase[${index}]`;
       attributes(testcase, where, { name: { required: true, valid: (v: string) => isToken(v), type: 'xs:token' }, classname: { required: true, valid: (v: string) => isToken(v), type: 'xs:token' }, time: { required: true, valid: isDecimal, type: 'xs:decimal' } });
       const outcome = elements(testcase, where, false);
-      if (outcome.length > 1) at(where, `at most one <error> or <failure>, found ${outcome.map(child => child.name).join(', ')}`);
+      if (outcome.length > 1) at(where, `at most one <skipped>, <error> or <failure>, found ${outcome.map(child => child.name).join(', ')}`);
       for (const child of outcome) {
+        if (child.name === 'skipped') { attributes(child, `${where}/skipped`, { message: { required: false, ...anyString } }); textOnly(child, `${where}/skipped`); continue; }
         if (child.name !== 'error' && child.name !== 'failure') { at(where, `<${child.name}> is not allowed in a testcase`); continue; }
         attributes(child, `${where}/${child.name}`, { type: { required: true, ...anyString }, message: { required: false, ...anyString } });
         textOnly(child, `${where}/${child.name}`);

@@ -69,6 +69,8 @@ test('a judged failure is a <failure> naming its error classes; a run without a 
   assert.deepEqual(unjudged.map(node => [node.name, attribute(node, 'type')]), [['error', 'no-verdict']]);
   assert.match(attribute(unjudged[0]!, 'message'), /^No verdict: the run could not be judged, so it counts as not passed/);
   assert.match(textContent(unjudged[0]!), /Runner note: checker\.json could not be written: EISDIR/);
+  // <skipped> means a test that did not run; a run without a verdict ran and counts, so it is never written.
+  assert.equal(renderJunit(report()).includes('skipped'), false);
   // Passed runs carry no child at all.
   assert.deepEqual(childElements(childElements(suites[0]!, 'testcase')[0]!), []);
   // German: the same structure, the reasons in German.
@@ -119,8 +121,11 @@ test('the validator itself rejects what JUnit.xsd forbids (negative controls)', 
   assert.deepEqual(validateJunit(good), []);
   const broken: Array<[string, string, RegExp]> = [
     ['missing hostname', good.replace(' hostname="localhost"', ''), /required attribute hostname is missing/],
-    ['undeclared attribute', good.replace('<testsuite name="connect"', '<testsuite skipped="0" name="connect"'), /attribute skipped is not declared/],
-    ['skipped element', good.replace('<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"/>', '<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"><skipped/></testcase>'), /<skipped> is not allowed in a testcase/],
+    // Undeclared in JUnit.xsd: surefire's flaky attribute and rerunFailure element.
+    ['undeclared attribute', good.replace('<testsuite name="connect"', '<testsuite flakes="0" name="connect"'), /attribute flakes is not declared/],
+    ['undeclared element', good.replace('<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"/>', '<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"><rerunFailure type="x"/></testcase>'), /<rerunFailure> is not allowed in a testcase/],
+    ['skipped attribute not an int', good.replace('<testsuite name="connect"', '<testsuite skipped="none" name="connect"'), /attribute skipped="none" is not a valid xs:int/],
+    ['skipped and failure together', good.replace('</failure></testcase>', '</failure><skipped/></testcase>'), /at most one <skipped>, <error> or <failure>/],
     ['timestamp with zone', good.replace('timestamp="2026-10-15T09:08:07"', 'timestamp="2026-10-15T09:08:07Z"'), /is not a valid ISO8601_DATETIME_PATTERN/],
     ['impossible date', good.replace('timestamp="2026-10-15T09:08:07"', 'timestamp="2026-02-30T09:08:07"'), /is not a valid ISO8601_DATETIME_PATTERN/],
     ['time not a decimal', good.replace('time="1.265"', 'time="1,265"'), /is not a valid xs:decimal/],
@@ -129,13 +134,15 @@ test('the validator itself rejects what JUnit.xsd forbids (negative controls)', 
     ['attributes on testsuites', good.replace('<testsuites>', '<testsuites tests="8">'), /attribute tests is not declared/],
     ['system-err missing', good.replace('<system-err></system-err>', ''), /content must be properties, testcase\*, system-out, system-err/],
     ['properties after a testcase', good.replace(/<properties>[\s\S]*?<\/properties>\n/, '').replace('<system-out>', '<properties></properties><system-out>'), /content must be properties/],
-    ['failure and error together', good.replace('</failure></testcase>', '</failure><error type="x"/></testcase>'), /at most one <error> or <failure>/],
+    ['failure and error together', good.replace('</failure></testcase>', '</failure><error type="x"/></testcase>'), /at most one <skipped>, <error> or <failure>/],
     ['failure without type', good.replace('<failure type="extra-arrow loose-arrow"', '<failure'), /required attribute type is missing/],
     ['text between suites', good.replace('</testsuite>\n  <testsuite', '</testsuite>stray<testsuite'), /text is not allowed here/],
     ['element inside system-out', good.replace('<system-out>', '<system-out><b/>'), /element <b> is not allowed in text content/],
     ['empty property name', good.replace('name="practonaut.report"', 'name=" "'), /not a valid xs:token \(minLength 1\)/],
     ['content inside a property', good.replace('<property name="practonaut.report" value="practonaut.bench/2"/>', '<property name="practonaut.report" value="practonaut.bench/2"> </property>'), /empty content model/],
   ];
+  // What the schema declares is accepted: <skipped> in a test case and the suite's skipped count.
+  assert.deepEqual(validateJunit(good.replace('<testsuite name="connect"', '<testsuite skipped="1" name="connect"').replace('<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"/>', '<testcase name="connect seed 3 repeat 1" classname="flows.connect.seed-3" time="1.265"><skipped message="not run"/></testcase>')), []);
   for (const [name, xml, problem] of broken) {
     assert.notEqual(xml, good, `${name}: the mutation applies`);
     assert.match(validateJunit(xml).join('\n'), problem, name);

@@ -1,7 +1,8 @@
 /**
  * A bench report as JUnit XML, for CI systems that show test results (`bench --junit`, `report
- * --junit`). The format is the Apache Ant JUnit schema as published by Windy Road (JUnit.xsd,
- * Apache License 2.0), which most CI test views read:
+ * --junit`). The format is the Apache Ant JUnit schema as published by Windy Road (JUnit.xsd of
+ * github.com/windyroad/JUnit-Schema at commit 332b8f3f, Apache License 2.0), which most CI test views
+ * read:
  *
  *   <testsuites>                           one <testsuite> per benched task, in plan order
  *     <testsuite name package id timestamp hostname tests failures errors time>
@@ -12,8 +13,9 @@
  *       <system-out>                       the report's header line; <system-err/> stays empty
  *
  * A run without a checker verdict is never a <failure> with an invented reason: JUnit's <error>
- * ("the test could not be evaluated") is what it is, and it still counts as not passed. The schema
- * has no <skipped>, and a skipped run would read as "not counted", which is false: every run counts.
+ * ("the test could not be evaluated") is what it is, and it still counts as not passed. It is not
+ * <skipped> either: a skipped test did not run and is left out of a pass/fail count, while this run was
+ * planned, ran and counts as not passed (every run counts). This file never writes <skipped>.
  *
  * Deterministic for the same report, language, verification level and bench folder: no clock, no host
  * name (the schema requires one; it is always `localhost`), times are the runner's wall times from
