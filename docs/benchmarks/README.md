@@ -464,6 +464,51 @@ three actions) against its committed baseline, with Practonaut packed from the c
 with an extra arrow and `compare` fails with `instance_regression`. `tests/integration/ci-recipe.test.ts`
 runs the same commands locally and validates both JUnit files against the schema.
 
+## 8. Result card and badge
+
+```bash
+npx practonaut report ~/.practonaut/bench/<id>/report.json --verify --card out/card --badge out/badge.svg
+```
+
+`--card <out>` writes a 1280 × 640 card (2:1, the size of a GitHub social preview) four times:
+`<out>-light.svg`, `<out>-dark.svg`, `<out>-light.png` and `<out>-dark.png` (a `.svg` or `.png` at the
+end of `<out>` is dropped first). The PNGs are drawn from the same SVGs by the local headless Chromium
+that `practonaut setup` downloads, started like the mirror's ([PADR-0032](../adr/0032-chromium-sandbox-stays-on.md):
+sandbox first, said when Linux refuses it), with JavaScript off and every request but the card aborted.
+Without a Chromium that starts, `--card` exits 3 (`browser_runtime_missing` or `browser_start_failed`)
+and writes nothing. `--badge <out.svg>` writes one line in a chip, light by default and dark where the
+reader's system prefers it; it needs no browser. Both work with `--lang de`.
+
+What they show, and nothing more: the fraction (of instances when there are repeats, with the runs
+beside it on the card) and its 95 % Wilson interval, as in the report (§5: whole percent, rounded outward;
+a percentage of the fraction only from 100 runs); n (runs, seeds, repeats); the verification status —
+consistency-checked unless `--verify` re-judged the runs, and a consistency-checked report says so on
+both; the mirror; the isolation level; the model the client reported about itself (card); runs without
+a verdict, by count; an interruption. On the card each of these facts has its evidence mark (a filled
+disc with a check where it is confirmed, a dashed ring where it is not: not re-judged, model only, tools
+not restricted, self-reported, no verdict), so status is never colour alone, and a footer says that the
+card describes these runs, not the agent or its model in general, and that the bench is not sealed.
+Every caveat is SVG text, not a picture of text; the accessible name (`<title>`) is the report's whole
+header line. No ranking words, no praise. Why a run failed is on the report page, not on the card.
+
+The files need nothing from outside: no script, no link, no image, no font (the reader's system font
+draws the text, so lines are broken by a conservative width estimate and a column that would not fit is
+drawn smaller as a whole, never cut); the rules of `src/bench/card.css` are copied into each SVG with every
+token replaced by its value from `design/tokens.css`. Text from the report (agent name, label, model,
+world id) is escaped, control and bidi characters shown as `\u{…}`; a long name is cut with an ellipsis.
+The card and the badge depend only on the report, the language and the verification level: the same
+report gives the same bytes. The PNGs are the same bytes on the same machine (measured: five renders, one
+hash per file); another machine's fonts give other PNG bytes, while the SVGs stay the same everywhere.
+
+In a README, the two themes as one picture:
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="out/card-dark.svg">
+  <img src="out/card-light.svg" alt="Practonaut bench result" width="640">
+</picture>
+```
+
 ## 9. Example
 
 [`example-report.json`](example-report.json) and [`example-report.html`](example-report.html) are a

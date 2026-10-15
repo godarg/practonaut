@@ -423,6 +423,26 @@ export const CLI_CATALOG = {
     "en": "JUnit XML: {path}\n",
     "de": "JUnit-XML: {path}\n"
   },
+  "reportCard": {
+    "en": "Card: {paths}\n",
+    "de": "Karte: {paths}\n"
+  },
+  "reportBadge": {
+    "en": "Badge: {path}\n",
+    "de": "Badge: {path}\n"
+  },
+  "cardChromiumMissing": {
+    "en": "Chromium is not installed, but --card draws the card's PNG with it. Run {cli} setup once (an explicit download), then retry; --badge needs no browser.",
+    "de": "Chromium ist nicht installiert, --card zeichnet das PNG der Karte aber damit. Einmal {cli} setup ausführen (ausdrücklicher Download) und erneut versuchen; --badge braucht keinen Browser."
+  },
+  "cardChromiumStart": {
+    "en": "Chromium is installed but did not start ({detail}), and --card draws the card's PNG with it.\n{advice}--badge needs no browser.",
+    "de": "Chromium ist installiert, startet aber nicht ({detail}), und --card zeichnet das PNG der Karte damit.\n{advice}--badge braucht keinen Browser."
+  },
+  "cardSandboxNotice": {
+    "en": "practonaut: Chromium runs without its sandbox because this Linux system does not allow it (unprivileged user namespaces, AppArmor); it only draws the card's own SVG, with JavaScript off and no network. Set PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead.\n",
+    "de": "practonaut: Chromium läuft ohne Sandbox, weil dieses Linux sie nicht erlaubt (unprivilegierte User-Namespaces, AppArmor); es zeichnet nur das eigene SVG der Karte, ohne JavaScript und ohne Netz. PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen.\n"
+  },
   "reportReverifiedWorld": {
     "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
     "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}, Inhalts-Hash {hash}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"

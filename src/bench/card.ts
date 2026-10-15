@@ -1,0 +1,297 @@
+/**
+ * The result card and badge of a bench report (roadmap 0.2.0, Should 6): `report --card` draws a
+ * 1280 × 640 card, light and dark; `report --badge` a badge. Both are SVG files that need nothing from
+ * outside: no script, no font, no image, no link; the card's PNG is drawn from the same SVG by
+ * card-png.ts.
+ *
+ * What they carry (vision principle 4): the fraction with its 95 % Wilson interval (rates.ts: never a
+ * rate finer than 1/n), n, the verification status (re-verified, or consistency-checked only), the
+ * isolation level, the mirror, the self-reported model, runs without a verdict by count, and the caveat
+ * that a bench describes these runs and is not sealed. Every caveat is a real <text> node, never an
+ * image of text. Status is never colour alone: each fact has its word and its evidence mark (design
+ * language 7.4: a filled accent disc with a check where it is confirmed, a dashed ring where it is not).
+ * No ranking words, no praise.
+ *
+ * Values come from design/tokens.css: the rules of card.css are copied into the SVG's own <style> with
+ * every token replaced by its value (the card: one file per theme; the badge: light, and dark by
+ * prefers-color-scheme). Text from the report (agent name, label, model, world id) is escaped, with
+ * control, format and bidi characters shown as \u{…}. No clock, no randomness, no machine name: the
+ * same report, language and verification level give the same bytes.
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { isBenchReportV2, type BenchReport } from './report.ts';
+import { intervalPercent, rateText, type Language } from './rates.ts';
+import { fill, TEXT, type Words } from './report-text.ts';
+import { headline, instanceOutcome, type Verification } from './render.ts';
+import { xmlEscape } from './junit.ts';
+
+/** The card's pixel size (a 2:1 social-preview image). */
+export const CARD_SIZE = Object.freeze({ width: 1280, height: 640 });
+/** The card is laid out in 800 × 400 units of the design language's type scale and drawn at 1.6×. */
+const VIEW = Object.freeze({ width: 800, height: 400 });
+export type Theme = 'light' | 'dark';
+
+// ---- tokens ----
+
+export type TokenMap = ReadonlyMap<string, string>;
+/** The token values of each theme: the theme-independent `:root` block plus the light block, or the
+ * explicit dark block (design/tokens.css keeps the system-preference dark block identical to it). */
+export function tokenThemes(css: string): Record<Theme, TokenMap> {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const blocks: Record<'base' | Theme, Map<string, string>> = { base: new Map(), light: new Map(), dark: new Map() };
+  let depth = 0, start = 0, bodyStart = 0, selector = '';
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') { if (depth === 0) { selector = text.slice(start, i).replace(/\s+/g, ' ').trim(); bodyStart = i + 1; } depth++; }
+    else if (text[i] === '}') {
+      depth--;
+      if (depth !== 0) continue;
+      // Top-level rules only: the @media blocks (narrow screens, reduced motion, the system dark block) are skipped.
+      const target = selector === ':root' ? blocks.base : selector === ':root, :root[data-theme="light"]' ? blocks.light : selector === ':root[data-theme="dark"]' ? blocks.dark : null;
+      if (target) for (const match of text.slice(bodyStart, i).matchAll(/(--pn-[\w-]+)\s*:\s*([^;]+);/g)) target.set(match[1]!, match[2]!.trim());
+      start = i + 1;
+    }
+  }
+  const themes = { light: new Map([...blocks.base, ...blocks.light]), dark: new Map([...blocks.base, ...blocks.dark]) };
+  // Fail closed: a card drawn without its colours or type scale would be wrong, not just plain.
+  for (const theme of Object.values(themes)) for (const name of ['--pn-color-text', '--pn-color-surface', '--pn-text-display', '--pn-space-10']) if (!theme.has(name)) throw new Error(`design/tokens.css: ${name} is missing`);
+  return themes;
+}
+/** A value with every token replaced (recursively) and rem written as px (16 px each), as an SVG file
+ * outside any page has no stylesheet to take them from. */
+function resolve(value: string, tokens: TokenMap, depth = 0): string {
+  if (depth > 8) throw new Error(`design/tokens.css: tokens refer to each other too deeply (${value})`);
+  const replaced = value.replace(/var\(\s*(--pn-[\w-]+)\s*\)/g, (_, name: string) => {
+    const found = tokens.get(name);
+    if (found === undefined) throw new Error(`card.css uses ${name}, which design/tokens.css does not declare`);
+    return resolve(found, tokens, depth + 1);
+  });
+  return replaced.replace(/(-?\d*\.?\d+)rem\b/g, (_, number: string) => `${Math.round(Number(number) * 16 * 10_000) / 10_000}px`);
+}
+/** A token's value as a number of px (or a plain number). */
+function numeric(name: string, tokens: TokenMap): number {
+  const value = Number.parseFloat(resolve(`var(${name})`, tokens));
+  if (!Number.isFinite(value)) throw new Error(`design/tokens.css: ${name} is not a number`);
+  return value;
+}
+
+/** card.css, read when a card is first drawn (beside this module in a checkout and in the build). */
+let cardCss: string | undefined;
+function cardStylesheet(): string {
+  cardCss ??= readFileSync(fileURLToPath(new URL('./card.css', import.meta.url)), 'utf8');
+  return cardCss;
+}
+type Rules = ReadonlyMap<string, ReadonlyArray<[string, string]>>;
+/** The rules of card.css: `.class` → its declarations (card.css holds no nesting and no at-rules). */
+function rules(): Rules {
+  const out = new Map<string, Array<[string, string]>>();
+  for (const match of cardStylesheet().replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const declarations = match[2]!.split(';').map(part => part.trim()).filter(Boolean).map(part => [part.slice(0, part.indexOf(':')).trim(), part.slice(part.indexOf(':') + 1).trim()] as [string, string]);
+    out.set(match[1]!.trim(), declarations);
+  }
+  return out;
+}
+/** The rules whose class starts with one of `prefixes`, every token replaced by its value in `tokens`. */
+function stylesheet(tokens: TokenMap, prefixes: readonly string[]): string {
+  const css = [...rules()].filter(([selector]) => prefixes.some(prefix => selector.startsWith(`.${prefix}`)))
+    .map(([selector, declarations]) => `${selector}{${declarations.map(([property, value]) => `${property}:${resolve(value, tokens)}`).join(';')}}`).join('');
+  // The style sits inside an XML file: nothing in it may open markup or an entity.
+  if (/[<&]/.test(css)) throw new Error('card.css or design/tokens.css would put < or & into the SVG style');
+  return css;
+}
+
+// ---- text measurement ----
+
+/** Advance widths in 1/1000 em of a Helvetica-like sans (the Adobe Core 14 metrics), digits widened to
+ * a tabular 600: the card is drawn with the reader's own system font, so a line is broken by an
+ * estimate that errs on the wide side (SAFETY), never by a measurement of one machine's font. */
+const ASCII = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
+const OTHER: Readonly<Record<string, number>> = { '·': 278, '–': 556, '—': 1000, '…': 1000, '“': 333, '”': 333, '„': 333, '‘': 222, '’': 222, '‚': 222, '«': 556, '»': 556, '×': 584, '→': 1000, 'ß': 611, '€': 556, '°': 400, ' ': 278 };
+const SAFETY = 1.06, BOLD = 1.08;
+function advance(char: string): number {
+  const code = char.codePointAt(0)!;
+  if (code >= 32 && code <= 126) return ASCII[code - 32]!;
+  if (OTHER[char] !== undefined) return OTHER[char];
+  // A letter with a diacritic is as wide as its base letter.
+  const base = char.normalize('NFD').replace(/\p{M}/gu, '');
+  if (base.length === 1 && base !== char) return advance(base);
+  return code >= 0x2e80 ? 1000 : 640;
+}
+interface Metrics { size: number; leading: number; tracking: number; bold: boolean }
+function width(text: string, metrics: Metrics): number {
+  let sum = 0, count = 0;
+  for (const char of text) { sum += advance(char); count++; }
+  return (sum / 1000) * metrics.size * SAFETY * (metrics.bold ? BOLD : 1) + count * metrics.tracking * metrics.size;
+}
+/** The type role a card.css class uses: size, leading, tracking and weight from its tokens. */
+function metricsOf(className: string, tokens: TokenMap, all: Rules): Metrics {
+  const declarations = new Map(all.get(`.${className}`) ?? []);
+  const size = /var\(--pn-text-([\w-]+)\)/.exec(declarations.get('font-size') ?? '')?.[1];
+  if (!size) throw new Error(`card.css: .${className} has no type role`);
+  const tracking = declarations.get('letter-spacing'), weight = declarations.get('font-weight');
+  return { size: numeric(`--pn-text-${size}`, tokens), leading: numeric(`--pn-leading-${size}`, tokens), tracking: tracking ? Number.parseFloat(resolve(tracking, tokens)) : 0, bold: weight ? Number(resolve(weight, tokens)) >= 600 : false };
+}
+
+/** Lines of at most `max` units; a word longer than a line is broken where it must be. Past `lines`
+ * lines the last one ends with an ellipsis (user text only: no caveat is ever cut, see layout). */
+function wrap(text: string, max: number, metrics: Metrics, lines = Infinity): string[] {
+  const fits = (line: string): boolean => width(line, metrics) <= max;
+  const out: string[] = [];
+  let current = '';
+  for (const word of text.split(' ').filter(Boolean)) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (fits(candidate)) { current = candidate; continue; }
+    if (current) out.push(current);
+    current = '';
+    let rest = word;
+    while (!fits(rest)) {
+      let cut = [...rest].length - 1;
+      while (cut > 1 && !fits([...rest].slice(0, cut).join(''))) cut--;
+      out.push([...rest].slice(0, cut).join('')); rest = [...rest].slice(cut).join('');
+    }
+    current = rest;
+  }
+  if (current) out.push(current);
+  if (out.length <= lines) return out;
+  const kept = out.slice(0, lines);
+  let last = `${kept[lines - 1]} ${out.slice(lines).join(' ')}`;
+  while (last && !fits(`${last}…`)) last = [...last].slice(0, -1).join('');
+  kept[lines - 1] = `${last.trimEnd()}…`;
+  return kept;
+}
+
+// ---- drawing ----
+
+const num = (value: number): string => String(Math.round(value * 100) / 100);
+const baseline = (top: number, metrics: Metrics): number => top + (metrics.leading + 0.72 * metrics.size) / 2;
+/** One <text> node per paragraph, a <tspan> per line; a space ends every line but the last, so the
+ * node's text is the paragraph itself. */
+function paragraph(className: string, lines: readonly string[], x: number, top: number, metrics: Metrics, anchor: 'start' | 'end' = 'start'): string {
+  const spans = lines.map((line, index) => `<tspan x="${num(x)}" ${index === 0 ? `y="${num(baseline(top, metrics))}"` : `dy="${num(metrics.leading)}"`}>${xmlEscape(line)}${index < lines.length - 1 ? ' ' : ''}</tspan>`).join('');
+  return `<text class="${className}"${anchor === 'end' ? ' text-anchor="end"' : ''}>${spans}</text>`;
+}
+/** An evidence mark at 16 units (the kit's 24-unit shapes): confirmed, or not confirmed (dashed ring). */
+function mark(kind: 'confirmed' | 'open', x: number, top: number): string {
+  const shape = kind === 'confirmed' ? '<circle cx="12" cy="12" r="10" class="mark-confirmed"/><path d="M7.7 12.4l3 3 5.6-6" class="mark-check"/>' : '<circle cx="12" cy="12" r="9" class="mark-open" stroke-dasharray="2.4 3"/>';
+  return `<g transform="translate(${num(x)} ${num(top)}) scale(${num(16 / 24)})" aria-hidden="true">${shape}</g>`;
+}
+interface Block { markup: string; height: number }
+/** A column of blocks; when it is taller than `room`, it is drawn smaller as a whole, so no caveat is cut. */
+function column(blocks: readonly Block[], gap: number, x: number, top: number, room: number): string {
+  let y = 0;
+  const parts: string[] = [];
+  for (const block of blocks) { parts.push(`<g transform="translate(0 ${num(y)})">${block.markup}</g>`); y += block.height + gap; }
+  const height = Math.max(0, y - gap), scale = height > room ? room / height : 1;
+  return `<g transform="translate(${num(x)} ${num(top)})${scale < 1 ? ` scale(${num(Math.floor(scale * 1000) / 1000)})` : ''}">${parts.join('')}</g>`;
+}
+
+interface Fact { kind: 'confirmed' | 'open'; text: string }
+/** The evidence of a report, in words: verification, mirror, isolation, model, runs without a verdict, interruption. */
+function facts(report: BenchReport, verification: Verification, language: Language): Fact[] {
+  const t = TEXT[language], out: Fact[] = [];
+  out.push(verification === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
+  out.push(report.environment.mirror === 'required' ? { kind: 'confirmed', text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
+  const isolation = isBenchReportV2(report) ? report.agent.isolation : null;
+  out.push(isolation === 'builtin-baseline' ? { kind: 'confirmed', text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: 'confirmed', text: t.cardIsolationPreset }
+    : isolation === 'template-unrestricted' ? { kind: 'open', text: t.cardIsolationTemplate } : { kind: 'open', text: t.cardIsolationUnrecorded });
+  if (report.agent.kind !== 'builtin') {
+    const model = report.agent.model;
+    out.push({ kind: 'open', text: model === null ? t.cardModelNone : fill(language, report.agent.modelSource === 'command-output' ? t.cardModelCommand : t.cardModelClient, { model }) });
+  }
+  const unjudged = report.runs.filter(run => run.checker === null).length;
+  if (unjudged) out.push({ kind: 'open', text: fill(language, t.cardUnjudged, { n: unjudged }) });
+  if (report.interrupted) out.push({ kind: 'open', text: fill(language, t.cardInterrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }) });
+  return out;
+}
+/** The headline numbers: the fraction the interval belongs to (instances when there are repeats). */
+function result(report: BenchReport, language: Language): { fraction: string; words: string; interval: string; runs: string | null } {
+  const t = TEXT[language], instances = instanceOutcome(report.runs), s = report.summary;
+  const interval = intervalPercent(instances.passed, instances.instances);
+  const intervalText = fill(language, t.interval, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) });
+  if (!instances.repeated) return { fraction: rateText(s.passed, s.runs, language), words: fill(language, t.cardWordsRuns, { n: s.runs }), interval: intervalText, runs: null };
+  return { fraction: rateText(instances.passed, instances.instances, language), words: fill(language, t.cardWordsInstances, { n: instances.instances }), interval: intervalText, runs: fill(language, t.headlineRuns, { fraction: rateText(s.passed, s.runs, language) }) };
+}
+const worldLine = (report: BenchReport, t: Words, language: Language): string => {
+  const world = isBenchReportV2(report) ? report.environment.world : { worldId: report.environment.library.worldId, version: report.environment.library.version, source: 'library' as const };
+  return fill(language, world.source === 'library' ? t.cardWorldLibrary : t.cardWorldOwn, { world: world.worldId, version: world.version });
+};
+/** The accessible name: the report's whole header line, as the terminal prints it. */
+const accessibleName = (report: BenchReport, language: Language, verification: Verification): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
+
+/** The card of a report in one theme: an SVG of 1280 × 640 px. */
+export function renderCard(report: BenchReport, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+  const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
+  const m = (className: string): Metrics => metricsOf(className, tokens, all);
+  const space = (step: number): number => numeric(`--pn-space-${step}`, tokens);
+  const padX = space(10), padY = space(8), contentWidth = VIEW.width - 2 * padX, right = VIEW.width - padX;
+  const parts: string[] = [`<rect class="card-bg" width="${VIEW.width}" height="${VIEW.height}"/>`];
+
+  // Header: what this is and when, whose runs, the label.
+  const eyebrow = m('card-eyebrow'), title = m('card-title'), label = m('card-label');
+  parts.push(paragraph('card-eyebrow', [t.title.toLocaleUpperCase(language)], padX, padY, eyebrow), paragraph('card-date', [report.createdAt.slice(0, 10)], right, padY, m('card-date'), 'end'));
+  let y = padY + eyebrow.leading + space(2);
+  parts.push(paragraph('card-title', wrap(report.agent.name, contentWidth, title, 1), padX, y, title));
+  y += title.leading;
+  if (isBenchReportV2(report) && report.label !== undefined) parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label));
+  y += label.leading + space(3);
+  parts.push(`<line class="card-divider" x1="${padX}" y1="${num(y)}" x2="${right}" y2="${num(y)}"/>`);
+  const top = y + space(4);
+
+  // Footer, from the bottom: the world, then the caveat that this is not a ranking of models.
+  const footer = m('card-footer');
+  const caveat = wrap(t.cardCaveat, contentWidth, footer);
+  const caveatTop = VIEW.height - padY - caveat.length * footer.leading, worldTop = caveatTop - footer.leading;
+  parts.push(paragraph('card-footer', wrap(worldLine(report, t, language), contentWidth, footer, 1), padX, worldTop, footer), paragraph('card-footer', caveat, padX, caveatTop, footer));
+  const room = worldTop - space(4) - top;
+
+  // Left: the result. The fraction is the headline; the words follow on its line when they fit.
+  const leftWidth = (contentWidth - space(10)) * 0.45, rightX = padX + leftWidth + space(10), rightWidth = right - rightX;
+  const numbers = result(report, language), fraction = m('card-fraction'), words = m('card-words'), interval = m('card-interval'), sample = m('card-sample'), rule = m('card-rule-text');
+  const left: Block[] = [];
+  const sameLine = width(numbers.fraction, fraction) + space(2) + width(numbers.words, words) <= leftWidth;
+  left.push(sameLine
+    ? { markup: `<text class="card-fraction" x="0" y="${num(baseline(0, fraction))}">${xmlEscape(numbers.fraction)}<tspan class="card-words" dx="${space(1)}"> ${xmlEscape(numbers.words)}</tspan></text>`, height: fraction.leading }
+    : { markup: paragraph('card-fraction', [numbers.fraction], 0, 0, fraction) + paragraph('card-words', wrap(numbers.words, leftWidth, words), 0, fraction.leading, words), height: fraction.leading + wrap(numbers.words, leftWidth, words).length * words.leading });
+  const text = (className: string, value: string, metrics: Metrics): Block => { const lines = wrap(value, leftWidth, metrics); return { markup: paragraph(className, lines, 0, 0, metrics), height: lines.length * metrics.leading }; };
+  left.push(text('card-interval', numbers.interval, interval));
+  const n = `n = ${[fill(language, t.runCount, { n: report.summary.runs }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' · ')}`;
+  left.push(text('card-sample', n, sample));
+  if (numbers.runs) left.push(text('card-sample', numbers.runs, sample), text('card-rule-text', t.cardInstanceRule, rule));
+  parts.push(column(left, space(2), padX, top, room));
+
+  // Right: the evidence behind the number, each fact with its mark and its words.
+  const fact = m('card-fact'), markSize = 16, textX = markSize + space(2);
+  const evidence: Block[] = facts(report, verification, language).map(item => {
+    const lines = wrap(item.text, rightWidth - textX, fact);
+    return { markup: mark(item.kind, 0, (fact.leading - markSize) / 2) + paragraph('card-fact', lines, textX, 0, fact), height: lines.length * fact.leading };
+  });
+  parts.push(column(evidence, space(3), rightX, top, room));
+
+  const name = xmlEscape(accessibleName(report, language, verification));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_SIZE.width}" height="${CARD_SIZE.height}" viewBox="0 0 ${VIEW.width} ${VIEW.height}" role="img" aria-label="${name}" xml:lang="${language}">`
+    + `<title>${name}</title><style>${stylesheet(tokens, ['card-', 'mark-'])}</style>${parts.join('')}</svg>\n`;
+}
+
+/** The badge: one line in a chip, light, and dark where the reader's system prefers it. */
+export function renderBadge(report: BenchReport, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+  const t = TEXT[language], themes = tokenThemes(tokensCss), tokens = themes.light, all = rules();
+  const metrics = metricsOf('badge-text', tokens, all), name = { ...metrics, bold: true };
+  const instances = instanceOutcome(report.runs), interval = intervalPercent(instances.passed, instances.instances);
+  const fraction = instances.repeated ? fill(language, t.badgeInstances, { fraction: rateText(instances.passed, instances.instances, language) }) : fill(language, t.headlinePassed, { fraction: rateText(report.summary.passed, report.summary.runs, language) });
+  const isolation = isBenchReportV2(report) ? { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation] : t.badgeUnrecorded;
+  const unjudged = report.runs.filter(run => run.checker === null).length;
+  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), verification === 're-verified' ? t.badgeReverified : t.badgeConsistency, isolation,
+    ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
+  const rest = ` · ${parts.join(' · ')}`;
+  const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);
+  // The text is held to its estimated width (textLength), so it fits its chip in any font.
+  const textWidth = Math.ceil(width(t.badgeName, name) + width(rest, metrics)), total = textWidth + 2 * pad;
+  const label = xmlEscape(accessibleName(report, language, verification));
+  const style = `${stylesheet(tokens, ['badge-'])}@media (prefers-color-scheme:dark){${stylesheet(themes.dark, ['badge-'])}}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${height}" viewBox="0 0 ${total} ${height}" role="img" aria-label="${label}" xml:lang="${language}">`
+    + `<title>${label}</title><style>${style}</style>`
+    + `<rect class="badge-bg" x="${num(hairline / 2)}" y="${num(hairline / 2)}" width="${num(total - hairline)}" height="${num(height - hairline)}" rx="${num((height - hairline) / 2)}"/>`
+    + `<text class="badge-text" x="${pad}" y="${num(baseline(0, { ...metrics, leading: height }))}" textLength="${textWidth}" lengthAdjust="spacing"><tspan class="badge-name">${xmlEscape(t.badgeName)}</tspan>${xmlEscape(rest)}</text></svg>\n`;
+}

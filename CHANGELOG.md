@@ -42,6 +42,11 @@ All notable changes are recorded here. The format follows
   did not pass as a failure naming its unmet conditions and error classes, a run without a verdict as an
   error. A manual workflow (`.github/workflows/ci-recipe-check.yml`) proves the recipe with the oracle
   agent and a planted instance regression.
+- **Result card and badge.** `practonaut report <report.json> --card <out>` writes a 1280 × 640 card as
+  SVG and PNG, light and dark (the PNG drawn by the local Chromium); `--badge <out.svg>` a one-line badge.
+  Both carry the fraction with its 95 % Wilson interval, n, the verification status (a consistency-checked
+  report says so), the isolation level, the mirror and runs without a verdict; every caveat is SVG text,
+  colours come from the design tokens, and the same report gives the same bytes.
 - `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 - The MCP bridge names the agent's client on `undo` and `reset` too (the host accepts an optional
   `actor` on both), so the bench's mutation log names the client of every change.

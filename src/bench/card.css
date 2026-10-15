@@ -1,0 +1,31 @@
+/* Result card and badge (report --card, report --badge; src/bench/card.ts). Each picture is one SVG
+   file: card.ts copies the rules it uses into the SVG's own <style> and replaces every token with its
+   value from design/tokens.css (the card: one file per theme; the badge: light, and dark by
+   prefers-color-scheme), so the file needs nothing from outside. Linted by the report profile of
+   design:lint. Type roles and colours are the design language's (sections 5, 7.3, 7.4). */
+
+/* The card */
+.card-bg{fill:var(--pn-color-surface)}
+.card-divider{fill:none;stroke:var(--pn-color-separator);stroke-width:var(--pn-stroke-hairline)}
+.card-eyebrow{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-caption);font-weight:var(--pn-weight-semibold);letter-spacing:var(--pn-tracking-eyebrow)}
+.card-date{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-caption);font-weight:var(--pn-weight-medium);letter-spacing:var(--pn-tracking-caption);font-variant-numeric:tabular-nums}
+.card-title{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-title1);font-weight:var(--pn-weight-bold);letter-spacing:var(--pn-tracking-title1)}
+.card-label{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
+.card-fraction{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-display);font-weight:var(--pn-weight-bold);letter-spacing:var(--pn-tracking-display);font-variant-numeric:tabular-nums}
+.card-words{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-title3);font-weight:var(--pn-weight-semibold);letter-spacing:var(--pn-tracking-title3)}
+.card-interval{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);font-weight:var(--pn-weight-medium);letter-spacing:var(--pn-tracking-subhead);font-variant-numeric:tabular-nums}
+.card-sample{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);letter-spacing:var(--pn-tracking-subhead);font-variant-numeric:tabular-nums}
+.card-rule-text{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
+.card-fact{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);letter-spacing:var(--pn-tracking-subhead)}
+.card-footer{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
+
+/* Evidence marks (design language 7.4): confirmed is a filled accent disc with a check; not
+   confirmed (not re-judged, model only, not restricted, self-reported, no verdict) is a dashed ring. */
+.mark-confirmed{fill:var(--pn-color-accent);stroke:none}
+.mark-check{fill:none;stroke:var(--pn-color-text-on-accent);stroke-width:var(--pn-stroke-strong);stroke-linecap:round;stroke-linejoin:round}
+.mark-open{fill:none;stroke:var(--pn-color-unknown-icon);stroke-width:var(--pn-stroke-icon);stroke-linecap:round}
+
+/* The badge: a chip (a capsule that states a fact, never an action). */
+.badge-bg{fill:var(--pn-color-fill);stroke:var(--pn-color-separator-strong);stroke-width:var(--pn-stroke-hairline)}
+.badge-text{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-caption);font-weight:var(--pn-weight-medium);letter-spacing:var(--pn-tracking-caption);font-variant-numeric:tabular-nums}
+.badge-name{fill:var(--pn-color-text);font-weight:var(--pn-weight-semibold)}

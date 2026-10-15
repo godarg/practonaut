@@ -15,6 +15,10 @@ import { loadReportDetails } from '../bench/details.ts';
 import { compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
 import { renderJunit } from '../bench/junit.ts';
+import { renderBadge, renderCard } from '../bench/card.ts';
+import { renderCardPngs } from '../bench/card-png.ts';
+import { chromiumCheck } from './doctor.ts';
+import { browserAdvice, launchFailureDetail } from './browser-start.ts';
 import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
@@ -115,7 +119,7 @@ export async function prepareBench(options: Pick<BenchArguments, 'world' | 'task
   return { world, tasks, references };
 }
 
-async function writeAtomic(path: string, text: string): Promise<void> {
+async function writeAtomic(path: string, text: string | Uint8Array): Promise<void> {
   const temporary = `${path}.tmp-${process.pid}`;
   try { await writeFile(temporary, text, { flag: 'wx', mode: 0o644 }); await rename(temporary, path); }
   catch (error) { await rm(temporary, { force: true }); throw new RuntimeError('usage', cliText('writeFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' })); }
@@ -206,10 +210,31 @@ async function verifyReport(report: BenchReport, runs: string): Promise<Verified
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
 }
 
-/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>] [--json]:
- * validates, optionally re-judges, then renders with the run details from the bench folder. */
+/** The four files of `--card <out>`: `<out>-light.svg`, `<out>-dark.svg` and their PNGs (`.svg` or
+ * `.png` at the end of `<out>` is dropped first). */
+export function cardPaths(out: string): { light: { svg: string; png: string }; dark: { svg: string; png: string } } {
+  const base = out.replace(/\.(svg|png)$/i, '');
+  return { light: { svg: `${base}-light.svg`, png: `${base}-light.png` }, dark: { svg: `${base}-dark.svg`, png: `${base}-dark.png` } };
+}
+/** `--card`: both themes as SVG, then as PNG through Chromium; nothing is written unless all four exist. */
+async function writeCard(out: string, report: BenchReport, language: ReturnType<typeof getCliLanguage>, verification: Verified['level']): Promise<string[]> {
+  if (!(await chromiumCheck(true)).ok) throw new RuntimeError('browser_runtime_missing', cliText('cardChromiumMissing'));
+  const tokens = await readTokensCss(), paths = cardPaths(out);
+  const svgs = { light: renderCard(report, tokens, 'light', language, verification), dark: renderCard(report, tokens, 'dark', language, verification) };
+  let drawn: Awaited<ReturnType<typeof renderCardPngs>>;
+  try { drawn = await renderCardPngs([svgs.light, svgs.dark]); }
+  catch (error) { throw new RuntimeError('browser_start_failed', cliText('cardChromiumStart', { detail: launchFailureDetail(error), advice: browserAdvice() })); }
+  if (!drawn.sandbox) process.stderr.write(cliText('cardSandboxNotice'));
+  await writeAtomic(paths.light.svg, svgs.light); await writeAtomic(paths.dark.svg, svgs.dark);
+  await writeAtomic(paths.light.png, drawn.pngs[0]!); await writeAtomic(paths.dark.png, drawn.pngs[1]!);
+  return [paths.light.svg, paths.dark.svg, paths.light.png, paths.dark.png];
+}
+
+/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>]
+ * [--card <out>] [--badge <out.svg>] [--json]: validates, optionally re-judges, then renders with the run
+ * details from the bench folder. */
 export async function commandReport(args: string[]): Promise<number> {
-  const parsed = flags(args, ['--html', '--runs', '--junit'], ['--json', '--verify']);
+  const parsed = flags(args, ['--html', '--runs', '--junit', '--card', '--badge'], ['--json', '--verify']);
   if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
   const path = parsed.positional[0]!, report = await readReport(path);
   // The bench folder: what --verify re-judges and where the run details come from.
@@ -241,6 +266,17 @@ export async function commandReport(args: string[]): Promise<number> {
   if (junit) {
     await writeAtomic(junit, renderJunit(report, language, verification.level, details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(junit)) }));
+  }
+  // The card and the badge depend on the report, the language and the verification level only.
+  const card = parsed.flags['--card'];
+  if (card) {
+    const written = await writeCard(card, report, language, verification.level);
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportCard', { paths: written.map(path => safeText(displayPath(path))).join(', ') }));
+  }
+  const badge = parsed.flags['--badge'];
+  if (badge) {
+    await writeAtomic(badge, renderBadge(report, await readTokensCss(), language, verification.level));
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportBadge', { path: safeText(displayPath(badge)) }));
   }
   return 0;
 }

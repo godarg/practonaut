@@ -102,6 +102,18 @@ const en = {
   // JUnit (bench --junit, report --junit)
   junitRun: 'Run {id}.', junitNote: 'Runner note: {note}',
   junitGate: 'Every run of this bench is listed. A run that did not pass is not a regression: practonaut compare --fail-on-regression gates on instance regressions against a baseline.',
+  // Result card and badge (report --card, report --badge)
+  cardWordsRuns: '{n:run|runs} passed', cardWordsInstances: '{n:instance|instances} passed',
+  cardInstanceRule: 'An instance passed when at least half of all its runs passed; a run without a verdict counts as not passed.',
+  cardReverified: 'Re-verified: every judged run re-judged by the checker from its artifacts', cardConsistency: 'Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged',
+  cardMirrorOn: 'Real Excalidraw mirror: every action confirmed in the real app', cardMirrorOff: 'Model only: not checked against the real Excalidraw',
+  cardIsolationBuiltin: 'Built-in baseline: no language model, MCP only', cardIsolationPreset: 'Tool-restricted preset: only Practonaut’s MCP tools', cardIsolationTemplate: 'Template: tools not restricted by Practonaut', cardIsolationUnrecorded: 'Isolation not recorded (bench/1)',
+  cardModelClient: 'Model, self-reported by the client: {model}', cardModelCommand: 'Model, self-reported in the command output: {model}', cardModelNone: 'Model not reported',
+  cardUnjudged: '{n} {n:run|runs} without a verdict, counted as not passed', cardInterrupted: 'Interrupted: {runs} of {planned} planned runs finished',
+  cardWorldOwn: 'Own world: {world} {version}', cardWorldLibrary: 'Bundled library: {world} {version}',
+  cardCaveat: 'Describes these runs, not the agent or its model in general. Not sealed: the agent ran as the same user as Practonaut.',
+  badgeName: 'Practonaut', badgeInstances: '{fraction} instances passed', badgeInterval: '95 % interval {low}–{high} %', badgeReverified: 're-verified', badgeConsistency: 'consistency-checked only',
+  badgeBuiltin: 'built-in baseline', badgePreset: 'tool-restricted preset', badgeTemplate: 'tools not restricted', badgeUnrecorded: 'isolation not recorded', badgeModelOnly: 'model only', badgeUnjudged: '{n} without a verdict', badgeInterrupted: 'interrupted',
 } as const;
 
 type Catalog = { readonly [K in keyof typeof en]: string };
@@ -197,6 +209,17 @@ const de: Catalog = {
   field_world: 'Inhalt der Welt', field_grid: 'Raster aus Aufgaben und Seeds', field_mirror: 'Spiegelung', field_budget: 'Aktionsbudget', field_isolation: 'Isolationsstufe',
   junitRun: 'Lauf {id}.', junitNote: 'Hinweis des Runners: {note}',
   junitGate: 'Jeder Lauf dieser Bench ist aufgeführt. Ein nicht bestandener Lauf ist keine Regression: practonaut compare --fail-on-regression prüft Instanz-Regressionen gegen eine Basis.',
+  cardWordsRuns: '{n:Lauf|Läufe} bestanden', cardWordsInstances: '{n:Instanz|Instanzen} bestanden',
+  cardInstanceRule: 'Eine Instanz gilt als bestanden, wenn mindestens die Hälfte all ihrer Läufe bestand; ein Lauf ohne Urteil zählt als nicht bestanden.',
+  cardReverified: 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt', cardConsistency: 'Nur auf Stimmigkeit geprüft: Die Urteile im Bericht gehen auf, die Läufe wurden aber nicht neu beurteilt',
+  cardMirrorOn: 'Echte Excalidraw-Spiegelung: jede Aktion in der echten App bestätigt', cardMirrorOff: 'Nur Modell: nicht mit dem echten Excalidraw geprüft',
+  cardIsolationBuiltin: 'Eingebaute Vergleichsbasis: kein Sprachmodell, nur MCP', cardIsolationPreset: 'Voreinstellung mit eingeschränkten Werkzeugen: nur die MCP-Werkzeuge von Practonaut', cardIsolationTemplate: 'Vorlage: Werkzeuge nicht von Practonaut eingeschränkt', cardIsolationUnrecorded: 'Isolation nicht erfasst (bench/1)',
+  cardModelClient: 'Modell laut Selbstauskunft des Clients: {model}', cardModelCommand: 'Modell laut Selbstauskunft in der Ausgabe des Befehls: {model}', cardModelNone: 'Modell nicht gemeldet',
+  cardUnjudged: '{n} {n:Lauf|Läufe} ohne Urteil, als nicht bestanden gezählt', cardInterrupted: 'Abgebrochen: {runs} von {planned} geplanten Läufen beendet',
+  cardWorldOwn: 'Eigene Welt: {world} {version}', cardWorldLibrary: 'Mitgelieferte Bibliothek: {world} {version}',
+  cardCaveat: 'Beschreibt diese Läufe, nicht den Agenten oder sein Modell im Allgemeinen. Nicht versiegelt: Der Agent lief unter demselben Benutzer wie Practonaut.',
+  badgeName: 'Practonaut', badgeInstances: '{fraction} Instanzen bestanden', badgeInterval: '95-%-Intervall {low}–{high} %', badgeReverified: 'nachgerechnet', badgeConsistency: 'nur auf Stimmigkeit geprüft',
+  badgeBuiltin: 'eingebaute Vergleichsbasis', badgePreset: 'Werkzeuge eingeschränkt', badgeTemplate: 'Werkzeuge nicht eingeschränkt', badgeUnrecorded: 'Isolation nicht erfasst', badgeModelOnly: 'nur Modell', badgeUnjudged: '{n} ohne Urteil', badgeInterrupted: 'abgebrochen',
 };
 
 export type Words = Catalog;
