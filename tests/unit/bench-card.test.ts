@@ -7,6 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { BENCH_SCHEMA_V2, summarize, validateBenchReport, validateBenchReportV2, type BenchReport, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 import { CARD_SIZE, renderBadge, renderCard } from '../../src/bench/card.ts';
 import { cardPaths } from '../../src/cli/bench.ts';
@@ -75,13 +76,16 @@ test('the card carries n, the interval, verification, mirror, isolation and the 
   const value = report({ outcomes: ['pass', 'pass', 'fail'] });
   const en = card(value, 'en', 're-verified');
   // 2 of 3 runs passed; Wilson 2/3: 0.2077 … 0.9385 (by hand), shown 20–94 %.
-  for (const phrase of ['2/3 runs passed', '95 % interval 20–94 % over 3 instances', 'n = 3 runs · 3 seeds · 1 repeat', 'Re-verified: every judged run re-judged by the checker from its artifacts',
+  for (const phrase of ['2/3 passed', '95 % interval 20–94 % over 3 instances (one run each)', 'n = 3 runs · 3 seeds · 1 repeat', 'Re-verified: every judged run re-judged by the checker from its artifacts',
     'Model only: not checked against the real Excalidraw', 'Built-in baseline: no language model, MCP only', 'Own world: flows 1.0.0',
     'Describes these runs, not the agent or its model in general. Not sealed: the agent ran as the same user as Practonaut.']) assert.ok(hasText(en, phrase), `${phrase}\n${texts(en).join('\n')}`);
   const de = card(value, 'de', 're-verified');
-  for (const phrase of ['2/3 Läufe bestanden', '95-%-Intervall 20–94 % über 3 Instanzen', 'n = 3 Läufe · 3 Seeds · 1 Wiederholung', 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt',
+  for (const phrase of ['2/3 bestanden', '95-%-Intervall 20–94 % über 3 Instanzen (je ein Lauf)', 'n = 3 Läufe · 3 Seeds · 1 Wiederholung', 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt',
     'Nur Modell: nicht mit dem echten Excalidraw geprüft', 'Eingebaute Vergleichsbasis: kein Sprachmodell, nur MCP', 'Nicht versiegelt: Der Agent lief unter demselben Benutzer wie Practonaut.']) assert.ok(hasText(de, phrase), `${phrase}\n${texts(de).join('\n')}`);
   assert.match(de, /^<svg [^>]*xml:lang="de"/);
+  // One unit: with one run per instance the headline does not switch between runs and instances.
+  assert.equal(texts(en).some(text => /runs passed/.test(text)), false, texts(en).join('\n'));
+  assert.equal(texts(de).some(text => /Läufe bestanden/.test(text)), false);
   // The accessible name repeats the whole header line.
   assert.match(en, /<title>Practonaut bench: oracle · 2\/3 passed · 95 % interval 20–94 % over 3 instances · re-verified from the artifacts · model only \(no mirror\) · built-in baseline: no language model, MCP only<\/title>/);
   assert.deepEqual([parseXml(en).attributes.get('width'), parseXml(en).attributes.get('height')], [String(CARD_SIZE.width), String(CARD_SIZE.height)]);
@@ -118,8 +122,8 @@ test('runs without a verdict are counted on the card and the badge, never hidden
 test('a single run shows 1/1 with its interval; no percentage below n = 100 and none finer than 1/n', () => {
   const single = card(report({ outcomes: ['pass'] }));
   // Wilson 1/1: 0.2065 … 1 (by hand): 20–100 %.
-  assert.ok(hasText(single, '1/1 run passed') || (hasText(single, '1/1') && hasText(single, 'run passed')), texts(single).join('\n'));
-  assert.ok(hasText(single, '95 % interval 20–100 % over 1 instance'));
+  assert.ok(hasText(single, '1/1 passed'), texts(single).join('\n'));
+  assert.ok(hasText(single, '95 % interval 20–100 % over 1 instance (one run each)'));
   // 1200 runs as 600 instances of two repeats (seeds stop at 1000): the runs and the instances each
   // show the resolution their own denominator allows.
   for (const [n, passed, repeats] of [[6, 5, 1], [99, 50, 1], [150, 113, 1], [1200, 1001, 2]] as const) {
@@ -149,6 +153,11 @@ test('model-only, a self-reported model and an unrestricted template are open ev
     ['Real Excalidraw mirror: every action confirmed in the real app', 'confirmed'],
     ['Tool-restricted preset: only Practonaut’s MCP tools', 'confirmed'],
     ['Model, self-reported by the client: pn-model-7', 'open'],
+  ]);
+  // The same preset report, only consistency-checked: mirror and isolation are the file's claims, not confirmed.
+  assert.deepEqual(factMarks(card(report({ kind: 'preset', mirror: 'required' }))).map(([, kind]) => kind), ['open', 'open', 'open', 'open']);
+  assert.deepEqual(factMarks(card(report({ kind: 'builtin', mirror: 'required' }))).map(([text, kind]) => `${kind}: ${text}`), [
+    'open: Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged', 'open: Real Excalidraw mirror: every action confirmed in the real app', 'open: Built-in baseline: no language model, MCP only',
   ]);
   const template = factMarks(card(report({ kind: 'command', model: null })));
   assert.deepEqual(template.map(([text, kind]) => `${kind}: ${text}`), [
@@ -244,4 +253,7 @@ test('--card names its four files after the given path', () => {
   assert.deepEqual(cardPaths('out/card'), { light: { svg: 'out/card-light.svg', png: 'out/card-light.png' }, dark: { svg: 'out/card-dark.svg', png: 'out/card-dark.png' } });
   assert.deepEqual(cardPaths('out/card.svg').dark, { svg: 'out/card-dark.svg', png: 'out/card-dark.png' });
   assert.deepEqual(cardPaths('out/card.PNG').light.svg, 'out/card-light.svg');
+  // A folder (a trailing separator, or an existing directory) gets the files under a fixed name.
+  assert.deepEqual(cardPaths('out/'), { light: { svg: join('out', 'card-light.svg'), png: join('out', 'card-light.png') }, dark: { svg: join('out', 'card-dark.svg'), png: join('out', 'card-dark.png') } });
+  assert.deepEqual(cardPaths('out', true).dark.png, join('out', 'card-dark.png'));
 });

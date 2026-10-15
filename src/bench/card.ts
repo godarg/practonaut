@@ -24,7 +24,7 @@ import { isBenchReportV2, type BenchReport } from './report.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
 import { headline, instanceOutcome, type Verification } from './render.ts';
-import { xmlEscape } from './junit.ts';
+import { displayText, xmlEscape } from './junit.ts';
 
 /** The card's pixel size (a 2:1 social-preview image). */
 export const CARD_SIZE = Object.freeze({ width: 1280, height: 640 });
@@ -136,7 +136,9 @@ function metricsOf(className: string, tokens: TokenMap, all: Rules): Metrics {
 
 /** Lines of at most `max` units; a word longer than a line is broken where it must be. Past `lines`
  * lines the last one ends with an ellipsis (user text only: no caveat is ever cut, see layout). */
-function wrap(text: string, max: number, metrics: Metrics, lines = Infinity): string[] {
+function wrap(raw: string, max: number, metrics: Metrics, lines = Infinity): string[] {
+  // Measured as it is shown: a control or bidi character takes the room of its \u{…} escape.
+  const text = displayText(raw);
   const fits = (line: string): boolean => width(line, metrics) <= max;
   const out: string[] = [];
   let current = '';
@@ -191,10 +193,13 @@ interface Fact { kind: 'confirmed' | 'open'; text: string }
 /** The evidence of a report, in words: verification, mirror, isolation, model, runs without a verdict, interruption. */
 function facts(report: BenchReport, verification: Verification, language: Language): Fact[] {
   const t = TEXT[language], out: Fact[] = [];
+  // Only a re-verified report confirms what it says about the mirror and the isolation; otherwise
+  // these are claims of the file, with the same words and the open mark.
+  const confirmed = verification === 're-verified' ? 'confirmed' : 'open';
   out.push(verification === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
-  out.push(report.environment.mirror === 'required' ? { kind: 'confirmed', text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
+  out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
   const isolation = isBenchReportV2(report) ? report.agent.isolation : null;
-  out.push(isolation === 'builtin-baseline' ? { kind: 'confirmed', text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: 'confirmed', text: t.cardIsolationPreset }
+  out.push(isolation === 'builtin-baseline' ? { kind: confirmed, text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: confirmed, text: t.cardIsolationPreset }
     : isolation === 'template-unrestricted' ? { kind: 'open', text: t.cardIsolationTemplate } : { kind: 'open', text: t.cardIsolationUnrecorded });
   if (report.agent.kind !== 'builtin') {
     const model = report.agent.model;
@@ -205,12 +210,13 @@ function facts(report: BenchReport, verification: Verification, language: Langua
   if (report.interrupted) out.push({ kind: 'open', text: fill(language, t.cardInterrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }) });
   return out;
 }
-/** The headline numbers: the fraction the interval belongs to (instances when there are repeats). */
+/** The headline numbers in one unit, the instance the interval is over: with one run per instance
+ * "16/16 passed … over 16 instances (one run each)", with repeats "10/12 instances passed" and the runs. */
 function result(report: BenchReport, language: Language): { fraction: string; words: string; interval: string; runs: string | null } {
   const t = TEXT[language], instances = instanceOutcome(report.runs), s = report.summary;
   const interval = intervalPercent(instances.passed, instances.instances);
-  const intervalText = fill(language, t.interval, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) });
-  if (!instances.repeated) return { fraction: rateText(s.passed, s.runs, language), words: fill(language, t.cardWordsRuns, { n: s.runs }), interval: intervalText, runs: null };
+  const intervalText = fill(language, instances.repeated ? t.interval : t.cardIntervalOnce, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) });
+  if (!instances.repeated) return { fraction: rateText(s.passed, s.runs, language), words: t.cardWordsPassed, interval: intervalText, runs: null };
   return { fraction: rateText(instances.passed, instances.instances, language), words: fill(language, t.cardWordsInstances, { n: instances.instances }), interval: intervalText, runs: fill(language, t.headlineRuns, { fraction: rateText(s.passed, s.runs, language) }) };
 }
 const worldLine = (report: BenchReport, t: Words, language: Language): string => {

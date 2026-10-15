@@ -34,9 +34,12 @@ import type { ReportDetails } from './details.ts';
  * character (readableText) and every lone surrogate becomes a visible escape; markup characters
  * become entity references. Newlines are not kept here: multi-line text is escaped line by line. */
 export function xmlEscape(value: string): string {
-  return readableText(value)
-    .replace(/\p{Cs}/gu, char => `\\u{${char.charCodeAt(0).toString(16)}}`)
-    .replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
+  return displayText(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
+}
+/** Text as it is shown: control, format and private-use characters and lone surrogates as visible
+ * `\u{…}` escapes (idempotent: an escape is plain ASCII). What a reader sees, and what is measured. */
+export function displayText(value: string): string {
+  return readableText(value).replace(/\p{Cs}/gu, char => `\\u{${char.charCodeAt(0).toString(16)}}`);
 }
 /** An `xs:token` value: escaped, whitespace collapsed, never empty. */
 const token = (value: string, fallback: string): string => xmlEscape(value).replace(/\s+/g, ' ').trim() || fallback;
