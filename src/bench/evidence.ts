@@ -187,6 +187,46 @@ export function timelineOf(records: readonly MutationRecord[], omitted = 0): { t
   return { timeline };
 }
 
+// ---- the client's own failure reports ----
+
+/** Why a run could not show what the model can do, as its client's own stream says it: a usage or
+ * rate limit, or an API error. Such a run is an infrastructure error, not a model failure. */
+export interface ClientFailure { reason: 'usage_limit' | 'api_error'; detail: string }
+const LIMIT_TEXT = /usage limit|limit reached|hit your limit|rate.?limit|quota|too many requests|\b429\b/i;
+const API_ERROR_TEXT = /API Error|api_error|overloaded|internal server error|service unavailable|server_error|\b5\d\d\b|credit balance|billing|authentication|invalid api key|connection error/i;
+/**
+ * Scans a stream-json client's output for its own failure reports (PADR-0040): a `rate_limit_event`
+ * whose status is not `allowed`/`allowed_warning`, a `result` with `is_error` whose text or
+ * `api_error_status` names a limit or an API error, or an assistant message the client marks as an
+ * API error. `error_max_turns` and other agent errors are not client failures. The detail is fixed
+ * text, never the client's own words.
+ */
+export function clientFailure(stdout: string): ClientFailure | null {
+  for (const line of stdout.split('\n')) {
+    if (!line.trimStart().startsWith('{')) continue;
+    let event: Record<string, unknown>;
+    try { const parsed: unknown = JSON.parse(line); if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue; event = parsed as Record<string, unknown>; } catch { continue; }
+    if (event.type === 'rate_limit_event') {
+      const status = (event.rate_limit_info as { status?: unknown } | undefined)?.status;
+      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') return { reason: 'usage_limit', detail: 'rate_limit_event not allowed' };
+      continue;
+    }
+    if (event.type === 'result' && event.is_error === true && event.subtype !== 'error_max_turns') {
+      const text = [event.result, event.error, ...(Array.isArray(event.errors) ? event.errors : [])].filter((value): value is string => typeof value === 'string').join(' ').slice(0, 4096);
+      const status = typeof event.api_error_status === 'number' ? event.api_error_status : null;
+      if (status === 429 || LIMIT_TEXT.test(text)) return { reason: 'usage_limit', detail: 'result is_error: usage or rate limit' };
+      if ((status !== null && status >= 400) || API_ERROR_TEXT.test(text)) return { reason: 'api_error', detail: 'result is_error: API error' };
+      continue;
+    }
+    if (event.type === 'assistant' && (event.isApiErrorMessage === true || typeof event.error === 'string')) {
+      const text = typeof event.error === 'string' ? event.error : '';
+      if (LIMIT_TEXT.test(text)) return { reason: 'usage_limit', detail: 'assistant API error: usage or rate limit' };
+      if (event.isApiErrorMessage === true || API_ERROR_TEXT.test(text)) return { reason: 'api_error', detail: 'assistant API error' };
+    }
+  }
+  return null;
+}
+
 // ---- the client's own figures ----
 
 /** What a stream-json client says about its run (Claude Code's `system/init` and `result` events). */

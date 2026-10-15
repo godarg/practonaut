@@ -1,7 +1,16 @@
 // A stand-in `claude` for preset benches without a language model: started like Claude Code by the
-// claude-code preset, it prints a stream-json init line naming the model in PN_FAKE_MODEL (and a
-// result line), observes the task once through the MCP server the preset's --mcp-config names, and
-// ends without changing anything. Every run it makes fails the task.
+// claude-code preset, it prints a stream-json init line naming the model in PN_FAKE_MODEL (and
+// Claude Code's version, PN_FAKE_VERSION or 2.1.0), and then acts as PN_FAKE_MODE says:
+//   observe        (default) observe the task once through the MCP server the preset's --mcp-config
+//                  names, print a success result, exit 0; the task fails
+//   usage-limit    a rate_limit_event that is not allowed and an is_error result "usage limit
+//                  reached", no tool call, exit 1 (as Claude Code does when a subscription limit is hit)
+//   api-error      an is_error result "API Error: 529 … overloaded", no tool call, exit 1
+//   max-turns      observe, then an error_max_turns result, exit 1 (the agent's own failure)
+//   agent-error    observe, then an error_during_execution result, exit 1 (the agent's own failure)
+//   silent-crash   no output and no tool call, exit 1
+// With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
+// one hits the usage limit.
 //   fakeClaude(dir) writes an executable `claude` into dir; put dir first on PATH.
 import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -11,15 +20,36 @@ const CLIENT = fileURLToPath(new URL('../../src/bench/mcp-client.ts', import.met
 
 export async function fakeClaude(dir: string): Promise<void> {
   const script = join(dir, 'fake-claude.mjs');
-  await writeFile(script, `import { readFileSync } from 'node:fs';
+  await writeFile(script, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const out = event => process.stdout.write(JSON.stringify(event) + '\\n');
+let mode = process.env.PN_FAKE_MODE ?? 'observe';
+if (process.env.PN_FAKE_LIMIT_AFTER !== undefined && process.env.PN_FAKE_STATE) {
+  const counter = join(process.env.PN_FAKE_STATE, 'starts');
+  const starts = (existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0) + 1;
+  writeFileSync(counter, String(starts));
+  mode = starts > Number(process.env.PN_FAKE_LIMIT_AFTER) ? 'usage-limit' : 'observe';
+}
+if (mode === 'silent-crash') process.exit(1);
+out({ type: 'system', subtype: 'init', model: process.env.PN_FAKE_MODEL ?? null, apiKeySource: 'none', claude_code_version: process.env.PN_FAKE_VERSION ?? '2.1.0' });
+if (mode === 'usage-limit') {
+  out({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour' } });
+  out({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000', num_turns: 1, total_cost_usd: 0 });
+  process.exit(1);
+}
+if (mode === 'api-error') {
+  out({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}', num_turns: 1, total_cost_usd: 0 });
+  process.exit(1);
+}
 const { StdioMcpClient } = await import(${JSON.stringify(CLIENT)});
 const at = process.argv.indexOf('--mcp-config');
 const server = JSON.parse(readFileSync(process.argv[at + 1], 'utf8')).mcpServers.practonaut;
-process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', model: process.env.PN_FAKE_MODEL ?? null, apiKeySource: 'none' }) + '\\n');
 const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
 await client.call('observe', {});
 await client.close();
-process.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } }) + '\\n');
+if (mode === 'max-turns') { out({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 30, total_cost_usd: 0 }); process.exit(1); }
+if (mode === 'agent-error') { out({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 2, total_cost_usd: 0 }); process.exit(1); }
+out({ type: 'result', subtype: 'success', is_error: false, num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } });
 `);
   if (process.platform === 'win32') await writeFile(join(dir, 'claude.cmd'), `@"${process.execPath}" "${script}" %*\r\n`);
   else { await writeFile(join(dir, 'claude'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`); await chmod(join(dir, 'claude'), 0o755); }

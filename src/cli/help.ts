@@ -192,7 +192,7 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>] [--label <text>]
+                        [--keep-env <name,…>] [--label <text>] [--stop-on-infra]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -208,13 +208,16 @@ world and the references are stored in the bench folder, so report --verify can 
 lower its check limit, and --max-actions stays the outer cap on act, undo and reset calls.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
+A run whose client reports a usage or rate limit or an API error, or whose agent ends without completing and
+without a tool call, is an infra_error and is not judged. --stop-on-infra stops at the first one, writes a
+partial report naming the remaining tasks and exits 75: wait until the limit window is over, then resume.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>] [--label <Text>]
+                        [--keep-env <Name,…>] [--label <Text>] [--stop-on-infra]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -231,6 +234,10 @@ Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu 
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
+Ein Lauf, dessen Client ein Nutzungs- oder Ratenlimit oder einen API-Fehler meldet oder dessen Agent ohne
+Abschluss und ohne einen Werkzeugaufruf endet, ist ein infra_error und wird nicht bewertet. --stop-on-infra hält
+beim ersten an, schreibt einen Teilbericht mit den übrigen Aufgaben und endet mit 75: Warten Sie das Limitfenster
+ab und setzen Sie dann fort.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },

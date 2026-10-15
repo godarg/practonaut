@@ -6,13 +6,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clientResult, MAX_LOG_LINES, MAX_RECORDED_REFUSALS, MAX_REJECTED_TEXT, mutationCounts, readLogHead, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, timelineOf } from '../../src/bench/evidence.ts';
+import { clientFailure, clientResult, MAX_LOG_LINES, MAX_RECORDED_REFUSALS, MAX_REJECTED_TEXT, mutationCounts, readLogHead, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, timelineOf } from '../../src/bench/evidence.ts';
 import { goalClauses, traceSession, type TraceEntry } from '../../src/checker/trace.ts';
 import { loadLibrary } from '../../src/library/index.ts';
 import { Session } from '../../src/core/session.ts';
 import { publicConditions } from '../../src/host/session.ts';
 import { generateVariant } from '../../src/world/variant.ts';
 import type { Action } from '../../src/world/types.ts';
+import { clientInit } from '../../src/bench/agents.ts';
 
 test('call log: well-formed bridge lines in order, numbered, client round trip joined by request id; anything else dropped', () => {
   const raw = [
@@ -130,3 +131,27 @@ test('the checker splits every library goal into the same conditions the Player 
     for (const task of variant.tasks) assert.deepEqual(goalClauses(task.goal).map((_, index) => `goal-${index + 1}`), publicConditions(task).map(condition => condition.id), task.id);
   }
 });
+
+test('client failures: a usage or rate limit and an API error are the client\'s, error_max_turns and other agent errors are not (review B-A)', () => {
+  const lines = (...events: unknown[]): string => events.map(event => JSON.stringify(event)).join('\n') + '\n';
+  const init = { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
+  assert.deepEqual(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'rejected' } })), { reason: 'usage_limit', detail: 'rate_limit_event not allowed' });
+  assert.equal(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }, { type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning' } })), null);
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000' }))?.reason, 'usage_limit');
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'x', api_error_status: 429 }))?.reason, 'usage_limit');
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'API Error: 529 overloaded' }))?.reason, 'api_error');
+  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, message: {} }))?.reason, 'api_error');
+  assert.equal(clientFailure(lines(init, { type: 'assistant', error: 'rate_limit', message: {} }))?.reason, 'usage_limit');
+  // The agent's own failures.
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'error_max_turns', is_error: true, result: 'rate limit is mentioned in passing' })), null);
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'error_during_execution', is_error: true })), null);
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: false, result: 'I hit the usage limit of patience' })), null, 'not an error result');
+  assert.equal(clientFailure('not json\n{"type":"result","is_error":true,"result":"API Error"'), null, 'a cut line is not an event');
+});
+
+test('model ids may carry a bracketed suffix; init records Claude Code\'s version (review S-5)', () => {
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5[1m]","apiKeySource":"none","claude_code_version":"2.1.3"}\n'), { model: 'claude-opus-5-5[1m]', apiKeySource: 'none', version: '2.1.3' });
+  assert.equal(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5[<b>]"}').model, null);
+  assert.equal(clientInit('{"type":"system","subtype":"init","model":"m","claude_code_version":"2 1"}').version, null);
+});
+

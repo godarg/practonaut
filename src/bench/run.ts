@@ -33,7 +33,7 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 import { StdioMcpClient, type ClientCall, type McpServerEntry } from './mcp-client.ts';
-import { clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientFailure, clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
@@ -51,6 +51,9 @@ export interface BenchOptions {
   label?: string;
   /** `--checks`: checks allowed per run; with a task's own limit the smaller applies (PADR-0040). */
   checks?: number;
+  /** `--stop-on-infra`: stop at the first infra_error run (a usage or rate limit, an API error, an
+   * agent that ended without a tool call) and write the partial report (PADR-0040). */
+  stopOnInfra?: boolean;
   /** Variables a preset agent gets although `withheldFromPreset` names them (`--keep-env`). */
   keepEnv?: readonly string[];
   /** Progress lines (stderr in the CLI). */
@@ -173,6 +176,8 @@ export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: bo
 }
 
 interface AgentOutcome { status: BenchRunV2['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
+/** An external run the client's own stream marks as an infrastructure error: not judged. */
+class ClientInfraError extends Error { readonly outcome: AgentOutcome; constructor(outcome: AgentOutcome) { super(outcome.note ?? "infra_error"); this.outcome = outcome; } }
 
 /**
  * Ends an agent and everything it started. POSIX: the agent leads its own process group (spawned
@@ -295,7 +300,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
   const paths = await resolvedDataPaths(), id = benchId(), directory = join(paths.home, 'bench', id);
   await ensurePrivateDirectory(directory);
   const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
-  const runs: BenchRunV2[] = []; let interrupted = false;
+  const runs: BenchRunV2[] = []; let interrupted = false; let stopped: { run: string; remaining: string[] } | undefined;
   let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null };
   for (const [index, item] of plan.entries()) {
     if (interrupted || options.signal?.aborted) { interrupted = true; break; }
@@ -332,10 +337,20 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
         if (client.model === null && client.apiKeySource === null) client = init;
         // Tokens, turns and cost as the client states them (self-reported, PADR-0039).
         const figures = clientResult(await stdoutTail(join(home, 'agent.stdout')));
-        if (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null) runClient = { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures };
+        if (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null) runClient = { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures, ...(init.version !== null ? { version: init.version } : {}) };
+        // A run that could not show what the model can do is an infrastructure error, not judged
+        // (PADR-0040): the client's own stream reports a usage or rate limit or an API error, or the
+        // agent ended without completing and without a single tool call.
+        if (outcome.status !== 'interrupted' && !options.signal?.aborted) {
+          const failure = clientFailure((await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '');
+          const calls = counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check;
+          if (failure) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the client reported ${failure.reason === 'usage_limit' ? 'a usage or rate limit' : 'an API error'} (${failure.detail})` };
+          else if (outcome.status !== 'completed' && calls === 0) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the agent ended (${outcome.status}) without a single tool call` };
+        }
       }
       wallMs = Math.round(performance.now() - started);
       if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
+      if (outcome.status === 'infra_error') throw new ClientInfraError(outcome);
       // Judge the host's committed session, independently, in separate checker processes.
       const view = inner!.view(); finalActions = view.log.length;
       const session: SessionData = { schema: 'practonaut.session/1', world: view.world, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
@@ -358,7 +373,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
     } catch (error) {
       if (options.signal?.aborted) { interrupted = true; continue; }
-      outcome = { status: 'infra_error', exitCode: null, note: infraNote(error) };
+      outcome = error instanceof ClientInfraError ? error.outcome : { status: 'infra_error', exitCode: null, note: infraNote(error) };
       checker = null; artifacts = undefined;
     } finally { await host?.close().catch(() => {}); }
     if (interrupted) break;
@@ -373,6 +388,13 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
+    // --stop-on-infra: a usage limit or an API error affects every later run as well; stop here and
+    // write the partial report so the operator can resume with the remaining tasks.
+    if (options.stopOnInfra && run.status === 'infra_error' && index < plan.length - 1) {
+      stopped = { run: runId, remaining: [...new Set(plan.slice(index).map(value => value.taskId))] };
+      options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} [infra_error]  ${run.note ?? ''}`);
+      interrupted = true; break;
+    }
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
   if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
@@ -400,7 +422,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     },
     settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT, ...(options.checks !== undefined ? { checks: options.checks } : {}) },
     references: referencesBinding,
-    runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length } } : {}), summary: summarize(runs, options.repeats),
+    runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length, ...(stopped ? { stopped } : {}) } } : {}), summary: summarize(runs, options.repeats),
   };
   return { report: validateBenchReportV2(report), directory, interrupted, planned: plan.length };
 }

@@ -58,9 +58,11 @@ export interface BenchArguments {
   seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; label?: string; out?: string;
   /** `--checks <n>`: checks allowed per run (a task's own limit can only be lowered). */
   checks?: number;
+  /** `--stop-on-infra`: stop at the first infra_error run and write the partial report (PADR-0040). */
+  stopOnInfra?: boolean;
 }
 export function parseBenchArguments(args: string[]): BenchArguments {
-  const parsed = flags(args, VALUED);
+  const parsed = flags(args, VALUED, ['--stop-on-infra']);
   if (parsed.positional.length || !parsed.flags['--agent']) throw new RuntimeError('usage', cliText('benchUsage'));
   const world = parsed.flags['--world'];
   const oracles = parsed.flags['--oracle'] === undefined ? [] : parsed.flags['--oracle'].split(',').map(value => value.trim());
@@ -93,6 +95,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
     maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
     ...(parsed.flags['--checks'] !== undefined ? { checks: checksOption(parsed.flags['--checks']) } : {}),
+    ...(parsed.booleans.has('--stop-on-infra') ? { stopOnInfra: true } : {}),
   };
 }
 
@@ -150,7 +153,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), ...(options.stopOnInfra ? { stopOnInfra: true } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {
@@ -162,10 +165,14 @@ export async function commandBench(args: string[]): Promise<number> {
   // The report's numbers come from the runs; why each failed comes from the bench folder (PADR-0039).
   const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
   process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
-  if (report.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
+  const stopped = report.interrupted && 'stopped' in report.interrupted ? report.interrupted.stopped : undefined;
+  if (stopped) process.stdout.write(cliText('benchStopped', { run: stopped.run, note: safeText(report.runs.at(-1)!.note ?? 'infra_error'), runs: report.runs.length, planned: report.interrupted!.plannedRuns, tasks: stopped.remaining.join(',') }));
+  else if (report.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
-  return report.interrupted ? EXIT_INTERRUPTED : 0;
+  return stopped ? EXIT_STOPPED : report.interrupted ? EXIT_INTERRUPTED : 0;
 }
+/** EX_TEMPFAIL: the bench stopped at an infra_error run (`--stop-on-infra`); resume later. */
+const EXIT_STOPPED = 75;
 
 /** 128 + SIGINT, as shells report a command stopped by Ctrl+C. */
 const EXIT_INTERRUPTED = 130;

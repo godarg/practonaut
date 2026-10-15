@@ -132,6 +132,11 @@ export const BENCH_REFERENCES_FILE = 'references.json';
 export const ISOLATION_OF = Object.freeze({ builtin: 'builtin-baseline', preset: 'tool-restricted-preset', command: 'template-unrestricted' } as const);
 export type IsolationLevel = typeof ISOLATION_OF[keyof typeof ISOLATION_OF];
 /** `apiKeySource` as a client reports it in its stream-json init event. */
+/** A model id as a client reports it: plain text, optionally with a bracketed suffix such as
+ * Claude Code's context-window marker (`claude-opus-5-5[1m]`). */
+export const MODEL_ID = /^[\w.:@/-]{1,112}(?:\[[\w.-]{1,14}\])?$/;
+/** A client version as Claude Code reports it (`claude_code_version`). */
+export const CLIENT_VERSION = /^[\w.+-]{1,32}$/;
 export const API_KEY_SOURCE = /^[A-Za-z0-9_ ./:@()-]{1,64}$/;
 /** An environment variable name `--keep-env` accepts. */
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
@@ -150,8 +155,10 @@ const RunLogsSchema = z.strictObject({
 /** The client's own figures from its output (PADR-0039 A.5): self-reported, never verified. */
 const RunClientSchema = z.strictObject({
   source: z.enum(['client-attested', 'command-output']),
-  model: z.string().regex(/^[\w.:@/-]{1,128}$/).nullable(), turns: count.nullable(), costUsd: z.number().nonnegative().max(1_000_000).nullable(),
+  model: z.string().regex(MODEL_ID).nullable(), turns: count.nullable(), costUsd: z.number().nonnegative().max(1_000_000).nullable(),
   tokens: z.strictObject({ input: count, output: count, cacheRead: count, cacheCreation: count }).nullable(),
+  /** The client's version from its init event (`claude_code_version`), when it names one. */
+  version: z.string().regex(CLIENT_VERSION).nullable().optional(),
 });
 export const BenchRunSchemaV2 = z.strictObject({
   ...BenchRunSchemaV1.shape,
@@ -230,7 +237,10 @@ export const BenchReportSchemaV2 = z.strictObject({
       minimal: z.boolean().optional() })).min(1).max(1000),
   }).nullable(),
   runs: z.array(BenchRunSchemaV2).min(1).max(100_000),
-  interrupted: z.strictObject({ plannedRuns: z.number().int().min(2).max(Number.MAX_SAFE_INTEGER) }).optional(),
+  /** `stopped`: the bench stopped itself at an infra_error run (`--stop-on-infra`, PADR-0040);
+   * `remaining` are the tasks to bench again once the client's limit window is over. */
+  interrupted: z.strictObject({ plannedRuns: z.number().int().min(2).max(Number.MAX_SAFE_INTEGER),
+    stopped: z.strictObject({ run: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}-s\d{1,9}-r\d{1,4}$/), remaining: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/)).min(1).max(1000) }).optional() }).optional(),
   summary: BenchSummarySchemaV2,
 });
 export type BenchReportV2 = z.infer<typeof BenchReportSchemaV2>;
@@ -307,6 +317,10 @@ function checkRuns(report: BenchReport): void {
   const planned = report.settings.tasks.length * report.settings.seeds.length * report.settings.repeats;
   if (report.interrupted) {
     if (report.interrupted.plannedRuns !== planned || report.runs.length >= planned) throw new BenchReportError(`interrupted report holds ${report.runs.length} runs, but its settings plan ${planned}`);
+    // A bench that stopped itself did so at its last run, an infra_error, of a task it names to resume.
+    const stopped = 'stopped' in report.interrupted ? report.interrupted.stopped : undefined, last = report.runs.at(-1)!;
+    if (stopped && (stopped.run !== last.id || last.status !== 'infra_error' || stopped.remaining[0] !== last.taskId || stopped.remaining.some(task => !report.settings.tasks.includes(task))))
+      throw new BenchReportError(`the report says it stopped at run ${stopped.run}, which is not its last run, an infra_error, with the tasks it names to resume`);
   } else if (planned !== report.runs.length) throw new BenchReportError(`report has ${report.runs.length} runs, but its settings plan ${planned}`);
   const tasks = new Set<string>(report.settings.tasks), seeds = new Set<number>(report.settings.seeds);
   if (tasks.size !== report.settings.tasks.length || seeds.size !== report.settings.seeds.length) throw new BenchReportError('settings name a task or seed twice');

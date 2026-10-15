@@ -355,6 +355,10 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: stopped at once (second interrupt); the agent was killed and no report was written. The run directory may hold an unfinished run.\n",
     "de": "practonaut bench: sofort beendet (zweiter Abbruch); der Agent wurde beendet, kein Bericht geschrieben. Das Laufverzeichnis kann einen unfertigen Lauf enthalten.\n"
   },
+  "benchStopped": {
+    "en": "\nStopped after run {run}: {note}. This partial report holds {runs} of {planned} planned runs. Wait until the client's limit window is over, then bench the remaining tasks: --tasks {tasks}\n",
+    "de": "\nAngehalten nach Lauf {run}: {note}. Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen. Warte, bis das Limitfenster des Clients vorbei ist, und benche dann die übrigen Aufgaben: --tasks {tasks}\n"
+  },
   "benchInterrupted": {
     "en": "\nInterrupted: this partial report holds {runs} of {planned} planned runs; the run in progress was not scored.\n",
     "de": "\nAbgebrochen: Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf wurde nicht bewertet.\n"
@@ -670,6 +674,10 @@ export const CLI_CATALOG = {
   "verifyActionLimit": {
     "en": "run {run}: it used {actions} changes (accepted actions, undos and resets), more than the task's action limit of {limit}",
     "de": "Lauf {run}: er hat {actions} Änderungen verbraucht (angenommene Aktionen, Rückgängig und Neustarts), mehr als das Aktionslimit der Aufgabe von {limit}"
+  },
+  "verifyClientModel": {
+    "en": "run {run}: the report names model {model}, but the agent's own output names {seen}",
+    "de": "Lauf {run}: der Bericht nennt das Modell {model}, die eigene Ausgabe des Agenten aber {seen}"
   },
   "verifyCheckLimit": {
     "en": "run {run}: the host recorded {checks} checks, more than the {limit} the run allowed",

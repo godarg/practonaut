@@ -44,7 +44,8 @@ import { parseJsonEntry } from '../package/json.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun, type BenchRunV2 } from './report.ts';
-import { mutationCounts, parseMutations, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { mutationCounts, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientInit } from './agents.ts';
 import { RUN_ARTIFACTS, verdictOf, taskLimitsOf } from './run.ts';
 import { MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage, type BenchReference, type ReferencesFile } from './world.ts';
 import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
@@ -122,6 +123,16 @@ function verifyLimits(run: BenchRunV2, world: World, settingsChecks: number | un
   const counted = mutationCounts(records), changes = counted.accepted + counted.undos + counted.resets;
   if (actionLimit !== undefined && changes > actionLimit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: changes, limit: actionLimit }));
   if (checkLimit !== undefined && counted.checks > checkLimit) throw new BenchReportError(cliText('verifyCheckLimit', { run: run.id, checks: counted.checks, limit: checkLimit }));
+}
+
+/** A run's client figures name the model (and version) its agent's own stdout names in its init
+ * event (second review): a report relabelled to another model without its output is refused. */
+async function verifyClientModel(run: BenchRunV2, directory: string): Promise<void> {
+  if (!run.client || run.client.model === null) return;
+  const head = await readLogHead(join(directory, run.id, 'agent.stdout'), 64 * 1024);
+  const init = clientInit(head?.text ?? '');
+  if (init.model !== run.client.model || (run.client.version !== undefined && init.version !== run.client.version))
+    throw new BenchReportError(cliText('verifyClientModel', { run: run.id, model: safeText(run.client.model), seen: safeText(init.model ?? 'none') }));
 }
 
 /** The mutation log agrees with the run's counters, and the checker re-derives the stored trace from
@@ -255,6 +266,7 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
       if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
     }
     evidence.set(run.id, await evidenceHashes(run, runsDirectory));
+    await verifyClientModel(run, runsDirectory);
   }
   const references = await verifyReferences(report, world, stored);
   let reverified = 0, unjudged = 0;

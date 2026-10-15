@@ -151,7 +151,14 @@ checker (never by the agent):
   actions**, undo and reset counts, **host calls** (observe/list_actions/explain_result reads, act,
   undo, reset, check; the bridge's start-up read included), **wall time** of the agent, and the
   agent's exit status (`completed`, `agent_failed`, `timeout`, `infra_error`). Also recorded:
-  the **error classes** the checker found on a failed board.
+  the **error classes** the checker found on a failed board. A run that could not show what the
+  model can do is an `infra_error` and is not judged: its client's own stream reports a usage or
+  rate limit (a `rate_limit_event` that is not `allowed`, an `is_error` result naming a limit or
+  status 429) or an API error (an `is_error` result naming one, or an assistant message the client
+  marks as an API error), or the agent ended without completing and without a single tool call. An
+  `error_max_turns` result or another error of the agent's own stays `agent_failed` and is judged.
+  The client's model and Claude Code's version from its init event are recorded per run, and
+  `report --verify` checks the model against the agent's own `agent.stdout`.
 
 Aggregates:
 
@@ -250,7 +257,10 @@ with its whole process group (on Windows its process tree), closes the session a
 that finished as a partial report (`interrupted.plannedRuns`, exit 130); the run in progress is
 not scored. That can take a few seconds (an agent that ignores SIGTERM gets a 3-second grace
 period); a second Ctrl+C stops at once: the running agent's process group is killed and no report
-is written (exit 130).
+is written (exit 130). With `--stop-on-infra` the bench stops itself after the first `infra_error`
+run — a usage limit hits every later run too — and writes the partial report with
+`interrupted.stopped` (that run and the remaining tasks; exit 75): wait until the client's limit
+window is over, then bench the remaining tasks (`--tasks …`).
 
 Two levels of checking, and the output always says which one ran:
 

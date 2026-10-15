@@ -176,11 +176,11 @@ test('rendering names label, isolation level, world, generated instances and "no
 });
 
 test('the client init line gives the model and apiKeySource, each only when it is plain text', () => {
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5","apiKeySource":"none"}\n'), { model: 'claude-opus-5-5', apiKeySource: 'none' });
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"ANTHROPIC_API_KEY"}'), { model: 'm', apiKeySource: 'ANTHROPIC_API_KEY' });
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"\\u001b[2J"}'), { model: 'm', apiKeySource: null });
-  assert.deepEqual(clientInit('{"type":"assistant","subtype":"init","apiKeySource":"none"}'), { model: null, apiKeySource: null });
-  assert.deepEqual(clientInit('null "init"\n{"type":"system","subtype":"init","apiKeySource":"/login managed key"}'), { model: null, apiKeySource: '/login managed key' });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5","apiKeySource":"none"}\n'), { model: 'claude-opus-5-5', apiKeySource: 'none', version: null });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"ANTHROPIC_API_KEY"}'), { model: 'm', apiKeySource: 'ANTHROPIC_API_KEY', version: null });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"\\u001b[2J"}'), { model: 'm', apiKeySource: null, version: null });
+  assert.deepEqual(clientInit('{"type":"assistant","subtype":"init","apiKeySource":"none"}'), { model: null, apiKeySource: null, version: null });
+  assert.deepEqual(clientInit('null "init"\n{"type":"system","subtype":"init","apiKeySource":"/login managed key"}'), { model: null, apiKeySource: '/login managed key', version: null });
 });
 
 test('bench options: --world, --oracle, --seed-list and --label, and their refusals', () => {
