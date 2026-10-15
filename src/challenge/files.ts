@@ -24,7 +24,7 @@ import { FAMILY_BENCH, SEED_RANGES, generateSet, taskIdOf, worldIdOf, type Chall
 import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, pairOf, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
 import { RUN_ARTIFACTS } from '../bench/run.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
-import { computeGate, mergeAgentRuns, preflightGate, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
+import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
 import { committedFiles, declarationCommit, DeclarationGitError } from './git.ts';
 import { libraryWorld } from '../bench/run.ts';
 import { isDeepStrictEqual } from 'node:util';
@@ -156,7 +156,7 @@ export async function readDeclaration(path: string): Promise<Declaration> {
   return validateDeclaration(parseJsonEntry(await readFile(path), 'declaration.json', 16));
 }
 
-interface LiteReport { environment?: { world?: { contentHash?: unknown } }; runs?: Array<{ id?: unknown; status?: unknown }> }
+interface LiteReport { environment?: { world?: { contentHash?: unknown } }; runs?: Array<Parameters<typeof rejectedByClient>[0] & { id?: unknown }> }
 /** A bench folder's report as far as the spend scan reads it (not validated: only its runs' statuses
  * and its world's content hash are used, to tell infra_error reruns and development benches apart). */
 function liteReport(bytes: Buffer | null): LiteReport | null {
@@ -169,8 +169,8 @@ function liteReport(bytes: Buffer | null): LiteReport | null {
  * its model and its status where the bench's report names it; and how many such runs there are on
  * the development set (a bench of that set, or one without a report, is counted).
  */
-export async function scanSpend(roots: readonly string[], sets: { developmentHash: string; developmentTasks: readonly string[]; heldOutTasks: readonly string[] }): Promise<{ development: number; heldOut: SpentRun[] }> {
-  const heldOut: SpentRun[] = []; let development = 0;
+export async function scanSpend(roots: readonly string[], sets: { developmentHash: string; developmentTasks: readonly string[]; heldOutTasks: readonly string[] }): Promise<{ development: number; developmentRejected: number; heldOut: SpentRun[] }> {
+  const heldOut: SpentRun[] = []; let development = 0, developmentRejected = 0;
   for (const root of [...new Set(roots.map(value => resolve(value)))]) {
     for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
       const folder = join(root, bench);
@@ -184,14 +184,17 @@ export async function scanSpend(roots: readonly string[], sets: { developmentHas
           // A run its bench's report does not list (a hard kill, an older interrupted bench) is
           // unjudged when its folder holds no checker output, and may be benched again; one that was
           // judged but is listed nowhere stays unknown (status null) and refuses the round.
-          const listed = report?.runs?.find(run => run.id === entry.name)?.status;
-          const status = typeof listed === 'string' ? listed : await exists(join(folder, entry.name, 'checker.json')) ? null : 'unjudged';
-          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status });
-        } else if (sets.developmentTasks.includes(task) && (report === null || report.environment?.world?.contentHash === sets.developmentHash)) development++;
+          const listed = report?.runs?.find(run => run.id === entry.name);
+          const status = typeof listed?.status === 'string' ? listed.status : await exists(join(folder, entry.name, 'checker.json')) ? null : 'unjudged';
+          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status, ...(listed && rejectedByClient(listed) ? { rejected: true } : {}) });
+        } else if (sets.developmentTasks.includes(task) && (report === null || report.environment?.world?.contentHash === sets.developmentHash)) {
+          const listed = report?.runs?.find(run => run.id === entry.name);
+          if (listed && rejectedByClient(listed)) developmentRejected++; else development++;
+        }
       }
     }
   }
-  return { development, heldOut };
+  return { development, developmentRejected, heldOut };
 }
 
 /** The ledger a committed gate leaves beside its report: the round's spend, read when later rounds

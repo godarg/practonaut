@@ -163,16 +163,17 @@ test('the whole round: preflight, ladder benches (one stopped by a usage limit a
     const out = join(declarations, 'tight-budget-round1.md');
     const gated = tool(['gate', ...base, '--ladder', ladder.join(','), '--out', out]);
     assert.equal(gated.status, 0, gated.stderr);
-    assert.match(gated.stdout, /tight-budget round 1: does not pass; 88 model runs spent/);
+    assert.match(gated.stdout, /tight-budget round 1: does not pass; 87 model runs spent/);
     const markdown = await readFile(out, 'utf8');
     assert.match(markdown, /\| oracle \| 26\/26 \| oracle passes 100 % \| yes \|/);
     assert.match(markdown, /\| near-misses \| (\d+)\/\1 fail \| every near miss fails \| yes \|/);
     assert.match(markdown, new RegExp(`\\| Held-out instances \\| 26 \\(generator seeds ${seeds[0]}–${seeds.at(-1)}, derived from the development runs`));
-    // 79 held-out runs (the limited one and its rerun) + 9 development runs.
-    assert.match(markdown, /\| budget \| 88 model runs spent \(79 held-out \+ 9 development\); release 123 of 500 \|/);
+    // 78 counted held-out runs + 9 development runs; the run the usage limit rejected before any
+    // model work is listed, not counted (third review).
+    assert.match(markdown, /\| budget \| 87 model runs spent \(78 held-out \+ 9 development\), 1 rejected by the client not counted; release 122 of 500 \|/);
     assert.match(markdown, /\| ladder \(claude-code\) \| `claude-opus-5-5` \| 0\/26 \|.*\| 0 \| 0 \| 0 \| 2 \|/);
     const ledger = await json(join(declarations, 'tight-budget-round1.ledger.json'));
-    assert.deepEqual([ledger.schema, ledger.spent, ledger.releaseRuns, ledger.heldOutRuns.length], ['practonaut.challenge-ledger/1', { development: 9, heldOut: 79, total: 88 }, 123, 79]);
+    assert.deepEqual([ledger.schema, ledger.spent, ledger.releaseRuns, ledger.heldOutRuns.length], ['practonaut.challenge-ledger/1', { development: 9, heldOut: 78, total: 87, rejected: 1 }, 122, 79]);
     // A later run of one task for Haiku in the same bench folder (best-of-N): the gate finds it.
     const first = (await json(join(dir, 'heldout', 'instances.json'))).instances[0].taskId as string;
     await bench('claude-code', setArgs(join(dir, 'heldout'), first), { PN_FAKE_MODEL: HAIKU });

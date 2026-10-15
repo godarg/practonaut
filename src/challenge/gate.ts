@@ -39,7 +39,17 @@ export interface GateReport { report: BenchReportV2; bench: string; sessions?: R
 /** A model run found in a bench folder (a run folder with the agent's own output). `status`: as its
  * bench's report lists it; `unjudged` when no report lists it and it has no checker output (a killed
  * bench); null when it was judged but no report lists it. */
-export interface SpentRun { bench: string; runId: string; taskId: string; model: string | null; status: string | null }
+export interface SpentRun { bench: string; runId: string; taskId: string; model: string | null; status: string | null; rejected?: boolean }
+/** A run the client rejected before any model work (third review): an infra_error its client names a
+ * usage or rate limit or a login or billing error for, with no tokens and no tool call of the agent
+ * (the bridge's start-up read aside). Listed in the ledger, never counted against a budget. */
+export function rejectedByClient(run: { status?: unknown; note?: unknown; toolCalls?: { observe?: unknown; act?: unknown; undo?: unknown; reset?: unknown; check?: unknown }; client?: { tokens?: unknown } }): boolean {
+  const calls = run.toolCalls ?? {}, tokens = run.client?.tokens as { input?: unknown; output?: unknown; cacheRead?: unknown; cacheCreation?: unknown } | null | undefined;
+  const none = (value: unknown): boolean => value === 0;
+  return run.status === 'infra_error' && typeof run.note === 'string' && /^the client reported (a usage or rate limit|an authentication or billing error) \(/.test(run.note)
+    && none(calls.act) && none(calls.undo) && none(calls.reset) && none(calls.check) && typeof calls.observe === 'number' && calls.observe <= 1
+    && (tokens === null || tokens === undefined || [tokens.input, tokens.output, tokens.cacheRead, tokens.cacheCreation].every(none));
+}
 /** Runs that may be benched again: listed as infra_error, or never judged. */
 const resumable = (status: string | null): boolean => status === 'infra_error' || status === 'unjudged';
 export interface AgentResult {
@@ -70,7 +80,7 @@ export interface RoundInput {
   maintainerApproved?: readonly string[];
   /** Model runs found in the bench folders: on the development set (a count) and on the held-out
    * tasks (each run folder), reruns included. */
-  spent: { development: number; heldOut: readonly SpentRun[] };
+  spent: { development: number; heldOut: readonly SpentRun[]; developmentRejected?: number };
 }
 export interface GateInput extends RoundInput {
   /** Every held-out ladder report (one or more per ladder model). */
@@ -87,7 +97,9 @@ interface RoundFacts {
   /** Whether the development outcomes follow the capability order; the pair never changes. */
   order: 'consistent' | 'contradicted';
   pair: { strongest: string; weakest: string };
-  spent: { development: number; heldOut: number; total: number };
+  /** Model runs counted against the budgets, and the runs the client rejected before any model work
+   * (listed, never counted). */
+  spent: { development: number; heldOut: number; total: number; rejected: number };
   releaseRuns: number;
 }
 export interface GateResult extends RoundFacts {
@@ -97,6 +109,8 @@ export interface GateResult extends RoundFacts {
   /** Power of the exact McNemar test at this size for a 20-point, one-sided disagreement. */
   power: number;
   criteria: Criterion[]; verdict: 'passes' | 'does not pass' | 'void'; ladderLabel: string | null;
+  /** Why a void round is void: more than 5 % infrastructure errors, or more model runs than a round may spend. */
+  voidReason: 'infrastructure' | 'budget' | null;
 }
 export interface PreflightResult extends RoundFacts { oracle: AgentResult; random: AgentResult; nearMisses: { total: number; passed: number }; ladderRunsSpent: number }
 
@@ -215,8 +229,8 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     const ordered = [...runs].sort((a, b) => a.bench.localeCompare(b.bench));
     for (const run of ordered.slice(0, -1)) if (!resumable(run.status)) fail(`task ${run.taskId} was run more than once for ${run.model ?? 'an unknown model'} (bench folders ${ordered.map(value => value.bench).join(", ")}) and the earlier run was judged (no best-of-N)`);
   }
-  const spentDevelopment = Math.max(declaration.development.spent, input.spent.development), spentHeldOut = input.spent.heldOut.length;
-  const spent = { development: spentDevelopment, heldOut: spentHeldOut, total: spentDevelopment + spentHeldOut };
+  const spentDevelopment = Math.max(declaration.development.spent, input.spent.development), spentHeldOut = input.spent.heldOut.filter(run => !run.rejected).length;
+  const spent = { development: spentDevelopment, heldOut: spentHeldOut, total: spentDevelopment + spentHeldOut, rejected: input.spent.heldOut.filter(run => run.rejected).length + (input.spent.developmentRejected ?? 0) };
   const releaseRuns = declaration.budget.releaseRunsBefore + Math.max(spent.total, ladder ? 0 : ROUND.roundRuns);
   if (releaseRuns > GATE.releaseBudget) fail(`${BUDGET_EXHAUSTED}: ${releaseRuns} model runs exceed the release budget of ${GATE.releaseBudget}`);
   const base = input.oracle[0]!.report, reports = all.map(value => value.report);
@@ -284,14 +298,15 @@ export function computeGate(input: GateInput): GateResult {
     { name: 'random', value: `${random.passed}/${plan.length} (${share(random.rate)})`, rule: 'random passes ≤ 5 %', met: random.rate <= GATE.maxRandom },
     { name: 'near-misses', value: `${input.nearMisses.total - input.nearMisses.passed}/${input.nearMisses.total} fail`, rule: 'every near miss fails', met: input.nearMisses.total > 0 && input.nearMisses.passed === 0 },
     { name: 'infrastructure', value: `${share(infraShare)} of ${ladderRuns} ladder runs`, rule: 'infra_error, missing or unattested runs ≤ 5 %, else the round is void', met: infraShare <= GATE.maxInfraShare },
-    { name: 'budget', value: `${facts.spent.total} model runs spent (${facts.spent.heldOut} held-out + ${facts.spent.development} development); release ${facts.releaseRuns} of ${GATE.releaseBudget}`, rule: '≤ 100 model runs per family and round, ≤ 500 in the release', met: facts.spent.total <= GATE.maxModelRunsPerRound && facts.releaseRuns <= GATE.releaseBudget },
+    { name: 'budget', value: `${facts.spent.total} model runs spent (${facts.spent.heldOut} held-out + ${facts.spent.development} development)${facts.spent.rejected ? `, ${facts.spent.rejected} rejected by the client not counted` : ''}; release ${facts.releaseRuns} of ${GATE.releaseBudget}`, rule: '≤ 100 model runs per family and round, else the round is void; ≤ 500 in the release', met: facts.spent.total <= GATE.maxModelRunsPerRound && facts.releaseRuns <= GATE.releaseBudget },
   ];
-  const void_ = !criteria.find(c => c.name === 'infrastructure')!.met;
-  const verdict = void_ ? 'void' : criteria.every(c => c.met) ? 'passes' : 'does not pass';
+  // A round is void, never "does not pass", when its infrastructure or its spend failed it (third review).
+  const voidReason = !criteria.find(c => c.name === 'infrastructure')!.met ? 'infrastructure' as const : !criteria.find(c => c.name === 'budget')!.met ? 'budget' as const : null;
+  const verdict = voidReason ? 'void' : criteria.every(c => c.met) ? 'passes' : 'does not pass';
   return {
     ...facts, agents: [oracle, random, ...ladder], strongest, weakest, discordant: { strongestOnly, weakestOnly, p }, infraShare, modelRuns: ladderRuns, developmentRuns: ROUND.developmentRuns,
     power: mcnemarPower(plan.length, GATE.minDifference, 0, GATE.alpha),
-    criteria, verdict, ladderLabel: declaration.ladder.every(name => /^claude/i.test(name)) ? 'ladder: Claude models only' : null,
+    criteria, verdict, voidReason, ladderLabel: declaration.ladder.every(name => /^claude/i.test(name)) ? 'ladder: Claude models only' : null,
   };
 }
 
@@ -303,7 +318,7 @@ const orderLine = (facts: RoundFacts): string => facts.order === 'consistent' ? 
 export function renderGate(result: GateResult): string {
   const lines: string[] = [];
   lines.push(`# Challenge gate: ${result.family}, round ${result.round}`, '');
-  lines.push(`**Verdict: ${result.verdict === 'passes' ? 'the family passes this round' : result.verdict === 'void' ? 'the round is void (more than 5 % infrastructure errors)' : 'the family does not pass this round'}.**${result.ladderLabel ? ` ${result.ladderLabel}.` : ''}`, '');
+  lines.push(`**Verdict: ${result.verdict === 'passes' ? 'the family passes this round' : result.verdict === 'void' ? (result.voidReason === 'budget' ? 'the round is void (more than 100 model runs spent in the round)' : 'the round is void (more than 5 % infrastructure errors)') : 'the family does not pass this round'}.**${result.ladderLabel ? ` ${result.ladderLabel}.` : ''}`, '');
   lines.push('Preregistered in [PADR-0040](../../adr/0040-challenge-tier-generated-families-and-gate.md) (roadmap 0.2.0, item 4) and in this round\'s committed declaration. Every number below is computed by `node tools/challenge.ts gate` from the declaration, the development and held-out `practonaut.bench/2` reports (each validated and re-verified, resumed benches merged) and the model runs found in their bench folders, on a held-out set regenerated from the declaration.', '');
   lines.push('## Round', '');
   lines.push('| Fact | Value |', '|---|---|');
@@ -324,7 +339,7 @@ export function renderGate(result: GateResult): string {
   for (const criterion of result.criteria) lines.push(`| ${criterion.name} | ${cell(criterion.value)} | ${cell(criterion.rule)} | ${criterion.met ? 'yes' : 'no'} |`);
   lines.push('');
   lines.push(`Discordant instances: the strongest passed and the weakest failed on ${result.discordant.strongestOnly}, the reverse on ${result.discordant.weakestOnly}; two-sided exact McNemar p = ${result.discordant.p.toFixed(4)}.`);
-  lines.push(`Model runs spent in this round: ${result.spent.heldOut} on the held-out set and ${result.spent.development} on the development set (every run folder found, reruns after an infra_error included). Release total after this round: ${result.releaseRuns} of ${GATE.releaseBudget}.`);
+  lines.push(`Model runs spent in this round: ${result.spent.heldOut} on the held-out set and ${result.spent.development} on the development set (every run folder found, reruns after an infra_error included)${result.spent.rejected ? `; ${result.spent.rejected} runs the client rejected before any model work (a usage limit, a login) are listed in the ledger and not counted` : ''}. Release total after this round: ${result.releaseRuns} of ${GATE.releaseBudget}.`);
   lines.push(`Power at this size: if the two agents disagreed on 20 % of the instances, all in the stronger one's favour, the exact McNemar test would reach p < 0.05 with probability ${result.power.toFixed(2)}; "does not pass" on discrimination is not evidence that the agents are equal.`);
   // The five first rounds leave fewer runs than a round needs: no second round fits the budget.
   if (result.verdict !== 'passes') lines.push(`Second round: ${BUDGET_EXHAUSTED}. After the five first rounds of ${GATE.roundRuns} model runs each the release has ${RUNS_AFTER_FIRST_ROUNDS} of the ${GATE.releaseRunsAtPreregistration} runs it had left at preregistration, fewer than one round.`);

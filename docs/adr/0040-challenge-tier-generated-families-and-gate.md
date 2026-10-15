@@ -264,7 +264,10 @@ judged state and the error classes, and the judged state may hold whatever an ag
 - **Baselines:** oracle 100 %, random ≤ 5 %, every near miss of every instance fails (bench and the
   separate checker; the gate tool replays each regenerated near miss in a checker process).
 - **Budget:** at most 100 model runs per family per round (development runs and reruns included; the
-  round above uses 87), at most two rounds per family, a second round only on new held-out
+  round above uses 87); a round that spends more is **void** for its budget, never "does not pass".
+  Runs the client rejected before any model work — an `infra_error` for a usage or rate limit or a
+  login or billing error, with no tokens and no tool call of the agent — are listed in the ledger as
+  rejected by the client and counted against no budget. At most two rounds per family, a second round only on new held-out
   instances, never an earlier round's: a round-2 gate needs the held-out reports of round 1
   (`--previous`) and refuses overlapping seeds. Families run in roadmap order, one at a time, and
   first rounds come before second rounds. The release budget is 500 model runs: a declaration whose

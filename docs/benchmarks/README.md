@@ -534,7 +534,7 @@ F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.decla
 # 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
 node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
 for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
-  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required --stop-on-infra || break
 done
 # 2. Declaration: freezes the round; commit and push it before step 3.
 node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL
@@ -547,7 +547,7 @@ DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent random $(node tools/cha
 node tools/challenge.ts gate --preflight --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json
 # 5. The ladder (resume a stopped bench with --tasks), then the gate and its ledger.
 for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
-  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/heldout)
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/heldout) || break
 done
 node tools/challenge.ts gate --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json \
   --ladder <every held-out ladder report> --out docs/benchmarks/challenge/$F-round1.md

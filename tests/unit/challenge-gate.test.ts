@@ -3,7 +3,7 @@
 // outcome tables below.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeGate, mergeAgentRuns, preflightGate, renderGate, renderPreflight, GateInputError, RUNS_AFTER_FIRST_ROUNDS, type GateInput, type GateReport, type SpentRun } from '../../src/challenge/gate.ts';
+import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, renderGate, renderPreflight, GateInputError, RUNS_AFTER_FIRST_ROUNDS, type GateInput, type GateReport, type SpentRun } from '../../src/challenge/gate.ts';
 import { DECLARATION_SCHEMA, HELD_OUT_SPAN, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, tierOf, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from '../../src/challenge/declaration.ts';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -154,7 +154,7 @@ test('a family passes: headroom 15/26, 11 more instances than the weakest, McNem
   assert.deepEqual([result.strongest.passed, result.weakest.passed], [15, 4]);
   assert.deepEqual([result.discordant.strongestOnly, result.discordant.weakestOnly], [11, 0]);
   assert.ok(Math.abs(result.discordant.p - 2 / 2048) < 1e-12);
-  assert.deepEqual([result.modelRuns, result.developmentRuns, result.spent, result.releaseRuns], [78, 9, { development: 9, heldOut: 78, total: 87 }, 35 + 87]);
+  assert.deepEqual([result.modelRuns, result.developmentRuns, result.spent, result.releaseRuns], [78, 9, { development: 9, heldOut: 78, total: 87, rejected: 0 }, 35 + 87]);
   assert.deepEqual(result.development.map(entry => entry.passed), [2, 1, 0]);
   assert.equal(result.order, 'consistent');
   assert.equal(result.ladderLabel, 'ladder: Claude models only');
@@ -401,5 +401,32 @@ test('the spend scan: a run its report lists keeps its status; one no report lis
     assert.deepEqual(found.heldOut.map(value => [value.bench, value.taskId, value.model, value.status]),
       [['b1', tasks[0], OPUS, 'completed'], ['b1', tasks[1], OPUS, 'infra_error'], ['b2', tasks[2], OPUS, null], ['b2', tasks[3], OPUS, 'unjudged']]);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('runs the client rejected before any model work are listed, not counted; an over-cap round is void for its budget, never "does not pass" (third review)', () => {
+  const limited = { status: 'infra_error', note: 'the client reported a usage or rate limit (result is_error: usage or rate limit)', toolCalls: { observe: 1, act: 0, undo: 0, reset: 0, check: 0, total: 1 }, client: { tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 } } };
+  assert.equal(rejectedByClient(limited), true);
+  assert.equal(rejectedByClient({ ...limited, note: 'the client reported an authentication or billing error (result is_error: authentication or billing)' }), true);
+  assert.equal(rejectedByClient({ ...limited, client: { tokens: null } }), true, 'no figures at all');
+  // Model work happened: tokens, an agent tool call, or another cause.
+  assert.equal(rejectedByClient({ ...limited, client: { tokens: { input: 1200, output: 30, cacheRead: 0, cacheCreation: 0 } } }), false);
+  assert.equal(rejectedByClient({ ...limited, toolCalls: { ...limited.toolCalls, observe: 2 } }), false);
+  assert.equal(rejectedByClient({ ...limited, toolCalls: { ...limited.toolCalls, act: 1 } }), false);
+  assert.equal(rejectedByClient({ ...limited, note: 'the client reported an API error (result is_error: API error)' }), false);
+  assert.equal(rejectedByClient({ ...limited, status: 'agent_failed' }), false);
+  // Five Opus starts rejected by a usage limit, each benched again later: 78 counted, 5 listed.
+  const given = [at(held(OPUS, first(15)), 'b601'), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
+  const rejected: SpentRun[] = tasks.slice(0, 5).map(task => ({ bench: 'b600', runId: `${task}-s1-r1`, taskId: task, model: OPUS, status: 'infra_error', rejected: true }));
+  const result = computeGate(input(first(15), first(10), first(4), { ladder: given, spent: { development: 9, heldOut: [...rejected, ...spentOf(given)], developmentRejected: 2 } }));
+  assert.deepEqual([result.verdict, result.spent], ['passes', { development: 9, heldOut: 78, total: 87, rejected: 7 }]);
+  assert.match(renderGate(result), /7 runs the client rejected before any model work \(a usage limit, a login\) are listed in the ledger and not counted/);
+  // More than 100 counted model runs (here another model's 14 runs on the held-out tasks): void for its budget.
+  const extra: SpentRun[] = tasks.slice(0, 14).map(task => ({ bench: 'b700', runId: `${task}-s1-r1`, taskId: task, model: 'gpt-x', status: 'completed' }));
+  const over = computeGate(input(first(15), first(10), first(4), { ladder: given, spent: { development: 9, heldOut: [...spentOf(given), ...extra] } }));
+  assert.deepEqual([over.verdict, over.voidReason, over.spent.total], ['void', 'budget', 101]);
+  assert.match(renderGate(over), /\*\*Verdict: the round is void \(more than 100 model runs spent in the round\)\.\*\*/);
+  // A round that fails on the merits within its budget still "does not pass".
+  const fails = computeGate(input(first(10), first(8), first(6)));
+  assert.deepEqual([fails.verdict, fails.voidReason], ['does not pass', null]);
 });
 
