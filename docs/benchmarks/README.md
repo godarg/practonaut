@@ -4,7 +4,7 @@ Decision records: [PADR-0030](../adr/0030-bench-replaces-unsealed-eval.md) (benc
 [PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md) (own worlds, report `/2`),
 [PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md) (run evidence, report v2,
 `compare`), [PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits,
-minimal length, challenge tier and its gate, §7).
+minimal length, challenge tier and its gate, §10).
 
 `practonaut bench` lets any MCP agent practise the bundled Excalidraw task library, or a world of
 your own, and scores it independently: every run gets a fresh session, the agent works only through
@@ -585,7 +585,7 @@ Measured the same day with the built-ins (`--tasks all --seeds 2`, real mirror):
 passed; `random --max-actions 30` 0 of 32. Re-run them with the commands at the top; the numbers in
 this paragraph are not maintained.
 
-## 7. Challenge tier (candidates)
+## 10. Challenge tier (candidates)
 
 The task library is saturated for current Claude models (0.1.0 baseline: 36 of 36 runs on its six
 hardest tasks passed). The challenge tier adds harder task families, made by a seeded generator and
