@@ -87,8 +87,9 @@ export interface Fixtures {
   failing: Bench; solved: Bench; timeout: Bench; unjudged: Bench; german: Bench;
   /** An agent that acted and then exited with code 7. */
   crashed: Bench;
-  /** Two command-template benches on the same grid (two tasks × seeds 1–3), three repeats: for compare. */
-  good: Bench; bad: Bench;
+  /** Two command-template benches on the same grid (two tasks × seeds 1–3), three repeats: for compare
+   * (36 runs, so only when asked for). */
+  good?: Bench; bad?: Bench;
   /** With the real mirror (only when asked for). */
   engine?: { solved: Bench; failing: Bench };
 }
@@ -108,7 +109,7 @@ function expectBench(name: string, bench: Bench, expected: { status: BenchReport
 /** Runs every fixture bench once (model-only unless `mirror`), and checks that each played as its
  * script says. Takes a minute or two. `dir` may be relative: it is resolved first, because the scripted
  * agents read their script from inside their own folder. */
-export async function fixtureBenches(folder: string, options: { mirror?: boolean } = {}): Promise<Fixtures> {
+export async function fixtureBenches(folder: string, options: { mirror?: boolean; compare?: boolean } = {}): Promise<Fixtures> {
   const dir = resolve(folder);
   await mkdir(dir, { recursive: true });
   const failing = expectBench('failing', await scripted(dir, 'failing', FAILING, {}), { status: 'completed', pass: false, acted: true });
@@ -120,10 +121,12 @@ export async function fixtureBenches(folder: string, options: { mirror?: boolean
   // Benched without its oracle: no reference, so no efficiency and no example target.
   const world = await ownBenchWorld(authored.world);
   const german = expectBench('german', await scripted(dir, 'german', { [authored.taskId]: { steps: [{ act: 'rename_step', params: { id: 'a', label: 'Kreditorenstammdatenänderungsantragsprüfung' } }, { act: 'set_style', params: { id: 'b', shape: 'rectangle', stroke: 'black', fill: 'yellow' } }] } }, { world, tasks: [authored.taskId], label: 'Langer deutscher Name: Rechnungseingangsprüfung' }), { status: 'completed', pass: false, acted: true });
-  // Seeds 1–3: six instances, so six instance flips are enough for an exact McNemar verdict (p = 2 · 2⁻⁶).
-  const good = expectBench('good', await scripted(dir, 'good', SOLVING, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: true, acted: true });
-  const bad = expectBench('bad', await scripted(dir, 'bad', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: false, acted: true });
-  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed, good, bad };
+  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed };
+  if (options.compare) {
+    // Seeds 1–3: six instances, so six instance flips are enough for an exact McNemar verdict (p = 2 · 2⁻⁶).
+    fixtures.good = expectBench('good', await scripted(dir, 'good', SOLVING, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: true, acted: true });
+    fixtures.bad = expectBench('bad', await scripted(dir, 'bad', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: false, acted: true });
+  }
   if (options.mirror) {
     const mirrored = { mirrorRequested: 'required' as const, mirror: 'required' as const };
     fixtures.engine = {
@@ -167,7 +170,9 @@ export function firstRepeats(report: BenchReportV2): BenchReportV2 {
   return validateBenchReportV2(value);
 }
 /** Every named state of the report and compare pages (PADR-0039 B, C). */
-export async function reportStates(fixtures: Fixtures): Promise<ReportState[]> {
+export async function reportStates(all: Fixtures): Promise<ReportState[]> {
+  if (!all.good || !all.bad) throw new Error('reportStates needs the compare fixtures: fixtureBenches(folder, { compare: true })');
+  const fixtures = all as Fixtures & { good: Bench; bad: Bench };
   const v1 = validateBenchReport(JSON.parse(await readFile(V1_REPORT, 'utf8')));
   await verifyBenchV2(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();

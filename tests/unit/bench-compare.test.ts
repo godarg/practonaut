@@ -8,11 +8,12 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BENCH_SCHEMA_V2, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 import { compareReports, CompareError, isolationOf } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderCompareTable } from '../../src/bench/render-compare.ts';
 
-const CLI = new URL('../../src/cli/main.ts', import.meta.url).pathname;
+const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const hash = (c: string): string => c.repeat(64);
 type Verdict = boolean | null;
 /** A consistent command-agent report; `outcomes[task][seed]` lists each repeat's verdict (null: not judged). */
