@@ -147,8 +147,9 @@ export const MAX_LABEL = 128;
 const RunLogsSchema = z.strictObject({
   /** `calls.jsonl`, normalised by the runner from what the agent's bridge wrote (`calls.bridge.jsonl`,
    * kept unchanged); null: none was written. `dropped`: unreadable lines; `omitted`: lines beyond the
-   * log limits, counted but not kept in `calls.jsonl`. */
-  calls: z.strictObject({ sha256, entries: count, dropped: count, omitted: count.optional(), clientTiming: z.boolean() }).nullable(),
+   * log limits, counted but not kept in `calls.jsonl`; `omittedAtLeast`: the file went on past what
+   * was counted, so `omitted` is a lower bound. */
+  calls: z.strictObject({ sha256, entries: count, dropped: count, omitted: count.optional(), omittedAtLeast: z.literal(true).optional(), clientTiming: z.boolean() }).nullable(),
   /** `mutations.jsonl`, written by the runner's host-side wrapper; `omitted`: budget refusals only counted. */
   mutations: z.strictObject({ sha256, entries: count, omitted: count }),
 });

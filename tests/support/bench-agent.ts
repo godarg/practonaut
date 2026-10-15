@@ -5,6 +5,8 @@
 // sleep   : never finish (timeout path).
 // plant   : leave files named like the judged artifacts in PRACTONAUT_HOME and its parent, then solve.
 // plant-dir: put a folder where the run's checker.json goes (PRACTONAUT_HOME/..), then solve.
+// plant-log: put a folder where the run's mutation log goes, then solve.
+// plant-board: put a folder where the run's board.svg goes (a mirror run's picture), then solve.
 // stubborn: ignore SIGTERM and never finish; its pid goes to <state>/pids.json (forced-stop path).
 // tasks   : write the task list of a full observe to <PN_TEST_AGENT_STATE>/tasks.json, then exit.
 // family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
@@ -88,6 +90,8 @@ else {
   if (mode === 'init') process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', model: 'pn-test-model', apiKeySource: 'none', tools: [] }) + '\n');
   if (mode === 'plant') for (const directory of [home, join(home, '..')]) for (const name of ['session.json', 'checker.json', 'native.excalidraw']) writeFileSync(join(directory, name), '{"forged":true}');
   if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
+  if (mode === 'plant-log') mkdirSync(join(home, '..', 'mutations.jsonl'), { recursive: true });
+  if (mode === 'plant-board') mkdirSync(join(home, '..', 'board.svg'), { recursive: true });
   const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
   if (mode === 'tasks') {
     const full = await client.call<HostView>('observe', { detail: 'full', lang: 'both' });

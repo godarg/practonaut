@@ -399,6 +399,10 @@ export const CLI_CATALOG = {
     "en": "the isolation level",
     "de": "die Isolationsstufe"
   },
+  "compareIncomplete": {
+    "en": "the candidate is incomplete: {n} {n:instance is|instances are} missing, cut short or {n:holds|hold} a run that was not judged ({list}); a missing verdict could hide a regression. Bench the candidate again",
+    "de": "der Kandidat ist unvollständig: {n} {n:Instanz fehlt|Instanzen fehlen}, {n:wurde|wurden} abgebrochen oder {n:enthält|enthalten} einen nicht bewerteten Lauf ({list}); ein fehlendes Urteil könnte eine Regression verbergen. Den Kandidaten erneut benchen"
+  },
   "compareRegression": {
     "en": "{n} instance {n:regression|regressions} (passed in every baseline repeat, failed in every candidate repeat): {list}",
     "de": "{n} {n:Instanz-Regression|Instanz-Regressionen} (bei jeder Wiederholung der Basis bestanden, bei jeder des Kandidaten nicht): {list}"

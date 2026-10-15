@@ -58,16 +58,20 @@ export function normaliseCallLog(raw: string, client?: readonly ClientCall[], un
   return { records, dropped, omitted: Math.max(0, all.length - MAX_LOG_LINES) + unread, text: records.map(record => JSON.stringify(record)).join('\n') + (records.length ? '\n' : '') };
 }
 
+/** How many bytes beyond a log's head are read to count its remaining lines; past this the count stops
+ * and is a lower bound (`countCapped`), so a huge file cannot hold the runner. */
+export const MAX_COUNTED_BYTES = 256 * 1024 * 1024;
 /** A regular file's first `max` bytes up to its last complete line, and how many lines lie beyond
- * them (counted by reading the rest, never kept); null when it is missing or not a regular file. */
-export async function readLogHead(path: string, max: number): Promise<{ text: string; unreadLines: number } | null> {
+ * them (counted by reading at most `maxCounted` more bytes, never kept; `countCapped` when the file
+ * goes on past them); null when it is missing or not a regular file. */
+export async function readLogHead(path: string, max: number, maxCounted = MAX_COUNTED_BYTES): Promise<{ text: string; unreadLines: number; countCapped: boolean } | null> {
   let handle;
   try { handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0)); } catch { return null; }
   try {
     if (!(await handle.stat()).isFile()) return null;
     const head = Buffer.alloc(max);
     const { bytesRead } = await handle.read(head, 0, max, 0);
-    let text = head.subarray(0, bytesRead).toString('utf8'), unreadLines = 0, position = bytesRead;
+    let text = head.subarray(0, bytesRead).toString('utf8'), unreadLines = 0, position = bytesRead, countCapped = false;
     if (bytesRead === max) {
       // Cut at the last newline; the partial line and everything after it are counted, not kept.
       const cut = text.lastIndexOf('\n');
@@ -75,7 +79,8 @@ export async function readLogHead(path: string, max: number): Promise<{ text: st
       let pending = rest.trim() !== '';
       const chunk = Buffer.alloc(1024 * 1024);
       for (;;) {
-        const read = await handle.read(chunk, 0, chunk.length, position);
+        if (position - bytesRead >= maxCounted) { countCapped = (await handle.read(chunk, 0, 1, position)).bytesRead > 0; break; }
+        const read = await handle.read(chunk, 0, Math.min(chunk.length, maxCounted - (position - bytesRead)), position);
         if (!read.bytesRead) break;
         position += read.bytesRead;
         for (let index = 0; index < read.bytesRead; index++) {
@@ -85,7 +90,7 @@ export async function readLogHead(path: string, max: number): Promise<{ text: st
       }
       if (pending) unreadLines++;
     }
-    return { text, unreadLines };
+    return { text, unreadLines, countCapped };
   } catch { return null; } finally { await handle.close(); }
 }
 

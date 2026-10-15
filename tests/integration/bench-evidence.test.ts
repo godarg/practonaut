@@ -93,7 +93,8 @@ test('command agent: no client timing, its own figures self-reported, two MCP cl
     assert.equal(run.logs?.calls?.clientTiming, false);
     assert.equal(parseCallLog(await readFile(join(folder, 'calls.jsonl'), 'utf8')).every(call => call.clientMs === null), true);
     const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'));
-    assert.deepEqual(mutations.map(entry => [entry.op, entry.outcome, entry.code ?? null, entry.client]), [['act', 'accepted', null, 'practonaut-bench'], ['undo', 'accepted', null, null], ['act', 'rejected', 'precondition_failed', 'practonaut-bench'], ['act', 'accepted', null, 'second-agent'], ['check', 'accepted', null, null]]);
+    // Every change through MCP names its client, an undo too.
+    assert.deepEqual(mutations.map(entry => [entry.op, entry.outcome, entry.code ?? null, entry.client]), [['act', 'accepted', null, 'practonaut-bench'], ['undo', 'accepted', null, 'practonaut-bench'], ['act', 'rejected', 'precondition_failed', 'practonaut-bench'], ['act', 'accepted', null, 'second-agent'], ['check', 'accepted', null, null]]);
     // connect: 2 steps · 1 arrow · “l2” · “l1” · arrow l1→l2. a→b meets all; undo returns; b→a misses the direction.
     const trace = JSON.parse(await readFile(join(folder, 'trace.json'), 'utf8')) as { start: string; points: Array<{ seq: number; met: string }> };
     assert.deepEqual([trace.start, ...trace.points.map(point => `${point.seq}:${point.met}`)], ['10110', '0:11111', '1:10110', '3:11110']);

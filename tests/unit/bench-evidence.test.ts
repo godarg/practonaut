@@ -37,7 +37,7 @@ test('call log: well-formed bridge lines in order, numbered, client round trip j
   assert.deepEqual([many.records.length, many.dropped, many.omitted], [MAX_LOG_LINES, 0, 5 + 1 + 3]);
 });
 
-test('reading a call log: the head up to its last whole line, every line beyond it counted', async () => {
+test('reading a call log: the head up to its last whole line, the lines beyond it counted up to a bound', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pn-log-head-'));
   try {
     const path = join(dir, 'calls.bridge.jsonl'), line = (n: number) => JSON.stringify({ id: n, tool: 'act', code: 'ok', resultBytes: 1, bridgeMs: 1 });
@@ -46,9 +46,14 @@ test('reading a call log: the head up to its last whole line, every line beyond 
     // 3.5 lines fit: three are kept, the cut fourth and the six after it are counted.
     const limit = Math.floor(line(0).length * 3.5) + 3;
     const head = await readLogHead(path, limit);
-    assert.equal(head!.text.trim().split('\n').length, 3); assert.equal(head!.unreadLines, 7);
+    assert.equal(head!.text.trim().split('\n').length, 3); assert.deepEqual([head!.unreadLines, head!.countCapped], [7, false]);
     const all = await readLogHead(path, 1024 * 1024);
-    assert.deepEqual([all!.text, all!.unreadLines], [text, 0]);
+    assert.deepEqual([all!.text, all!.unreadLines, all!.countCapped], [text, 0, false]);
+    // Counting stops after maxCounted bytes beyond the head: the count is then a lower bound, and says so.
+    // Two whole lines fit in 2.5 line lengths after the cut (the cut fourth line ends inside them).
+    const capped = await readLogHead(path, limit, Math.floor(line(0).length * 2.5));
+    assert.equal(capped!.countCapped, true); assert.ok(capped!.unreadLines >= 2 && capped!.unreadLines < 7, String(capped!.unreadLines));
+    assert.deepEqual([(await readLogHead(path, limit, 1024 * 1024))!.countCapped], [false], 'a bound past the end: an exact count');
     assert.equal(await readLogHead(join(dir, 'missing'), 10), null);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

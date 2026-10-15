@@ -186,14 +186,15 @@ run folder also keeps what explains the verdict, each file bound by its SHA-256 
 | File | Written by | Content |
 |---|---|---|
 | `calls.bridge.jsonl` | the agent's bridge (`practonaut mcp --call-log`) | as the bridge wrote it; never changed by the runner |
-| `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
-| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself), accepted or rejected with the host's error code, step and revision afterwards; and every `check_result` as a `check` record (accepted or rejected, no client name), from which `--verify` counts a task's check limit (PADR-0040). Refusals for an exhausted budget (of changes, of checks) are kept up to 100 each and counted beyond; a rejected action's strings are cut at 256 characters. |
-| `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made; the verdict never depends on it. |
-| `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw` |
+| `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`, counted over at most 256 MiB more and then marked as a lower bound) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
+| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself, for undo and reset too), accepted or rejected with the host's error code, step and revision afterwards; and every `check_result` as a `check` record (accepted or rejected), from which `--verify` counts a task's check limit (PADR-0040). Refusals for an exhausted budget (of changes, of checks) are kept up to 100 each and counted beyond; a rejected action's strings are cut at 256 characters. |
+| `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made (`log_unwritten` when the mutation log could not be written: a trace is only kept beside its log); the verdict never depends on it. |
+| `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw`; left out when it cannot be written, which never changes the verdict |
 
 Tokens (input, output, cache read, cache creation), turns, cost and model come from the client's own
 stream-json output (`system/init` and its last `result` event) when it writes one, per run and summed
-in the report, labelled self-reported. They are never verified and never part of a score.
+over the runs that reported them as a running cost total, labelled self-reported. They are never
+verified and never part of a score.
 
 ## 4. Isolation and its limits
 
@@ -319,34 +320,44 @@ together (a valid replacement session would then have to solve the task). `/1` r
 artifact hashes (the example below, reports from earlier builds) can only be consistency-checked; a
 `/2` report always binds the artifacts of every judged run.
 
-**Reading a report.** The first line under the agent's name is the header line: the fraction of
-passed runs (and, with repeats, of passed instances — an instance passes when at least half of its
-runs passed), a 95 % Wilson interval over instances, the verification status, the mirror, the
-isolation level and the model with "self-reported" and where the name came from ("client-attested" for
-the preset's own init event, "from the command output" for a template). The world and its content hash
-follow. A rate is always a fraction; a percentage appears only where n allows it (whole percent from 100
-runs, one decimal from 1000), and the interval is shown in whole percent, rounded outward. Failed runs
-come first, each with:
+**Reading a report.** The headline under the agent's name is the fraction of passed runs (and, with
+repeats, of passed instances — an instance passes when at least half of all its runs passed; a run
+that was not judged counts as not passed) and a 95 % Wilson interval over instances. Chips follow with
+the verification status, the mirror, the isolation level and the model with "self-reported" and where
+the name came from ("client-attested" for the preset's own init event, "from the command output" for a
+template). A rate is always a fraction; a percentage appears only where n allows it (whole percent from
+100 runs, one decimal from 1000; a fraction that is neither none nor all never reads 0 % or 100 %), and
+the interval is shown in whole percent, rounded outward. Failed runs, and runs whose agent did not end
+normally, come first and open, each with:
 
-- **why it failed**, every state by name with its reason: timeout, agent failed, not judged (with the
-  runner's note; it counts as not passed), no action, rejected actions with their error codes, two or
-  more MCP clients acting, every unmet goal condition with the action after which it was last lost (or
-  "never met"), every error class with its explanation;
-- the **goal conditions** with their history from the checker's trace;
+- **why it failed**, every state by name with its reason: timed out, agent failed, no action, rejected
+  actions with what each refusal means, two or more MCP clients acting, every unmet goal condition with
+  the trajectory entry (#n) after which it was last lost (or "never met"), every error class with the
+  first sentence of its explanation; a run that was not judged has **no verdict** (a dashed ring, never
+  the fail mark) and counts as not passed;
+- the **goal conditions**, numbered as the trajectory names them, with their history from the
+  checker's trace;
 - the **board**: the real Excalidraw's export when the mirror ran (reduced to an allowlist of geometry
-  and paint, so board text is shown as text and never interpreted as markup), otherwise a schematic of
-  the judged state, labelled "schematic"; groups, which no export shows, as a dashed outline and a
-  legend; frames as labelled outlines; under it every object of the judged state in words — each label
-  in full (a drawing may cut a long one), shape, line, fill, size, position, frame and group; beside it
-  an **example target** — a schematic of the validated reference's end state for that seed — or "no
-  example target" when the task has none;
-- the **trajectory**: every act, undo, reset and check in order, accepted or rejected, with the conditions met
-  afterwards and which ones changed;
+  and paint, so board text is shown as text and never interpreted as markup; `--verify` checks only its
+  hash), otherwise a schematic of the judged state, labelled "schematic"; groups, which no export
+  shows, as a tinted outline (laid over the export too, from the judged state) and a legend; frames as labelled outlines; under it every object in words
+  — each label in full (a drawing may cut a long one), shape, line, fill, size, position, frame and
+  group; below it an **example target** — a schematic of the validated reference's end state for that
+  seed, with its own object list — or "no example target" when the task has none. The two pictures
+  share one viewBox, so they are drawn at one scale; text in them is never smaller than 12 px (a wider
+  board scrolls sideways in its frame, and the page says so); in dark mode both use Excalidraw's own
+  dark-mode colours;
+- the **trajectory**: every act, undo, reset and check in order, "accepted (revision n)" or rejected with the
+  reason in words, with the conditions met afterwards and which ones changed;
 - the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
 
-Passed runs follow, collapsed. `report` reads these details from the bench folder (the report's
-folder, or `--runs <bench folder>`); without it, or for a file that differs from its hash, the page
-says what it cannot show and why. `--html` writes one static page (design system v1, no script, no
+Codes and identifiers — run ids, status and host codes, the runner's note, the full error-class text,
+the command (the home folder shown as `~`), the world content hash, generated instances, API key source
+— sit under "Technical details". Passed runs follow, collapsed. `report` reads these details from the
+bench folder (the report's folder, or `--runs <bench folder>`); without it a banner says what is
+missing, what still shows and the command that fixes it, and error classes keep their explanation when
+the report's world is the bundled library; a file that differs from its hash is named with what the
+page cannot show. `--html` writes one static page (design system v1, no script, no
 external asset, no `data:` URI); `--json` prints the schema, the summary and `verification` (for `/2` with
 the world's content hash and, for a library bench, whether it is this Practonaut's library). Text from a
 report or a bench folder (label, agent name, model, command, board text, action parameters) is shown
@@ -364,17 +375,22 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
   tasks and seeds), the mirror, the action budget and the isolation level; otherwise `compare` exits 2
   with `compare_incomparable` and names every difference. Repeats, timeout, agent, model and version may
   differ; a different timeout or version is listed as a caveat.
-- **The unit is the instance** (task × seed). The judged repeats of an instance give one outcome per
-  side: passed when at least half of them passed. Repeats are never counted as independent pairs. An
-  instance missing on one side, or without a judged run there, is listed and left out.
-- **Instance regression**: at least three judged repeats on each side, every baseline repeat passed and
-  every candidate repeat failed. `--fail-on-regression` exits 2 (`instance_regression`) when there is
-  one — this is what a CI gate should use. With fewer repeats a flip is listed as "single runs — not a
-  regression signal"; with three or more, an outcome that changed but not in every repeat is listed as
-  "outcome changed, not in every repeat — not a regression signal".
+- **The unit is the instance** (task × seed). The repeats of an instance give one outcome per side:
+  passed when at least half of all of them passed; a run that was not judged counts as not passed and
+  is listed. Repeats are never counted as independent pairs. An instance missing on one side is listed
+  and left out.
+- **Instance regression**: at least three judged repeats on each side, every judged baseline repeat
+  passed and every judged candidate repeat failed. `--fail-on-regression` exits 2 (`instance_regression`)
+  when there is one — this is what a CI gate should use — and exits 2 (`compare_incomplete`) when a
+  candidate instance is missing, cut short or holds a run that was not judged, because a missing
+  verdict could hide a regression. With fewer than three repeats a flip is listed as "single runs — not
+  a regression signal"; with three or more, an outcome that changed but not in every judged repeat is
+  listed as "outcome changed, not in every repeat — not a regression signal".
 - **Rate verdict**: the exact two-sided McNemar test on the instances the two disagree on (b passed only
   on the baseline, c only on the candidate): "improvement" or "decline" at p < 0.05, always with b, c and
-  p; otherwise "not distinguishable at this n".
+  p; otherwise "rate difference not distinguishable at this n".
+- The page names each side by its label or file name; with `--html`, two reports that cannot be
+  compared get a page that names every difference.
 - `--verify` re-verifies each report from its own folder first; the output names both reports'
   verification status.
 

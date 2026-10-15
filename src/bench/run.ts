@@ -22,7 +22,7 @@ import { loadWorldPackage } from '../world/index.ts';
 import { loadLibrary, LIBRARY_WORLD_DIR, type LibraryEntry } from '../library/index.ts';
 import { startHost } from '../host/server.ts';
 import { createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
-import type { ActRequest, ControllerFactory, HostReply, MirrorMode, MutationReply, PracticeController, RunningHost } from '../host/protocol.ts';
+import type { ActRequest, Actor, ControllerFactory, HostReply, MirrorMode, MutationReply, PracticeController, RunningHost } from '../host/protocol.ts';
 import { ensurePrivateDirectory } from '../platform/private-fs.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
@@ -76,11 +76,12 @@ export function countingController(inner: PracticeController, counters: RunCount
     if (reply.ok) { const { step, revision } = reply.value.view; recorder.record({ op, ...extra, outcome: 'accepted', position: () => ({ step, revision }) }); return; }
     recorder.record({ op, ...extra, outcome: 'rejected', code: reply.error.code, position: () => { const now = inner.view(); return { step: now.step, revision: now.revision }; } });
   };
+  const clientOf = (actor: Actor | undefined): string | null => actor?.kind === 'agent' ? actor.client : null;
   const controller: PracticeController = {
     view: () => { counters.observe++; return inner.view(); },
     act: async (request, context) => {
       counters.act++;
-      const extra = { action: request.action, client: request.actor?.kind === 'agent' ? request.actor.client : null };
+      const extra = { action: request.action, client: clientOf(request.actor) };
       if (counters.mutations >= maxActions) { counters.rejected++; const refused = exhausted<MutationReply>(); note('act', refused, extra); return refused; }
       counters.mutations++;
       const reply = await inner.act(request, context);
@@ -90,15 +91,17 @@ export function countingController(inner: PracticeController, counters: RunCount
     },
     undo: async (request, context) => {
       counters.undoCalls++;
-      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('undo', refused); return refused; }
+      const extra = { client: clientOf(request.actor) };
+      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('undo', refused, extra); return refused; }
       counters.mutations++;
-      const reply = await inner.undo(request, context); if (reply.ok) counters.undos++; note('undo', reply); return reply;
+      const reply = await inner.undo(request, context); if (reply.ok) counters.undos++; note('undo', reply, extra); return reply;
     },
     reset: async (request, context) => {
       counters.resetCalls++;
-      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('reset', refused); return refused; }
+      const extra = { client: clientOf(request.actor) };
+      if (counters.mutations >= maxActions) { const refused = exhausted<MutationReply>(); note('reset', refused, extra); return refused; }
       counters.mutations++;
-      const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; note('reset', reply); return reply;
+      const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; note('reset', reply, extra); return reply;
     },
     // Every check is recorded host-side too (PADR-0040): `report --verify` counts a task's check
     // limit from these records, never from the agent's call log.
@@ -258,20 +261,24 @@ async function writeRunLogs(home: string, recorder: MutationRecorder, clientCall
   if (raw !== null) {
     const normalised = normaliseCallLog(raw.text, clientCalls, raw.unreadLines);
     await writeRunArtifact(home, RUN_EVIDENCE.calls, normalised.text);
-    calls = { sha256: sha256Hex(normalised.text), entries: normalised.records.length, dropped: normalised.dropped, omitted: normalised.omitted, clientTiming: normalised.records.some(record => record.clientMs !== null) };
+    calls = { sha256: sha256Hex(normalised.text), entries: normalised.records.length, dropped: normalised.dropped, omitted: normalised.omitted, ...(raw.countCapped ? { omittedAtLeast: true as const } : {}), clientTiming: normalised.records.some(record => record.clientMs !== null) };
   }
   return { calls, mutations: { sha256: sha256Hex(mutations), entries: recorder.records.length, omitted: recorder.omitted } };
 }
 
 /** The real engine's picture of the final board (mirror only, best effort) and the checker's
  * condition trace of the run (PADR-0039). Neither changes the verdict: a picture that cannot be taken
- * or a trace that cannot be made is null, the trace with its error code. */
-async function pictureAndTrace(home: string, world: World, item: { taskId: string; seed: number }, sessionText: string, revision: number, recorder: MutationRecorder, inner: PracticeController, mirror: MirrorMode): Promise<{ trace: string | null; traceError?: string; board: string | null }> {
+ * or written is null; a trace that cannot be made is null with its error code, and so is a trace whose
+ * mutation log was not written (`log_unwritten`): a trace is only ever bound beside the log it follows. */
+async function pictureAndTrace(home: string, world: World, item: { taskId: string; seed: number }, sessionText: string, revision: number, recorder: MutationRecorder, inner: PracticeController, mirror: MirrorMode, logWritten: boolean): Promise<{ trace: string | null; traceError?: string; board: string | null }> {
   let board: string | null = null;
   if (mirror === 'required') {
     const pictured = await inner.export({ expectedRevision: revision }, undefined, { picture: true }).catch(() => undefined);
-    if (pictured?.ok && pictured.value.picture) { await writeRunArtifact(home, RUN_EVIDENCE.board, pictured.value.picture.utf8); board = sha256Hex(pictured.value.picture.utf8); }
+    if (pictured?.ok && pictured.value.picture) {
+      try { await writeRunArtifact(home, RUN_EVIDENCE.board, pictured.value.picture.utf8); board = sha256Hex(pictured.value.picture.utf8); } catch { board = null; }
+    }
   }
+  if (!logWritten) return { trace: null, traceError: 'log_unwritten', board };
   const timeline = timelineOf(recorder.records, recorder.omitted);
   if ('reason' in timeline) return { trace: null, traceError: timeline.reason, board };
   try {
@@ -312,7 +319,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     let inner: PracticeController | undefined; let host: RunningHost | undefined;
     const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions, recorder); };
     let outcome: AgentOutcome; let checker: BenchRunV2['checker'] = null; let artifacts: BenchRunV2['artifacts']; let wallMs = 0; let finalActions = 0;
-    let runClient: BenchRunV2['client']; let logs: BenchRunV2['logs'];
+    let runClient: BenchRunV2['client']; let logs: BenchRunV2['logs']; let logsTried = false;
     try {
       // A bench host publishes only the run's own task (and refuses a change to another one), without
       // task-list facts: no reference length of any task is the agent's to see.
@@ -369,7 +376,10 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       await writeRunArtifact(home, RUN_ARTIFACTS.session, sessionText);
       if (nativeText !== null) await writeRunArtifact(home, RUN_ARTIFACTS.native, nativeText);
       await writeRunArtifact(home, RUN_ARTIFACTS.checker, checkerText);
-      artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText), ...await pictureAndTrace(home, world, item, sessionText, view.revision, recorder, inner!, options.mirror) };
+      // The logs first: the trace follows the mutation log and is bound only beside it.
+      logsTried = true;
+      logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
+      artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText), ...await pictureAndTrace(home, world, item, sessionText, view.revision, recorder, inner!, options.mirror, logs !== undefined) };
       checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
     } catch (error) {
       if (options.signal?.aborted) { interrupted = true; continue; }
@@ -378,7 +388,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     } finally { await host?.close().catch(() => {}); }
     if (interrupted) break;
     // The logs explain the run whether or not it was judged; a log that cannot be written is left out.
-    if (host) logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
+    if (host && !logsTried) logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
     const run: BenchRunV2 = {
       id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, status: outcome.status as BenchRunV2['status'], pass: false,
       actions: finalActions, acceptedActions: counters.accepted, rejectedActions: counters.rejected, undos: counters.undos, resets: counters.resets,

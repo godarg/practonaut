@@ -143,7 +143,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   // The header line names the model, that it is self-reported, and where the name came from.
   assert.match(table, /^2\/4 passed · 95 % interval .* · template: tools not restricted by Practonaut · model some-model \(self-reported, from the command output\)$/m);
   assert.match(table, /^World: my-world 1\.0\.0 \(own world\)$/m);
-  assert.match(table, /^Content hash \(SHA-256\): d{64}$/m);
+  assert.match(table, /^World content hash \(SHA-256\): d{64}$/m);
   assert.match(table, /^Practonaut bench  generic$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
@@ -151,10 +151,13 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(table, /^other .* no reference +no reference$/m);
   assert.match(html, /Label: nightly \\u\{001b\}\[31m&lt;b&gt;run&lt;\/b&gt;\\u\{202e\}/);
   assert.match(html, /<dt>Isolation<\/dt><dd>template: tools not restricted by Practonaut<\/dd>/);
-  assert.match(html, /<td>no reference<\/td><td>no reference<\/td>/);
-  assert.match(html, /<dt>Content hash \(SHA-256\)<\/dt><dd>d{64}<\/dd>/);
-  assert.match(html, /model: some-model \(from the command output\)/);
-  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and the agent exit status, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
+  assert.match(html, /<td data-label="reference length">no reference<\/td><td data-label="efficiency vs reference length">no reference<\/td>/);
+  // The world's content hash is an identifier: under Technical details, named as the world's.
+  assert.match(html, /<details class="tech"><summary>Technical details<\/summary><dl class="settings">.*<dt>World content hash \(SHA-256\)<\/dt><dd><code>d{64}<\/code><\/dd>/);
+  // The model appears once, as a provenance chip, with its source.
+  assert.equal((html.match(/some-model/g) ?? []).length, 1);
+  assert.match(html, /<li class="chip">model some-model \(self-reported, from the command output\)<\/li>/);
+  assert.match(html, /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and how the agent ended, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
   const attested = v2Report(); attested.agent = { ...attested.agent, kind: 'preset', name: 'claude-code', isolation: 'tool-restricted-preset', modelSource: 'client-attested' };
   assert.match(renderTable(attested), /· model some-model \(self-reported, client-attested\)$/m);
   assert.equal(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/.test(table + html), false);
@@ -165,13 +168,13 @@ test('rendering names label, isolation level, world, generated instances and "no
   const de = renderTable(value, 'de');
   assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
-  assert.match(renderHtml(value, ':root{}', 'de'), /Modell: some-model \(aus der Ausgabe des Befehls\)/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /<li class="chip">Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)<\/li>/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
   // A /1 report did not record its isolation level or a world line; its header line says so.
   const v1 = JSON.parse(readFileSync(new URL('../fixtures/bench/v1/report.json', import.meta.url), 'utf8'));
   const old = renderTable(validateBenchReport(v1));
-  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · not recorded \(bench\/1\)$/m);
+  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\)$/m);
   assert.equal(/^World:/m.test(old), false);
 });
 
@@ -341,7 +344,7 @@ test('task limits and --checks are shown with the report (PADR-0040)', () => {
   assert.match(renderTable(value), /^Task limits: Flow: at most 3 changes, at most 1 check$/m);
   assert.match(renderTable(value), /^Checks per run \(--checks\): 0$/m);
   assert.match(renderTable(value, 'de'), /^Aufgabenlimits: Flow: höchstens 3 Änderungen, höchstens 1 Prüfung$/m);
-  assert.match(renderHtml(value, ':root{}'), /<dt>Task limits<\/dt><dd>Flow: at most 3 changes, at most 1 check<\/dd>/);
+  assert.match(renderHtml(value, ":root{}"), /<dt>Task limits<\/dt><dd>Flow: at most[ \u00a0]3[ \u00a0]changes, at most[ \u00a0]1[ \u00a0]check<\/dd>/);
   const plain = v2Report();
   assert.doesNotMatch(renderTable(plain), /Task limits|--checks/);
 });

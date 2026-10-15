@@ -66,21 +66,23 @@ export function mcnemarExact(b: number, c: number): { discordant: number; p: num
   return { discordant, p: Math.min(1, 2 * binomialHalfCdf(Math.min(b, c), discordant)) };
 }
 
-export type InstanceOutcome = 'pass' | 'fail' | 'unjudged';
-export interface InstanceAggregate { repeats: number; judged: number; passed: number; outcome: InstanceOutcome }
+export type InstanceOutcome = 'pass' | 'fail';
+export interface InstanceAggregate { repeats: number; judged: number; unjudged: number; passed: number; outcome: InstanceOutcome }
 /**
  * One outcome per instance and side from its repeats: `true` passed, `false` judged and failed,
- * `null` not judged (no checker verdict). Only judged repeats count; the instance passes when at
- * least half of them passed, and is `unjudged` when none was judged. Repeats are never counted as
+ * `null` not judged (no checker verdict). Every repeat is in the denominator (roadmap 0.2.0: "every
+ * run counts"): the instance passes when at least half of ALL its repeats passed, so an unjudged
+ * repeat counts as not passed and can never raise an outcome. Repeats are never counted as
  * independent pairs.
  */
 export function aggregateInstance(repeats: ReadonlyArray<boolean | null>): InstanceAggregate {
   const judged = repeats.filter(value => value !== null).length, passed = repeats.filter(value => value === true).length;
-  return { repeats: repeats.length, judged, passed, outcome: judged === 0 ? 'unjudged' : 2 * passed >= judged ? 'pass' : 'fail' };
+  return { repeats: repeats.length, judged, unjudged: repeats.length - judged, passed, outcome: repeats.length > 0 && 2 * passed >= repeats.length ? 'pass' : 'fail' };
 }
 
 /** An instance regression (PADR-0039): at least `REGRESSION_REPEATS` judged repeats on each side,
- * every baseline repeat passed and every candidate repeat failed. */
+ * every judged baseline repeat passed and every judged candidate repeat failed. (An unjudged candidate
+ * repeat can therefore not create one, and the CI gate fails on it separately: `compare_incomplete`.) */
 export function isInstanceRegression(baseline: InstanceAggregate, candidate: InstanceAggregate): boolean {
   return baseline.judged >= REGRESSION_REPEATS && candidate.judged >= REGRESSION_REPEATS && baseline.passed === baseline.judged && candidate.passed === 0;
 }

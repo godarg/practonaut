@@ -1,6 +1,6 @@
 # PADR-0039 — Results you can act on: run evidence in the bench folder, report v2, and the rules of `compare`
 
-Status: proposed · Date: 2026-10-14 · Roadmap 0.2.0, Must 3 · Adds the per-run fields that
+Status: accepted 2026-10-15 after independent review (pull request #31) · Date: 2026-10-14 · Roadmap 0.2.0, Must 3 · Adds the per-run fields that
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) decision 8 left open; uses the call log
 of [PADR-0038](0038-lean-mcp-replies.md) decision 8
 
@@ -62,14 +62,16 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    passes `--call-log <run folder>/calls.bridge.jsonl` in the generated MCP configuration, outside the
    agent's own folder; that file stays as the bridge wrote it. After the agent has ended the runner
    reads its head (bounded), keeps the well-formed lines in `calls.jsonl`, counts unreadable lines
-   (`dropped`) and every line beyond the limits (`omitted`), and for its built-in agents adds
+   (`dropped`) and the lines beyond the limits (`omitted`, counted over at most 256 MiB more; past
+   that the count is a lower bound, `omittedAtLeast`), and for its built-in agents adds
    `clientMs`, the round trip measured by Practonaut's own bench client, joined by request id. Other clients: `clientMs: null`, shown as "client timing
    unavailable". The bridge is started by the agent's client, so an agent can leave no call log or
    alter it: the report says "no call log" when there is none, and the call log is labelled as
    recorded by the agent's bridge.
 2. **`mutations.jsonl`** — written by the runner's host-side wrapper, which sees every `act`, `undo`
    and `reset` that reaches the session: its sequence number, the operation, for `act` the action
-   (name, parameters, base step) and the client name the MCP client declared, accepted or rejected
+   (name, parameters, base step), the client name the MCP client declared (the bridge sends it with
+   `act`, `undo` and `reset`), accepted or rejected
    with the error code, and the step and revision afterwards. Every mutation that reaches the
    session is recorded (at most the action budget); refusals for an exhausted budget are recorded up
    to 100 and counted beyond. Parameters of a rejected action are kept as scalars, strings cut at
@@ -81,19 +83,23 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    and evaluates each public goal condition — each top-level clause of the goal, the same split the
    Player and MCP show (`goal-1` …) — at the start and after every accepted mutation. A trace that
    cannot be made (a variant change, a checker deadline) is `null` with its reason; the verdict does
-   not depend on it.
+   not depend on it. The runner writes the logs first: a trace is bound only beside the mutation log
+   it follows, so when the logs cannot be written the trace is `null` with `log_unwritten`.
 4. **`board.svg`** — with the mirror, the real Excalidraw's SVG export of the final board, taken by
    the same host export that produced the judged `native.excalidraw` and after the same read-back
    check. It cannot be re-derived without the engine; `report --verify` checks its hash only, and the
-   report says so.
+   report's caption says so. A picture that cannot be written is left out (`board: null`); like
+   every piece of evidence here, it never changes a verdict.
 5. **Client figures** — model, turns, tokens (input, output, cache read, cache creation) and cost from
    the client's own stream-json output (`system/init` and the last `result` event), per run, labelled
-   self-reported (`client-attested` for the preset, `command-output` for a template). Never verified,
-   never part of a verdict or an aggregate.
+   self-reported (`client-attested` for the preset, `command-output` for a template). Never verified
+   and never part of a verdict or of a rate; the report sums tokens, turns and cost over the runs
+   that reported them into one running cost total, labelled as self-reported.
 6. **Report `/2`** (still unreleased, PADR-0036 decision 8) gains optional per-run fields:
    `artifacts.trace` and `artifacts.board` (SHA-256 or null; a null trace carries `traceError`, the
-   checker's error code), `logs` (`calls`: SHA-256, entry count, lines dropped as unreadable, whether
-   client timing is present — or null; `mutations`: SHA-256, entry count, refusals not recorded), and
+   checker's error code), `logs` (`calls`: SHA-256, entry count, lines dropped as unreadable, lines
+   omitted (and whether that count is a lower bound), whether client timing is present — or null;
+   `mutations`: SHA-256, entry count, refusals not recorded), and
    `client`. The validator requires `board` null without the mirror, the mutation
    entries to equal the counted `act`, `undo` and `reset` calls, and `client` only for external
    agents with the source their kind allows. `/1` stays as it is.
@@ -104,36 +110,56 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
 
 ### B. Report v2
 
-1. **Header line**: the fraction passed / n, a 95 % Wilson interval, the verification status, the
-   mirror, the isolation level and, when a model is named, "self-reported". The interval is over
-   instances (task × seed): with repeats, an instance counts as passed when at least half of its runs
-   passed, and an instance without any judged run counts as not passed (as in pass@1, an
-   infrastructure fault never raises a score).
+1. **Header line**: the fraction passed / n and a 95 % Wilson interval as the headline; the
+   verification status, the mirror, the isolation level and, when a model is named, the model with
+   "self-reported" and its source follow as chips. The interval is over instances (task × seed): an
+   instance counts as passed when at least half of **all** its runs passed; a run that was not judged
+   counts as not passed (as in pass@1, an infrastructure fault never raises a score). Compare (C.2)
+   uses the same rule.
 2. **No rate finer than 1/n.** A rate is shown as the fraction k/n. A percentage is added only at a
    resolution of at least 1/n: none below n = 100, whole percent from n = 100, one decimal from
-   n = 1000. Interval bounds are estimates, not observed rates; they are shown in whole percent,
+   n = 1000; a fraction that is neither none nor all is never shown as 0 % or 100 % (`< 1 %`,
+   `> 99 %`). Interval bounds are estimates, not observed rates; they are shown in whole percent,
    rounded outward. pass^k is shown for k = repeats as "all k repeats passed on m of I instances";
    the intermediate values stay in the JSON.
-3. **Failures first.** Failed runs come before passed runs, each with: its status and reason
-   (timeout, agent failed, not judged with the runner's note, no action taken, rejected actions with
-   their codes, several MCP clients acting); every unmet condition with its sentence and formal form
-   and the action after which it was last lost, or "never met"; the error classes with their
-   explanation text in the report's language; the trajectory (every mutation with its outcome and the
-   conditions met afterwards); the final board; the example target or "no example target"; the call
-   log summary; the client figures when reported. Passed runs follow with the same content, collapsed.
+3. **Failures first.** Failed runs come before passed runs, each with: its status and reason in words
+   (timed out, agent failed, no action taken, rejected actions with what each refusal means, several
+   MCP clients acting; a run that was not judged has no verdict: it shows the unknown mark, never the
+   fail mark, and counts as not passed); every unmet condition with its sentence and formal form and
+   the trajectory entry (#n) after which it was last lost, or "never met", the goal conditions
+   numbered as the trajectory names them; the error classes with the first
+   sentence of their explanation in the report's language (the rest coaches a learner); the
+   trajectory (every mutation with its outcome — "accepted (revision n)" or the refusal in words —
+   and the conditions met afterwards); the final board; the example target or "no example target";
+   the call log summary; the client figures when reported. Identifiers stay under "Technical
+   details": the run id, status, exit and host codes, the runner's note, the full explanation; for
+   the report, the command (the home folder shown as `~`), the world content hash, generated
+   instances, API key source and kept variables. Passed runs follow with the same content, collapsed;
+   a run whose agent did not end normally is open, and the header says how many there are. Without
+   the bench folder one banner says what is missing, what still shows and the command that fixes it;
+   error classes keep their explanation when the report's world is the bundled library.
 4. **The board.** With the mirror: the engine's `board.svg`, after an allowlist re-serialisation
    (elements `svg g path rect ellipse circle line polyline polygon text tspan defs clipPath mask`,
    geometric and paint attributes, local `url(#id)` references only, ids prefixed per run; every
    style, script, link, font, comment and unknown element or attribute is dropped; text is
    re-escaped), so board text is never markup. Without the mirror, or when `board.svg` is missing or
    unreadable: a schematic drawn from the judged session state with shape, fill, stroke, size,
-   position and frames, labelled "schematic". Groups come from the judged state: a dashed outline in
-   the schematic and a legend under either picture; under either picture, too, every object of the
-   judged state in words with each goal-relevant attribute and its label in full (a drawing may cut a
-   long label). An **example target** is shown only when the
+   position and frames, labelled "schematic". Groups come from the judged state: a solid tinted
+   outline in the schematic, the same outline laid over an export (which shows no groups, so the
+   caption says where the outline comes from), and a legend under either picture; under either
+   picture, too, every
+   object in words with each goal-relevant attribute and its label in full (a drawing may cut a long
+   label). An **example target** is shown only when the
    report binds a validated reference for the task (`references.json`, checked by the checker before
    the bench, by hash at render time and again by `--verify`): a schematic of the reference's end
-   state for that seed. Otherwise "no example target".
+   state for that seed, with its own object list. Otherwise "no example target", a neutral banner.
+   The final board and the target share **one viewBox** (their union in board units; the export is
+   placed by the bounds of its native scene), so they are drawn at one scale, one above the other. A
+   picture is never drawn below 0.6 CSS px per board unit (Excalidraw's 20-unit text at 12 px) nor
+   above 1 px per unit; a wider one scrolls inside its frame, with a faded edge and a line that says
+   so. In dark mode the export gets Excalidraw's own dark-mode filter, which the schematic's content
+   tokens reproduce, so a pair shows one palette; labels use the same monospace face, steps the same
+   sharp corners. Two arrows between the same steps are drawn apart.
 5. The renderer uses `design/tokens.css` and its own stylesheet `src/bench/report.css` only, has no
    script, and falls under `npm run design:lint` with the same rules as the Player (a report profile:
    CSS rules on `report.css`, the TS rules on the renderer modules, classes checked against
@@ -151,23 +177,29 @@ Player's `miniature()` draws steps in one column without shape, fill, stroke, si
    label and versions may differ; differences in timeout and Practonaut version are named as caveats.
 2. **The unit of analysis is the distinct instance**: task × seed within the world's content hash
    (for generated instances the task id is the instance id, PADR-0036). Runs are paired by task and
-   seed. **Repeats of one instance aggregate to one outcome per side**: only judged repeats count
-   (a run without a checker verdict is the runner's fault, not the agent's); the instance passes when
-   at least half of its judged repeats passed. Repeats are never counted as independent pairs. An
-   instance that is missing on one side or has no judged repeat there is listed with its reason and
-   left out of every statistic.
-3. **Instance regression**: an instance with at least three judged repeats on each side that passed
-   in every baseline repeat and failed in every candidate repeat. The mirror image is an instance
-   fix. `--fail-on-regression` exits 2 (`instance_regression`) when there is at least one. Instances
-   with fewer than three judged repeats on a side are never regressions; a flip there is listed under
-   "single runs — not a regression signal". With three or more a side, an outcome that changed but not
-   in every repeat (for example 2/3 passed before, 1/3 after) is listed as "outcome changed, not in every
-   repeat — not a regression signal". Every flip is one of the discordant instances of 4.
+   seed. **Repeats of one instance aggregate to one outcome per side**: the instance passes when at
+   least half of **all** its repeats passed; a run without a checker verdict counts as not passed
+   (roadmap 0.2.0: every run counts; B.1 uses the same rule). Runs that were not judged are listed
+   per instance. Repeats are never counted as independent pairs. An instance that is missing on one
+   side is listed with its reason and left out of every statistic; when no instance is on both
+   sides, the verdict says there is nothing to compare.
+3. **Instance regression**: an instance with at least three judged repeats on each side, every judged
+   baseline repeat passed and every judged candidate repeat failed. The mirror image is an instance
+   fix. `--fail-on-regression` exits 2 (`instance_regression`) when there is at least one, and 2
+   (`compare_incomplete`) when a candidate instance is missing, cut short (fewer repeats than its
+   plan) or holds a run that was not judged: a missing verdict could hide a regression, so the gate
+   never passes it. Instances with fewer than three repeats on a side are never regressions; a flip
+   there is listed under "single runs — not a regression signal". With three or more a side, an
+   outcome that changed but not in every judged repeat (for example 2/3 passed before, 1/3 after),
+   or that rests on runs that were not judged, is listed as "outcome changed, not in every repeat —
+   not a regression signal". Every flip is one of the discordant instances of 4.
 4. **Rate claims** use the exact two-sided McNemar test on the discordant instances: b passed only on
    the baseline, c only on the candidate, p = min(1, 2 · P(X ≤ min(b, c))) for X ~ Binomial(b + c,
    1/2). At p < 0.05 the verdict is "improvement" (c > b) or "decline" (b > c), always with b, c and
-   p; otherwise "not distinguishable at this n" (also when b + c = 0). Each side's instance pass rate
-   is shown as a fraction with its Wilson interval.
+   p; otherwise "rate difference not distinguishable at this n" (also when b + c = 0). Each side's
+   instance pass rate is shown as a fraction with its Wilson interval. The page names each side by
+   its label or file name; two reports that cannot be compared get a page that names every
+   difference.
 5. Both reports' verification status is shown; `--verify` re-verifies each from its bench folder
    first.
 6. **Sample size.** The table below is computed with the exact power of the test in 4 (one-sided

@@ -5,10 +5,12 @@
  * five predefined and numeric references, CDATA or processing instructions) and re-serialised from
  * an allowlist — geometry and paint elements and attributes only, local `url(#id)` references only,
  * every id prefixed so several pictures share one page. Styles, scripts, links, fonts, comments,
- * metadata and any unknown element or attribute are dropped; text is escaped again. Board text
- * therefore reaches the page as text, never as markup. Anything the reader cannot parse is refused
- * (the report then draws its schematic instead).
+ * metadata and any unknown element or attribute are dropped; text is escaped again, control and bidi
+ * characters shown escaped. Board text therefore reaches the page as text, never as markup. Anything
+ * the reader cannot parse is refused (the report then draws its schematic instead).
  */
+import { readableText } from '../cli/output.ts';
+import { pictureSizeClass, type Box } from './schematic.ts';
 
 /** The largest SVG read (Excalidraw's export of a three-step board is about 8 KB). */
 export const MAX_SVG_BYTES = 4 * 1024 * 1024;
@@ -133,20 +135,41 @@ function serialise(node: Element, prefix: string, root: boolean): string {
     const kept = keptValue(key, value, prefix);
     return kept === null ? [] : [` ${key}="${kept}"`];
   }).join('');
-  const children = node.children.map(child => typeof child === 'string' ? (TEXT_ELEMENTS.has(node.name) ? escapeText(child) : '') : serialise(child, prefix, false)).join('');
+  const children = node.children.map(child => typeof child === 'string' ? (TEXT_ELEMENTS.has(node.name) ? escapeText(readableText(child)) : '') : serialise(child, prefix, false)).join('');
   return root ? children : `<${node.name}${attributes}>${children}</${node.name}>`;
 }
+
+/** An export, read: its viewBox and its allowlisted content (ids prefixed), not yet placed. */
+export interface EngineSvg { box: Box; content: string }
+export function readEngineSvg(text: string, prefix: string): EngineSvg {
+  if (Buffer.byteLength(text, 'utf8') > MAX_SVG_BYTES) throw new SvgRefused('too large');
+  if (!IDENT.test(prefix)) throw new SvgRefused('an invalid id prefix');
+  const root = parse(text);
+  const viewBox = (root.attributes.find(([key]) => key === 'viewBox')?.[1] ?? '').trim();
+  if (!/^-?[0-9.]+ -?[0-9.]+ [0-9.]+ [0-9.]+$/.test(viewBox)) throw new SvgRefused('no usable viewBox');
+  const [x, y, width, height] = viewBox.split(' ').map(Number) as [number, number, number, number];
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) throw new SvgRefused('no usable viewBox');
+  // Excalidraw paints its background as the first rectangle over the whole viewBox: paper, not content.
+  // It is left out, so a picture shown in a larger shared viewBox sits on the report's own canvas.
+  const first = root.children.find((child): child is Element => typeof child !== 'string' && ELEMENTS.has(child.name) && child.name !== 'defs');
+  const value = (node: Element, key: string): number => Number(node.attributes.find(([name]) => name === key)?.[1] ?? NaN);
+  if (first?.name === 'rect' && value(first, 'x') === x && value(first, 'y') === y && value(first, 'width') === width && value(first, 'height') === height && first.children.length === 0) root.children.splice(root.children.indexOf(first), 1);
+  return { box: { x, y, width, height }, content: serialise(root, prefix, true) };
+}
+const numeral = (value: number): string => String(Math.round(value * 100) / 100);
 
 /**
  * The export's drawing as inline SVG markup: `<svg viewBox class role aria-label>` around the
  * allowlisted content. `label` becomes the accessible name (escaped here); `classes` the class list.
+ * With `offset` the drawing is moved by that many board units and shown in `viewBox` (the union with
+ * the picture beside it), so a pair shares one coordinate system and one scale; `overlay` (trusted
+ * markup the report draws, never from the file) is laid over it in those units.
  */
-export function engineSvgMarkup(text: string, options: { prefix: string; label: string; classes: string }): string {
-  if (Buffer.byteLength(text, 'utf8') > MAX_SVG_BYTES) throw new SvgRefused('too large');
-  if (!IDENT.test(options.prefix)) throw new SvgRefused('an invalid id prefix');
-  const root = parse(text);
-  const viewBox = root.attributes.find(([key]) => key === 'viewBox')?.[1] ?? '';
-  if (!/^-?[0-9.]+ -?[0-9.]+ [0-9.]+ [0-9.]+$/.test(viewBox.trim())) throw new SvgRefused('no usable viewBox');
-  const label = options.label.replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
-  return `<svg viewBox="${viewBox.trim()}" class="${options.classes}" role="img" aria-label="${label}">${serialise(root, options.prefix, true)}</svg>`;
+export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string }): string {
+  const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
+  const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
+  const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
+  // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
+  const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
+  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(view.width)}" role="img" aria-label="${label}">${content}</svg>`;
 }
