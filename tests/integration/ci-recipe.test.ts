@@ -22,6 +22,7 @@ import { childElements, parseXml, validateJunit, type XmlElement } from '../supp
 import { launchBrowser } from '../support/browser.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
+const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
 const FIXTURE = fileURLToPath(new URL('../fixtures/ci-recipe/', import.meta.url));
 const practonaut = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: process.env });
 const benchRoot = (): string => join(process.env.PRACTONAUT_HOME!, 'bench');
@@ -86,4 +87,26 @@ test('the CI recipe passes against the committed baseline and fails on a planted
     await browser.close();
     await rm(out, { recursive: true, force: true });
   }
+});
+
+test('bench --fail-on-agent-error stops by name when an agent failed (as with a missing login), after writing the report and the JUnit file', { timeout: 120_000 }, async () => {
+  const out = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ci-agent-'));
+  try {
+    // A command agent that acts and then exits with code 7: its run ends agent_failed and is still judged.
+    const crashing = `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} crash {mcp_config}`;
+    const plain = practonaut('bench', '--agent', crashing, '--tasks', 'connect', '--mirror', 'off', '--junit', join(out, 'plain.xml'));
+    assert.equal(plain.status, 0, plain.stderr);
+    const before = await benches();
+    const gated = practonaut('bench', '--agent', crashing, '--tasks', 'connect', '--mirror', 'off', '--junit', join(out, 'gated.xml'), '--fail-on-agent-error');
+    assert.equal(gated.status, 2, gated.stdout);
+    assert.match(gated.stderr, /1 of 1 run ended with the agent failing \(connect-s1-r1\): .*no regression signal.*\[agent_failed\]/s);
+    // Everything is written first: the report in its bench folder and a valid JUnit file.
+    const created = [...await benches()].filter(entry => !before.has(entry));
+    assert.equal(created.length, 1);
+    const report = JSON.parse(await readFile(join(benchRoot(), created[0]!, 'report.json'), 'utf8')) as { runs: Array<{ status: string }> };
+    assert.deepEqual(report.runs.map(run => run.status), ['agent_failed']);
+    assert.deepEqual(validateJunit(await readFile(join(out, 'gated.xml'), 'utf8')), []);
+    // An agent that ends normally passes the same gate.
+    assert.equal(practonaut('bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'off', '--fail-on-agent-error').status, 0);
+  } finally { await rm(out, { recursive: true, force: true }); }
 });

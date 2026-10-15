@@ -8,14 +8,15 @@ const EXIT: Text = {
   0  success
   1  usage error (bad command, option or path; validate needs a regular file)
   2  package or source rejected (named code), failed check, rejected bench report, incomparable reports
-     or (compare --fail-on-regression) an instance regression or an incomplete candidate
+     or (compare --fail-on-regression) an instance regression or an incomplete candidate,
+     or (bench --fail-on-agent-error) a run whose agent failed
   3  environment missing (for example Chromium for --mirror required) or session shutdown failure`,
   de: `Exit-Codes:
   0  Erfolg
   1  Bedienfehler (unbekannter Befehl, Option oder Pfad; validate braucht eine reguläre Datei)
   2  Paket oder Quelle abgelehnt (benannter Code), nicht bestandene Prüfung, abgelehnter Bench-Bericht,
      nicht vergleichbare Berichte oder (compare --fail-on-regression) eine Instanz-Regression oder ein
-     unvollständiger Kandidat
+     unvollständiger Kandidat, oder (bench --fail-on-agent-error) ein Lauf mit gescheitertem Agenten
   3  Umgebung fehlt (etwa Chromium für --mirror required) oder Sitzung nicht sauber beendet`,
 };
 
@@ -187,7 +188,7 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>] [--label <text>] [--junit <out.xml>]
+                        [--keep-env <name,…>] [--label <text>] [--junit <out.xml>] [--fail-on-agent-error]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -203,13 +204,15 @@ The claude-code preset gets no provider keys, tokens or billing switches (*_API_
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
 --junit also writes the runs as JUnit XML for CI test views: one test case per run, a run that did not pass
 as a failure naming its unmet conditions and error classes, a run without a verdict as an error.
+--fail-on-agent-error exits 2 (agent_failed) after writing everything when a run's agent failed or could not
+start (a missing or expired login makes every run fail): in CI that stops the job before compare.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>] [--label <Text>] [--junit <out.xml>]
+                        [--keep-env <Name,…>] [--label <Text>] [--junit <out.xml>] [--fail-on-agent-error]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -226,6 +229,8 @@ Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abr
 --keep-env gibt genannte weiter.
 --junit schreibt die Läufe zusätzlich als JUnit-XML für Testansichten in CI: ein Testfall je Lauf, ein nicht
 bestandener Lauf als failure mit den nicht erfüllten Bedingungen und Fehlerklassen, ein Lauf ohne Urteil als error.
+--fail-on-agent-error endet nach dem Schreiben mit Exit 2 (agent_failed), wenn der Agent eines Laufs scheiterte
+oder nicht startete (fehlende oder abgelaufene Anmeldung lässt jeden Lauf scheitern): in CI vor compare.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },

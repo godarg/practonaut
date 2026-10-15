@@ -423,6 +423,14 @@ export const CLI_CATALOG = {
     "en": "JUnit XML: {path}\n",
     "de": "JUnit-XML: {path}\n"
   },
+  "benchAgentFailed": {
+    "en": "{n} of {runs} {runs:run|runs} ended with the agent failing ({list}): the agent exited with an error or could not start, for example with a missing or expired login. Their verdicts judge the board the agent left and are no regression signal; the report, the JUnit file and the bench folder are written",
+    "de": "{n} von {runs} {runs:Lauf|Läufen} endeten mit einem gescheiterten Agenten ({list}): Der Agent endete mit einem Fehler oder ließ sich nicht starten, etwa mit fehlender oder abgelaufener Anmeldung. Ihre Urteile beurteilen die Arbeitsfläche, die er hinterließ, und sind kein Regressionssignal; Bericht, JUnit-Datei und Bench-Ordner sind geschrieben"
+  },
+  "benchAgentFailedMore": {
+    "en": "{list} and {more} more",
+    "de": "{list} und {more} weitere"
+  },
   "reportCard": {
     "en": "Card: {paths}\n",
     "de": "Karte: {paths}\n"
