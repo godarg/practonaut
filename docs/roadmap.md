@@ -172,8 +172,9 @@ with a measurement and ends with its acceptance line measured.
    *Gate per family, preregistered in the PR before the first ladder run:* ladder = Claude Opus,
    Sonnet and Haiku through the `claude-code` preset (a non-Claude agent only if a maintainer approves
    one; otherwise the family is labelled "ladder: Claude models only"). Tuning uses development
-   instances only; the **strongest and the weakest agent are named from the development runs**,
-   before the gate. The gate runs on **at least 24 fresh held-out instances, one run per agent per
+   instances only; the **strongest and the weakest agent are fixed by the capability order —
+   Opus and Haiku — before any run** (changed before the first ladder run; PADR-0040); the
+   development runs are still made and reported as a sanity check. The gate runs on **at least 24 fresh held-out instances, one run per agent per
    instance** (the instance is the unit, as in `compare`): headroom — the strongest agent passes
    between 10 % and 80 % of them; discrimination — strongest vs weakest differ by at least 20 points
    with an exact McNemar p < 0.05 on the discordant instances; every run counts in the denominator,

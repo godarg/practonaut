@@ -4,32 +4,32 @@
 //   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
 //   node tools/challenge.ts generate <family> --set heldout --declaration <file.declaration.json> --out <dir> [--force]
 //   node tools/challenge.ts verify <dir>
-//   node tools/challenge.ts args <dir>        the set's bench arguments on one line
-//   node tools/challenge.ts declare --family <f> --round <k> --difficulty <d> --dev <a.json,b.json,c.json> --release-runs <n>
-//                                   [--maintainer-approved <model,…>] --out <docs/benchmarks/challenge/<family>-round-<k>.declaration.json> [--force]
-//   node tools/challenge.ts gate --declaration <file> --set <held-out dir> --dev <a.json,b.json,c.json> --oracle <report.json>
-//                                --random <report.json> --ladder <a.json,b.json,c.json> [--previous <report.json,…>]
-//                                [--maintainer-approved <model,…>] --out <docs/benchmarks/challenge/<family>-round<k>.md> [--force]
+//   node tools/challenge.ts args <dir> [--tasks <id,…>]   the set's bench arguments on one line (for some tasks: to resume)
+//   node tools/challenge.ts declare --family <f> --round <k> --difficulty <d> --dev <report.json,…>
+//                                   [--maintainer-approved <model,…>] [--bench-root <dir,…>] --out <folder>/<family>-round-<k>.declaration.json [--force]
+//   node tools/challenge.ts gate --preflight --declaration <file> --set <held-out dir> --dev <report.json,…> --oracle <report.json,…> --random <report.json,…>
+//   node tools/challenge.ts gate --declaration <file> --set <held-out dir> --dev <…> --oracle <…> --random <…> --ladder <report.json,…>
+//                                [--previous <report.json,…>] [--maintainer-approved <model,…>] [--bench-root <dir,…>] --out <folder>/<family>-round<k>.md [--force]
 //
 // Families: repair, injection, long-horizon, limited-checks, tight-budget (roadmap order).
 // Seeds: development 1–999 (default 1…8), throwaway checks 10000–19999 (default 10001…10024),
-// held-out ≥ 1000000, derived from the round's declaration only (commit the declaration before
-// generating the held-out set, and do not look at the held-out set while tuning).
-import { lstat, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+// held-out ≥ 1000000, derived from the round's committed and pushed declaration only.
+import { lstat, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
-import { declareFromFiles, gateFromFiles, heldOutSet, readDeclaration, verifySet, writeSet } from '../src/challenge/files.ts';
+import { committedDeclaration, declareFromFiles, gateFromFiles, heldOutSet, preflightFromFiles, readDeclaration, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
 
 const usage = `usage:
   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
   node tools/challenge.ts generate <family> --set heldout --declaration <file> --out <dir> [--force]
   node tools/challenge.ts verify <dir>
-  node tools/challenge.ts args <dir>      (the set's bench arguments, for: practonaut bench --agent <a> $(…))
-  node tools/challenge.ts declare --family <f> --round <k> --difficulty 1|2|3|mixed --dev <a.json,b.json,c.json> --release-runs <n> [--maintainer-approved <model,…>] --out <file> [--force]
-  node tools/challenge.ts gate --declaration <file> --set <held-out dir> --dev <a.json,b.json,c.json> --oracle <report.json> --random <report.json>
-                               --ladder <a.json,b.json,c.json> [--previous <report.json,…>] [--maintainer-approved <model,…>] --out <file.md> [--force]
+  node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: practonaut bench --agent <a> $(…))
+  node tools/challenge.ts declare --family <f> --round <k> --difficulty 1|2|3|mixed --dev <report.json,…> [--maintainer-approved <model,…>] [--bench-root <dir,…>] --out <file> [--force]
+  node tools/challenge.ts gate --preflight --declaration <file> --set <held-out dir> --dev <report.json,…> --oracle <report.json,…> --random <report.json,…> [--bench-root <dir,…>]
+  node tools/challenge.ts gate --declaration <file> --set <held-out dir> --dev <…> --oracle <…> --random <…> --ladder <report.json,…>
+                               [--previous <report.json,…>] [--maintainer-approved <model,…>] [--bench-root <dir,…>] --out <file.md> [--force]
 families: ${FAMILIES.join(', ')}`;
 const fail = (message: string): never => { process.stderr.write(`challenge: ${message}\n${usage}\n`); process.exit(1); };
 
@@ -73,15 +73,19 @@ async function generate(args: string[]): Promise<void> {
   const out = values['--out'] ?? fail('--out is required');
   const started = performance.now();
   if (set === 'heldout') {
-    // A held-out set is the declaration's: its seeds, difficulty and round come from it alone.
-    if (values['--declaration'] === undefined) fail('a held-out set is generated from its round declaration: --declaration <file> (commit it first)');
+    // A held-out set is the declaration's: its seeds, difficulty, round and bench settings come from
+    // it alone, and only once it is committed and pushed (second review B-B).
+    if (values['--declaration'] === undefined) fail('a held-out set is generated from its round declaration: --declaration <file> (commit and push it first)');
     for (const name of ['--seed', '--count', '--difficulty', '--round', '--dev-runs']) if (values[name] !== undefined) fail(`${name} is fixed by the declaration`);
     const declaration = await readDeclaration(values['--declaration']!);
     if (declaration.family !== family) fail(`the declaration is for ${declaration.family}, not ${family}`);
+    const { commit } = committedDeclaration(values['--declaration']!);
     const { set: generated, seeds } = heldOutSet(declaration);
-    const written = await writeSet(generated, out, { family, set, round: declaration.round, difficulty: declaration.difficulty, seeds, declaration: declarationHash(declaration) }, flags.has('--force'));
-    process.stdout.write(`${family} round ${declaration.round}: ${seeds.length} held-out instances, seeds ${seeds[0]}…${seeds.at(-1)} (derived from the declaration), difficulty ${declaration.difficulty}, world ${generated.world.id}; ${((performance.now() - started) / 1000).toFixed(1)} s\n`);
+    const bench = { mirror: declaration.bench.mirror, maxActions: declaration.bench.maxActions, timeoutSeconds: declaration.bench.timeoutSeconds, checks: declaration.bench.checks };
+    const written = await writeSet(generated, out, { family, set, round: declaration.round, difficulty: declaration.difficulty, seeds, declaration: { sha256: declarationHash(declaration), commit }, bench, ladder: declaration.ladder }, flags.has('--force'));
+    process.stdout.write(`${family} round ${declaration.round}: ${seeds.length} held-out instances, seeds ${seeds[0]}…${seeds.at(-1)} (derived from the declaration of commit ${commit.slice(0, 12)}), difficulty ${declaration.difficulty}, world ${generated.world.id}; ${((performance.now() - started) / 1000).toFixed(1)} s\n`);
     process.stdout.write(`wrote ${written.world}, ${written.oracles.length} oracle files, ${written.instances}\n`);
+    process.stdout.write(`bench commands (oracle and random first, then gate --preflight, then the ladder):\n${written.commands.map(command => `  ${command}`).join('\n')}\n`);
     return;
   }
   for (const name of ['--declaration', '--round', '--dev-runs']) if (values[name] !== undefined) fail(`${name} belongs to held-out sets`);
@@ -98,7 +102,7 @@ async function generate(args: string[]): Promise<void> {
   process.stdout.write(`${family}: ${count} instances, seeds ${first}…${first + count - 1}, difficulty ${difficulty}, world ${generated.world.id}\n`);
   process.stdout.write(`reference lengths ${Math.min(...lengths)}–${Math.max(...lengths)} (proven minimal for ${generated.instances.filter(instance => instance.minimal).length} of ${count}); near misses ${generated.oracles.reduce((total, oracle) => total + oracle.nearMisses.length, 0)}; ${((performance.now() - started) / 1000).toFixed(1)} s\n`);
   process.stdout.write(`wrote ${written.world}, ${written.oracles.length} oracle files, ${written.instances}\n`);
-  process.stdout.write(`bench: node src/cli/main.ts bench --agent <oracle|random|claude-code> with the arguments in ${written.instances} (bench.args)\n`);
+  process.stdout.write(`bench: DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent <oracle|random|claude-code> $(node tools/challenge.ts args ${out}) --mirror required\n`);
 }
 
 async function verify(args: string[]): Promise<void> {
@@ -110,18 +114,19 @@ async function verify(args: string[]): Promise<void> {
   if (result.references.passed !== result.references.total || result.nearMisses.passed) process.exitCode = 2;
 }
 
-/** The bench arguments a set's instances.json names, one line, for `bench --agent <a> $(…)`. */
+/** The bench arguments a set's instances.json names, one line, for `bench --agent <a> $(…)`; with
+ * --tasks, only those tasks (to resume a stopped bench). */
 async function benchArgs(args: string[]): Promise<void> {
-  const { positional } = options(args, []);
+  const { values, positional } = options(args, ['--tasks']);
   if (positional.length !== 1) fail('name one generated folder');
-  const instances = JSON.parse(await readFile(join(positional[0]!, 'instances.json'), 'utf8')) as { bench: { args: string[] } };
-  const values = instances.bench.args.slice(1);
-  if (values.some(value => /\s/.test(value))) fail('a path in the bench arguments contains white space; pass them by hand');
-  process.stdout.write(values.join(' ') + '\n');
+  const tasks = values['--tasks'] === undefined ? undefined : list(values['--tasks']);
+  const result = await setArgs(positional[0]!, tasks);
+  if (result.some(value => /\s/.test(value))) fail('a path in the bench arguments contains white space; pass them by hand');
+  process.stdout.write(result.join(' ') + '\n');
 }
 
 async function declare(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--family', '--round', '--difficulty', '--dev', '--release-runs', '--maintainer-approved', '--out'], ['--force']);
+  const { values, flags } = options(args, ['--family', '--round', '--difficulty', '--dev', '--maintainer-approved', '--bench-root', '--out'], ['--force']);
   const family = values['--family'] as Family;
   if (!FAMILIES.includes(family)) fail('--family names one family');
   const out = values['--out'] ?? fail('--out is required');
@@ -129,26 +134,35 @@ async function declare(args: string[]): Promise<void> {
   await refuseExisting(out, flags.has('--force'));
   const { declaration, text, seeds } = await declareFromFiles({
     family, round: whole(values['--round'], '--round'), difficulty: difficultyOf(values['--difficulty'] ?? fail('--difficulty is required')),
-    development: list(values['--dev'] ?? fail('--dev names the three development reports')), releaseRunsBefore: whole(values['--release-runs'], '--release-runs'),
-    maintainerApproved: list(values['--maintainer-approved']), out,
+    development: list(values['--dev'] ?? fail('--dev names the development reports')), maintainerApproved: list(values['--maintainer-approved']), benchRoots: list(values['--bench-root']), out,
   });
   await writeFile(out, text);
-  process.stdout.write(`${family} round ${declaration.round}: strongest ${declaration.development.strongest}, weakest ${declaration.development.weakest} (development ${declaration.development.reports.map(report => `${report.model} ${report.passed.filter(Boolean).length}/3`).join(', ')})\n`);
-  process.stdout.write(`release runs after this round: ${declaration.budget.releaseRunsBefore + declaration.budget.roundRuns} of ${declaration.budget.releaseBudget}\n`);
-  process.stdout.write(`held-out seeds ${seeds[0]}…${seeds.at(-1)} follow from this file; wrote ${out}. Commit it before generating the held-out set.\n`);
+  const counts = declaration.development.passed.map((row, index) => `${declaration.ladder[index]} ${row.filter(Boolean).length}/${row.length}`).join(', ');
+  process.stdout.write(`${family} round ${declaration.round}: gate pair ${declaration.pair.strongest} (strongest) vs ${declaration.pair.weakest} (weakest), fixed by the capability order\n`);
+  process.stdout.write(`development ${counts}: ${declaration.development.order === 'consistent' ? 'consistent with the capability order' : 'contradicts the capability order; the pair does not change'}; ${declaration.development.spent} development model runs found\n`);
+  process.stdout.write(`release runs before this round: ${declaration.budget.releaseRunsBefore} (35${declaration.budget.earlier.map(entry => ` + ${entry.runs} ${entry.declaration}`).join('')}); after it at least ${declaration.budget.releaseRunsBefore + declaration.budget.roundRuns} of ${declaration.budget.releaseBudget}\n`);
+  process.stdout.write(`held-out seeds ${seeds[0]}…${seeds.at(-1)} follow from the development runs; wrote ${out}. Commit and push it, then generate the held-out set.\n`);
 }
 
 async function gate(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--previous', '--maintainer-approved', '--out'], ['--force']);
+  const { values, flags } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--previous', '--maintainer-approved', '--bench-root', '--out'], ['--force', '--preflight']);
+  const files = {
+    declaration: values['--declaration'] ?? fail('--declaration is required'), set: values['--set'] ?? fail('--set names the generated held-out folder'),
+    development: list(values['--dev'] ?? fail('--dev names the development reports')), oracle: list(values['--oracle'] ?? fail('--oracle is required')), random: list(values['--random'] ?? fail('--random is required')),
+    previous: list(values['--previous']), maintainerApproved: list(values['--maintainer-approved']), benchRoots: list(values['--bench-root']),
+  };
+  if (flags.has('--preflight')) {
+    if (values['--ladder'] !== undefined || values['--out'] !== undefined) fail('--preflight checks the round before any ladder run: no --ladder, no --out');
+    process.stdout.write((await preflightFromFiles(files)).text);
+    return;
+  }
   const out = values['--out'] ?? fail('--out is required');
   await refuseExisting(out, flags.has('--force'));
-  const { result, markdown } = await gateFromFiles({
-    declaration: values['--declaration'] ?? fail('--declaration is required'), set: values['--set'] ?? fail('--set names the generated held-out folder'),
-    development: list(values['--dev'] ?? fail('--dev names the three development reports')), oracle: values['--oracle'] ?? fail('--oracle is required'), random: values['--random'] ?? fail('--random is required'),
-    ladder: list(values['--ladder'] ?? fail('--ladder is required')), previous: list(values['--previous']), maintainerApproved: list(values['--maintainer-approved']),
-  });
+  const { result, markdown, ledger } = await gateFromFiles({ ...files, ladder: list(values['--ladder'] ?? fail('--ladder is required')) });
+  const ledgerPath = join(dirname(out), `${result.family}-round${result.round}.ledger.json`);
   await writeFile(out, markdown);
-  process.stdout.write(`${result.family} round ${result.round}: ${result.verdict}; wrote ${out}\n`);
+  await writeFile(ledgerPath, JSON.stringify(ledger, null, 2) + '\n');
+  process.stdout.write(`${result.family} round ${result.round}: ${result.verdict}; ${result.spent.total} model runs spent; wrote ${out} and ${ledgerPath}\n`);
 }
 
 const [command, ...rest] = process.argv.slice(2);

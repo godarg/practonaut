@@ -172,39 +172,74 @@ judged state and the error classes, and the judged state may hold whatever an ag
 - **Ladder:** Claude Opus, Sonnet and Haiku through the `claude-code` preset; a model is chosen with
   `ANTHROPIC_MODEL` and read back from Claude Code's own `system/init` event (`agent.model`, model
   source `client-attested`), identified by its client-reported id (`claude-opus-…`,
-  `claude-sonnet-…`, `claude-haiku-…`). Any other model needs a maintainer's approval by name
-  (`--maintainer-approved <model>` when declaring, recorded in the declaration and repeated at the
-  gate); otherwise it is refused. A Claude-only ladder is labelled **"ladder: Claude models only"**.
-  **Every run** of a development or ladder report must report the model its report names: a run on
-  another model makes the gate refuse the round, a run that reports no model is never passed and
-  counts like an infrastructure error.
+  `claude-sonnet-…`, `claude-haiku-…`, also with a bracketed suffix such as `[1m]`). Any other
+  model needs a maintainer's approval by name (`--maintainer-approved <model>` when declaring,
+  recorded in the declaration and repeated at the gate); otherwise it is refused. A Claude-only
+  ladder is labelled **"ladder: Claude models only"**. **Every run** of a development or ladder
+  report must report the model its report names (and `report --verify` checks that against the
+  agent's own output): a run on another model makes the gate refuse the round; a ladder run that
+  reports no model is never passed and counts like an infrastructure error; a development run
+  without a model is refused. All reports of a round come from one Practonaut version, and the
+  development and ladder reports share the prompt, kept environment, API key source and Claude
+  Code version (from the init event).
+- **The gate pair is fixed by the capability order before any run** (changed before the first
+  ladder run, second review): strongest = Opus, weakest = Haiku (with approved models: the first and
+  the last model of the declared order). Reason: with 3 development instances per model the pair
+  named from development outcomes is not Opus/Haiku with probability about 0.34–0.39, and inverted
+  (Haiku named strongest) with about 0.07–0.10, for plausible true pass rates; an inverted pair almost
+  surely fails a family that does discriminate. The development runs are still made — for tuning,
+  and as a reported sanity check: when their outcomes contradict the order (a less capable model
+  passes more), the declaration and the gate report say so; the pair does not change.
 - **Tuning** (difficulty, family parameters, bench settings) uses development instances only.
 - **Declaration (frozen before the held-out set exists):** `node tools/challenge.ts declare` writes
   `docs/benchmarks/challenge/<family>-round-<k>.declaration.json` (`practonaut.challenge-declaration/1`)
-  from the three development reports (3 instances × 3 agents, `--seed-list 1 --repeats 1`, each
-  re-verified, on exactly the development set the generator makes for their seeds): family, round,
-  generator version, difficulty, the three model ids in capability order, maintainer approvals, bench
-  settings (mirror, timeout, `--max-actions`, `--checks`), development seeds, each development
-  report's SHA-256 and outcomes, the **strongest** (most development passes) and **weakest** (fewest)
-  agent — **ties broken by the capability order Opus > Sonnet > Haiku**: the more capable of tied
-  agents is the strongest, the less capable the weakest —, the sizes (9 development runs, 26
-  held-out instances, 87 model runs) and the release runs used before the round (at least 35 plus
-  87 for every other declaration in the folder). The maintainer commits it before generating the
-  held-out set. **The held-out seeds follow from it:** 26 consecutive seeds from 1 000 000 + (the
-  first 12 hex digits of the SHA-256 of the declaration's canonical JSON, as a number, modulo
-  900 000 000); any change to the declaration changes them, so they cannot be redrawn unnoticed.
+  from the development reports (3 instances × 3 agents, `--seed-list 1 --repeats 1`, an explicit
+  `--mirror`, each re-verified, resumed benches merged, on exactly the development set the generator
+  makes for their seeds; `--max-actions` at most the family's cap): family, round, generator
+  version, difficulty, the three model ids in capability order, maintainer approvals, the gate pair,
+  bench settings (mirror, timeout, `--max-actions`, `--checks`), development seeds, the **digest of
+  the development runs' verified content** (per run: model, task, seed, status, outcome and the
+  SHA-256 of the judged session, native export and checker output — never file bytes), their
+  outcomes, the model runs found on the development set (reruns included), the sizes (9
+  development runs, 26 held-out instances, 87 model runs) and the release runs before the round,
+  which are **derived, not given**: 35 plus, for every earlier round committed in the same folder,
+  its gate ledger's spend or, before its gate, its declared 87. **The held-out seeds follow from the
+  development digest:** 26 consecutive seeds from 1 000 000 + (the first 12 hex digits of the SHA-256
+  of the canonical JSON of family, round, generator version and the development digest, as a
+  number, modulo 900 000 000). Nothing an operator can change for free moves them; a redraw needs new
+  paid development runs, and every development run found is counted. **Git:** `generate --set
+  heldout` refuses a declaration that is not committed, has changes in the working tree (staged or
+  not) or is not contained in a remote-tracking branch, and records the commit in the set's
+  manifest; the gate checks the same and that the declaration has exactly one version in git history.
 - **Gate set:** the declaration's held-out instances (`generate --set heldout --declaration`), not
-  looked at while tuning; **one run per agent per instance** (`--seed-list 1` only: a generated world
-  has one variant, so another seed would run the same instance again; `--repeats 1`), the **distinct
-  instance is the unit**. All five agents (oracle, random, three ladder agents) run exactly the 26
-  held-out tasks, with the declared mirror, timeout, action cap and check settings.
+  looked at while tuning; **one counted run per agent per instance** (`--seed-list 1` only: a
+  generated world has one variant, so another seed would run the same instance again; `--repeats
+  1`), the **distinct instance is the unit**. All five agents (oracle, random, three ladder agents)
+  run the 26 held-out tasks with the declared mirror, timeout, action cap and check settings, which
+  the set's bench arguments carry, with `--stop-on-infra`; the printed commands add
+  `DISABLE_AUTOUPDATER=1` and each `ANTHROPIC_MODEL`.
+- **Runs that cannot show what the model can do** are `infra_error`, not judged: the client's own
+  stream reports a usage or rate limit or an API error, or the agent ended without completing and
+  without a tool call (`error_max_turns` and other agent errors stay `agent_failed`). With
+  `--stop-on-infra` a bench stops at the first one; the operator waits out the limit window and
+  benches the remaining tasks (`args <set> --tasks …`).
+- **Resume and spend:** the gate merges an agent's reports (one per resumed bench); a task benched
+  again counts its later run only when the earlier run was an `infra_error` (both are spent), any
+  other repeat refuses the round (no best-of-N). The gate counts every run folder of a held-out task
+  under the bench roots (the parents of the given bench folders, and `--bench-root`) as a spent model
+  run, refuses a model run found there that the gate was not given when it is the latest of its
+  model and task or follows a judged run, and writes the round's spend to a ledger beside the gate
+  report (`<family>-round<k>.ledger.json`), which later declarations count.
 - **The gate tool** (`node tools/challenge.ts gate --declaration …`) regenerates the held-out set from
   the declaration and refuses a set folder whose manifest, world or oracle files differ from it (the
   manifest records every oracle file's SHA-256 and near-miss count; every instance has at least one
   near miss), and a bench whose world content hash is not the regenerated world's; it re-verifies
-  every report, refuses development reports that are not the declared files or outcomes, and replays
-  every regenerated near miss in a checker process. Strongest and weakest come from the declaration,
-  which the development outcomes must reproduce; there are no `--strongest`/`--weakest` arguments.
+  every report, refuses development runs other than the digested ones, and replays every
+  regenerated near miss in a checker process. **`gate --preflight`** runs the same checks on the
+  set, the declaration and git, the development reports, oracle, random and the settings — and
+  refuses when the oracle misses an instance, random passes more than 5 % or a near miss passes —
+  before any ladder run. An oracle or random `infra_error` or missing run is refused with a request
+  to rerun it (the baselines cost no model run), never scored.
 - **Gate size and power** (decided by the integrator under the maintainer's delegation, before any
   ladder run): the release has 465 model runs left, and every candidate needs a gate report, so
   **each of the five families gets one round of 87 model runs: 3 development instances × 3 agents
@@ -222,26 +257,27 @@ judged state and the error classes, and the judged state may hold whatever an ag
 - **Headroom:** the strongest agent passes between 10 % and 80 % of the instances (both inclusive).
 - **Discrimination:** strongest minus weakest is at least 20 percentage points **and** the exact
   McNemar test on the discordant instances gives p < 0.05.
-- **Every run counts** in the denominator (an `infra_error`, a planned run missing from a report or
-  a run without a reported model is not passed). More than **5 %** such runs among the round's ladder
-  runs **voids the round**; a void round is reported and still counts against the budget.
+- **Every run counts** in the denominator (an `infra_error`, a planned run missing from the reports
+  or a run without a reported model is not passed). More than **5 %** such runs among the round's
+  ladder runs **voids the round**; a void round is reported and still counts against the budget.
 - **Baselines:** oracle 100 %, random ≤ 5 %, every near miss of every instance fails (bench and the
-  separate checker; the gate tool replays each stored near miss and judges it in a checker process).
-- **Budget:** at most 100 model runs per family per round (development runs included; the round above
-  uses 87), at most two rounds per family, a second round only on new held-out instances, never an
-  earlier round's: a round-2 gate needs the held-out reports of round 1 (`--previous`) and refuses
-  overlapping seeds. Families run in roadmap order and first rounds come before second rounds. The
-  release budget is 500 model runs: a declaration whose release runs before the round plus 87 exceed
-  500 is refused, and so is a gate whose round would exceed it ("budget exhausted — a maintainer
-  decides on a second round"). A second round starts only if budget remains after all first rounds.
-  It will not (30 runs remain, fewer than a round), so the gate report of a family that does not
-  pass says "budget exhausted — a maintainer decides on a second round".
+  separate checker; the gate tool replays each regenerated near miss in a checker process).
+- **Budget:** at most 100 model runs per family per round (development runs and reruns included; the
+  round above uses 87), at most two rounds per family, a second round only on new held-out
+  instances, never an earlier round's: a round-2 gate needs the held-out reports of round 1
+  (`--previous`) and refuses overlapping seeds. Families run in roadmap order, one at a time, and
+  first rounds come before second rounds. The release budget is 500 model runs: a declaration whose
+  release runs before the round plus the round's runs exceed 500 is refused, and so is a gate whose
+  spend would exceed it ("budget exhausted — a maintainer decides on a second round"). A second
+  round starts only if budget remains after all first rounds. It will not (30 runs remain, fewer
+  than a round), so the gate report of a family that does not pass says "budget exhausted — a
+  maintainer decides on a second round".
 - **Verdict:** a family passes a round when headroom, discrimination, the baselines and the near
   misses hold and the round is not void. Passing families are published; the others stay
   unpublished and are named in their gate reports. Gate reports go to
-  `docs/benchmarks/challenge/<family>-round<k>.md`, written by `node tools/challenge.ts gate` from the
-  declaration, the three development and five held-out validated, re-verified bench/2 reports, and
-  contain every number the verdict uses.
+  `docs/benchmarks/challenge/<family>-round<k>.md` with their ledger, written by `node
+  tools/challenge.ts gate` from the declaration and the validated, re-verified development and
+  held-out bench/2 reports, and contain every number the verdict uses.
 
 ## Consequences
 

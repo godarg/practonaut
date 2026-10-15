@@ -496,49 +496,72 @@ instances the exact McNemar test is not strong: if two agents disagree on 20 % o
 in one agent's favour, it reaches p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are
 needed for 0.8). A family that fails discrimination may still separate agents. The ladder is
 `claude-code` with Opus, Sonnet and Haiku (chosen with `ANTHROPIC_MODEL`, identified by the model id
-the client reports in every run); any other model needs `--maintainer-approved <model>`.
+the client reports in every run); any other model needs `--maintainer-approved <model>`. The gate
+pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; development outcomes are
+reported as a sanity check and never change it.
+
+**Operator procedure.** Run one family at a time on an otherwise idle machine that does not sleep
+(`caffeinate -i` on macOS), from a checkout of the commit to be gated, with Claude Code logged in.
+Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
+settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit or an API error, the
+bench stops (exit 75) and names the remaining tasks; wait until the limit window is over, then bench
+those tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and pass every
+report to the tool. Do not rerun a task that was judged: the gate finds every run folder under the
+bench roots and refuses best-of-N.
 
 ```bash
-# 1. Development: 3 instances, each ladder model once per instance.
-node tools/challenge.ts generate repair --set dev --seed <s> --count 3 --difficulty <d> --out .local/challenge/repair/dev
-ANTHROPIC_MODEL=<opus id> node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args .local/challenge/repair/dev) --mirror <off|required>
-#    … the same for the Sonnet and Haiku ids.
-# 2. Declaration: freezes the round; commit it before step 3.
-node tools/challenge.ts declare --family repair --round 1 --difficulty <d> \
-  --dev <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --release-runs <model runs used so far> \
-  --out docs/benchmarks/challenge/repair-round-1.declaration.json
-# 3. The held-out set: its 26 seeds follow from the declaration's content.
-node tools/challenge.ts generate repair --set heldout --declaration docs/benchmarks/challenge/repair-round-1.declaration.json --out .local/challenge/repair/heldout
-# 4. Oracle, random and the three ladder models on it (the same arguments; mirror as declared).
-node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args .local/challenge/repair/heldout) --mirror <off|required>
-# 5. The gate.
-node tools/challenge.ts gate --declaration docs/benchmarks/challenge/repair-round-1.declaration.json --set .local/challenge/repair/heldout \
-  --dev <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --oracle <oracle/report.json> --random <random/report.json> \
-  --ladder <opus/report.json>,<sonnet/report.json>,<haiku/report.json> --out docs/benchmarks/challenge/repair-round1.md
+F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.declaration.json
+# 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
+node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
+for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required
+done
+# 2. Declaration: freezes the round; commit and push it before step 3.
+node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL
+git add $DECL && git commit -s -m "challenge: declare $F round 1" && git push
+# 3. The held-out set: its 26 seeds follow from the development runs; it prints the round's commands.
+node tools/challenge.ts generate $F --set heldout --declaration $DECL --out $D/heldout
+# 4. The baselines, then the preflight, before any ladder run.
+DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args $D/heldout)
+DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent random $(node tools/challenge.ts args $D/heldout)
+node tools/challenge.ts gate --preflight --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json
+# 5. The ladder (resume a stopped bench with --tasks), then the gate and its ledger.
+for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/heldout)
+done
+node tools/challenge.ts gate --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json \
+  --ladder <every held-out ladder report> --out docs/benchmarks/challenge/$F-round1.md
 ```
 
-`declare` re-verifies the development reports, checks that they ran on exactly the development set
-the generator makes for their seeds and difficulty, one run per instance (`--seed-list 1 --repeats
-1`), every run on the model its report names, and names the strongest (most development passes) and
-the weakest (fewest) agent, ties broken by the capability order Opus > Sonnet > Haiku. The
-declaration records that, each development report's SHA-256, the bench settings, the sizes and the
-release runs before the round (at least 35, plus 87 for every other declaration in the folder;
-more than 500 with the round is refused: "budget exhausted — a maintainer decides on a second
-round"). The held-out seeds are 26 consecutive seeds from 1 000 000 + (the first 12 hex digits of
-the SHA-256 of the declaration's canonical JSON modulo 900 000 000): a changed declaration draws
-other seeds, so commit it first and do not look at the held-out set while tuning.
+`declare` re-verifies the development reports (resumed benches merged), checks that they ran on
+exactly the development set the generator makes for their seeds and difficulty, each instance once
+per model and judged (`--seed-list 1 --repeats 1`), every run on the model its report names, with an
+explicit `--mirror` and at most the family's `--max-actions`. The declaration records the pair, the
+development outcomes and whether they follow the capability order, the digest of the development
+runs' verified content, the development runs found (reruns included), the bench settings, the sizes
+and the release runs before the round — derived: 35 plus, for every earlier round committed in the
+same folder, its gate ledger's spend or its declared 87; more than 500 with the round is refused
+("budget exhausted — a maintainer decides on a second round"). The held-out seeds are 26
+consecutive seeds from 1 000 000 + (the first 12 hex digits of the SHA-256 of the canonical JSON of
+family, round, generator version and the development digest, modulo 900 000 000): only new paid
+development runs can move them. `generate --set heldout` refuses a declaration that is not committed,
+changed or not pushed (in no remote-tracking branch) and records its commit in `instances.json`.
 
-`gate` regenerates the held-out set from the declaration and refuses a set folder whose world,
-manifest or oracle files differ (the manifest records each oracle file's SHA-256 and near-miss
-count), re-verifies every report against its bench folder, refuses benches of another world, of a
-subset of the tasks, with another seed list than `1`, with repeats or other settings than declared,
-development reports other than the declared files, and ladder runs on another model; it replays
-every regenerated near miss in a checker process and writes the gate report. A round 2 needs
-`--previous <round-1 oracle report.json>` and new seeds. The verdict rules are PADR-0040's: headroom
-(strongest 10–80 %), discrimination (≥ 20 points and exact McNemar p < 0.05 on the discordant
-instances), oracle 100 %, random ≤ 5 %, every near miss fails, every run counts, more than 5 %
-`infra_error`, missing or unattested runs voids the round, at most 100 model runs per family and
-round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
+`gate` checks the declaration in git (committed once, unchanged, pushed), regenerates the held-out
+set from it and refuses a set folder whose world, manifest or oracle files differ (the manifest
+records each oracle file's SHA-256 and near-miss count), re-verifies every report against its bench
+folder, merges each agent's reports (a task benched again counts only after an `infra_error`),
+refuses benches of another world, with another seed list than `1`, with repeats or other settings
+than declared, development runs other than the digested ones, ladder runs on another model, an
+oracle or random baseline with an `infra_error` or a missing run (rerun it), and any best-of-N
+found in the bench folders; it replays every regenerated near miss in a checker process, writes the
+gate report and the ledger of the round's spend (`<family>-round<k>.ledger.json`). `gate
+--preflight` runs everything but the ladder and refuses a round that cannot pass (an oracle miss,
+random above 5 %, a passing near miss). A round 2 needs `--previous <round-1 oracle report.json>`
+and new seeds. The verdict rules are PADR-0040's: headroom (strongest 10–80 %), discrimination
+(≥ 20 points and exact McNemar p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %,
+every near miss fails, every run counts, more than 5 % `infra_error`, missing or unattested runs
+voids the round, at most 100 model runs per family and round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
 requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
 total is added to the gate report by hand until the bench records it.
 

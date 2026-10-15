@@ -46,9 +46,16 @@ All notable changes are recorded here. The format follows
   families — repair, prompt injection in board content, long horizon with look-alike labels, limited
   checks, tight action budget — that materialise checked world/2 instances with oracle sidecars
   (`node tools/challenge.ts generate|verify`), and the preregistered ladder gate: a round
-  declaration frozen from the development runs before the held-out set exists, whose content fixes
-  the held-out seeds (`declare`), and `gate`, which regenerates the held-out set from it and reports
-  Wilson intervals and an exact McNemar test.
+  declaration committed and pushed before the held-out set exists, whose development runs fix the
+  held-out seeds and whose gate pair is Opus vs Haiku (`declare`), a preflight of everything but the
+  ladder, and `gate`, which regenerates the held-out set, merges resumed benches, counts every model
+  run in the bench folders, writes a spend ledger and reports Wilson intervals and an exact McNemar
+  test.
+- **Bench infrastructure errors.** A run whose client reports a usage or rate limit or an API error,
+  or whose agent ends without completing and without a tool call, is `infra_error` and not judged;
+  `--stop-on-infra` stops the bench there with a partial report naming the tasks to resume (exit 75).
+  Model ids may carry a bracketed suffix (`[1m]`); Claude Code's version is recorded per run, and
+  `report --verify` checks each run's model against the agent's own output.
 
 ### Changed
 
