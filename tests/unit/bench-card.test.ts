@@ -235,6 +235,9 @@ test('long names are cut with an ellipsis in the card; the caveats are never cut
     'Beschreibt diese Läufe, nicht den Agenten oder sein Modell im Allgemeinen. Nicht versiegelt: Der Agent lief unter demselben Benutzer wie Practonaut.']) assert.ok(all.some(text => text.includes(phrase)), `${phrase}\n${all.join('\n')}`);
   // Every line starts inside the card.
   for (const match of svg.matchAll(/<tspan x="([\d.]+)"/g)) assert.ok(Number(match[1]) >= 0 && Number(match[1]) <= 800, match[0]);
+  // The type stays on its roles: no column of this card is drawn smaller as a whole (only the 16-unit
+  // evidence marks are scaled 24-unit shapes, and they are aria-hidden).
+  for (const svgText of [svg, card(value, 'en'), card(value, 'de', 're-verified', 'dark')]) assert.deepEqual([...svgText.matchAll(/<g transform="translate\([^)]*\) scale\([\d.]+\)">/g)].map(match => match[0]), []);
 });
 
 test('--card names its four files after the given path', () => {

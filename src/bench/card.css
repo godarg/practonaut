@@ -17,6 +17,8 @@
 .card-sample{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);letter-spacing:var(--pn-tracking-subhead);font-variant-numeric:tabular-nums}
 .card-rule-text{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
 .card-fact{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);letter-spacing:var(--pn-tracking-subhead)}
+/* The same facts in the next role down, when they do not fit in Subhead (long German texts). */
+.card-fact-compact{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
 .card-footer{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
 
 /* Evidence marks (design language 7.4): confirmed is a filled accent disc with a check; not

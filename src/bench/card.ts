@@ -225,7 +225,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
   const m = (className: string): Metrics => metricsOf(className, tokens, all);
   const space = (step: number): number => numeric(`--pn-space-${step}`, tokens);
-  const padX = space(10), padY = space(8), contentWidth = VIEW.width - 2 * padX, right = VIEW.width - padX;
+  const padX = space(10), padY = space(6), contentWidth = VIEW.width - 2 * padX, right = VIEW.width - padX;
   const parts: string[] = [`<rect class="card-bg" width="${VIEW.width}" height="${VIEW.height}"/>`];
 
   // Header: what this is and when, whose runs, the label.
@@ -234,8 +234,8 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   let y = padY + eyebrow.leading + space(2);
   parts.push(paragraph('card-title', wrap(report.agent.name, contentWidth, title, 1), padX, y, title));
   y += title.leading;
-  if (isBenchReportV2(report) && report.label !== undefined) parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label));
-  y += label.leading + space(3);
+  if (isBenchReportV2(report) && report.label !== undefined) { parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label)); y += label.leading; }
+  y += space(3);
   parts.push(`<line class="card-divider" x1="${padX}" y1="${num(y)}" x2="${right}" y2="${num(y)}"/>`);
   const top = y + space(4);
 
@@ -244,30 +244,41 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   const caveat = wrap(t.cardCaveat, contentWidth, footer);
   const caveatTop = VIEW.height - padY - caveat.length * footer.leading, worldTop = caveatTop - footer.leading;
   parts.push(paragraph('card-footer', wrap(worldLine(report, t, language), contentWidth, footer, 1), padX, worldTop, footer), paragraph('card-footer', caveat, padX, caveatTop, footer));
-  const room = worldTop - space(4) - top;
+  const room = worldTop - space(3) - top;
 
   // Left: the result. The fraction is the headline; the words follow on its line when they fit.
   const leftWidth = (contentWidth - space(10)) * 0.45, rightX = padX + leftWidth + space(10), rightWidth = right - rightX;
-  const numbers = result(report, language), fraction = m('card-fraction'), words = m('card-words'), interval = m('card-interval'), sample = m('card-sample'), rule = m('card-rule-text');
-  const left: Block[] = [];
+  const numbers = result(report, language), fraction = m('card-fraction'), words = m('card-words'), interval = m('card-interval');
   const sameLine = width(numbers.fraction, fraction) + space(2) + width(numbers.words, words) <= leftWidth;
-  left.push(sameLine
+  const hero: Block = sameLine
     ? { markup: `<text class="card-fraction" x="0" y="${num(baseline(0, fraction))}">${xmlEscape(numbers.fraction)}<tspan class="card-words" dx="${space(1)}"> ${xmlEscape(numbers.words)}</tspan></text>`, height: fraction.leading }
-    : { markup: paragraph('card-fraction', [numbers.fraction], 0, 0, fraction) + paragraph('card-words', wrap(numbers.words, leftWidth, words), 0, fraction.leading, words), height: fraction.leading + wrap(numbers.words, leftWidth, words).length * words.leading });
-  const text = (className: string, value: string, metrics: Metrics): Block => { const lines = wrap(value, leftWidth, metrics); return { markup: paragraph(className, lines, 0, 0, metrics), height: lines.length * metrics.leading }; };
-  left.push(text('card-interval', numbers.interval, interval));
+    : { markup: paragraph('card-fraction', [numbers.fraction], 0, 0, fraction) + paragraph('card-words', wrap(numbers.words, leftWidth, words), 0, fraction.leading, words), height: fraction.leading + wrap(numbers.words, leftWidth, words).length * words.leading };
+  const text = (className: string, value: string): Block => { const metrics = m(className), lines = wrap(value, leftWidth, metrics); return { markup: paragraph(className, lines, 0, 0, metrics), height: lines.length * metrics.leading }; };
   const n = `n = ${[fill(language, t.runCount, { n: report.summary.runs }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' · ')}`;
-  left.push(text('card-sample', n, sample));
-  if (numbers.runs) left.push(text('card-sample', numbers.runs, sample), text('card-rule-text', t.cardInstanceRule, rule));
-  parts.push(column(left, space(2), padX, top, room));
+  // The sample lines in Subhead, or in Footnote when the column would not fit otherwise (as the facts).
+  const leftIn = (compact: boolean): { blocks: Block[]; gap: number; height: number } => {
+    const secondary = compact ? 'card-rule-text' : 'card-sample', gap = compact ? space(1) : space(2);
+    const blocks = [hero, text('card-interval', numbers.interval), text(secondary, n), ...(numbers.runs ? [text(secondary, numbers.runs), text('card-rule-text', t.cardInstanceRule)] : [])];
+    return { blocks, gap, height: blocks.reduce((sum, block) => sum + block.height, 0) + gap * (blocks.length - 1) };
+  };
+  const regularLeft = leftIn(false), left = regularLeft.height <= room ? regularLeft : leftIn(true);
+  parts.push(column(left.blocks, left.gap, padX, top, room));
 
-  // Right: the evidence behind the number, each fact with its mark and its words.
-  const fact = m('card-fact'), markSize = 16, textX = markSize + space(2);
-  const evidence: Block[] = facts(report, verification, language).map(item => {
-    const lines = wrap(item.text, rightWidth - textX, fact);
-    return { markup: mark(item.kind, 0, (fact.leading - markSize) / 2) + paragraph('card-fact', lines, textX, 0, fact), height: lines.length * fact.leading };
-  });
-  parts.push(column(evidence, space(3), rightX, top, room));
+  // Right: the evidence behind the number, each fact with its mark and its words. When the facts do not
+  // fit in Subhead they are set in Footnote, the next role of the type scale (never an ad-hoc size); only
+  // what still does not fit is drawn smaller as a whole.
+  const markSize = 16, textX = markSize + space(2), items = facts(report, verification, language);
+  const evidenceIn = (className: 'card-fact' | 'card-fact-compact', gap: number): { blocks: Block[]; height: number } => {
+    const fact = m(className);
+    const blocks = items.map(item => {
+      const lines = wrap(item.text, rightWidth - textX, fact);
+      return { markup: mark(item.kind, 0, (fact.leading - markSize) / 2) + paragraph(className, lines, textX, 0, fact), height: lines.length * fact.leading };
+    });
+    return { blocks, height: blocks.reduce((sum, block) => sum + block.height, 0) + gap * (blocks.length - 1) };
+  };
+  const regular = evidenceIn('card-fact', space(3));
+  const evidence = regular.height <= room ? { ...regular, gap: space(3) } : { ...evidenceIn('card-fact-compact', space(2)), gap: space(2) };
+  parts.push(column(evidence.blocks, evidence.gap, rightX, top, room));
 
   const name = xmlEscape(accessibleName(report, language, verification));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_SIZE.width}" height="${CARD_SIZE.height}" viewBox="0 0 ${VIEW.width} ${VIEW.height}" role="img" aria-label="${name}" xml:lang="${language}">`
