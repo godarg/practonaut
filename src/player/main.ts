@@ -773,10 +773,8 @@ function renderBar(): void {
   const nodes: Node[] = [brand];
   // The same three workspaces on every route; one that this window cannot open says why (tooltip and accessible name).
   if (current) {
-    // The workspace being prepared shows as chosen at once; while it prepares the others wait (and say
-    // so), so a second click is never dropped on a segment that only looks current.
-    const mode = phase3?.target() ?? 'board';
-    nodes.push(h('div', { class: 'shell-modes' }, segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
+    const mode = phase3?.mode() ?? 'board';
+    const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
       const unavailable = id !== 'board' && (!phase3 || (id === 'author' && !authorAvailable));
@@ -784,7 +782,11 @@ function renderBar(): void {
       // A segment that waits for the drawing surface says so, never just greys out.
       const ariaLabel = unavailable ? msg(id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
       return { id, label, testid: `mode-${id}`, disabled, ...(ariaLabel ? { ariaLabel } : {}) };
-    }) })));
+    }) });
+    // While another workspace is being prepared the current one stays pressed (it is where you are);
+    // a click on it is kept and brings you back as soon as the preparation has ended, never dropped.
+    if (phase3?.preparing()) modes.querySelector<HTMLButtonElement>(`[data-testid="mode-${mode}"]`)?.addEventListener('click', () => { void phase3!.select(mode).catch(error => say(String(error))); });
+    nodes.push(h('div', { class: 'shell-modes' }, modes));
   }
   nodes.push(controls);
   bar.replaceChildren(...nodes);
