@@ -73,7 +73,9 @@ All notable changes are recorded here. The format follows
   `bench` sets a check limit (it can only lower a task's own). A new variant of the same task counts
   like a reset. While a check limit applies, error explanations come only with a check. `report
   --verify` counts a run's accepted changes and checks from the runner's host-side log (which now
-  records every `check_result`) and refuses a run beyond its task's limits.
+  records every `check_result`) and refuses a run beyond its task's limits. A `practonaut.bench/2`
+  report made by an earlier 0.2.0 development build, whose mutation log has no `check_result`
+  records, no longer passes the consistency check: bench again (bench/2 is unreleased).
 - **Minimal length.** Where a bounded search is small, `bench` proves that a reference is a minimal
   solution; the report then shows "efficiency vs minimal length", otherwise "vs reference length",
   and `report --verify` recomputes the proof.
