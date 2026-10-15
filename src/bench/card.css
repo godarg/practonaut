@@ -12,6 +12,8 @@
 .card-title{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-title1);font-weight:var(--pn-weight-bold);letter-spacing:var(--pn-tracking-title1)}
 .card-label{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-footnote);letter-spacing:var(--pn-tracking-footnote)}
 .card-fraction{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-display);font-weight:var(--pn-weight-bold);letter-spacing:var(--pn-tracking-display);font-variant-numeric:tabular-nums}
+/* The fraction one role down, when the result column would not fit otherwise. */
+.card-fraction-compact{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-large);font-weight:var(--pn-weight-bold);letter-spacing:var(--pn-tracking-large);font-variant-numeric:tabular-nums}
 .card-words{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-title3);font-weight:var(--pn-weight-semibold);letter-spacing:var(--pn-tracking-title3)}
 .card-interval{fill:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);font-weight:var(--pn-weight-medium);letter-spacing:var(--pn-tracking-subhead);font-variant-numeric:tabular-nums}
 .card-sample{fill:var(--pn-color-text-secondary);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);letter-spacing:var(--pn-tracking-subhead);font-variant-numeric:tabular-nums}

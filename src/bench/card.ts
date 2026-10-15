@@ -102,14 +102,19 @@ function stylesheet(tokens: TokenMap, prefixes: readonly string[]): string {
 
 // ---- text measurement ----
 
-/** Advance widths in 1/1000 em of a Helvetica-like sans (the Adobe Core 14 metrics), digits widened to
- * a tabular 600: the card is drawn with the reader's own system font, so a line is broken by an
- * estimate that errs on the wide side (SAFETY), never by a measurement of one machine's font. */
-const ASCII = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 278, 278, 584, 584, 584, 556,
-  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
-  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
-const OTHER: Readonly<Record<string, number>> = { '·': 278, '–': 556, '—': 1000, '…': 1000, '“': 333, '”': 333, '„': 333, '‘': 222, '’': 222, '‚': 222, '«': 556, '»': 556, '×': 584, '→': 1000, 'ß': 611, '€': 556, '°': 400, ' ': 278 };
-const SAFETY = 1.06, BOLD = 1.08;
+/** Advance widths in 1/1000 em, for each character the wider of DejaVu Sans (the default sans of most
+ * Linux systems) and Verdana, the widest common sans fonts. The card is drawn with whatever font the
+ * reader's system resolves from the token's stack (the SVG carries none), so a line is broken by an
+ * estimate that no common font exceeds; a narrower font (SF Pro, Segoe UI, Roboto, Arial) leaves room
+ * at the end of a line instead of running past its column. */
+const ASCII = [352, 401, 459, 838, 636, 1076, 780, 275, 454, 454, 636, 838, 364, 454, 364, 454, 636, 636, 636, 636, 636, 636, 636, 636, 636, 636, 454, 454, 838, 838, 838, 545,
+  1000, 684, 686, 698, 771, 632, 575, 775, 752, 421, 455, 693, 557, 863, 748, 787, 603, 787, 695, 684, 616, 732, 684, 989, 685, 615, 685, 454, 454, 454, 838, 636,
+  636, 613, 635, 550, 635, 615, 352, 635, 634, 278, 344, 592, 278, 974, 634, 612, 635, 635, 427, 521, 394, 634, 592, 818, 592, 592, 525, 636, 454, 636, 838];
+const OTHER: Readonly<Record<string, number>> = { '·': 364, '–': 636, '—': 1000, '…': 1000, '“': 518, '”': 518, '„': 518, '‘': 318, '’': 318, '‚': 318, '«': 644, '»': 644, '×': 838, '→': 838, 'ß': 630, '€': 636, '°': 542, '\u00a0': 352 };
+/** Bold faces of both are about 15 % wider; SAFETY covers rounding and kerning. */
+const SAFETY = 1.02, BOLD = 1.15;
+/** The wide estimate over the middle of common fonts (narrow ones are about 15 % below it). */
+const BADGE_MIDDLE = 1.08;
 function advance(char: string): number {
   const code = char.codePointAt(0)!;
   if (code >= 32 && code <= 126) return ASCII[code - 32]!;
@@ -117,7 +122,7 @@ function advance(char: string): number {
   // A letter with a diacritic is as wide as its base letter.
   const base = char.normalize('NFD').replace(/\p{M}/gu, '');
   if (base.length === 1 && base !== char) return advance(base);
-  return code >= 0x2e80 ? 1000 : 640;
+  return code >= 0x2e80 ? 1000 : 750;
 }
 interface Metrics { size: number; leading: number; tracking: number; bold: boolean }
 function width(text: string, metrics: Metrics): number {
@@ -217,7 +222,7 @@ function result(report: BenchReport, language: Language): { fraction: string; wo
   const interval = intervalPercent(instances.passed, instances.instances);
   const intervalText = fill(language, instances.repeated ? t.interval : t.cardIntervalOnce, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) });
   if (!instances.repeated) return { fraction: rateText(s.passed, s.runs, language), words: t.cardWordsPassed, interval: intervalText, runs: null };
-  return { fraction: rateText(instances.passed, instances.instances, language), words: fill(language, t.cardWordsInstances, { n: instances.instances }), interval: intervalText, runs: fill(language, t.headlineRuns, { fraction: rateText(s.passed, s.runs, language) }) };
+  return { fraction: rateText(instances.passed, instances.instances, language), words: fill(language, t.cardWordsInstances, { n: instances.instances }), interval: intervalText, runs: rateText(s.passed, s.runs, language) };
 }
 const worldLine = (report: BenchReport, t: Words, language: Language): string => {
   const world = isBenchReportV2(report) ? report.environment.world : { worldId: report.environment.library.worldId, version: report.environment.library.version, source: 'library' as const };
@@ -231,7 +236,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
   const m = (className: string): Metrics => metricsOf(className, tokens, all);
   const space = (step: number): number => numeric(`--pn-space-${step}`, tokens);
-  const padX = space(10), padY = space(6), contentWidth = VIEW.width - 2 * padX, right = VIEW.width - padX;
+  const padX = space(8), padY = space(6), contentWidth = VIEW.width - 2 * padX, right = VIEW.width - padX;
   const parts: string[] = [`<rect class="card-bg" width="${VIEW.width}" height="${VIEW.height}"/>`];
 
   // Header: what this is and when, whose runs, the label.
@@ -243,7 +248,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   if (isBenchReportV2(report) && report.label !== undefined) { parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label)); y += label.leading; }
   y += space(3);
   parts.push(`<line class="card-divider" x1="${padX}" y1="${num(y)}" x2="${right}" y2="${num(y)}"/>`);
-  const top = y + space(4);
+  const top = y + space(3);
 
   // Footer, from the bottom: the world, then the caveat about what these runs describe and that they are not sealed.
   const footer = m('card-footer');
@@ -253,18 +258,25 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   const room = worldTop - space(3) - top;
 
   // Left: the result. The fraction is the headline; the words follow on its line when they fit.
-  const leftWidth = (contentWidth - space(10)) * 0.45, rightX = padX + leftWidth + space(10), rightWidth = right - rightX;
-  const numbers = result(report, language), fraction = m('card-fraction'), words = m('card-words'), interval = m('card-interval');
-  const sameLine = width(numbers.fraction, fraction) + space(2) + width(numbers.words, words) <= leftWidth;
-  const hero: Block = sameLine
-    ? { markup: `<text class="card-fraction" x="0" y="${num(baseline(0, fraction))}">${xmlEscape(numbers.fraction)}<tspan class="card-words" dx="${space(1)}"> ${xmlEscape(numbers.words)}</tspan></text>`, height: fraction.leading }
-    : { markup: paragraph('card-fraction', [numbers.fraction], 0, 0, fraction) + paragraph('card-words', wrap(numbers.words, leftWidth, words), 0, fraction.leading, words), height: fraction.leading + wrap(numbers.words, leftWidth, words).length * words.leading };
+  const gutter = space(8), leftWidth = (contentWidth - gutter) * 0.47, rightX = padX + leftWidth + gutter, rightWidth = right - rightX;
+  const numbers = result(report, language), words = m('card-words');
+  const heroIn = (className: 'card-fraction' | 'card-fraction-compact'): Block => {
+    const fraction = m(className);
+    if (width(numbers.fraction, fraction) + space(2) + width(numbers.words, words) <= leftWidth) {
+      return { markup: `<text class="${className}" x="0" y="${num(baseline(0, fraction))}">${xmlEscape(numbers.fraction)}<tspan class="card-words" dx="${space(1)}"> ${xmlEscape(numbers.words)}</tspan></text>`, height: fraction.leading };
+    }
+    const lines = wrap(numbers.words, leftWidth, words);
+    return { markup: paragraph(className, [numbers.fraction], 0, 0, fraction) + paragraph('card-words', lines, 0, fraction.leading, words), height: fraction.leading + lines.length * words.leading };
+  };
   const text = (className: string, value: string): Block => { const metrics = m(className), lines = wrap(value, leftWidth, metrics); return { markup: paragraph(className, lines, 0, 0, metrics), height: lines.length * metrics.leading }; };
-  const n = `n = ${[fill(language, t.runCount, { n: report.summary.runs }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' · ')}`;
-  // The sample lines in Subhead, or in Footnote when the column would not fit otherwise (as the facts).
+  // n, and with repeats the runs that passed beside it: "n = 18 runs, 14/18 passed · 3 seeds · 3 repeats".
+  const runs = fill(language, t.runCount, { n: report.summary.runs });
+  const n = `n = ${[numbers.runs ? fill(language, t.cardRunsPassed, { runs, fraction: numbers.runs }) : runs, fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' · ')}`;
+  // The fraction in Display and the sample in Subhead, or one role down each (Large Title, Footnote)
+  // when the column would not fit otherwise, as the facts do.
   const leftIn = (compact: boolean): { blocks: Block[]; gap: number; height: number } => {
     const secondary = compact ? 'card-rule-text' : 'card-sample', gap = compact ? space(1) : space(2);
-    const blocks = [hero, text('card-interval', numbers.interval), text(secondary, n), ...(numbers.runs ? [text(secondary, numbers.runs), text('card-rule-text', t.cardInstanceRule)] : [])];
+    const blocks = [heroIn(compact ? 'card-fraction-compact' : 'card-fraction'), text('card-interval', numbers.interval), text(secondary, n), ...(numbers.runs ? [text('card-rule-text', t.cardInstanceRule)] : [])];
     return { blocks, gap, height: blocks.reduce((sum, block) => sum + block.height, 0) + gap * (blocks.length - 1) };
   };
   const regularLeft = leftIn(false), left = regularLeft.height <= room ? regularLeft : leftIn(true);
@@ -283,7 +295,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
     return { blocks, height: blocks.reduce((sum, block) => sum + block.height, 0) + gap * (blocks.length - 1) };
   };
   const regular = evidenceIn('card-fact', space(3));
-  const evidence = regular.height <= room ? { ...regular, gap: space(3) } : { ...evidenceIn('card-fact-compact', space(2)), gap: space(2) };
+  const evidence = regular.height <= room ? { ...regular, gap: space(3) } : { ...evidenceIn('card-fact-compact', space(1)), gap: space(1) };
   parts.push(column(evidence.blocks, evidence.gap, rightX, top, room));
 
   const name = xmlEscape(accessibleName(report, language, verification));
@@ -303,8 +315,10 @@ export function renderBadge(report: BenchReport, tokensCss: string, language: La
     ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
   const rest = ` · ${parts.join(' · ')}`;
   const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);
-  // The text is held to its estimated width (textLength), so it fits its chip in any font.
-  const textWidth = Math.ceil(width(t.badgeName, name) + width(rest, metrics)), total = textWidth + 2 * pad;
+  // The text is held to its width by textLength, so it fits its chip in any font. That width sits
+  // between narrow fonts (SF Pro, Segoe UI) and the wide ones the card's estimate covers (DejaVu Sans,
+  // Verdana): spacing grows or shrinks by a few percent instead of opening up in a narrow font.
+  const textWidth = Math.ceil((width(t.badgeName, name) + width(rest, metrics)) / BADGE_MIDDLE), total = textWidth + 2 * pad;
   const label = xmlEscape(accessibleName(report, language, verification));
   const style = `${stylesheet(tokens, ['badge-'])}@media (prefers-color-scheme:dark){${stylesheet(themes.dark, ['badge-'])}}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${height}" viewBox="0 0 ${total} ${height}" role="img" aria-label="${label}" xml:lang="${language}">`
