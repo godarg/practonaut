@@ -51,7 +51,8 @@ function texts(svg: string): string[] {
   walk(parseXml(svg));
   return out;
 }
-const hasText = (svg: string, phrase: string): boolean => texts(svg).some(text => text.includes(phrase));
+/** A phrase in one text node; no-break spaces (which keep a few words on one line) read as spaces. */
+const hasText = (svg: string, phrase: string): boolean => texts(svg).some(text => text.replace(/\u00a0/g, ' ').includes(phrase));
 /** Every class used inside a node. */
 function classes(node: XmlElement, out = new Set<string>()): Set<string> {
   for (const name of (node.attributes.get('class') ?? '').split(/\s+/)) if (name) out.add(name);

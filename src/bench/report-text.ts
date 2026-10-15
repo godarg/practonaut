@@ -103,7 +103,7 @@ const en = {
   junitRun: 'Run {id}.', junitNote: 'Runner note: {note}',
   junitGate: 'Every run of this bench is listed. A run that did not pass is not a regression: practonaut compare --fail-on-regression gates on instance regressions against a baseline.',
   // Result card and badge (report --card, report --badge)
-  cardWordsPassed: 'passed', cardWordsInstances: '{n:instance|instances} passed', cardIntervalOnce: '95 % interval {low}–{high} % over {instances} (one run each)',
+  cardWordsPassed: 'passed', cardWordsInstances: '{n:instance|instances} passed', cardIntervalOnce: '95 % interval {low}–{high} % over {instances} (one\u00a0run\u00a0each)',
   cardInstanceRule: 'An instance passed when at least half of all its runs passed; a run without a verdict counts as not passed.',
   cardReverified: 'Re-verified: every judged run re-judged by the checker from its artifacts', cardConsistency: 'Consistency-checked only: the verdicts in the report add up, but the runs were not re-judged',
   cardMirrorOn: 'Real Excalidraw mirror: every action confirmed in the real app', cardMirrorOff: 'Model only: not checked against the real Excalidraw',
@@ -209,7 +209,7 @@ const de: Catalog = {
   field_world: 'Inhalt der Welt', field_grid: 'Raster aus Aufgaben und Seeds', field_mirror: 'Spiegelung', field_budget: 'Aktionsbudget', field_isolation: 'Isolationsstufe',
   junitRun: 'Lauf {id}.', junitNote: 'Hinweis des Runners: {note}',
   junitGate: 'Jeder Lauf dieser Bench ist aufgeführt. Ein nicht bestandener Lauf ist keine Regression: practonaut compare --fail-on-regression prüft Instanz-Regressionen gegen eine Basis.',
-  cardWordsPassed: 'bestanden', cardWordsInstances: '{n:Instanz|Instanzen} bestanden', cardIntervalOnce: '95-%-Intervall {low}–{high} % über {instances} (je ein Lauf)',
+  cardWordsPassed: 'bestanden', cardWordsInstances: '{n:Instanz|Instanzen} bestanden', cardIntervalOnce: '95-%-Intervall {low}–{high} % über {instances} (je\u00a0ein\u00a0Lauf)',
   cardInstanceRule: 'Eine Instanz gilt als bestanden, wenn mindestens die Hälfte all ihrer Läufe bestand; ein Lauf ohne Urteil zählt als nicht bestanden.',
   cardReverified: 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt', cardConsistency: 'Nur auf Stimmigkeit geprüft: Die Urteile im Bericht gehen auf, die Läufe wurden aber nicht neu beurteilt',
   cardMirrorOn: 'Echte Excalidraw-Spiegelung: jede Aktion in der echten App bestätigt', cardMirrorOff: 'Nur Modell: nicht mit dem echten Excalidraw geprüft',
