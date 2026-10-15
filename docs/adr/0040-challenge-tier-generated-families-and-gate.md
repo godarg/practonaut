@@ -143,7 +143,9 @@ judged state and the error classes, and the judged state may hold whatever an ag
    action still counts), accepted checks against the check limit — never from the final history
    alone or the agent's call log, and refuses a judged run of a limited task without the log.
 5. **Minimal length.** It applies to a task whose goal is exactly a from-scenes goal (parsed, then
-   regenerated from the parsed form and compared), without group, order or alignment clauses, whose
+   regenerated from the parsed form and compared) — pins of unchanged steps (`pinUnchanged`, the
+   injection family) are set aside first: they only remove solutions, so no shorter solution without
+   them means none with them —, without group, order or alignment clauses, whose
    arrows join steps with unique labels and have no loose end, on a start without groups. There,
    every action changes one attribute group of one object (a step's label; its shape, line and fill;
    its frame; its size; one arrow end; a frame's name), creates one object or deletes one, with three

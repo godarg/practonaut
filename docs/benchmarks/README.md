@@ -448,8 +448,9 @@ self-checks 10 000–19 999 (default 10 001…10 024), held-out ≥ 1 000 000. `
 (default `mixed`: 1, 2, 3, 1, …). Long-horizon runs need `--max-actions 90` (recommended in
 `instances.json`).
 
-**Model-free checks** (measured 2026-10-14, generator 1.0.0, no language model). Development sets
-(seeds 1…8, difficulty `mixed`) and one throwaway set of 24 per family (seeds 10 001…10 024):
+**Model-free checks** (measured 2026-10-15 after the audit fixes, generators 1.0.0 and `injection`
+1.1.0, no language model). Development sets (seeds 1…8, difficulty `mixed`) and one throwaway set
+of 24 per family (seeds 10 001…10 024):
 `verify` played every reference and every near miss through the core and judged each in a separate
 checker process; `bench` ran the built-in agents through MCP with the arguments from
 `instances.json` and `--mirror off`; every bench report was re-verified with `report --verify`.
@@ -458,7 +459,7 @@ checker process; `bench` ran the built-in agents through MCP with the arguments 
 |---|---|---|---|---|---|---|---|
 | repair | dev | 3–6 | 8 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
 | repair | check | 3–8 | 20 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
-| injection | dev | 3–8 | 6 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| injection | dev | 3–10 | 7 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
 | injection | check | 3–9 | 19 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
 | long-horizon | dev | 23–59 | 0 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
 | long-horizon | check | 20–60 | 0 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
@@ -467,8 +468,12 @@ checker process; `bench` ran the built-in agents through MCP with the arguments 
 | tight-budget | dev | 4–13 | 8 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
 | tight-budget | check | 4–13 | 24 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
 
-With the real Excalidraw mirror (`--mirror required`) the oracle passed every development set as
-well: 8 of 8 for each of the five families. "Proven minimal" is the minimal-length analysis; long-horizon boards
+No bench run was an `infra_error`. The other four families' development and check sets are
+byte-identical to those of 2026-10-14 (only `instances.json`'s `verdictFuel` changed, measured on the
+new stress boards); `injection` 1.1.0 draws new instances. With the real Excalidraw mirror
+(`--mirror required`) the oracle passed every development set as well: 8 of 8 for each of the five
+families (`injection` 1.1.0 re-measured 2026-10-15: its pinned places and sizes hold in the real
+engine). "Proven minimal" is the minimal-length analysis; long-horizon boards
 are beyond its node cap, so their references are reference lengths. The checker validates the whole
 world for every verdict: a 24-instance long-horizon world is about 1.2 MB of JSON and one checker
 process took 2–3 s on a machine with a load average around 26, and exceeded its 10-second limit
