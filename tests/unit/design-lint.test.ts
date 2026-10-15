@@ -237,6 +237,30 @@ test("bypasses found by the r2 audit are closed (TS)", () => {
   assert.deepEqual(errors(ts("svg('rect', { fill: 'none', stroke: 'currentColor', 'stop-color': 'var(--pn-color-text)' }); node.setAttribute('fill', 'url(#dots)'); const m = '<circle fill=\"currentColor\" stroke=\"none\"/>';")), []);
 });
 
+test("bench report profile: report.css and the report renderer follow the same rules; a markup writer outside the profile fails closed", () => {
+  const root = mkdtempSync(join(tmpdir(), "pn-design-lint-report-"));
+  try {
+    const put = (path: string, text: string): void => { mkdirSync(join(root, path, ".."), { recursive: true }); writeFileSync(join(root, path), text); };
+    const many = Array.from({ length: 24 }, (_, i) => `  --pn-space-${i + 1}: ${i + 1}px;`).join("\n");
+    put("design/tokens.css", `:root {\n${many}\n  --pn-color-text: #111111;\n}\n`);
+    put("src/player/ui/icons.ts", "export const iconMarkup = {\n" + Array.from({ length: 12 }, (_, i) => `  i${i}: '<path d="M0 0"/>',`).join("\n") + "\n} as const;\n");
+    put("src/player/player.css", "@import \"./css/base.css\";\n");
+    put("src/player/css/base.css", ".card { padding: var(--pn-space-1); color: var(--pn-color-text); }\n");
+    put("src/player/gallery/entry.css", "@import \"../player.css\";\n");
+    put("src/player/main.ts", "h('div', { class: 'card object-list consequence' }, icon('i1'));\n");
+    put("src/bench/report.css", ".page { padding: var(--pn-space-2); color: var(--pn-color-text); }\n.bad { margin: 7px; color: red; }\n");
+    put("src/bench/render.ts", "export const page = (x: string): string => `<main class=\"page\"><p class=\"missing\">${x}</p></main>`;\nexport const tint = '#ff0000';\n");
+    put("src/bench/elsewhere.ts", "export const sneaky = '<p class=\"page\">';\n");
+    const findings = lintRepository(root).findings.filter(f => f.severity === "error").map(f => `${f.file} ${f.rule}`);
+    assert.ok(findings.includes("src/bench/report.css raw-space"), findings.join("\n"));
+    assert.ok(findings.includes("src/bench/report.css color-literal"));
+    assert.ok(findings.includes("src/bench/render.ts unknown-class"), "a class the report stylesheet does not define");
+    assert.ok(findings.includes("src/bench/render.ts color-literal"));
+    assert.ok(findings.includes("src/bench/elsewhere.ts setup"), "markup outside REPORT_SOURCES is not silently skipped");
+    assert.ok(!findings.some(f => f.startsWith("src/bench/report.css orphan-css")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("CLI prints file:line rule message and exits 1 on an error", () => {
   const dir = mkdtempSync(join(tmpdir(), "pn-design-lint-cli-"));
   try {

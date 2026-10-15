@@ -33,7 +33,8 @@ test('CLI: oracle passes every run with the real mirror; report renders; a forge
     assert.equal(JSON.stringify(report).includes(dir), false, 'no absolute run paths in the report');
     const html = join(dir, 'oracle.html');
     const rendered = spawnSync(process.execPath, [CLI, 'report', out, '--html', html], { encoding: 'utf8' });
-    assert.equal(rendered.status, 0, rendered.stderr); assert.match(rendered.stdout, /6 runs, 6 passed \(100\.0 %\)/);
+    // Six of six as a fraction with its Wilson interval (6/6: 0.6097 … 1, shown outward as 60–100 %).
+    assert.equal(rendered.status, 0, rendered.stderr); assert.match(rendered.stdout, /^6\/6 passed · 95 % interval 60–100 % over 6 instances · consistency-checked, not re-verified · real Excalidraw mirror/m);
     assert.match(await readFile(html, 'utf8'), /^<!doctype html>/);
     // Negative control at the CLI: one failed run rewritten to pass, with the summary recomputed by hand.
     const forged = structuredClone(report) as BenchReport; forged.runs[0]!.checker!.session.passed = false;
@@ -93,5 +94,6 @@ test('report --verify re-judges every run from its artifacts; a consistent forge
   const unbound = structuredClone(report) as BenchReport; for (const run of unbound.runs) delete run.artifacts;
   await writeFile(join(directory, 'unbound.json'), JSON.stringify(unbound));
   const old = cli(join(directory, 'unbound.json'), '--verify'); assert.equal(old.status, 2); assert.match(old.stderr, /a judged run binds its artifacts.*\[bench_report_invalid\]/);
-  assert.equal(cli(join(directory, 'unbound.json'), '--runs', directory).status, 1, '--runs needs --verify');
+  // --runs names the bench folder for the run details as well; a changed artifact only hides its explanation.
+  const details = cli(path, '--runs', directory); assert.equal(details.status, 0, details.stderr); assert.match(details.stdout, /^Failures \(2 of 2 runs\)$/m);
 });

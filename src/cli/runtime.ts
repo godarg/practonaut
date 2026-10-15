@@ -14,6 +14,7 @@ import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
 import { loadCheckerBundle } from "../checker/bundle.ts";
+import type { ConditionTrace, TraceEntry } from "../checker/trace.ts";
 import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
@@ -30,8 +31,15 @@ function options(given:string[],allowed: string[]): {path:string;flags:Record<st
 }
 function integer(raw:string):number {if(!/^-?\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new RuntimeError("usage",cliText("seedUsage"));return Number(raw);}
 async function atomicFile(path:string,body:string):Promise<void>{const tmp=path+".tmp-"+process.pid;try{await writeFile(tmp,body,{flag:"wx"});await rename(tmp,path);}catch(e){await rm(tmp,{force:true});throw e;}}
+/** The checker's condition trace of a judged session (PADR-0039), in the same separate process
+ * with the same limits as a verdict. */
+export async function traceInProcess(world:World,session:string,timeline:readonly TraceEntry[],settings:{seed?:number;taskId?:string}={}):Promise<ConditionTrace>{
+ const result=await checkInProcess(world,session,{...settings,trace:timeline}) as unknown as {trace?:ConditionTrace};
+ if(!result||typeof result!=="object"||!result.trace)throw new RuntimeError("checker_invalid",cliText("checkerProcess"));
+ return result.trace;
+}
 /** OS process boundary: evaluator receives only data, with a V8 heap cap and a wall deadline. */
-export async function checkInProcess(world:World,input:string,settings:{seed?:number;taskId?:string;bundle?:CheckerData}={}):Promise<CheckerVerdict>{
+export async function checkInProcess(world:World,input:string,settings:{seed?:number;taskId?:string;bundle?:CheckerData;trace?:readonly TraceEntry[]}={}):Promise<CheckerVerdict>{
  const extension=import.meta.url.endsWith(".ts")?"ts":"js";
  const worker=fileURLToPath(new URL(`../checker/main.${extension}`,import.meta.url));
  return new Promise((resolve,reject)=>{

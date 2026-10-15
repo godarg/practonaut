@@ -70,7 +70,9 @@ documented (checked 2026-10-14); public reports conflict about whether the text 
    the bytes of the result exactly as sent (with what the SDK adds), the bridge's own processing
    time. It records at the transport, so refused and rate-limited calls are included; it holds no
    arguments and no content. It is a measurement aid and the basis for the call log of Must 3; the
-   client's round trip is not visible to the bridge.
+   client's round trip is not visible to the bridge. *Amended by
+   [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) A.1:* each line also carries
+   the JSON-RPC request id, so the bench runner can join its own client's round trip to the call.
 
 ## Consequences
 

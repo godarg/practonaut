@@ -1,5 +1,5 @@
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
 import { fallbackNotice, resolveMirror } from './serve.ts';
@@ -10,7 +10,11 @@ import { killRunningAgents, libraryWorld, runBench } from '../bench/run.ts';
 import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
-import { readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
+import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
+import { loadReportDetails } from '../bench/details.ts';
+import { compareReports, CompareError } from '../bench/compare.ts';
+import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
+import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
@@ -152,7 +156,9 @@ export async function commandBench(args: string[]): Promise<number> {
   }
   const out = options.out ?? join(directory, 'report.json');
   await writeAtomic(out, JSON.stringify(report, null, 2) + '\n');
-  process.stdout.write('\n' + renderTable(report, getCliLanguage()));
+  // The report's numbers come from the runs; why each failed comes from the bench folder (PADR-0039).
+  const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
+  process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
   if (report.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
   return report.interrupted ? EXIT_INTERRUPTED : 0;
@@ -164,12 +170,8 @@ const EXIT_INTERRUPTED = 130;
 /** Largest bench report read (100 000 runs fit comfortably). */
 const MAX_REPORT_BYTES = 128 * 1024 * 1024;
 
-/** practonaut report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]: validates, optionally re-judges, then renders. */
-export async function commandReport(args: string[]): Promise<number> {
-  const parsed = flags(args, ['--html', '--runs'], ['--json', '--verify']);
-  if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
-  if (parsed.flags['--runs'] !== undefined && !parsed.booleans.has('--verify')) throw new RuntimeError('usage', cliText('reportRunsNeedsVerify'));
-  const path = parsed.positional[0]!;
+/** Reads and validates one bench report file (either version); a report that does not add up is refused. */
+async function readReport(path: string): Promise<BenchReport> {
   let bytes: Buffer;
   try {
     const info = await stat(path);
@@ -180,41 +182,92 @@ export async function commandReport(args: string[]): Promise<number> {
     if (error instanceof RuntimeError) throw error;
     throw new RuntimeError('usage', cliText('readFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' }));
   }
-  let report;
-  try { report = validateBenchReport(parseJsonEntry(bytes, 'bench-report.json', 64)); }
+  try { return validateBenchReport(parseJsonEntry(bytes, 'bench-report.json', 64)); }
   catch (error) {
     if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message);
     throw new RuntimeError('bench_report_invalid', cliText('reportJson'));
   }
-  // Without --verify only the report's own arithmetic is checked; --verify re-judges the run artifacts:
-  // a /2 report against the world stored in its bench folder, a /1 report against the bundled library.
-  let verification: { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult) = { level: 'consistency-checked' };
-  let stored: VerificationResultV2 | undefined;
-  if (parsed.booleans.has('--verify')) {
-    const runs = parsed.flags['--runs'] ?? dirname(path);
-    try {
-      if (isBenchReportV2(report)) { stored = await verifyBenchV2(report, runs, libraryWorld); verification = { level: 're-verified', ...stored }; }
-      else verification = { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
-    } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
-  }
+}
+type Verified = { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult & Partial<Pick<VerificationResultV2, 'references' | 'world' | 'library'>>);
+/** --verify re-judges the run artifacts: a /2 report against the world stored in its bench folder
+ * (a library bench also against this Practonaut's library), a /1 report against the bundled library.
+ * Any difference is refused with its named code. */
+async function verifyReport(report: BenchReport, runs: string): Promise<Verified> {
+  try {
+    if (isBenchReportV2(report)) return { level: 're-verified', ...await verifyBenchV2(report, runs, libraryWorld) };
+    return { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+  } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
+}
+
+/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]: validates,
+ * optionally re-judges, then renders with the run details from the bench folder. */
+export async function commandReport(args: string[]): Promise<number> {
+  const parsed = flags(args, ['--html', '--runs'], ['--json', '--verify']);
+  if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
+  const path = parsed.positional[0]!, report = await readReport(path);
+  // The bench folder: what --verify re-judges and where the run details come from.
+  const runs = parsed.flags['--runs'] ?? dirname(path);
+  // Without --verify only the report's own arithmetic is checked.
+  const verification: Verified = parsed.booleans.has('--verify') ? await verifyReport(report, runs) : { level: 'consistency-checked' };
+  const language = getCliLanguage();
+  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   else {
-    process.stdout.write(renderTable(report, getCliLanguage()));
+    process.stdout.write(renderTable(report, language, details, verification.level));
     if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
-    else if (stored === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
+    else if (verification.world === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
     else {
-      const world = { world: safeText(stored.world.id), version: safeText(stored.world.version) };
-      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: stored.world.contentHash, runs: stored.reverified, unjudged: stored.unjudged, references: stored.references }));
+      const world = { world: safeText(verification.world.id), version: safeText(verification.world.version) };
+      process.stdout.write(cliText('reportReverifiedWorld', { ...world, hash: verification.world.contentHash, runs: verification.reverified, unjudged: verification.unjudged, references: verification.references ?? 0 }));
       // What the stored world is anchored to: this Practonaut's library, or only the bench's own record.
-      process.stdout.write(stored.library === undefined ? cliText('reportWorldOwn')
-        : stored.library.status === 'same' ? cliText('reportLibrarySame', world)
-        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${stored.library.shipped.id} ${stored.library.shipped.version}`) }));
+      process.stdout.write(verification.library === undefined ? cliText('reportWorldOwn')
+        : verification.library.status === 'same' ? cliText('reportLibrarySame', world)
+        : cliText('reportLibraryOther', { ...world, shipped: safeText(`${verification.library.shipped.id} ${verification.library.shipped.version}`) }));
     }
   }
   const html = parsed.flags['--html'];
   if (html) {
-    await writeAtomic(html, renderHtml(report, await readTokensCss(), getCliLanguage(), verification.level));
+    await writeAtomic(html, renderHtml(report, await readTokensCss(), language, verification.level, details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
+  }
+  return 0;
+}
+
+/** practonaut compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression]
+ * [--verify] [--json]: compares two reports by the rules of PADR-0039 C. Incomparable reports are
+ * refused naming every difference; with --fail-on-regression an instance regression exits 2. */
+export async function commandCompare(args: string[]): Promise<number> {
+  const parsed = flags(args, ['--html'], ['--json', '--verify', '--fail-on-regression']);
+  if (parsed.positional.length !== 2) throw new RuntimeError('usage', cliText('compareUsage'));
+  const [baselinePath, candidatePath] = parsed.positional as [string, string];
+  const baseline = await readReport(baselinePath), candidate = await readReport(candidatePath);
+  const level = async (report: BenchReport, path: string): Promise<'consistency-checked' | 're-verified'> => parsed.booleans.has('--verify') ? (await verifyReport(report, dirname(path))).level : 'consistency-checked';
+  // Each side goes by its label, else its file name (the page title says which is which).
+  const named = (report: BenchReport, path: string): string => isBenchReportV2(report) && report.label !== undefined ? report.label : basename(path).replace(/\.json$/i, '');
+  const sides = { baseline: { report: baseline, verification: await level(baseline, baselinePath), name: named(baseline, baselinePath) }, candidate: { report: candidate, verification: await level(candidate, candidatePath), name: named(candidate, candidatePath) } };
+  const language = getCliLanguage();
+  const html = parsed.flags['--html'];
+  let comparison;
+  try { comparison = compareReports(baseline, candidate); }
+  catch (error) {
+    if (!(error instanceof CompareError)) throw error;
+    // With --html the refusal is a page too, naming every difference.
+    if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language));
+    const field = (name: string): string => cliText(`compareField_${name}` as Parameters<typeof cliText>[0]);
+    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; ') }));
+  }
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verification: sides.baseline.verification }, candidate: { schema: candidate.schema, verification: sides.candidate.verification }, comparison }) + '\n');
+  else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));
+  if (html) {
+    await writeAtomic(html, renderCompareHtml(sides.baseline, sides.candidate, comparison, await readTokensCss(), language));
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
+  }
+  if (parsed.booleans.has('--fail-on-regression')) {
+    const named = (pairs: typeof comparison.regressions): string => pairs.map(pair => `${safeText(pair.taskId)} seed ${pair.seed}`).join(', ');
+    if (comparison.regressions.length) throw new RuntimeError('instance_regression', cliText('compareRegression', { n: comparison.regressions.length, list: named(comparison.regressions) }));
+    // A candidate instance that is missing, cut short or not judged could hide a regression: the gate
+    // fails on it by its own name, never passes it as "no regression".
+    if (comparison.incomplete.length) throw new RuntimeError('compare_incomplete', cliText('compareIncomplete', { n: comparison.incomplete.length, list: named(comparison.incomplete) }));
   }
   return 0;
 }

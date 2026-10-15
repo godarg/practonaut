@@ -64,9 +64,11 @@ export interface RevisionRequest { expectedRevision: number }
 /** Internal monotonic deadline, set at HTTP admission and never taken from wire input. */
 export interface TransactionContext { deadline:number }
 export interface ActRequest extends RevisionRequest { action: Action; actor?: Actor }
+/** An undo through MCP names the agent's client like an act does (shown, never trusted). */
+export interface UndoRequest extends RevisionRequest { actor?: Actor }
 /** `attempt`: the number the new attempt gets, set only by the host's demonstration (its own
  * attempt never counts); no HTTP request can carry it. */
-export interface ResetRequest extends RevisionRequest { confirmed: true; attempt?: number }
+export interface ResetRequest extends RevisionRequest { confirmed: true; actor?: Actor; attempt?: number }
 export interface VariantRequest extends RevisionRequest { confirmed: true; taskId?: string; attempt?: number }
 export type HostReply<T> = { ok: true; value: T } | { ok: false; error: { code: HostErrorCode; message: string; details?: Record<string, string | number | boolean | null> } };
 /** What one mutation changed (see `mutationDelta`): public data, sized by the change, not the board. */
@@ -137,13 +139,14 @@ export interface RunningHost {
 export interface PracticeController {
   view(): HostView;
   act(request: ActRequest, context?:TransactionContext): Promise<HostReply<MutationReply>>;
-  undo(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<MutationReply>>;
+  undo(request: UndoRequest, context?:TransactionContext): Promise<HostReply<MutationReply>>;
   reset(request: ResetRequest, context?:TransactionContext): Promise<HostReply<MutationReply>>;
   variant(request: VariantRequest, context?:TransactionContext): Promise<HostReply<MutationReply>>;
   hint(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<HostView>>;
   check(request: RevisionRequest, context?:TransactionContext): Promise<HostReply<PublicCheck>>;
   png(context?:TransactionContext): Promise<HostReply<Uint8Array>>;
-  export(request:RevisionRequest,context?:TransactionContext):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
+  /** `options.picture` adds the engine's SVG of the same confirmed scene (in-process callers only). */
+  export(request:RevisionRequest,context?:TransactionContext,options?:{picture?:boolean}):Promise<HostReply<import('./export-pair.ts').CurrentSessionExport>>;
   subscribe(listener: (event: HostEvent) => void): () => void;
   editor?(request: import('./author-protocol.ts').EditorGestureRequest,context?:TransactionContext): Promise<HostReply<MutationReply>>;
   scene?(): import('../adapters/excalidraw/raw.ts').RawElement[];

@@ -17,6 +17,23 @@ All notable changes are recorded here. The format follows
   isolation level; efficiency only with a validated reference; `apiKeySource`, `--keep-env` names and
   a command template's model are recorded. `/1` reports are still read and verified as before.
 - World/2 tasks may carry `generatedBy` (generator id, version, seed, parameters) for generated instances.
+- **Results you can act on** ([PADR-0039](docs/adr/0039-results-you-can-act-on-evidence-report-compare.md)).
+  Each run folder keeps the bridge's call log (with the bench client's round trip for `oracle` and
+  `random`), the runner's log of every act, undo and reset, the checker's trace of the goal conditions
+  after every accepted mutation, and with the mirror the real Excalidraw's SVG of the final board;
+  tokens, turns and cost come from the client's own output, labelled self-reported. `report --verify`
+  checks and re-derives them; evidence that cannot be written never changes a verdict. Report pages and
+  the terminal show the fraction with a 95 % Wilson interval (no rate finer than 1/n; every run counts,
+  a run that was not judged as not passed), failures first and open with why each failed (unmet
+  conditions with the action after which they were last lost, error classes, states by name), the
+  trajectory, the final board above an example target at one scale (never below 12 px text; Excalidraw's
+  own dark-mode colours in dark mode), and the call log; codes, hashes and the command sit under
+  "Technical details".
+- **`practonaut compare a.json b.json [--html] [--fail-on-regression] [--verify]`**: refuses
+  incomparable reports by name (with `--html`, on a page), aggregates all repeats per instance, names
+  instance regressions and gives an exact McNemar verdict ("rate difference not distinguishable at this
+  n" when the sample cannot tell). `--fail-on-regression` also fails on an incomplete candidate
+  (`compare_incomplete`: an instance missing, cut short or with a run that was not judged).
 - **First 60 seconds.** When the real engine is not installed, `npx practonaut` opens the Player at
   once, model-only, with a banner "Not yet checked against the real Excalidraw" that names the one
   download, the Chromium headless shell, with its size. With the engine installed, the existing
@@ -24,16 +41,20 @@ All notable changes are recorded here. The format follows
   From the command to the first demonstrated action: 2.1 s model-only, 2.5 s with the real engine
   (median of 3 at commit df84e38 on an Apple M4: `npx --package <packed tarball>` with a warm npx
   cache and npm offline, so no registry lookup; the click is automated, so no human reaction time;
-  result file `.local/measure-first-action/2026-10-14T23-34-15-075Z-df84e38.json`). On the bundled
+  the result is kept locally under `.local/measure-first-action/`). On the bundled
   example **Watch a demonstration** solves the current task
   once: actions land on the board, the real Excalidraw confirms each one (or the session says
   "model only"), and the result check judges the end. It is labelled as a demonstration, never
   counts as anyone's result (its board cannot be continued or exported), and Stop or Escape ends
   it. Never on a library or bench task. Measured with `tools/measure-first-action.ts`.
 - `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
+- The MCP bridge names the agent's client on `undo` and `reset` too (the host accepts an optional
+  `actor` on both), so the bench's mutation log names the client of every change.
 
 ### Changed
 
+- `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
+  works without `--verify` (it names where the run details come from).
 - **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 105 MB on
   Apple silicon Macs, 111 MB on Intel Macs, 126 to 128 MB on Linux and Windows, instead of the full
   browser as well) and names it with its size before anything is fetched; `doctor` counts a cache

@@ -209,6 +209,12 @@ function successor(world: World, state: State, action: Action, seed: number, pre
   return validateSubmissionState(result, world.app.fontFamilies);
 }
 
+/** The checker's own successor of `state` under `action` after `prefix` (used by the condition
+ * trace, PADR-0039); throws `artifact_invalid` when the action is not a valid transition. */
+export function checkerSuccessor(world: World, state: State, action: Action, seed: number, prefix: Action[]): State {
+  return successor(world, state, action, seed, prefix);
+}
+
 /** History consistency is distinct from provenance or a sealed agent-success claim. */
 export function verifySessionHistory(world: World, task: Task, data: SessionData): void {
   const era = world.schema === 'practonaut.world/2' ? 2 : 1;

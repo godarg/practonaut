@@ -255,7 +255,7 @@ test('a library bench is anchored to this Practonaut\'s library: a swapped libra
     const bench = cli('bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'off');
     assert.equal(bench.status, 0, bench.stderr);
     const folder = await newBench(before), path = join(folder, 'report.json'), report = await json(path);
-    assert.match(bench.stdout, new RegExp(`^Content hash \\(SHA-256\\): ${report.environment.world.contentHash}$`, 'm'));
+    assert.match(bench.stdout, new RegExp(`^World content hash \\(SHA-256\\): ${report.environment.world.contentHash}$`, 'm'));
     const verified = cli('report', path, '--verify');
     assert.equal(verified.status, 0, verified.stderr);
     assert.match(verified.stdout, /The stored world is this Practonaut's bundled library excalidraw-library [^ ]+ \(same content hash\)/);

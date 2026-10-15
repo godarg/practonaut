@@ -47,3 +47,4 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) | Bench report v2: any world, the world stored with the runs, isolation level, optional reference; generated instances are materialised | accepted | 2026-10-14 |
 | [PADR-0037](0037-fork-the-committed-session-for-candidates.md) | Transaction candidates fork the committed session; the world is validated once | accepted | 2026-10-14 |
 | [PADR-0038](0038-lean-mcp-replies.md) | Lean MCP replies: compact observe, mutation deltas, one language by default | accepted | 2026-10-14 |
+| [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) | Results you can act on: run evidence in the bench folder, report v2, and the rules of `compare` | accepted | 2026-10-15 |
