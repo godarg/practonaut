@@ -15,7 +15,7 @@ import type { World } from '../../src/world/types.ts';
 const example = async (): Promise<World> => validateWorld(JSON.parse(await readFile('examples/worlds/flow-diagram/world.json', 'utf8')));
 const notice: ModelOnlyNotice = { reason: 'missing', command: 'npx practonaut setup', download: { name: 'Chromium headless shell', megabytes: 100 } };
 
-async function fixture(world: World, options: { demonstration?: boolean; modelOnly?: ModelOnlyNotice } = {}): Promise<{ dir: string; host: RunningHost; close(): Promise<void> }> {
+async function fixture(world: World, options: { demonstration?: boolean; modelOnly?: ModelOnlyNotice; checks?: number } = {}): Promise<{ dir: string; host: RunningHost; close(): Promise<void> }> {
   await mkdir('.local', { recursive: true }); const dir = await mkdtemp(resolve('.local/demo-http-'));
   const assets = join(dir, 'player'); await mkdir(assets);
   for (const file of ['index.html', 'player.js', 'player.css', 'tokens.css']) await writeFile(join(assets, file), '/* fixed shell */');
@@ -129,10 +129,11 @@ test('the bundled example offers the demonstration: Player metadata, confirmatio
   } finally { await f.close(); }
 });
 
-test('no demonstration without the bundled example or without the option', async () => {
+test('no demonstration without the bundled example, without the option or under a check limit', async () => {
   const library = validateWorld(JSON.parse(await readFile('tasks/excalidraw/world/world.json', 'utf8')));
-  for (const [world, demonstration] of [[library, true], [await example(), false]] as const) {
-    const f = await fixture(world, { demonstration, modelOnly: notice });
+  // A demonstration would spend a limited attempt's changes and checks (PADR-0040).
+  for (const [world, demonstration, checks] of [[library, true, undefined], [await example(), false, undefined], [await example(), true, 2]] as const) {
+    const f = await fixture(world, { demonstration, modelOnly: notice, ...(checks !== undefined ? { checks } : {}) });
     try {
       const boot = await (await fetch(f.host.origin + '/api/bootstrap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: f.host.code }) })).json();
       assert.equal('demonstration' in boot.value, false);

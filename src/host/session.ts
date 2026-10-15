@@ -8,7 +8,8 @@ import { actionTemplates } from '../player/messages.ts';
 import { styleNames } from '../world/style-names.ts';
 import { sha256Hex, stateHash } from '../canonical/index.ts';
 import type { Action, Effect, Localized, Predicate, Task, World, State, Value } from '../world/types.ts';
-import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
+import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PracticeLimits, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
+import { TASK_LIMITS } from '../world/schema.ts';
 import { toRaw } from '../adapters/excalidraw/raw.ts';
 import { interpretEditorGesture, reconcileCreatedIdentity } from './editor-input.ts';
 import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAINING_MS } from './mirror.ts';
@@ -85,7 +86,7 @@ export function mutationDelta(before: State, after: HostView, effects: Effect[])
     else if (!previous.deleted && object.deleted) removed.push(id);
   }
   for (const id of Object.keys(before.objects)) if (!Object.hasOwn(after.state.objects, id)) removed.push(id);
-  return { step: after.step, revision: after.revision, hash: after.hash, changed, created, removed, effects: structuredClone(effects), errors: structuredClone(after.errors) };
+  return { step: after.step, revision: after.revision, hash: after.hash, changed, created, removed, effects: structuredClone(effects), errors: structuredClone(after.errors), ...(after.limits ? { limits: structuredClone(after.limits) } : {}) };
 }
 /** Never split through quantifiers: each witness must satisfy the complete body. */
 export function publicConditions(task: Task): Array<PublicCondition & { predicate: Predicate }> {
@@ -219,6 +220,19 @@ export async function createPracticeController(input: World, options: PracticeSe
   let revision = 0, attempt = 1, hintsOpened = 0;
   let history: HistoryItem[] = [], result: PublicCheck | null = null;
   let busy = false, closed = false, recoveries = 0;
+  // Limits of the current attempt (PADR-0040): accepted changes and evaluated checks since the task
+  // or variant was opened. Reset and undo give nothing back.
+  if (options.checks !== undefined && (!Number.isSafeInteger(options.checks) || options.checks < 0 || options.checks > TASK_LIMITS.checks)) throw new Error(`checks must be a whole number from 0 to ${TASK_LIMITS.checks}`);
+  let actionsUsed = 0, checksUsed = 0;
+  const limitsOf = (candidate: Session, actions = actionsUsed, checks = checksUsed): PracticeLimits | undefined => {
+    const own = candidate.world.tasks.find(value => value.id === candidate.taskId)!.limits;
+    const checkLimits = [own?.checks, options.checks].filter((value): value is number => value !== undefined);
+    const limits: PracticeLimits = {
+      ...(own?.actions !== undefined ? { actions: { limit: own.actions, used: actions } } : {}),
+      ...(checkLimits.length ? { checks: { limit: Math.min(...checkLimits), used: checks } } : {}),
+    };
+    return limits.actions || limits.checks ? limits : undefined;
+  };
   const listeners = new Set<(event: HostEvent) => void>();
   const task = (): Task => session.world.tasks.find(value => value.id === session.taskId)!;
   const consequences = (candidate: Session = session): Array<{ id: string; explanation: Localized }> => candidate.world.tasks.find(value => value.id === candidate.taskId)!.errorClasses.flatMap(error => {
@@ -226,8 +240,13 @@ export async function createPracticeController(input: World, options: PracticeSe
     if (!condition.ok) throw new Error(condition.error.code);
     return condition.value ? [{ id: error.id, explanation: error.explanation }] : [];
   });
-  const makeView = (candidate = session, overrides: Partial<HostView> = {}): HostView => {
+  // Error classes are evaluated against the board like the goal: while a check limit applies they
+  // would be a free partial check, so they appear only in a check's result, which is counted
+  // (PADR-0040). Views, mutation replies, history and explain_result carry none.
+  const visibleConsequences = (candidate: Session = session): Array<{ id: string; explanation: Localized }> => limitsOf(candidate)?.checks ? [] : consequences(candidate);
+  const makeView = (candidate = session, overrides: Partial<HostView> = {}, counts: { actions: number; checks: number } = { actions: actionsUsed, checks: checksUsed }): HostView => {
     const selectedTask = candidate.world.tasks.find(value => value.id === candidate.taskId)!;
+    const limits = limitsOf(candidate, counts.actions, counts.checks);
     return structuredClone({
       schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
@@ -235,7 +254,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
       log: candidate.log, history, actions: candidate.world.actions, rules: candidate.world.rules, mirror: mode,
       mirrorHealth: { status: closed ? 'closed' : mode === 'off' ? 'model-only' : mirror ? 'available' : 'unavailable', recoveries },
-      practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: consequences(candidate), ...overrides,
+      practiceEvidence: !closed && mode === 'required' && !!mirror, attempt, hintsOpened, hints: selectedTask.hints.slice(0, hintsOpened), result, errors: visibleConsequences(candidate), ...(limits ? { limits } : {}), ...overrides,
     });
   };
   const admit = (value: HostView): void => {
@@ -310,20 +329,25 @@ export async function createPracticeController(input: World, options: PracticeSe
     catch (error) { const loggingCode = (error as { code?: string }).code; return reject(loggingCode === 'diagnostic_limit' ? 'diagnostic_limit' : 'diagnostic_unavailable', 'Private mirror diagnostics failed; the board was not changed'); }
     return reject(code!, mirror ? 'Mirror rejected the action and was restored; the board was not changed' : 'Mirror unavailable; restart the session. The board was not changed');
   };
-  const mutate = async (request: RevisionRequest, build: (context:TransactionContext) => { candidate: Session; action?: Action; effects?: HistoryItem['effects']; reset?: boolean; attempt?: number; actor?: HistoryItem['actor'] },suppliedContext?:TransactionContext): Promise<HostReply<MutationReply>> => {
+  /** `counted`: an accepted change uses one action of the attempt's limit; `newAttempt` (a new task or
+   * variant) starts fresh counts instead. */
+  const mutate = async (request: RevisionRequest, build: (context:TransactionContext) => { candidate: Session; action?: Action; effects?: HistoryItem['effects']; reset?: boolean; attempt?: number; actor?: HistoryItem['actor'] },suppliedContext?:TransactionContext, accounting: { counted: boolean; newAttempt?: boolean } = { counted: true }): Promise<HostReply<MutationReply>> => {
     const context=contextFor(suppliedContext),invalid = guard<MutationReply>(request,context,false); if (invalid) return rejected(invalid);
+    const actionLimit = limitsOf(session)?.actions;
+    if (accounting.counted && actionLimit && actionLimit.used >= actionLimit.limit) return rejected(reject('action_budget_exhausted', `This attempt's action limit (${actionLimit.limit} changes, undo and reset included) is used up`));
+    const counts = accounting.newAttempt ? { actions: 0, checks: 0 } : { actions: actionsUsed + (accounting.counted ? 1 : 0), checks: checksUsed };
     busy = true;
     const started = performance.now();let mirrorWritten=false;
     try {
       const next = build(context);deadline(context);
       const replay = next.candidate.checkReplay({continue:()=>continues(context)});deadline(context);
       if (!replay.ok) return rejected(reject(replay.error.code, replay.error.message));
-      const candidateConsequences = consequences(next.candidate);
+      const candidateConsequences = visibleConsequences(next.candidate);
       const description = next.action ? actionDescription(next.action, session.state, next.candidate.state) : undefined;
       const projectedHistory = next.reset ? [] : next.action ? [...history, { description: description!, actor: structuredClone(next.actor ?? { kind: 'human' as const }), step: next.candidate.step, action: structuredClone(next.action), hash: next.candidate.hash, effects: next.effects ?? [], consequences: candidateConsequences, ruleIds: next.candidate.world.rules.filter(rule => rule.action === next.action!.name).map(rule => rule.id), mirrorConfirmed: mode === 'required', latencyMs: 999999999 }] : history.slice(0, next.candidate.step);
       // A new task starts at attempt 1; a reset or a new variant of the same task counts on.
       const nextAttempt = next.attempt ?? (next.candidate.taskId === session.taskId ? attempt + 1 : 1);
-      admit(makeView(next.candidate, { revision: revision + 1, history: projectedHistory, result: null, ...(next.reset ? { attempt: nextAttempt, hintsOpened: 0, hints: [] } : {}) }));
+      admit(makeView(next.candidate, { revision: revision + 1, history: projectedHistory, result: null, ...(next.reset ? { attempt: nextAttempt, hintsOpened: 0, hints: [] } : {}) }, counts));
       deadline(context);const synchronized = await synchronize(next.candidate,context, next.action);
       if (!synchronized.ok) return rejected(synchronized);
       mirrorWritten=synchronized.value;
@@ -331,11 +355,11 @@ export async function createPracticeController(input: World, options: PracticeSe
       deadline(context);
       const latencyMs = Math.round(performance.now() - started);
       if(next.action){projectedHistory.at(-1)!.latencyMs=latencyMs;projectedHistory.at(-1)!.mirrorConfirmed=synchronized.value;}
-      const value=makeView(next.candidate,{revision:revision+1,history:projectedHistory,result:null,...(next.reset?{attempt:nextAttempt,hintsOpened:0,hints:[]}:{})});admit(value);
+      const value=makeView(next.candidate,{revision:revision+1,history:projectedHistory,result:null,...(next.reset?{attempt:nextAttempt,hintsOpened:0,hints:[]}:{})},counts);admit(value);
       // The delta is computed and bounded before the commit, so a committed change always has its reply.
       const delta = boundedDelta(mutationDelta(session.state, value, next.effects ?? []));
       deadline(context); // No await between this final check and the synchronous commit.
-      session = next.candidate; revision++; result = null;history=projectedHistory;
+      session = next.candidate; revision++; result = null;history=projectedHistory; actionsUsed = counts.actions; checksUsed = counts.checks;
       if (next.reset) { attempt = nextAttempt; hintsOpened = 0; }
       mirrorWritten=false;emit({ type: 'changed', view: value });
       return { ok: true, value: { view: value, delta, mirrorConfirmed: synchronized.value, latencyMs } };
@@ -379,7 +403,10 @@ export async function createPracticeController(input: World, options: PracticeSe
       }
       if (!Number.isSafeInteger(seed)) throw { code: 'invalid_argument', message: 'Seed limit reached' };
       return { candidate: new Session(original, seed, request.taskId ?? session.taskId), reset: true, ...(request.attempt === undefined ? {} : { attempt: request.attempt }) };
-    },context),
+      // Under task limits (PADR-0040) a new variant of the same task counts like a reset: it uses one
+      // change, is refused once the changes are used up, and keeps the attempt's counts. Only another
+      // task starts fresh counts (a single-task host refuses that).
+    },context,(request.taskId === undefined || request.taskId === session.taskId) && limitsOf(session) ? { counted: true } : { counted: false, newAttempt: true }),
     hint: async (request,suppliedContext) => {
       const context=contextFor(suppliedContext),invalid = guard<HostView>(request,context); if (invalid) return rejected(invalid);
       try {
@@ -391,6 +418,8 @@ export async function createPracticeController(input: World, options: PracticeSe
     },
     check: async (request,suppliedContext) => {
       const context=contextFor(suppliedContext),invalid = guard<PublicCheck>(request,context); if (invalid) return rejected(invalid);
+      const checkLimit = limitsOf(session)?.checks;
+      if (checkLimit && checkLimit.used >= checkLimit.limit) return rejected(reject('check_budget_exhausted', `This attempt's check limit (${checkLimit.limit}) is used up`));
       busy = true;
       try {
         deadline(context);if (mirror && !isDeepStrictEqual(await mirror.snapshot(context), session.state)) { await recoverMirror(true);return rejected(reject('real_tool_disagrees', 'The real tool disagrees')); }deadline(context);
@@ -398,8 +427,9 @@ export async function createPracticeController(input: World, options: PracticeSe
         if (mode === 'required' && !mirror) return rejected(reject('mirror_unavailable', 'Mirror unavailable'));
         const full = evaluate(task().goal, session.state); if (!full.ok) return rejected(reject(full.error.code, full.error.message));
         const conditions = publicConditions(task()).map(({ id, text, formalText, predicate }) => { const checked = evaluate(predicate, session.state); if (!checked.ok) throw checked.error; return { id, text, ...(formalText ? { formalText } : {}), met: checked.value }; });
-        const checked: PublicCheck = { scope: 'end-state-only', hash: session.hash, revision, passed: full.value, conditions, errors: consequences(), mode: mode === 'required' ? 'real-engine' : 'model-only', practiceEvidence: !closed && mode === 'required' && !!mirror };
-        admit(makeView(session, { result: checked }));deadline(context); result = checked;
+        const used = checksUsed + 1;
+        const checked: PublicCheck = { scope: 'end-state-only', hash: session.hash, revision, passed: full.value, conditions, errors: consequences(), mode: mode === 'required' ? 'real-engine' : 'model-only', practiceEvidence: !closed && mode === 'required' && !!mirror, ...(checkLimit ? { checksRemaining: checkLimit.limit - used } : {}) };
+        admit(makeView(session, { result: checked }, { actions: actionsUsed, checks: used }));deadline(context); result = checked; checksUsed = used;
         emit({ type: 'changed', view: view() }); return { ok: true, value: structuredClone(result) };
       } catch (error) { if (error instanceof MirrorFault) await recoverMirror(); const code = (error as { code?: HostErrorCode }).code; return rejected(reject(code ?? 'checker_invalid', mirror ? 'Result check unavailable; mirror restored' : 'Mirror unavailable; restart the session')); }
       finally { busy = false; }

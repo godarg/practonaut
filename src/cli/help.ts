@@ -100,6 +100,8 @@ Options:
   --mirror auto|required|off    real Excalidraw mirror: auto (default) mirrors when Chromium is
                                 installed and otherwise runs model-only with a warning; required
                                 fails without Chromium; off is model-only (never practice evidence)
+  --checks <n>                  checks allowed per attempt, 0 to 1000 (a task's own limit can only be
+                                lowered); the Player shows how many remain
   --no-open                     print the link without opening a browser
   --require-offline             refuse to start when outbound network probes succeed
 
@@ -117,6 +119,8 @@ Optionen:
   --mirror auto|required|off    echte Excalidraw-Spiegelung: auto (Standard) spiegelt, wenn Chromium
                                 installiert ist, sonst nur Modell mit Warnung; required scheitert
                                 ohne Chromium; off ist nur Modell (nie ein Übungsbeleg)
+  --checks <n>                  erlaubte Prüfungen je Versuch, 0 bis 1000 (das eigene Limit einer Aufgabe
+                                kann nur gesenkt werden); der Player zeigt, wie viele übrig sind
   --no-open                     Link ausgeben, ohne einen Browser zu öffnen
   --require-offline             Start verweigern, wenn ausgehende Netzproben gelingen
 
@@ -158,7 +162,7 @@ const COMMANDS: Record<string, Text> = {
   play: SERVE,
   serve: SERVE,
   mcp: {
-    en: `Usage: practonaut mcp --task <task|world> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--open]
+    en: `Usage: practonaut mcp --task <task|world> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--checks <n>] [--open]
        practonaut mcp --host <http://127.0.0.1:port> --token-file <path>
        either form: [--call-log <file>]
 
@@ -168,9 +172,10 @@ serves it over stdio until the client closes. The real Excalidraw mirror runs wh
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 With --host and --token-file (both printed by play/serve), attaches to a running session that a person
 can use at the same time. stdout carries JSON-RPC only. --call-log <file> appends one JSON line per tool call
-(request id, tool, result code, result bytes, bridge time) for measurements; bench uses it for each run.
+(request id, tool, result code, result bytes, bridge time) for measurements; bench uses it for each run. --checks <n> (with --task) allows
+n checks per attempt, as play does; a used-up limit is refused with check_budget_exhausted.
 Tools: observe, list_actions, act, undo, reset, explain_result, check_result; resource practonaut://task; prompt practise.`,
-    de: `Verwendung: practonaut mcp --task <Aufgabe|Welt> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--open]
+    de: `Verwendung: practonaut mcp --task <Aufgabe|Welt> [--task-id <id>] [--seed <n>] [--mirror auto|required|off] [--checks <n>] [--open]
             practonaut mcp --host <http://127.0.0.1:port> --token-file <Pfad>
             beide Formen: [--call-log <Datei>]
 
@@ -180,15 +185,17 @@ ist (--mirror auto). Ein Link zum Mitsehen im Browser (gilt einmal) steht auf st
   claude mcp add practonaut -- npx -y practonaut mcp --task excalidraw/connect
 Mit --host und --token-file (beide gibt play/serve aus) bindet an eine laufende Sitzung an, die ein Mensch
 gleichzeitig nutzen kann. stdout trägt nur JSON-RPC. --call-log <Datei> hängt je Werkzeugaufruf eine JSON-Zeile an
-(Anfrage-ID, Werkzeug, Ergebniscode, Ergebnisbytes, Bridge-Zeit), für Messungen; bench nutzt es für jeden Lauf.
+(Anfrage-ID, Werkzeug, Ergebniscode, Ergebnisbytes, Bridge-Zeit), für Messungen; bench nutzt es für jeden Lauf. --checks <n> (mit --task)
+erlaubt n Prüfungen je Versuch wie bei play; ein aufgebrauchtes Limit wird mit check_budget_exhausted abgelehnt.
 Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result; Ressource practonaut://task; Prompt practise.`,
   },
   bench: {
     en: `Usage: practonaut bench --agent <oracle|random|claude-code|"command … {mcp_config} …">
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
-                        [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
+                        [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <report.json>]
                         [--keep-env <name,…>] [--label <text>] [--junit <out.xml>] [--fail-on-agent-error]
+                        [--stop-on-infra] [--recover <bench folder>]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -200,19 +207,27 @@ history and a separate checker after the agent stops. Defaults: the task library
 reference solution (the oracle.json beside the world), which the checker must pass before any run and which
 never reaches the agent. Without a reference a task has no efficiency. After the last agent has ended, the
 world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
+--checks <n> allows n checks per run. A task's own limits (actions, checks) always apply; --checks can only
+lower its check limit, and --max-actions stays the outer cap on act, undo and reset calls.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
 --junit also writes the runs as JUnit XML for CI test views: one test case per run, a run that did not pass
 as a failure naming its unmet conditions and error classes, a run without a verdict as an error.
 --fail-on-agent-error exits 2 (agent_failed) after writing everything when a run's agent failed or could not
 start (a missing or expired login makes every run fail): in CI that stops the job before compare.
+A run whose client reports a usage or rate limit or an API error, or whose agent ends without completing and
+without a tool call, is an infra_error and is not judged. --stop-on-infra stops at the first one, writes a
+partial report naming the remaining tasks and exits 75: wait until the limit window is over, then resume.
+--recover <bench folder> with the bench's own arguments rebuilds the report of a bench that was killed (kill -9,
+power loss, a second Ctrl+C) from its run folders, verified like report --verify, and names the tasks to resume.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
-                        [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
+                        [--max-actions <n>] [--checks <n>] [--mirror auto|required|off] [--out <bericht.json>]
                         [--keep-env <Name,…>] [--label <Text>] [--junit <out.xml>] [--fail-on-agent-error]
+                        [--stop-on-infra] [--recover <Bench-Ordner>]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -224,6 +239,8 @@ mit einem getrennten Prüfer nach dem Ende des Agenten. Standard: die Aufgabenbi
 einer Aufgabe (die oracle.json neben der Welt), die der Prüfer vor jedem Lauf bestätigen muss und die den Agenten
 nie erreicht. Ohne Referenz hat eine Aufgabe keine Effizienz. Nach dem Ende des letzten Agenten werden Welt und
 Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu beurteilen kann.
+--checks <n> erlaubt n Prüfungen je Lauf. Die eigenen Limits einer Aufgabe (Aktionen, Prüfungen) gelten immer;
+--checks kann ihr Prüflimit nur senken, und --max-actions bleibt die äußere Grenze für act, undo und reset.
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
@@ -231,6 +248,12 @@ Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abr
 bestandener Lauf als failure mit den nicht erfüllten Bedingungen und Fehlerklassen, ein Lauf ohne Urteil als error.
 --fail-on-agent-error endet nach dem Schreiben mit Exit 2 (agent_failed), wenn der Agent eines Laufs scheiterte
 oder nicht startete (fehlende oder abgelaufene Anmeldung lässt jeden Lauf scheitern): in CI vor compare.
+Ein Lauf, dessen Client ein Nutzungs- oder Ratenlimit oder einen API-Fehler meldet oder dessen Agent ohne
+Abschluss und ohne einen Werkzeugaufruf endet, ist ein infra_error und wird nicht bewertet. --stop-on-infra hält
+beim ersten an, schreibt einen Teilbericht mit den übrigen Aufgaben und endet mit 75; nach dem Limitfenster
+fortsetzen.
+--recover <Bench-Ordner> mit den Argumenten des Benchs baut den Bericht eines beendeten Benchs (kill -9, Stromausfall,
+zweites Strg+C) aus seinen Laufordnern neu, geprüft wie report --verify, und nennt die Aufgaben zum Fortsetzen.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },

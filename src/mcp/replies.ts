@@ -7,7 +7,7 @@
  * formal form in every `observe` and `check_result`, in the chosen language, exactly as the Player
  * shows them.
  */
-import type { Actor, HostView, MutationDeltaReply, PublicCheck } from '../host/protocol.ts';
+import type { Actor, HostView, MutationDeltaReply, PracticeLimits, PublicCheck } from '../host/protocol.ts';
 import type { Localized, State } from '../world/types.ts';
 
 export const LANGS = ['en', 'de', 'both'] as const;
@@ -45,6 +45,8 @@ export interface CompactView {
   result: { revision: number; passed: boolean; conditions: Array<{ id: string; met: boolean }>; demonstration?: true } | null;
   errors: Array<{ id: string; explanation: Text }>;
   hints: Text[]; attempt: number;
+  /** The attempt's action and check limits with what is used, when the task or session has any. */
+  limits?: PracticeLimits;
   /** The attempt is the bundled example's demonstration: its board and verdict are nobody's result. */
   demonstration?: true;
 }
@@ -58,7 +60,7 @@ export function compactView(view: HostView, lang: Lang, history = HISTORY_DEFAUL
     mirror: { mode: view.mirror, status: view.mirrorHealth.status }, practiceEvidence: view.practiceEvidence,
     history: { total: view.history.length, recent: (history > 0 ? view.history.slice(-history) : []).map(item => ({ step: item.step, actor: item.actor, description: item.description, mirrorConfirmed: item.mirrorConfirmed })) },
     result: view.result ? { revision: view.result.revision, passed: view.result.passed, conditions: view.result.conditions.map(({ id, met }) => ({ id, met })), ...(view.result.demonstration ? { demonstration: true } : {}) } : null,
-    errors: view.errors, hints: view.hints, attempt: view.attempt,
+    errors: view.errors, hints: view.hints, attempt: view.attempt, ...(view.limits ? { limits: view.limits } : {}),
     // Even with no history items asked for, the attempt says it is a demonstration.
     ...(view.demonstration ? { demonstration: true } : {}),
   }, lang) as CompactView;
@@ -75,11 +77,13 @@ export interface MutationResult {
   errors: Array<{ id: string; explanation: Text }>;
   /** The changed objects were too large to send; call observe for the board. */
   changedOmitted?: true;
+  /** The attempt's limits after this change, when it has any. */
+  limits?: PracticeLimits;
   mirrorConfirmed: boolean; latencyMs: number;
 }
 export function mutationResult(reply: MutationDeltaReply, lang: Lang): MutationResult {
   const { delta } = reply;
-  return localize({ step: delta.step, revision: delta.revision, changed: delta.changed, created: delta.created, removed: delta.removed, effects: delta.effects, errors: delta.errors, ...(delta.changedOmitted ? { changedOmitted: true } : {}), mirrorConfirmed: reply.mirrorConfirmed, latencyMs: reply.latencyMs }, lang) as MutationResult;
+  return localize({ step: delta.step, revision: delta.revision, changed: delta.changed, created: delta.created, removed: delta.removed, effects: delta.effects, errors: delta.errors, ...(delta.changedOmitted ? { changedOmitted: true } : {}), ...(delta.limits ? { limits: delta.limits } : {}), mirrorConfirmed: reply.mirrorConfirmed, latencyMs: reply.latencyMs }, lang) as MutationResult;
 }
 
 export function checkResult(check: PublicCheck, lang: Lang): PublicCheck { return localize(check, lang); }

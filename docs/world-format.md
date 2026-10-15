@@ -298,6 +298,20 @@ content: covered by the world's content hash and recorded in bench reports, but 
 Player's or an agent's view ([PADR-0036](adr/0036-bench-report-v2-any-world-stored-world.md):
 generated instances are stored as concrete worlds, not regenerated from a seed).
 
+**Task limits.** A task may carry `limits: { "actions": 1–1000, "checks": 0–1000 }` (at least one of
+the two; [PADR-0040](adr/0040-challenge-tier-generated-families-and-gate.md)). They are public: the
+host enforces them for every attempt, for the Player and agents alike, and shows what is used. An
+attempt may make at most `actions` accepted changes — every accepted `act`, `undo` and `reset` (and
+editor change) counts; a refused request does not — and evaluate at most `checks` checks. A request
+beyond a limit is refused with `action_budget_exhausted` or `check_budget_exhausted` and changes
+nothing. Reset and undo give nothing back; a new variant of the same task counts like a reset and
+keeps the counts; only another task starts a new attempt. A session
+started with `--checks <n>` uses the smaller of `n` and the task's own check limit. While a check
+limit applies, the task's error classes are shown only as part of a check's result (they are
+evaluated against the board like the goal). The checker judges the end state only; `report
+--verify` additionally counts a bench run's accepted changes and checks from the runner's host-side
+log and refuses a run beyond its task's limits.
+
 **Exports.** For world/2 the checker reads any Excalidraw drawing with a tolerant parser
 (`src/checker/scene.ts`): rectangles, ellipses and diamonds are steps (bound text is the label,
 absent text an empty label), any font, rotation, opacity and stroke style are ignored, colours map

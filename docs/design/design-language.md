@@ -751,3 +751,8 @@ refusals on the demonstration's board) were reviewed on captures of every state,
 demonstration step shown with the person-facing message) and twelve smaller findings, all fixed and
 checked on new captures; the demonstration's step list joined the kit (§9)
 ([pull request #33](https://github.com/godarg/practonaut/pull/33)).
+
+The task-limit states of 0.2.0 (changes and checks left, a failed check used, every change and check
+used) were looked at on captures, light and dark, at 1280 and 390 px with German, on 2026-10-15: one
+must-fix (with every change used, the refused "New variant" was still the primary button) was fixed
+and checked on new captures ([pull request #32](https://github.com/godarg/practonaut/pull/32)).

@@ -162,6 +162,10 @@ export const CLI_CATALOG = {
     "en": "seed must be a safe integer",
     "de": "Seed muss eine sichere Ganzzahl sein"
   },
+  "checksUsage": {
+    "en": "--checks must be a whole number from 0 to 1000 (checks allowed per attempt)",
+    "de": "--checks muss eine ganze Zahl von 0 bis 1000 sein (erlaubte Prüfungen je Versuch)"
+  },
   "checkerTimeout": {
     "en": "checker exceeded 10 s wall limit",
     "de": "Checker hat die Grenze von 10 Sekunden überschritten"
@@ -351,9 +355,29 @@ export const CLI_CATALOG = {
     "en": "practonaut bench: stopped at once (second interrupt); the agent was killed and no report was written. The run directory may hold an unfinished run.\n",
     "de": "practonaut bench: sofort beendet (zweiter Abbruch); der Agent wurde beendet, kein Bericht geschrieben. Das Laufverzeichnis kann einen unfertigen Lauf enthalten.\n"
   },
+  "benchRecovered": {
+    "en": "Recovered {runs} runs from the run folders ({judged} judged and re-verified, {unjudged} not judged, listed as infra_error “interrupted”); wrote {path}. To resume, bench the remaining tasks: --tasks {tasks}\n",
+    "de": "{runs} Läufe aus den Laufordnern wiederhergestellt ({judged} bewertet und nachgeprüft, {unjudged} nicht bewertet, als infra_error „interrupted“ geführt); {path} geschrieben. Zum Fortsetzen die übrigen Aufgaben benchen: --tasks {tasks}\n"
+  },
+  "benchRecoverOut": {
+    "en": "--recover writes the report into the bench folder; leave out --out",
+    "de": "--recover schreibt den Bericht in den Bench-Ordner; --out weglassen"
+  },
+  "benchRecoverRefused": {
+    "en": "{folder} cannot be recovered: {reason}",
+    "de": "{folder} kann nicht wiederhergestellt werden: {reason}"
+  },
+  "benchRecoverReport": {
+    "en": "{folder} already holds a report.json; --recover rebuilds the report of a bench that was killed before writing one",
+    "de": "{folder} enthält bereits eine report.json; --recover baut den Bericht eines Benchs neu, der vor dem Schreiben beendet wurde"
+  },
+  "benchStopped": {
+    "en": "\nStopped after run {run}: {note}. This partial report holds {runs} of {planned} planned runs. Wait until the client's limit window is over, then bench the remaining tasks: --tasks {tasks}\n",
+    "de": "\nAngehalten nach Lauf {run}: {note}. Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen. Warte, bis das Limitfenster des Clients vorbei ist, und benche dann die übrigen Aufgaben: --tasks {tasks}\n"
+  },
   "benchInterrupted": {
-    "en": "\nInterrupted: this partial report holds {runs} of {planned} planned runs; the run in progress was not scored.\n",
-    "de": "\nAbgebrochen: Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf wurde nicht bewertet.\n"
+    "en": "\nInterrupted: this report holds {runs} of {planned} planned runs; the run in progress is listed as not judged (infra_error, “interrupted”). To resume, bench the remaining tasks: --tasks {tasks}\n",
+    "de": "\nAbgebrochen: Dieser Bericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf steht als nicht bewertet darin (infra_error, „interrupted“). Zum Fortsetzen die übrigen Aufgaben benchen: --tasks {tasks}\n"
   },
   "benchInterruptedEmpty": {
     "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
@@ -600,8 +624,8 @@ export const CLI_CATALOG = {
     "de": "Lauf {run}: mutations.jsonl ist kein Änderungsprotokoll"
   },
   "verifyMutationsCounters": {
-    "en": "run {run}: the mutation log does not agree with the run's counted act, undo and reset calls",
-    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo und reset des Laufs"
+    "en": "run {run}: the mutation log does not agree with the run's counted act, undo, reset and check_result calls",
+    "de": "Lauf {run}: das Änderungsprotokoll passt nicht zu den gezählten Aufrufen von act, undo, reset und check_result des Laufs"
   },
   "verifyTrace": {
     "en": "run {run}: the checker does not re-derive the stored condition trace from the session and the mutation log",
@@ -620,8 +644,8 @@ export const CLI_CATALOG = {
     "de": "Lauf {id} bindet einen Bedingungsverlauf ohne das Änderungsprotokoll, aus dem er nachgerechnet wird"
   },
   "benchReportMutations": {
-    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo and reset calls",
-    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo und reset"
+    "en": "run {id}: the mutation log holds {entries} entries, but the run counted {calls} act, undo, reset and check_result calls",
+    "de": "Lauf {id}: das Änderungsprotokoll hat {entries} Einträge, der Lauf zählte aber {calls} Aufrufe von act, undo, reset und check_result"
   },
   "benchReportClientTiming": {
     "en": "run {id}: client timing comes only from Practonaut's own client (built-in agents)",
@@ -690,6 +714,38 @@ export const CLI_CATALOG = {
   "verifyReferenceLength": {
     "en": "task {task}: the report names a reference of {given} actions; the stored reference has {actual}",
     "de": "Aufgabe {task}: der Bericht nennt eine Referenz von {given} Aktionen; die gespeicherte Referenz hat {actual}"
+  },
+  "verifyReferenceMinimal": {
+    "en": "task {task}: the report says the reference is {given}; the minimal-length analysis on the stored world says {actual}",
+    "de": "Aufgabe {task}: laut Bericht ist die Referenz {given}; die Analyse der Minimallänge auf der gespeicherten Welt ergibt {actual}"
+  },
+  "verifyWorldLimits": {
+    "en": "the stored world's task limits differ from those the report names",
+    "de": "die Aufgabenlimits der gespeicherten Welt weichen von denen im Bericht ab"
+  },
+  "verifyActionLimit": {
+    "en": "run {run}: it used {actions} changes (accepted actions, undos and resets), more than the task's action limit of {limit}",
+    "de": "Lauf {run}: er hat {actions} Änderungen verbraucht (angenommene Aktionen, Rückgängig und Neustarts), mehr als das Aktionslimit der Aufgabe von {limit}"
+  },
+  "verifyClientModel": {
+    "en": "run {run}: the report names model {model}, but the agent's own output names {seen}",
+    "de": "Lauf {run}: der Bericht nennt das Modell {model}, die eigene Ausgabe des Agenten aber {seen}"
+  },
+  "verifyCheckLimit": {
+    "en": "run {run}: the host recorded {checks} checks, more than the {limit} the run allowed",
+    "de": "Lauf {run}: der Host hat {checks} Prüfungen aufgezeichnet, mehr als die {limit}, die der Lauf erlaubte"
+  },
+  "verifyLimitsEvidence": {
+    "en": "run {run}: its task has limits, but the run has no mutation log to count them from",
+    "de": "Lauf {run}: seine Aufgabe hat Limits, aber der Lauf hat kein Änderungsprotokoll, aus dem sie gezählt werden können"
+  },
+  "lengthMinimal": {
+    "en": "proven minimal",
+    "de": "nachweislich minimal"
+  },
+  "lengthReference": {
+    "en": "a reference length",
+    "de": "eine Referenzlänge"
   },
   "verifySessionOther": {
     "en": "run {run}: the session artifact belongs to another task or seed",

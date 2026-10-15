@@ -5,7 +5,7 @@
  */
 import { homedir } from 'node:os';
 import { BUILTIN_AGENTS, type BuiltinAgent } from './baselines.ts';
-import { API_KEY_SOURCE } from './report.ts';
+import { API_KEY_SOURCE, CLIENT_VERSION, MODEL_ID } from './report.ts';
 export { spawnable, windowsResolve } from '../platform/spawnable.ts';
 
 export class AgentTemplateError extends Error {
@@ -102,22 +102,23 @@ export function displayCommand(command: readonly string[], home: string = homedi
 }
 
 /** What a client says about itself in its stream-json `system/init` event (Claude Code writes one
- * first): the model and the `apiKeySource`. A field that is missing or not plain text is null;
- * neither is ever verified. Only the first init event counts. */
-export function clientInit(stdout: string): { model: string | null; apiKeySource: string | null } {
+ * first): the model, the `apiKeySource` and Claude Code's version. A field that is missing or not
+ * plain text is null; none is ever verified. Only the first init event counts. */
+export function clientInit(stdout: string): { model: string | null; apiKeySource: string | null; version: string | null } {
   for (const line of stdout.split('\n')) {
     if (!line.includes('"init"')) continue;
     let event: unknown;
     try { event = JSON.parse(line); } catch { continue; /* not a JSON line */ }
     if (event === null || typeof event !== 'object') continue;
-    const { type, subtype, model, apiKeySource } = event as { type?: unknown; subtype?: unknown; model?: unknown; apiKeySource?: unknown };
+    const { type, subtype, model, apiKeySource, claude_code_version: version } = event as { type?: unknown; subtype?: unknown; model?: unknown; apiKeySource?: unknown; claude_code_version?: unknown };
     if (type !== 'system' || subtype !== 'init') continue;
     return {
-      model: typeof model === 'string' && /^[\w.:@/-]{1,128}$/.test(model) ? model : null,
+      model: typeof model === 'string' && MODEL_ID.test(model) ? model : null,
       apiKeySource: typeof apiKeySource === 'string' && API_KEY_SOURCE.test(apiKeySource) ? apiKeySource : null,
+      version: typeof version === 'string' && CLIENT_VERSION.test(version) ? version : null,
     };
   }
-  return { model: null, apiKeySource: null };
+  return { model: null, apiKeySource: null, version: null };
 }
 /** Claude Code's stream-json starts with a system/init event naming the model; anything else is unknown. */
 export function clientAttestedModel(stdout: string): string | null { return clientInit(stdout).model; }

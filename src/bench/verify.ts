@@ -44,9 +44,11 @@ import { parseJsonEntry } from '../package/json.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchRun, type BenchRunV2 } from './report.ts';
-import { mutationCounts, parseMutations, RUN_EVIDENCE, timelineOf } from './evidence.ts';
-import { RUN_ARTIFACTS, verdictOf } from './run.ts';
+import { mutationCounts, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientInit } from './agents.ts';
+import { RUN_ARTIFACTS, verdictOf, taskLimitsOf } from './run.ts';
 import { MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage, type BenchReference, type ReferencesFile } from './world.ts';
+import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 
 const MAX_ARTIFACT_BYTES = 32 * 1024 * 1024;
 
@@ -98,6 +100,41 @@ async function evidenceHashes(run: BenchRunV2, directory: string): Promise<{ mut
   return { mutations, trace };
 }
 
+/**
+ * A task's limits (PADR-0040), counted as the host counts them from the runner's host-side mutation
+ * log: every accepted action, undo and reset uses one change, every accepted check one check. Never
+ * from the final history alone (an undone action still counted) nor from the agent's call log. The
+ * log's records are bound to the run's counters by verifyEvidence. A judged run of a limited task
+ * without the log cannot be verified and is refused.
+ */
+function verifyLimits(run: BenchRunV2, world: World, settingsChecks: number | undefined, mutations: string | null): void {
+  const own = world.tasks.find(task => task.id === run.taskId)?.limits;
+  const actionLimit = own?.actions;
+  const checkLimits = [own?.checks, settingsChecks].filter((value): value is number => value !== undefined);
+  const checkLimit = checkLimits.length ? Math.min(...checkLimits) : undefined;
+  if (actionLimit === undefined && checkLimit === undefined) return;
+  if (actionLimit !== undefined && run.actions > actionLimit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: run.actions, limit: actionLimit }));
+  if (mutations === null || !run.logs) {
+    if (run.checker === null && run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check === 0) return;
+    throw new BenchReportError(cliText('verifyLimitsEvidence', { run: run.id }));
+  }
+  let records;
+  try { records = parseMutations(mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }
+  const counted = mutationCounts(records), changes = counted.accepted + counted.undos + counted.resets;
+  if (actionLimit !== undefined && changes > actionLimit) throw new BenchReportError(cliText('verifyActionLimit', { run: run.id, actions: changes, limit: actionLimit }));
+  if (checkLimit !== undefined && counted.checks > checkLimit) throw new BenchReportError(cliText('verifyCheckLimit', { run: run.id, checks: counted.checks, limit: checkLimit }));
+}
+
+/** A run's client figures name the model (and version) its agent's own stdout names in its init
+ * event (second review): a report relabelled to another model without its output is refused. */
+async function verifyClientModel(run: BenchRunV2, directory: string): Promise<void> {
+  if (!run.client || run.client.model === null) return;
+  const head = await readLogHead(join(directory, run.id, 'agent.stdout'), 64 * 1024);
+  const init = clientInit(head?.text ?? '');
+  if (init.model !== run.client.model || (run.client.version !== undefined && init.version !== run.client.version))
+    throw new BenchReportError(cliText('verifyClientModel', { run: run.id, model: safeText(run.client.model), seen: safeText(init.model ?? 'none') }));
+}
+
 /** The mutation log agrees with the run's counters, and the checker re-derives the stored trace from
  * the session and that log. */
 async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string | null, texts: { mutations: string | null; trace: string | null }): Promise<void> {
@@ -108,7 +145,7 @@ async function verifyEvidence(run: BenchRunV2, world: World, sessionText: string
   try { records = parseMutations(texts.mutations); } catch { throw new BenchReportError(cliText('verifyMutationsFormat', { run: run.id })); }
   const counted = mutationCounts(records), omitted = run.logs.mutations.omitted;
   if (records.length !== run.logs.mutations.entries || counted.accepted !== run.acceptedActions || counted.undos !== run.undos || counted.resets !== run.resets
-    || counted.act + counted.undoCalls + counted.resetCalls + omitted !== run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset
+    || counted.act + counted.undoCalls + counted.resetCalls + counted.checkCalls + omitted !== run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check
     || counted.rejected > run.rejectedActions || (omitted === 0 && counted.rejected !== run.rejectedActions))
     throw new BenchReportError(cliText('verifyMutationsCounters', { run: run.id }));
   if (texts.trace === null || sessionText === null) return;
@@ -167,6 +204,7 @@ async function storedWorld(report: BenchReportV2, directory: string): Promise<Wo
   for (const task of report.settings.tasks) if (!world.tasks.some(value => value.id === task)) fail(cliText('verifyWorldTask', { task }));
   const generated = report.settings.tasks.flatMap(taskId => { const by = world.tasks.find(task => task.id === taskId)?.generatedBy; return by ? [{ taskId, ...by }] : []; });
   if (!isDeepStrictEqual(generated, bound.generated)) fail(cliText('verifyWorldGenerated'));
+  if (!isDeepStrictEqual(taskLimitsOf(world, report.settings.tasks), bound.limits ?? [])) fail(cliText('verifyWorldLimits'));
   return world;
 }
 
@@ -198,6 +236,11 @@ async function verifyReferences(report: BenchReportV2, world: World, stored: Ref
       const problem = await referenceProblem(world, expected.taskId, entry as BenchReference, seed);
       if (problem !== null) fail(problem);
     }
+    // A minimality claim is re-derived on the stored world (PADR-0040).
+    if (expected.minimal !== undefined) {
+      const proven = analyseLengthForSeeds(world, expected.taskId, report.settings.seeds, expected.actions).kind === 'minimal';
+      if (proven !== expected.minimal) fail(cliText('verifyReferenceMinimal', { task: expected.taskId, given: cliText(expected.minimal ? 'lengthMinimal' : 'lengthReference'), actual: cliText(proven ? 'lengthMinimal' : 'lengthReference') }));
+    }
   }
   return bound.tasks.length;
 }
@@ -223,10 +266,13 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
       if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, RUN_ARTIFACTS.native, run.artifacts.native, 'bench_artifact_changed');
     }
     evidence.set(run.id, await evidenceHashes(run, runsDirectory));
+    await verifyClientModel(run, runsDirectory);
   }
   const references = await verifyReferences(report, world, stored);
   let reverified = 0, unjudged = 0;
   for (const run of report.runs) {
+    // The host enforces a task's limits; a run that used more cannot come from a bench run.
+    verifyLimits(run, world, report.settings.checks, evidence.get(run.id)!.mutations);
     if (run.checker === null) { unjudged++; await verifyEvidence(run, world, null, evidence.get(run.id)!); continue; }
     const sessionText = await rejudge(run, world, runsDirectory, 'bench_artifact_changed');
     await verifyEvidence(run, world, sessionText, evidence.get(run.id)!);

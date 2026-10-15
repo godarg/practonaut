@@ -65,6 +65,36 @@ All notable changes are recorded here. The format follows
 - `practonaut validate` and `pack` print the world's content hash, the one a bench report names.
 - The MCP bridge names the agent's client on `undo` and `reset` too (the host accepts an optional
   `actor` on both), so the bench's mutation log names the client of every change.
+- **Task limits** ([PADR-0040](docs/adr/0040-challenge-tier-generated-families-and-gate.md)): a world/2
+  task may limit an attempt's accepted changes (`limits.actions`, undo and reset included) and checks
+  (`limits.checks`); the host enforces them for the Player and agents alike
+  (`action_budget_exhausted`, `check_budget_exhausted`), and the Player, `observe`, every mutation
+  reply and `check_result` show what is used. `--checks <n>` on `play`/`serve`, `mcp --task` and
+  `bench` sets a check limit (it can only lower a task's own). A new variant of the same task counts
+  like a reset. While a check limit applies, error explanations come only with a check. `report
+  --verify` counts a run's accepted changes and checks from the runner's host-side log (which now
+  records every `check_result`) and refuses a run beyond its task's limits. A `practonaut.bench/2`
+  report made by an earlier 0.2.0 development build, whose mutation log has no `check_result`
+  records, no longer passes the consistency check: bench again (bench/2 is unreleased).
+- **Minimal length.** Where a bounded search is small, `bench` proves that a reference is a minimal
+  solution; the report then shows "efficiency vs minimal length", otherwise "vs reference length",
+  and `report --verify` recomputes the proof.
+- **Challenge tier candidates** (maintainer tooling, not yet published): seeded generators for five
+  families — repair, prompt injection in board content, long horizon with look-alike labels, limited
+  checks, tight action budget — that materialise checked world/2 instances with oracle sidecars
+  (`node tools/challenge.ts generate|verify`), and the preregistered ladder gate: a round
+  declaration committed and pushed before the held-out set exists, whose development runs fix the
+  held-out seeds and whose gate pair is Opus vs Haiku (`declare`), a preflight of everything but the
+  ladder, and `gate`, which regenerates the held-out set, merges resumed benches, counts every model
+  run in the bench folders, writes a spend ledger and reports Wilson intervals and an exact McNemar
+  test.
+- **Bench infrastructure errors.** A run whose client reports a usage or rate limit or an API error,
+  or whose agent ends without completing and without a tool call, is `infra_error` and not judged;
+  `--stop-on-infra` stops the bench there with a partial report naming the tasks to resume (exit 75).
+  `bench … --recover <bench folder>` rebuilds the report of a bench killed before writing one
+  (kill -9, power loss, a second Ctrl+C) from its run folders, re-verified as `report --verify` does.
+  Model ids may carry a bracketed suffix (`[1m]`); Claude Code's version is recorded per run, and
+  `report --verify` checks each run's model against the agent's own output.
 
 ### Changed
 

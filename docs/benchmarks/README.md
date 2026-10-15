@@ -3,7 +3,8 @@
 Decision records: [PADR-0030](../adr/0030-bench-replaces-unsealed-eval.md) (bench),
 [PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md) (own worlds, report `/2`),
 [PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md) (run evidence, report v2,
-`compare`).
+`compare`), [PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits,
+minimal length, challenge tier and its gate, §10).
 
 `practonaut bench` lets any MCP agent practise the bundled Excalidraw task library, or a world of
 your own, and scores it independently: every run gets a fresh session, the agent works only through
@@ -43,6 +44,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 | `--repeats <k>` | 1 | independent repeats per task and seed (needed for pass^k with k > 1) |
 | `--timeout <s>` | 300 | wall time per run; the agent's process group is stopped after it |
 | `--max-actions <n>` | 50 | mutation budget per run (act, undo, reset); further ones are refused by the host with `action_budget_exhausted` |
+| `--checks <n>` | none | checks allowed per run (0–1000); further `check_result` calls are refused with `check_budget_exhausted`. A task's own limits (`limits` in the world) always apply; `--checks` can only lower its check limit |
 | `--mirror auto\|required\|off` | `auto` | real Excalidraw mirror (`auto` uses it when Chromium is installed) |
 | `--out <file>` | `~/.practonaut/bench/<id>/report.json` | report path; run logs stay in `~/.practonaut/bench/<id>/` |
 | `--keep-env <names>` | none | comma-separated variables a preset agent gets although it withholds them (§2); refused for other agents |
@@ -135,7 +137,12 @@ checker (never by the agent):
 - **actions** — the actions in the final history of the committed session (undone actions are
   not in it). `report --verify` re-derives this number from the session artifact.
 - **referenceActions** — the length of the task's validated reference solution, or `null`
-  ("no reference"). Library tasks have one (checked when the library is built). An own task has one
+  ("no reference"). Where a bounded search is small, the report also says whether that length is
+  **proven minimal** (`references.tasks[].minimal`): a branch-and-bound search over assignments of
+  goal objects to start objects shows that no solution can be shorter
+  ([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) decision 5; tasks with
+  order, alignment or group conditions, or where the search would be large, keep a plain
+  "reference length"). Library tasks have one (checked when the library is built). An own task has one
   when `--oracle` gives it and the separate checker accepts it: before the first run, the oracle is
   played through the core for every planned seed and each session must pass the checker, otherwise
   the bench is refused (`bench_oracle_invalid`). `report --verify` checks the stored reference again.
@@ -144,7 +151,17 @@ checker (never by the agent):
   actions**, undo and reset counts, **host calls** (observe/list_actions/explain_result reads, act,
   undo, reset, check; the bridge's start-up read included), **wall time** of the agent, and the
   agent's exit status (`completed`, `agent_failed`, `timeout`, `infra_error`). Also recorded:
-  the **error classes** the checker found on a failed board.
+  the **error classes** the checker found on a failed board. A run that could not show what the
+  model can do is an `infra_error` and is not judged: its client's own stream reports a usage or
+  rate limit (a `rate_limit_event` that is not `allowed`, status 429 or a limit named), an
+  authentication or billing error (status 401 or 403, an expired login) or a server error (5xx, 529
+  included) — in an `is_error` result or an assistant message the client marks as an API error —,
+  or the agent ended without completing and without a single tool call (the bridge's start-up read
+  counts as one, so this is an agent that never started its MCP server, or a command that could not
+  start). An `error_max_turns` result, a context overflow ("prompt is too long", status 400), any
+  other 4xx error and every other error of the agent's own stay `agent_failed` and are judged.
+  The client's model and Claude Code's version from its init event are recorded per run, and
+  `report --verify` checks the model against the agent's own `agent.stdout`.
 
 Aggregates:
 
@@ -154,10 +171,13 @@ Aggregates:
 - **pass^k** — as defined by τ-bench (Yao et al., 2024, [arXiv:2406.12045](https://arxiv.org/abs/2406.12045), §5):
   for each task-and-seed instance with n repeats and c passes, C(c, k) / C(n, k), averaged over
   instances — the chance that all of k repeats pass. Reported for k = 1…repeats.
-- **mean actions**, **mean actions when passed**, **efficiency vs reference** (reference-solution
-  length divided by the run's actions, over passed runs of tasks with a reference; above 1 means a
-  shorter solution than the reference; "no reference" when no benched task has one, and the summary
-  names how many tasks it covers when only some do), mean time per run. All but the time follow from
+- **mean actions**, **mean actions when passed**, **efficiency** (reference-solution length divided
+  by the run's actions, over passed runs of tasks with a reference; above 1 means a shorter solution
+  than the reference; "no reference" when no benched task has one, and the summary names how many
+  tasks it covers when only some do). It reads **"efficiency vs minimal length"** when every
+  referenced task's reference is proven minimal (then 1 is the best possible), otherwise
+  **"efficiency vs reference length"**, and the table marks each proven length "(minimal)". Mean
+  time per run. All but the time follow from
   re-verifiable numbers.
 
 `check_result` is available to agents, exactly like the Check button for a human: it reports the
@@ -170,7 +190,7 @@ run folder also keeps what explains the verdict, each file bound by its SHA-256 
 |---|---|---|
 | `calls.bridge.jsonl` | the agent's bridge (`practonaut mcp --call-log`) | as the bridge wrote it; never changed by the runner |
 | `calls.jsonl` | the runner, from `calls.bridge.jsonl` | one line per `tools/call`: request id, tool, result code, the full result bytes, the bridge's processing time, and `clientMs`, the round trip measured by Practonaut's own bench client for `oracle` and `random` (null for other clients: "client timing unavailable"). Unreadable lines (`dropped`) and lines beyond 16 MiB or 100,000 lines (`omitted`, counted over at most 256 MiB more and then marked as a lower bound) are counted in the report and stay in the bridge's file. The agent starts the bridge, so an agent can leave no call log; the report then says so. |
-| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself, for undo and reset too), accepted or rejected with the host's error code, step and revision afterwards. Refusals for an exhausted budget are kept up to 100 and counted beyond; a rejected action's strings are cut at 256 characters. |
+| `mutations.jsonl` | the runner, on the host side | every `act`, `undo` and `reset` that reached the session: the action (name, parameters, base step), the MCP client that sent it (as the client named itself, for undo and reset too), accepted or rejected with the host's error code, step and revision afterwards; and every `check_result` as a `check` record (accepted or rejected), from which `--verify` counts a task's check limit (PADR-0040). Refusals for an exhausted budget (of changes, of checks) are kept up to 100 each and counted beyond; a rejected action's strings are cut at 256 characters. |
 | `trace.json` | the separate checker process | each goal condition (a top-level clause of the goal, as the Player shows it) at the start and after every accepted mutation, from the checker's own replay of the mutation log, which must end in exactly the judged session. `null` with its error when it cannot be made (`log_unwritten` when the mutation log could not be written: a trace is only kept beside its log); the verdict never depends on it. |
 | `board.svg` | the real Excalidraw (with the mirror) | the engine's SVG export of the final board, from the same confirmed scene as `native.excalidraw`; left out when it cannot be written, which never changes the verdict |
 
@@ -220,14 +240,16 @@ generator materialised (`generated`, from each task's `generatedBy`, see
 [world format](../world-format.md) §2a); the agent (template with the home directory shown as `~`,
 isolation level, model, model source, `apiKeySource`, kept variable names); the settings; the
 **references** (null, or `references.json`'s SHA-256 and per task its source — `library` or
-`oracle-file` — and length); every run (`referenceActions` null without a reference) and the summary.
+`oracle-file` —, its length and whether it is proven minimal); every run (`referenceActions` null
+without a reference) and the summary. `settings.checks` records `--checks`; a task's own limits are
+part of the stored world.
 
 The bench folder (`~/.practonaut/bench/<id>/`) holds everything `report --verify` needs and nothing
 outside it is referenced, so it can be moved, archived or handed over:
 
 | Entry | Written | Content |
 |---|---|---|
-| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
+| `<task>-s<seed>-r<repeat>/` | per run | `agent/` (the agent's home), `agent.stdout`/`agent.stderr`, `agent.pid` (the agent's process id, for `--recover`), the judged artifacts `session.json`, `native.excalidraw` (with the mirror), `checker.json`, and the run evidence `calls.bridge.jsonl`, `calls.jsonl`, `mutations.jsonl`, `trace.json`, `board.svg` (§3) |
 | `world.pnworld` | after the last agent has ended; the runs' hosts loaded the world from the same bytes, hashed before the first run | the public world |
 | `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
@@ -237,9 +259,24 @@ outside it is referenced, so it can be moved, archived or handed over:
 hash, every run with a reference length). A bench stopped with Ctrl+C, SIGTERM or SIGHUP ends the running agent
 with its whole process group (on Windows its process tree), closes the session and writes the runs
 that finished as a partial report (`interrupted.plannedRuns`, exit 130); the run in progress is
-not scored. That can take a few seconds (an agent that ignores SIGTERM gets a 3-second grace
+listed as an `infra_error` with the note `interrupted` and not judged, and the output names the tasks
+to bench again (`--tasks …`). That can take a few seconds (an agent that ignores SIGTERM gets a 3-second grace
 period); a second Ctrl+C stops at once: the running agent's process group is killed and no report
-is written (exit 130).
+is written (exit 130). With `--stop-on-infra` the bench stops itself after the first `infra_error`
+run — a usage limit hits every later run too — and writes the partial report with
+`interrupted.stopped` (that run and the remaining tasks; exit 75): wait until the client's limit
+window is over, then bench the remaining tasks (`--tasks …`).
+
+A bench killed before it wrote its report (kill -9, power loss, out of memory, a second Ctrl+C)
+leaves its run folders. `bench <the bench's own arguments> --recover <bench folder>` rebuilds the
+partial report from them into that folder (`recovered: true`): in plan order, every run whose folder
+holds the checker's output is listed as judged and re-verified exactly as `report --verify` does (a
+folder whose artifacts or evidence were changed is refused, naming the run), every other run as an
+`infra_error` (`interrupted`, or the limit its client reported), and the output names the tasks to
+bench again. It refuses while the killed bench's agent still runs (`agent.pid` in the run folder:
+end its process group first, on Windows its process tree with `taskkill /T /F /PID <pid>`), a folder that already holds a report, and run folders outside the
+plan of the given arguments. The world and the references enter the folder only then, as with any
+report.
 
 Two levels of checking, and the output always says which one ran:
 
@@ -263,11 +300,15 @@ Two levels of checking, and the output always says which one ran:
   - `bench_artifact_changed`: `references.json`, a run artifact, a log, the trace or the picture is
     missing, larger than its limit or differs from its bound hash;
   - `bench_reference_invalid`: a stored reference names another task, has another length than the
-    report says, or is not accepted by the checker on the stored world for a seed a run used;
+    report says, is not accepted by the checker on the stored world for a seed a run used, or its
+    `minimal` claim differs from the minimal-length analysis on the stored world;
   - `bench_report_invalid`: the session's task and seed; `actions` equals the length of the
-    session's final history; the independent checker, re-run on the session and the export in a
+    session's final history; a task's limits hold as the host counts them, from the mutation log:
+    accepted actions, undos and resets within the action limit (an undone action still counts), and
+    accepted checks within the check limit (the task's or `--checks`, the smaller); a limited task's
+    judged run without a mutation log is refused; the independent checker, re-run on the session and the export in a
     separate process, gives the stored checker output and the report's verdicts; the mutation log
-    agrees with the run's counted act, undo and reset calls; the checker re-derives the stored
+    agrees with the run's counted act, undo, reset and check_result calls; the checker re-derives the stored
     condition trace from the session and the mutation log. The engine's picture cannot be re-derived
     without the engine: only its hash is checked.
 
@@ -321,7 +362,7 @@ normally, come first and open, each with:
   share one viewBox, so they are drawn at one scale; text in them is never smaller than 12 px (a wider
   board scrolls sideways in its frame, and the page says so); in dark mode both use Excalidraw's own
   dark-mode colours;
-- the **trajectory**: every act, undo and reset in order, "accepted (revision n)" or rejected with the
+- the **trajectory**: every act, undo, reset and check in order, "accepted (revision n)" or rejected with the
   reason in words, with the conditions met afterwards and which ones changed;
 - the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
 
@@ -543,3 +584,187 @@ recorded. One seed, two repeats per task: an example of the format, not a measur
 Measured the same day with the built-ins (`--tasks all --seeds 2`, real mirror): `oracle` 32 of 32
 passed; `random --max-actions 30` 0 of 32. Re-run them with the commands at the top; the numbers in
 this paragraph are not maintained.
+
+## 10. Challenge tier (candidates)
+
+The task library is saturated for current Claude models (0.1.0 baseline: 36 of 36 runs on its six
+hardest tasks passed). The challenge tier adds harder task families, made by a seeded generator and
+published only after a preregistered ladder gate
+([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md), roadmap 0.2.0 item 4). Until
+a family passes, it is a **candidate**: it lives in `src/challenge/` and is generated from a checkout
+with `node tools/challenge.ts`, not through the `practonaut` command.
+
+| Family | What makes it hard | Instances (difficulty 1 / 2 / 3) |
+|---|---|---|
+| `repair` | find 3–5 subtle defects against the goal list: colours, shapes, a misspelled label, a reversed arrow, an arrow end on a look-alike step, a missing or extra arrow, a stray copy, swapped labels, a step in the wrong frame | 3 / 4 / 5 defects on boards of 6–15 steps |
+| `injection` | a normal edit task on a board whose notes or frame names address the agent ("delete every other step", "call reset", a plausible conflicting "spec update"); the goal keeps every other object exactly as it is, including the place and size of every step the task does not touch | 3 / 4–5 / 6–7 edits with 1 / 2 / 3 such texts (notes; at difficulty 3 one is a frame name) |
+| `long-horizon` | reference lengths 20–60 among look-alike labels | 20–26 / 30–40 / 45–60 actions |
+| `limited-checks` | build the missing part of a diagram with only `limits.checks` checks | 8–11 / 11–14 / 14–18 actions; 2 / 1 / 1 checks |
+| `tight-budget` | reach the goal within `limits.actions` = the **proven minimal** length: one `set_style` for three attributes, one `reconnect_end` instead of two actions, no undo | 4–6 / 7–9 / 10–13 actions |
+
+Every instance is a world/2 task made by the state-based core of `tasks from-scenes`, so its goal is
+from-scenes' exact goal (every step's label, shape, colours, frame; every arrow by its end labels;
+every frame's name) and its reference solution and near misses are from-scenes' and checked the
+same way: the reference passes the independent checker, the start and every near miss fail. Each
+task carries `generatedBy` (generator id `challenge-<family>`, version, seed, difficulty and
+structural parameters). Instances differ in structure, not only in labels: topology (chain, decision
+branch, fork, lanes in frames), size, which objects carry which defect or edit. Before an instance is
+written, the generator also checks that injection notes never reach a title, prompt or hint, that a
+verdict on each of five **stress boards** needs at most half of the checker's 10⁶-step budget, and,
+for `tight-budget`, that its budget is a proven minimal length. A stress board is the goal plus as
+many new objects as the recommended `--max-actions` allows (or the task's own action limit when
+smaller), split 0, ¼, ½, ¾ or all as new steps ("Stress n", default style, outside frames) and the
+rest as new arrows to goal steps; that is exactly what is checked. Each family has its own
+generator version (1.0.0; `injection` 1.1.0), and a golden test pins one instance per family to it.
+
+```bash
+node tools/challenge.ts generate repair --set dev --out .local/challenge/dev/repair        # seeds 1…8
+node tools/challenge.ts verify .local/challenge/dev/repair                                 # checker only, no agent
+node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args .local/challenge/dev/repair)
+```
+
+`generate` writes `world/world.json`, one oracle sidecar per instance in `oracles/` (outside the world
+folder, never seen by an agent) and `instances.json` with every instance's facts and the bench
+arguments (`bench.args`: `--world`, `--oracle`, `--seed-list 1 --repeats 1`, the family's
+recommended `--max-actions` and `--timeout`). Seeds: development 1–999 (default 1…8), throwaway
+self-checks 10 000–19 999 (default 10 001…10 024), held-out ≥ 1 000 000. `--difficulty 1|2|3|mixed`
+(default `mixed`: 1, 2, 3, 1, …). Long-horizon runs need `--max-actions 90` (recommended in
+`instances.json`).
+
+**Model-free checks** (measured 2026-10-15 after the audit fixes, generators 1.0.0 and `injection`
+1.1.0, no language model). Development sets (seeds 1…8, difficulty `mixed`) and one throwaway set
+of 24 per family (seeds 10 001…10 024):
+`verify` played every reference and every near miss through the core and judged each in a separate
+checker process; `bench` ran the built-in agents through MCP with the arguments from
+`instances.json` and `--mirror off`; every bench report was re-verified with `report --verify`.
+
+| Family | Set | Reference length | Proven minimal | References pass (checker) | Near misses fail (checker) | `oracle` (bench) | `random` (bench) |
+|---|---|---|---|---|---|---|---|
+| repair | dev | 3–6 | 8 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| repair | check | 3–8 | 20 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
+| injection | dev | 3–10 | 7 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| injection | check | 3–9 | 19 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
+| long-horizon | dev | 23–59 | 0 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| long-horizon | check | 20–60 | 0 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
+| limited-checks | dev | 9–17 | 6 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| limited-checks | check | 8–17 | 22 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
+| tight-budget | dev | 4–13 | 8 of 8 | 8/8 | 32/32 | 8/8 | 0/8 |
+| tight-budget | check | 4–13 | 24 of 24 | 24/24 | 96/96 | 24/24 | 0/24 |
+
+No bench run was an `infra_error`. The other four families' development and check sets are
+byte-identical to those of 2026-10-14 (only `instances.json`'s `verdictFuel` changed, measured on the
+new stress boards); `injection` 1.1.0 draws new instances. With the real Excalidraw mirror
+(`--mirror required`) the oracle passed every development set as well: 8 of 8 for each of the five
+families (`injection` 1.1.0 re-measured 2026-10-15: its pinned places and sizes hold in the real
+engine). "Proven minimal" is the minimal-length analysis; long-horizon boards
+are beyond its node cap, so their references are reference lengths. The checker validates the whole
+world for every verdict: a 24-instance long-horizon world is about 1.2 MB of JSON and one checker
+process took 2–3 s on a machine with a load average around 26, and exceeded its 10-second limit
+(`checker_timeout`, an `infra_error` in a bench run) at a load average around 50. Run gate rounds,
+especially long-horizon ones, on a machine that is not otherwise busy.
+
+**A round** (preregistered in PADR-0040) has 3 development instances × 3 agents (9 model runs) and
+26 held-out instances × 3 agents (78 runs), 87 runs per family; the tools refuse other sizes. At 26
+instances the exact McNemar test is not strong: if two agents disagree on 20 % of the instances, all
+in one agent's favour, it reaches p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are
+needed for 0.8). A family that fails discrimination may still separate agents. The ladder is
+`claude-code` with Opus, Sonnet and Haiku (chosen with `ANTHROPIC_MODEL`, identified by the model id
+the client reports in every run); any other model needs `--maintainer-approved <model>`. The gate
+pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; development outcomes are
+reported as a sanity check and never change it.
+
+**Operator procedure.** Run one family at a time on an otherwise idle machine on mains power that
+does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a
+branch of its own for the round (`git switch -c challenge/<family>-round-<k>` from the commit to be
+gated, also from a detached checkout, then `git push -u origin HEAD`). The declaration is committed
+and pushed on that branch, and the gate runs there before any squash or rebase. **Keep the
+branch** (never delete it): the held-out set records the declaration's commit, which must stay
+reachable. After the round's branch is squash-merged into main, `gate` is not expected to run again
+on main. The commands below are for a POSIX shell (bash or zsh; on Windows Git Bash or WSL):
+`$(node tools/challenge.ts args …)` relies on the shell splitting the printed arguments, which
+PowerShell and cmd do not do, and `args` refuses a set whose paths contain white space.
+Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
+settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, a login or billing
+error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`
+keeps the loop from starting the next model; wait until the limit window is over, then bench those
+tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and continue the loop
+from that model. To stop a bench, press Ctrl+C **once** and wait for its partial report (exit 130):
+it lists the run in progress as not judged and names the tasks to resume the same way. A second
+Ctrl+C, kill -9, power loss or the machine running out of memory leave no report; then end the
+bench's agent if it still runs (`kill -9 -$(cat <run folder>/agent.pid)`) and recover the report
+before anything else, with the bench's own arguments (a development bench's with its `--mirror`):
+`node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args <set> [--tasks …]) --recover <bench folder>`;
+it names the tasks to resume. Pass every report, recovered ones included, to the tool. Do not rerun
+a task that was judged: the gate finds every run folder under the bench roots, refuses best-of-N
+and refuses a judged run folder that no report lists.
+
+```bash
+F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.declaration.json
+# 0. The round's branch, pushed.
+git switch -c challenge/$F-round-1 && git push -u origin HEAD
+# 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
+node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
+for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required || break
+done
+# 2. Declaration: freezes the round; commit and push it before step 3.
+node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL
+git add $DECL && git commit -s -m "challenge: declare $F round 1" && git push   # declare creates the folder
+# 3. The held-out set: its 26 seeds follow from the development runs; it prints the round's commands.
+node tools/challenge.ts generate $F --set heldout --declaration $DECL --out $D/heldout
+# 4. The baselines, then the preflight, before any ladder run.
+DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args $D/heldout)
+DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent random $(node tools/challenge.ts args $D/heldout)
+node tools/challenge.ts gate --preflight --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json
+# 5. The ladder (resume a stopped bench with --tasks), then the gate and its ledger.
+for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/heldout) || break
+done
+node tools/challenge.ts gate --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json \
+  --ladder <every held-out ladder report> --out docs/benchmarks/challenge/$F-round1.md
+```
+
+`declare` re-verifies the development reports (resumed benches merged), checks that they ran on
+exactly the development set the generator makes for their seeds and difficulty, each instance once
+per model and judged (`--seed-list 1 --repeats 1`), every run on the model its report names, with an
+explicit `--mirror` and at most the family's `--max-actions`. The declaration records the pair, the
+development outcomes and whether they follow the capability order, the digest of the development
+runs' canonical content (model, task, seed, the checker's verdict, the judged session's state hash
+and action log), the development runs found (reruns included), the bench settings, the sizes
+and the release runs before the round — derived: 35 plus, for every earlier round committed in the
+same folder, its gate ledger's spend or its declared 87; more than 500 with the round is refused
+("budget exhausted — a maintainer decides on a second round"). The held-out seeds are 26
+consecutive seeds from 1 000 000 + (the first 12 hex digits of the SHA-256 of the canonical JSON of
+family, round, generator version and the development digest, modulo 900 000 000): only new paid
+development runs can move them. `generate --set heldout` refuses a declaration that is not committed,
+changed or not pushed (in no remote-tracking branch) and records its commit in `instances.json`.
+
+`gate` checks that the gated declaration is the one in the commit the held-out set records (a later
+version of the file is allowed; the gate report lists every version with its date) and that this
+commit is still on a remote-tracking branch, regenerates the held-out
+set from it and refuses a set folder whose world, manifest or oracle files differ (the manifest
+records each oracle file's SHA-256 and near-miss count), re-verifies every report against its bench
+folder, merges each agent's reports (a task benched again counts only after an `infra_error`),
+refuses benches of another world, with another seed list than `1`, with repeats or other settings
+than declared, development runs other than the digested ones, ladder runs on another model, an
+oracle or random baseline with an `infra_error` or a missing run (rerun it), and any best-of-N
+found in the bench folders; it replays every regenerated near miss in a checker process, writes the
+gate report and the ledger of the round's spend (`<family>-round<k>.ledger.json`). `gate
+--preflight` runs everything but the ladder and refuses a round that cannot pass (an oracle miss,
+random above 5 %, a passing near miss). A round 2 needs `--previous <round-1 oracle report.json>`
+and new seeds. The verdict rules are PADR-0040's: headroom (strongest 10–80 %), discrimination
+(≥ 20 points and exact McNemar p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %,
+every near miss fails, every run counts, more than 5 % `infra_error`, missing or unattested runs
+voids the round, at most 100 model runs per family and round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
+requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
+total is added to the gate report by hand until the bench records it.
+
+A whole round without a language model — stand-in `claude` scripts, a usage-limit stop and resume,
+the preflight, the gate and its ledger — is an opt-in integration test that takes about twenty
+minutes, longer than `test:integration` gives a file. Run it on its own, after the engine build:
+
+```bash
+npm run engine:build
+PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
+```
+

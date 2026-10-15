@@ -644,13 +644,24 @@ function goalCard(): HTMLElement {
   const failedNow = matches && !lastCheck!.passed;
   const quietCheck = (!c.step && !lastCheck) || failedNow;
   const facts = failedNow ? h('p', { class: 'goal-note', text: msg('factsOnBoard').replace('{facts}', boardFacts()) }) : undefined;
-  const checkButton = button({ label: owner === 'variant' || (owner === 'demo' && matches) ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: locked() });
+  // A limited attempt (PADR-0040) says, next to Check, how many changes it has used and how many
+  // checks remain; with no check left the host would refuse, so Check is off.
+  const budget = c.limits?.actions, changesLeft = budget ? budget.limit - budget.used : undefined;
+  const changesNote = budget ? h('p', { class: 'goal-note', testid: 'changes-used', text: msg('changesUsed').replace('{used}', String(budget.used)).replace('{limit}', String(budget.limit)) }) : undefined;
+  // With every change used, a new variant, undo and reset would be refused: none of them is the
+  // primary action. The way on is another task, through the task picker.
+  const changesNone = changesLeft === 0 ? [h('p', { class: 'goal-note', testid: 'changes-none', text: msg('changesNone') }),
+    button({ label: msg('chooseTask'), variant: 'secondary', block: true, testid: 'choose-task', disabled: working, onClick: () => { document.getElementById('task-picker')?.click(); } })] : [];
+  const checks = c.limits?.checks, checksLeft = checks ? checks.limit - checks.used : undefined;
+  const checksNote = checks ? h('p', { class: 'goal-note', testid: 'checks-left', text: checksLeft === 0 ? msg('checksNone') : count(checksLeft!, 'checksLeft1', 'checksLeftN').replace('{limit}', String(checks.limit)) }) : undefined;
+  const checkButton = button({ label: owner === 'variant' || (owner === 'demo' && matches) ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck && checksLeft !== 0 ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: locked() || checksLeft === 0 });
   const formalSwitch = hasFormal ? button({ label: msg(showFormal ? 'formalHide' : 'formalShow'), icon: showFormal ? 'chevronUp' : 'chevronDown', variant: 'plain', size: 'sm', class: 'goal-formal-switch', testid: 'formal-switch', pressed: showFormal, onClick: () => { showFormal = !showFormal; render(); document.querySelector<HTMLElement>('[data-testid="formal-switch"]')?.focus(); } }) : undefined;
   result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
-  if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
+  if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: changesLeft === 0 ? 'secondary' : 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
   if (owner === 'demo' && !demoRunning()) result.append(button({ label: msg('demoOwnAttempt'), icon: 'reset', variant: 'primary', size: 'lg', block: true, testid: 'demo-own-attempt', disabled: working, onClick: ownAttempt }));
+  for (const note of [changesNote, checksNote]) if (note) result.append(note);
   // The demonstration's board is not the person's to check: no Check while it is its board.
-  if (owner !== 'demo') result.append(checkButton);
+  if (owner !== 'demo') result.append(checkButton, ...changesNone);
   return result;
 }
 function hintsCard(): HTMLElement {

@@ -157,6 +157,33 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "limits": {
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "actions": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "checks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "taskId"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [
@@ -310,6 +337,11 @@
         "prompt": {
           "type": "string",
           "maxLength": 4096
+        },
+        "checks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
         }
       },
       "required": [
@@ -358,6 +390,9 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 1000
+                  },
+                  "minimal": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -736,7 +771,7 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^[\\w.:@/-]{1,128}$"
+                    "pattern": "^[\\w.:@/-]{1,112}(?:\\[[\\w.-]{1,14}\\])?$"
                   },
                   {
                     "type": "null"
@@ -805,6 +840,17 @@
                     "type": "null"
                   }
                 ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[\\w.+-]{1,32}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -838,6 +884,10 @@
         "additionalProperties": false
       }
     },
+    "recovered": {
+      "type": "boolean",
+      "const": true
+    },
     "interrupted": {
       "type": "object",
       "properties": {
@@ -845,6 +895,29 @@
           "type": "integer",
           "minimum": 2,
           "maximum": 9007199254740991
+        },
+        "stopped": {
+          "type": "object",
+          "properties": {
+            "run": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}-s\\d{1,9}-r\\d{1,4}$"
+            },
+            "remaining": {
+              "minItems": 1,
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              }
+            }
+          },
+          "required": [
+            "run",
+            "remaining"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

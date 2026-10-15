@@ -116,7 +116,7 @@ function status(code: HostErrorCode): number {
   if (code === "origin_rejected" || code === "author_required") return 403;
   if (code === "json_required") return 415;
   if (code === "body_too_large" || code === "result_too_large") return 413;
-  if (code === "rate_limited" || code === "limit_exceeded" || code === "action_budget_exhausted") return 429;
+  if (code === "rate_limited" || code === "limit_exceeded" || code === "action_budget_exhausted" || code === "check_budget_exhausted") return 429;
   if (code === "not_found") return 404;
   if (code === "method_not_allowed") return 405;
   if (["session_busy", "project_store_busy", "stale_base", "real_tool_disagrees", "replay_mismatch", "demonstration_running", "demonstration_attempt"].includes(code)) return 409;
@@ -199,8 +199,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   try { controller = await (options.controllerFactory ?? createPracticeSession)(world, sessionOptions); }
   catch (error) { await diagnostics.discard(); await credential.remove(); throw error; }
   // The bundled example's demonstration owns the session while it runs; every surface goes through it.
+  // Under a check limit (`--checks`, PADR-0040) it would spend the attempt's changes and checks: none.
   let demonstration: DemonstrationControl | undefined;
-  if (options.demonstration && demonstrationWorld(world)) ({ controller, demonstration } = withDemonstration(controller, world, options.demonstrationPause ? { pause: options.demonstrationPause } : {}));
+  if (options.demonstration && options.checks === undefined && demonstrationWorld(world)) ({ controller, demonstration } = withDemonstration(controller, world, options.demonstrationPause ? { pause: options.demonstrationPause } : {}));
   const playerInfo = (): { modelOnly?: ModelOnlyNotice; demonstration?: DemonstrationInfo } => ({
     ...(options.modelOnly && options.mirror === 'off' ? { modelOnly: structuredClone(options.modelOnly) } : {}),
     ...(demonstration ? { demonstration: { tasks: demonstration.tasks(), status: demonstration.status() } } : {}),

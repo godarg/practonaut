@@ -62,7 +62,11 @@ export interface Task {
   conditionTexts?: Localized[];
   /** world/2: set when a generator materialised this task (PADR-0036). Never in a public view. */
   generatedBy?: GeneratedBy;
+  /** world/2: public per-attempt limits the host enforces (PADR-0040). */
+  limits?: TaskLimits;
 }
+/** At most `actions` accepted changes (act, undo, reset) and `checks` evaluated checks per attempt. */
+export interface TaskLimits { actions?: number; checks?: number }
 /** Generator id and semantic version, the seed and named parameters of a materialised task. */
 export interface GeneratedBy { id: string; version: string; seed: number; parameters: Record<string, string | number> }
 /** world/1 cases carry insertPosition; world/2 cases carry free text/integer params. Both become {{tokens}}. */

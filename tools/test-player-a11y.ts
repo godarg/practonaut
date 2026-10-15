@@ -3,7 +3,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixture, assertOracle, type Fixture } from "../tests/e2e/harness.ts";
 import { TOKEN_HEADER, type HostReply, type MutationReply } from "../src/host/protocol.ts";
-import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, limitsWorld, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -154,6 +154,13 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     }
     assert.deepEqual(workspaces.external, []);
   } finally { await workspaces.close(); }
+  // Task limits (PADR-0040): a world/2 task with an action and a check limit.
+  const limited = await startPlayer({ theme, width, height: 900, phase3: false, world: limitsWorld(), taskId: "T1" });
+  try {
+    await setLanguage(limited.page, language);
+    for (const st of LIMIT_STATES) { await st.enter(limited); await state(limited, st.id, stem); }
+    assert.deepEqual(limited.external, []);
+  } finally { await limited.close(); }
   const modelExport = await startPlayer({ theme, width, height: 900, phase3: false, mirror: "off" });
   try {
     await setLanguage(modelExport.page, language);

@@ -90,7 +90,7 @@ test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client tim
   const withEvidence = (): BenchReportV2 => {
     const value = structuredClone(v2Report()), first = value.runs[0]!;
     first.artifacts = { ...first.artifacts!, trace: hash('7'), board: null };
-    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act, omitted: 0 } };
+    first.logs = { calls: { sha256: hash('8'), entries: 9, dropped: 0, clientTiming: false }, mutations: { sha256: hash('9'), entries: first.toolCalls.act + first.toolCalls.check, omitted: 0 } };
     first.client = { source: 'command-output', model: 'some-model', turns: 6, costUsd: 0.05, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 } };
     return value;
   };
@@ -104,7 +104,9 @@ test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client tim
   refused(value => { value.runs[0]!.artifacts!.trace = null; }, /a missing trace needs its error/);
   // A trace without the mutation log that re-derives it could never be re-verified: refused outright.
   refused(value => { delete value.runs[0]!.logs; }, /binds a condition trace without the mutation log it is re-derived from/);
-  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 5 entries, but the run counted 4 act, undo and reset calls/);
+  refused(value => { value.runs[0]!.logs!.mutations.entries += 1; }, /the mutation log holds 6 entries, but the run counted 5 act, undo, reset and check_result calls/);
+  // The log records check calls too (PADR-0040): one without them is refused.
+  refused(value => { value.runs[0]!.logs!.mutations.entries -= value.runs[0]!.toolCalls.check; }, /the mutation log holds 4 entries, but the run counted 5 act, undo, reset and check_result calls/);
   refused(value => { value.runs[0]!.logs!.calls!.clientTiming = true; }, /client timing comes only from Practonaut's own client/);
   refused(value => { value.runs[0]!.client!.source = 'client-attested'; }, /client figures come only from an external agent's own output, with the source its kind \(command\) allows/);
   // A trace that could not be made, with its error, is valid; so is a run without any evidence (an older /2 report).
@@ -145,11 +147,11 @@ test('rendering names label, isolation level, world, generated instances and "no
   assert.match(table, /^Practonaut bench  generic$/m);
   assert.match(table, /^Generated instances: Flow \(repair 0\.1\.0, seed 17\)$/m);
   assert.match(table, /^API key source \(client-reported\): none$/m);
-  assert.match(table, /efficiency vs reference 0\.50, over 1 of 2 tasks with a validated reference/);
+  assert.match(table, /efficiency vs reference length 0\.50, over 1 of 2 tasks with a validated reference/);
   assert.match(table, /^other .* no reference +no reference$/m);
   assert.match(html, /Label: nightly \\u\{001b\}\[31m&lt;b&gt;run&lt;\/b&gt;\\u\{202e\}/);
   assert.match(html, /<dt>Isolation<\/dt><dd>template: tools not restricted by Practonaut<\/dd>/);
-  assert.match(html, /<td data-label="reference">no reference<\/td><td data-label="efficiency vs reference">no reference<\/td>/);
+  assert.match(html, /<td data-label="reference length">no reference<\/td><td data-label="efficiency vs reference length">no reference<\/td>/);
   // The world's content hash is an identifier: under Technical details, named as the world's.
   assert.match(html, /<details class="tech"><summary>Technical details<\/summary><dl class="settings">.*<dt>World content hash \(SHA-256\)<\/dt><dd><code>d{64}<\/code><\/dd>/);
   // The model appears once, as a provenance chip, with its source.
@@ -177,11 +179,11 @@ test('rendering names label, isolation level, world, generated instances and "no
 });
 
 test('the client init line gives the model and apiKeySource, each only when it is plain text', () => {
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5","apiKeySource":"none"}\n'), { model: 'claude-opus-5-5', apiKeySource: 'none' });
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"ANTHROPIC_API_KEY"}'), { model: 'm', apiKeySource: 'ANTHROPIC_API_KEY' });
-  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"\\u001b[2J"}'), { model: 'm', apiKeySource: null });
-  assert.deepEqual(clientInit('{"type":"assistant","subtype":"init","apiKeySource":"none"}'), { model: null, apiKeySource: null });
-  assert.deepEqual(clientInit('null "init"\n{"type":"system","subtype":"init","apiKeySource":"/login managed key"}'), { model: null, apiKeySource: '/login managed key' });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"claude-opus-5-5","apiKeySource":"none"}\n'), { model: 'claude-opus-5-5', apiKeySource: 'none', version: null });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"ANTHROPIC_API_KEY"}'), { model: 'm', apiKeySource: 'ANTHROPIC_API_KEY', version: null });
+  assert.deepEqual(clientInit('{"type":"system","subtype":"init","model":"m","apiKeySource":"\\u001b[2J"}'), { model: 'm', apiKeySource: null, version: null });
+  assert.deepEqual(clientInit('{"type":"assistant","subtype":"init","apiKeySource":"none"}'), { model: null, apiKeySource: null, version: null });
+  assert.deepEqual(clientInit('null "init"\n{"type":"system","subtype":"init","apiKeySource":"/login managed key"}'), { model: null, apiKeySource: '/login managed key', version: null });
 });
 
 test('bench options: --world, --oracle, --seed-list and --label, and their refusals', () => {
@@ -311,4 +313,38 @@ test('pack and validate print the content hash a bench report names, computed in
     assert.match(spawnSync(process.execPath, [cliPath, 'validate', join(dir, 'w.pnworld')], { encoding: 'utf8' }).stdout, new RegExp(`content  sha256 ${expected}`));
     assert.equal((await ownBenchWorld(join(dir, 'w.pnworld'))).contentHash, expected, 'bench names the same hash');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('efficiency says "minimal length" only when every referenced task is proven minimal (PADR-0040)', () => {
+  const all = v2Report([run('Flow', 2, 1, true, 4, 2), run('Flow', 5, 1, true, 2, 2)]);
+  all.settings.tasks = ['Flow']; all.references!.tasks[0]!.minimal = true; all.summary = summarize(all.runs, 1);
+  assert.doesNotThrow(() => validateBenchReportV2(all));
+  // Hand calculation: (2/4 + 2/2) / 2 = 0.75.
+  assert.match(renderTable(all), /efficiency vs minimal length 0\.75  \(1 = as few actions as possible\)/);
+  assert.match(renderTable(all), /^Flow .* 2 \(minimal\) +0\.75$/m);
+  assert.match(renderTable(all, 'de'), /Effizienz gegenüber Minimallänge 0,75/);
+  // Not proven: the plain reference length, as before.
+  const reference = structuredClone(all); reference.references!.tasks[0]!.minimal = false;
+  assert.match(renderTable(reference), /efficiency vs reference length 0\.75  \(> 1 = fewer actions than the reference solution\)/);
+  assert.match(renderTable(reference), /^Flow .* 2 +0\.75$/m);
+  // Some referenced tasks without a proof: the reference length, saying for how many it is proven.
+  const mixed = v2Report([run('Flow', 2, 1, true, 4, 2), run('other', 2, 1, true, 3, 3)]);
+  mixed.settings.seeds = [2];
+  mixed.references!.tasks = [{ taskId: 'Flow', source: 'oracle-file', actions: 2, minimal: true }, { taskId: 'other', source: 'oracle-file', actions: 3, minimal: false }];
+  mixed.summary = summarize(mixed.runs, 1);
+  assert.doesNotThrow(() => validateBenchReportV2(mixed));
+  assert.match(renderTable(mixed), /efficiency vs reference length 0\.75, proven minimal for 1 of 2/);
+});
+
+test('task limits and --checks are shown with the report (PADR-0040)', () => {
+  const value = v2Report();
+  value.environment.world.limits = [{ taskId: 'Flow', actions: 3, checks: 1 }];
+  value.settings.checks = 0;
+  assert.doesNotThrow(() => validateBenchReportV2(value));
+  assert.match(renderTable(value), /^Task limits: Flow: at most 3 changes, at most 1 check$/m);
+  assert.match(renderTable(value), /^Checks per run \(--checks\): 0$/m);
+  assert.match(renderTable(value, 'de'), /^Aufgabenlimits: Flow: höchstens 3 Änderungen, höchstens 1 Prüfung$/m);
+  assert.match(renderHtml(value, ":root{}"), /<dt>Task limits<\/dt><dd>Flow: at most[ \u00a0]3[ \u00a0]changes, at most[ \u00a0]1[ \u00a0]check<\/dd>/);
+  const plain = v2Report();
+  assert.doesNotMatch(renderTable(plain), /Task limits|--checks/);
 });

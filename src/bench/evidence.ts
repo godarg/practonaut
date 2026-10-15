@@ -19,7 +19,7 @@ export const RUN_EVIDENCE = Object.freeze({ bridgeCalls: 'calls.bridge.jsonl', c
 export const MAX_LOG_BYTES = 16 * 1024 * 1024;
 /** The most lines a log keeps. */
 export const MAX_LOG_LINES = 100_000;
-/** Budget refusals recorded in full before they are only counted. */
+/** Budget refusals (of changes and of checks, each) recorded in full before they are only counted. */
 export const MAX_RECORDED_REFUSALS = 100;
 /** Strings of a rejected action's parameters are cut to this many characters. */
 export const MAX_REJECTED_TEXT = 256;
@@ -106,8 +106,10 @@ export function parseCallLog(text: string): CallRecord[] {
 
 const scalar = z.union([z.string().max(4096), z.number().int().safe(), z.boolean(), z.null()]);
 const ActionSchema = z.strictObject({ name: z.string().regex(/^[a-z_]{1,32}$/), params: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,31}$/), scalar), baseStep: z.number().int().nonnegative().safe().optional() });
+/** `check` records a check_result call (PADR-0040): it changes nothing, but a task's check limit is
+ * verified from these host-side records, never from the agent's call log. */
 export const MutationRecordSchema = z.strictObject({
-  seq: count, op: z.enum(['act', 'undo', 'reset']),
+  seq: count, op: z.enum(['act', 'undo', 'reset', 'check']),
   /** For `act`: the action as the host received it; a rejected action's strings are cut. */
   action: ActionSchema.optional(),
   /** The MCP client name the agent declared (shown, never trusted); null without one. */
@@ -140,9 +142,11 @@ export class MutationRecorder {
   /** Budget refusals beyond MAX_RECORDED_REFUSALS: counted, not recorded. */
   omitted = 0;
   private refusals = 0;
+  private checkRefusals = 0;
   /** `position` is read only for an entry that is kept (a refusal beyond the cap costs nothing). */
   record(entry: { op: MutationOp; action?: Action; client?: string | null; outcome: 'accepted' | 'rejected'; code?: string; position: () => { step: number; revision: number } }): void {
     if (entry.code === 'action_budget_exhausted' && ++this.refusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
+    if (entry.code === 'check_budget_exhausted' && ++this.checkRefusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
     if (this.records.length >= MAX_LOG_LINES) { this.omitted++; return; }
     const { step, revision } = entry.position();
     const action = entry.action === undefined ? undefined : {
@@ -168,9 +172,9 @@ export function parseMutations(text: string): MutationRecord[] {
 }
 
 /** What a mutation log says about the run's counters (each kind of call and its outcome). */
-export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number } {
+export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; checkCalls: number; checks: number } {
   const of = (op: MutationOp, outcome?: 'accepted' | 'rejected'): number => records.filter(record => record.op === op && (outcome === undefined || record.outcome === outcome)).length;
-  return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted') };
+  return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted'), checkCalls: of('check'), checks: of('check', 'accepted') };
 }
 
 /** The accepted mutations as the checker's trace replays them, or the reason there is none: a log
@@ -180,11 +184,72 @@ export function timelineOf(records: readonly MutationRecord[], omitted = 0): { t
   if (records.length >= MAX_LOG_LINES && omitted > 0) return { reason: 'log_truncated' };
   const timeline: TimelineEntry[] = [];
   for (const record of records) {
-    if (record.outcome !== 'accepted') continue;
+    // A check changes nothing: it is not part of the timeline the checker replays.
+    if (record.outcome !== 'accepted' || record.op === 'check') continue;
     if (record.op === 'act') timeline.push({ seq: record.seq, op: 'act', action: record.action as Action });
     else timeline.push({ seq: record.seq, op: record.op });
   }
   return { timeline };
+}
+
+// ---- the client's own failure reports ----
+
+/** Why a run could not show what the model can do, as its client's own stream says it: a usage or
+ * rate limit, or an API error. Such a run is an infrastructure error, not a model failure. */
+export interface ClientFailure { reason: 'usage_limit' | 'auth' | 'api_error'; detail: string }
+const LIMIT_TEXT = /usage limit|limit reached|hit your limit|rate.?limit|quota|too many requests/i;
+const AUTH_TEXT = /authentication|unauthori[sz]ed|forbidden|invalid (?:x-)?api.?key|oauth|(?:token|login|session|credentials?) (?:has |have )?expired|expired (?:token|login|session|credentials?)|\/login|not logged in|credit balance|billing/i;
+const SERVER_TEXT = /overloaded|internal server error|service unavailable|bad gateway|gateway time-?out|server_error|"api_error"|connection error/i;
+/** The class of an API error by its HTTP status (from `api_error_status` or "API Error: nnn") or its
+ * words: 429 and usage or rate limits; 401, 403, an expired login or billing; 5xx (529 included).
+ * Any other 4xx — a prompt that is too long, an invalid request — is the agent's (third review). */
+function errorClass(status: number | null, text: string): ClientFailure['reason'] | null {
+  if (status !== null) {
+    if (status === 429) return 'usage_limit';
+    if (status === 401 || status === 403) return 'auth';
+    if (status >= 500 && status <= 599) return 'api_error';
+    if (status >= 400) return null;
+  }
+  if (LIMIT_TEXT.test(text)) return 'usage_limit';
+  if (AUTH_TEXT.test(text)) return 'auth';
+  if (SERVER_TEXT.test(text)) return 'api_error';
+  return null;
+}
+const statusIn = (text: string): number | null => { const match = /API Error:?\s*(\d{3})\b/i.exec(text); return match ? Number(match[1]) : null; };
+const DETAIL: Record<ClientFailure['reason'], string> = { usage_limit: 'usage or rate limit', auth: 'authentication or billing', api_error: 'API error' };
+/**
+ * Scans a stream-json client's output for its own failure reports (PADR-0040): a `rate_limit_event`
+ * whose status is not `allowed`/`allowed_warning`; a `result` with `is_error` (not
+ * `error_max_turns`) or an assistant message the client marks as an API error, whose status or words
+ * name a usage or rate limit (429), an authentication or billing error (401, 403, an expired login)
+ * or a server error (5xx, 529 included). A context overflow and other 4xx errors stay the agent's.
+ * The detail is fixed text, never the client's own words.
+ */
+export function clientFailure(stdout: string): ClientFailure | null {
+  for (const line of stdout.split('\n')) {
+    if (!line.trimStart().startsWith('{')) continue;
+    let event: Record<string, unknown>;
+    try { const parsed: unknown = JSON.parse(line); if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue; event = parsed as Record<string, unknown>; } catch { continue; }
+    if (event.type === 'rate_limit_event') {
+      const status = (event.rate_limit_info as { status?: unknown } | undefined)?.status;
+      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') return { reason: 'usage_limit', detail: 'rate_limit_event not allowed' };
+      continue;
+    }
+    if (event.type === 'result' && event.is_error === true && event.subtype !== 'error_max_turns') {
+      const text = [event.result, event.error, ...(Array.isArray(event.errors) ? event.errors : [])].filter((value): value is string => typeof value === 'string').join(' ').slice(0, 4096);
+      const reason = errorClass(typeof event.api_error_status === 'number' ? event.api_error_status : statusIn(text), text);
+      if (reason) return { reason, detail: `result is_error: ${DETAIL[reason]}` };
+      continue;
+    }
+    if (event.type === 'assistant' && (event.isApiErrorMessage === true || typeof event.error === 'string')) {
+      const content = (event.message as { content?: unknown } | undefined)?.content;
+      const words = Array.isArray(content) ? content.flatMap(part => typeof (part as { text?: unknown })?.text === 'string' ? [(part as { text: string }).text] : []) : [];
+      const text = [typeof event.error === 'string' ? event.error : '', ...words].join(' ').slice(0, 4096);
+      const reason = errorClass(statusIn(text), text);
+      if (reason) return { reason, detail: `assistant API error: ${DETAIL[reason]}` };
+    }
+  }
+  return null;
 }
 
 // ---- the client's own figures ----

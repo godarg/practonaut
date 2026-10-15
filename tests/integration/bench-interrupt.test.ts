@@ -45,9 +45,11 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
       assert.equal(code, 130, stderr); assert.ok(Date.now() - started < 15_000, 'stops within the kill grace period');
       assert.ok(await until(() => !alive(pids!.agent) && !alive(pids!.child), 5_000), 'agent and its child are gone');
       assert.match(stderr, /stopping — ending the agent/);
-      assert.match(stdout, /Interrupted: this partial report holds 1 of 3 planned runs/);
+      // The interrupted run is listed, not judged; the rest is named for a resumed bench (PADR-0040).
+      assert.match(stdout, /Interrupted: this report holds 2 of 3 planned runs; the run in progress is listed as not judged \(infra_error, “interrupted”\)\. To resume, bench the remaining tasks: --tasks decision,insert-between/);
       const report = validateBenchReport(JSON.parse(await readFile(out, 'utf8')));
-      assert.deepEqual([report.runs.length, report.runs[0]!.taskId, report.interrupted], [1, 'connect', { plannedRuns: 3 }]);
+      assert.deepEqual([report.runs.length, report.runs[0]!.taskId, report.interrupted], [2, 'connect', { plannedRuns: 3 }]);
+      assert.deepEqual([report.runs[1]!.taskId, report.runs[1]!.status, report.runs[1]!.note, report.runs[1]!.checker, report.runs[1]!.pass], ['decision', 'infra_error', 'interrupted', null, false]);
       const left = await files(home);
       assert.deepEqual(left.filter(name => /\.token$|open-.*\.html$/.test(name)), [], 'no session token or launcher file is left behind');
     } finally {
@@ -57,7 +59,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   });
 }
 
-test('an interrupted bench before any run finished writes no report and exits 130', { timeout: 120_000, skip: POSIX_SIGNALS }, async () => {
+test('a bench interrupted in its only run lists that run as not judged and exits 130', { timeout: 120_000, skip: POSIX_SIGNALS }, async () => {
   const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-interrupt-home-'));
   try {
     const bench = spawn(process.execPath, [CLI, 'bench', '--agent', `${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} sleep {mcp_config}`, '--tasks', 'connect', '--mirror', 'off'], { env: { ...process.env, PRACTONAUT_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -65,7 +67,10 @@ test('an interrupted bench before any run finished writes no report and exits 13
     assert.ok(await until(() => stderr.includes('practonaut bench: 1 run'), 30_000)); await new Promise(resolve => setTimeout(resolve, 2_000));
     bench.kill('SIGINT');
     const [code] = await once(bench, 'exit') as [number | null];
-    assert.equal(code, 130, stderr); assert.match(stderr, /interrupted before the first run finished; no report written/);
+    assert.equal(code, 130, stderr);
+    const benches = await readdir(join(home, 'bench'));
+    const report = validateBenchReport(JSON.parse(await readFile(join(home, 'bench', benches[0]!, 'report.json'), 'utf8')));
+    assert.deepEqual([report.runs.length, report.runs[0]!.status, report.runs[0]!.note, report.interrupted], [1, 'infra_error', 'interrupted', undefined]);
     assert.deepEqual((await files(home)).filter(name => /\.token$/.test(name)), []);
   } finally { await rm(home, { recursive: true, force: true }); }
 });

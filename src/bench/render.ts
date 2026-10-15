@@ -145,6 +145,15 @@ export function commandLine(command: readonly string[]): string {
     return short === '' ? "''" : /\s/.test(short) ? `'${short}'` : short;
   }).join(' ');
 }
+/** Task limits (PADR-0040), a setting of the bench: a task's own, from the stored world, and the
+ * session's --checks. */
+function limitFacts(report: BenchReport, t: Words, language: Language): Array<[label: string, value: string]> {
+  if (!isBenchReportV2(report)) return [];
+  const facts: Array<[string, string]> = [], limits = report.environment.world.limits ?? [];
+  if (limits.length) facts.push([t.taskLimits, limits.map(entry => `${entry.taskId}: ${[...(entry.actions !== undefined ? [fill(language, t.limitActions, { n: entry.actions })] : []), ...(entry.checks !== undefined ? [fill(language, t.limitChecks, { n: entry.checks })] : [])].join(', ')}`).join('; ')]);
+  if (report.settings.checks !== undefined) facts.push([t.checksSetting, String(report.settings.checks)]);
+  return facts;
+}
 /** bench/2 facts that are identifiers rather than findings: shown under Technical details. */
 function technicalFacts(report: BenchReport, t: Words): Array<[label: string, value: string]> {
   const facts: Array<[string, string]> = [];
@@ -167,12 +176,19 @@ const planLine = (report: BenchReport, language: Language): string => {
 };
 const fixed = (value: number | null, digits: number, language: Language): string => value === null ? '—' : number(value, digits, language);
 const seconds = (ms: number | null, language: Language): string => ms === null ? '—' : `${number(ms / 1000, 1, language)} s`;
-const referenceCell = (value: number | null, t: Words): string => value === null ? t.noReference : String(value);
-function efficiencyText(report: BenchReport, language: Language): { value: string; detail?: string } {
-  const t = TEXT[language], tasks = report.summary.byTask, referenced = tasks.filter(task => task.referenceActions !== null).length;
-  if (!referenced) return { value: t.noReference };
+/** Tasks whose reference is a proven minimal solution (PADR-0040); none for bench/1. */
+const minimalTasks = (report: BenchReport): ReadonlySet<string> => new Set(isBenchReportV2(report) ? (report.references?.tasks ?? []).filter(task => task.minimal === true).map(task => task.taskId) : []);
+const referenceCell = (report: BenchReport, taskId: string, value: number | null, t: Words): string => value === null ? t.noReference : minimalTasks(report).has(taskId) ? `${value} (${t.minimal})` : String(value);
+/** Efficiency only where a validated reference exists; otherwise "no reference". It is "vs minimal
+ * length" only when every referenced task's reference is proven minimal, else "vs reference length". */
+function efficiencyText(report: BenchReport, language: Language): { label: string; direction: string; value: string; detail?: string } {
+  const t = TEXT[language], tasks = report.summary.byTask, referenced = tasks.filter(task => task.referenceActions !== null), minimal = minimalTasks(report);
+  const proven = referenced.filter(task => minimal.has(task.taskId)).length, all = referenced.length > 0 && proven === referenced.length;
+  const label = all ? t.efficiencyMinimal : t.efficiency, direction = all ? t.efficiencyMinimalDirection : t.efficiencyDirection;
+  if (!referenced.length) return { label, direction, value: t.noReference };
   const value = fixed(report.summary.efficiencyVsReference, 2, language);
-  return referenced < tasks.length ? { value, detail: fill(language, t.referencePartial, { n: referenced, m: tasks.length }) } : { value };
+  const details = [...(referenced.length < tasks.length ? [fill(language, t.referencePartial, { n: referenced.length, m: tasks.length })] : []), ...(proven && !all ? [fill(language, t.minimalPartial, { n: proven, m: referenced.length })] : [])];
+  return { label, direction, value, ...(details.length ? { detail: details.join(', ') } : {}) };
 }
 /** pass^k for k = repeats: the instances where all k repeats passed, of all instances (null with one repeat). */
 function allRepeatsCount(report: BenchReport): { all: number; instances: number } | null {
@@ -255,7 +271,7 @@ export function renderTable(report: BenchReport, language: Language = 'en', deta
   lines.push(shown(headline(report, language, verification).join(' · ')));
   if (isBenchReportV2(report) && report.label !== undefined) lines.push(`${t.label}: ${shown(report.label)}`);
   if (isBenchReportV2(report)) lines.push(shown(`${t.world}: ${worldText(report, t)}`));
-  for (const [label, value] of technicalFacts(report, t).filter(([label]) => label !== t.commandLabel)) lines.push(shown(`${label}: ${value}`));
+  for (const [label, value] of [...limitFacts(report, t, language), ...technicalFacts(report, t).filter(([label]) => label !== t.commandLabel)]) lines.push(shown(`${label}: ${value}`));
   lines.push(sampleLine(report, language));
   if (report.interrupted) lines.push(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
   lines.push(planLine(report, language));
@@ -265,12 +281,12 @@ export function renderTable(report: BenchReport, language: Language = 'en', deta
   if (repeats) lines.push(repeats);
   lines.push(`${t.meanActions} ${fixed(s.meanActions, 1, language)}   ${t.meanActionsPassed} ${fixed(s.meanActionsPassed, 1, language)}   ${t.wall} ${seconds(s.meanWallMs, language)}`);
   const efficiency = efficiencyText(report, language);
-  lines.push(`${t.efficiency} ${efficiency.value}${efficiency.detail ? `, ${efficiency.detail}` : ''}  (${t.efficiencyDirection})`);
+  lines.push(`${efficiency.label} ${efficiency.value}${efficiency.detail ? `, ${efficiency.detail}` : ''}  (${efficiency.direction})`);
   const totals = clientTotals(report, language);
   if (totals) lines.push(totals);
   lines.push('');
-  const header = [t.task, t.runs, t.passed, t.actions, t.reference, t.efficiency];
-  const rows = s.byTask.map(task => [shown(task.taskId), String(task.runs), rateText(task.passed, task.runs, language), fixed(task.meanActions, 1, language), referenceCell(task.referenceActions, t), task.referenceActions === null ? t.noReference : fixed(task.efficiency, 2, language)]);
+  const header = [t.task, t.runs, t.passed, t.actions, t.reference, efficiency.label];
+  const rows = s.byTask.map(task => [shown(task.taskId), String(task.runs), rateText(task.passed, task.runs, language), fixed(task.meanActions, 1, language), referenceCell(report, task.taskId, task.referenceActions, t), task.referenceActions === null ? t.noReference : fixed(task.efficiency, 2, language)]);
   const widths = header.map((head, column) => Math.max(head.length, ...rows.map(row => row[column]!.length)));
   const format = (row: string[]): string => row.map((cell, column) => column === 0 ? cell.padEnd(widths[column]!) : cell.padStart(widths[column]!)).join('  ');
   lines.push(format(header)); lines.push(widths.map(width => '─'.repeat(width)).join('  '));
@@ -458,11 +474,11 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
     figure(t.passAt1, rateText(s.passed, s.runs, language), [fill(language, t.passedOf, { runs: fill(language, t.runCount, { n: s.runs }) }), ...(s.infraErrors ? [fill(language, t.infraIncluded, { n: s.infraErrors })] : [])].join(' · ')),
     ...(passHat && repeated ? [figure(fill(language, t.passHat, { k: report.settings.repeats }), rateText(repeated.all, repeated.instances, language), passHat)] : []),
     figure(t.meanActions, fixed(s.meanActions, 1, language), fill(language, t.whenPassed, { value: fixed(s.meanActionsPassed, 1, language) })),
-    figure(t.efficiency, efficiency.value, efficiency.detail ? `${efficiency.detail} · ${t.efficiencyDirection}` : t.efficiencyDirection),
+    figure(efficiency.label, efficiency.value, efficiency.detail ? `${efficiency.detail} · ${efficiency.direction}` : efficiency.direction),
     figure(t.wall, seconds(s.meanWallMs, language)),
   ];
   const totals = clientTotals(report, language);
-  const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language)), esc(fixed(task.meanActions, 1, language)), esc(referenceCell(task.referenceActions, t)), task.referenceActions === null ? esc(t.noReference) : esc(fixed(task.efficiency, 2, language))]);
+  const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language)), esc(fixed(task.meanActions, 1, language)), esc(referenceCell(report, task.taskId, task.referenceActions, t)), task.referenceActions === null ? esc(t.noReference) : esc(fixed(task.efficiency, 2, language))]);
   const ordered = failuresFirst(report.runs);
   // Result first, so a stacked row on a phone leads with it (F2); error classes wrap.
   const runRows = ordered.map(run => [runResult(run, t), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
@@ -483,7 +499,7 @@ ${chips(t.provenance, facts)}
 ${isBenchReportV2(report) && report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
 ${ended.length ? `<p class="meta">${esc(fill(language, t.endedNote, { n: ended.length, list: endedList.join(', ') }))} <a href="#run-${esc(ended[0]!.id)}">${esc(fill(language, t.endedLink, { n: ended.length }))}</a></p>\n` : ''}${jump}</header>
 ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
-<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }, { text: t.actions, numeric: true }, { text: t.reference, numeric: true }, { text: t.efficiency, numeric: true }], taskRows)}</section>
+<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }, { text: t.actions, numeric: true }, { text: t.reference, numeric: true }, { text: efficiency.label, numeric: true }], taskRows)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.actions, numeric: true }, { text: t.rejected, numeric: true }, { text: t.undo, numeric: true }, { text: t.reset, numeric: true }, { text: t.calls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${ordered.map(run => runHtml(run, report, details, language)).join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
@@ -492,7 +508,7 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? (isBenchReportV2(report) ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
 <dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
-<dt>${esc(t.environment)}</dt><dd>${esc(`Practonaut ${e.practonaut} · Excalidraw ${e.excalidraw} · Node ${e.node} · ${e.os.platform} ${e.os.release} ${e.os.arch}`)}</dd>
+${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(`Practonaut ${e.practonaut} · Excalidraw ${e.excalidraw} · Node ${e.node} · ${e.os.platform} ${e.os.release} ${e.os.arch}`)}</dd>
 </dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }

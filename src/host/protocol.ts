@@ -15,7 +15,7 @@ export const HOST_ERROR_CODES = [
   "bootstrap_used", "token_file_unsafe", "not_found", "method_not_allowed", "session_busy",
   "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "replay_mismatch", "stale_base",
   "E_NETWORK_AVAILABLE", "result_too_large", "diagnostic_limit", "diagnostic_unavailable", "editor_divergence", "author_required", "outcome_unknown", "action_budget_exhausted",
-  "demonstration_running", "demonstration_attempt",
+  "check_budget_exhausted", "demonstration_running", "demonstration_attempt",
 ] as const;
 export type HostErrorCode = typeof HOST_ERROR_CODES[number] | Failure["code"];
 export interface PublicCondition {
@@ -28,9 +28,16 @@ export interface PublicCheck {
   scope: "end-state-only"; hash: string; revision: number; passed: boolean;
   conditions: ConditionResult[]; errors: Array<{ id: string; explanation: Localized }>;
   mode: "real-engine" | "model-only"; practiceEvidence: boolean;
+  /** Checks left in this attempt after this one, when the attempt has a check limit (PADR-0040). */
+  checksRemaining?: number;
   /** The check judged the bundled example's demonstration board: never anyone's result, never practice evidence. */
   demonstration?: true;
 }
+/** One limit of the current attempt: how many are allowed and how many were used (PADR-0040). */
+export interface LimitCount { limit: number; used: number }
+/** The current attempt's limits; a key is present only when that limit applies. Actions are accepted
+ * changes (act, undo, reset); checks are evaluated checks. */
+export interface PracticeLimits { actions?: LimitCount; checks?: LimitCount }
 /** Who made a change: a person in the Player or the real editor, an agent through MCP, or the
  * bundled example's demonstration (host-only; no request can claim it). The client name is what the
  * MCP client declared about itself at `initialize`; it is shown, never trusted. */
@@ -59,6 +66,8 @@ export interface HostView {
   demonstration?: true;
   hints: Localized[]; result: PublicCheck | null;
   errors: Array<{ id: string; explanation: Localized }>;
+  /** Present when the attempt has a task or session limit (PADR-0040). */
+  limits?: PracticeLimits;
 }
 export interface RevisionRequest { expectedRevision: number }
 /** Internal monotonic deadline, set at HTTP admission and never taken from wire input. */
@@ -80,6 +89,8 @@ export interface MutationDelta {
   errors: Array<{ id: string; explanation: Localized }>;
   /** Set when the changed objects were too large to send (DELTA_LIMIT_BYTES): observe instead. */
   changedOmitted?: true;
+  /** The attempt's limits after this change, when it has any. */
+  limits?: PracticeLimits;
 }
 export interface MutationReply { view: HostView; delta: MutationDelta; mirrorConfirmed: boolean; latencyMs: number }
 /** The HTTP reply to a mutation that asked for `reply: "delta"` (the MCP bridge does): the same
@@ -117,6 +128,8 @@ export type HostEvent =
 
 /** Static shell/assets and bootstrap are public; authenticated API reads/mutations are header-only. */
 export interface ServeOptions { seed?: number; taskId?: string; mirror?: MirrorMode; tokenDirectory?: string;
+  /** `--checks <n>`: a session check limit; with a task's own limit the smaller one applies. */
+  checks?: number;
   /** Task-list facts by task id; defaults to the bundled library's when the world is the library. */
   taskInfo?: Record<string, { level: 1 | 2 | 3; referenceActions: number }>;
   /** Offer the bundled example's demonstration (`practonaut` and `play` without a world set it; the

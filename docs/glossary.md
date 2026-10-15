@@ -36,6 +36,10 @@ contradict these definitions.
 | **Model-only** | A session without the mirror. Tasks work, but results are not checked against the real application. |
 | **Library task** | A task from the bundled Excalidraw task library (`tasks/excalidraw/`), addressed as `excalidraw/<id>`. |
 | **Reference solution (oracle)** | A known action sequence that solves a task; used to verify the task and by the `oracle` bench agent. Never shown to agents. |
+| **Minimal length / reference length** | A reference's length is *minimal* when a bounded search proves that no solution is shorter (PADR-0040); otherwise it is only a *reference length*, and a shorter solution may exist. |
+| **Task limits** | A task's public `limits`: how many accepted changes (undo and reset included) and checks one attempt may use. Enforced by the host for the Player and agents alike. |
+| **Challenge tier** | Harder generated task families (repair, injection, long horizon, limited checks, tight budget); a family is published only after it passes its preregistered ladder gate (PADR-0040). |
+| **Held-out instance** | A generated instance made right before a gate round from fresh seeds and not looked at while tuning; the gate's unit of analysis. |
 | **Near miss** | A result that looks close to the goal but must fail the check; proves the goal predicate is strict enough. |
 | **Bench run** | One agent attempt on one task, seed and repeat, in a fresh session, scored by the checker after the agent stops. |
 | **pass@1 / pass^k** | Share of passed runs / the chance that all of k repeats of the same task and seed pass (τ-bench). |

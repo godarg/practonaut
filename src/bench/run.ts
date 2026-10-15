@@ -12,8 +12,9 @@
  * agent has ended (PADR-0036), so no agent finds them there while it runs.
  */
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { arch, homedir, release } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,12 +32,13 @@ import { sha256Hex } from '../canonical/index.ts';
 import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
+import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
 import { StdioMcpClient, type ClientCall, type McpServerEntry } from './mcp-client.ts';
-import { clientResult, MAX_LOG_BYTES, MutationRecorder, normaliseCallLog, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
+import { clientFailure, clientResult, MAX_LOG_BYTES, mutationCounts, MutationRecorder, normaliseCallLog, parseCallLog, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf } from './evidence.ts';
 import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientInit, displayCommand, type AgentSpec } from './agents.ts';
 import { spawnable } from '../platform/spawnable.ts';
-import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from './report.ts';
 import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
 
@@ -48,6 +50,11 @@ export interface BenchOptions {
   world?: BenchWorld; references?: ReadonlyMap<string, BenchReference>;
   /** `--label`: stored in the report as given. */
   label?: string;
+  /** `--checks`: checks allowed per run; with a task's own limit the smaller applies (PADR-0040). */
+  checks?: number;
+  /** `--stop-on-infra`: stop at the first infra_error run (a usage or rate limit, an API error, an
+   * agent that ended without a tool call) and write the partial report (PADR-0040). */
+  stopOnInfra?: boolean;
   /** Variables a preset agent gets although `withheldFromPreset` names them (`--keep-env`). */
   keepEnv?: readonly string[];
   /** Progress lines (stderr in the CLI). */
@@ -97,7 +104,14 @@ export function countingController(inner: PracticeController, counters: RunCount
       counters.mutations++;
       const reply = await inner.reset(request, context); if (reply.ok) counters.resets++; note('reset', reply, extra); return reply;
     },
-    check: async (request, context) => { counters.check++; return inner.check(request, context); },
+    // Every check is recorded host-side too (PADR-0040): `report --verify` counts a task's check
+    // limit from these records, never from the agent's call log.
+    check: async (request, context) => {
+      counters.check++;
+      const reply = await inner.check(request, context);
+      recorder?.record({ op: 'check', client: null, outcome: reply.ok ? 'accepted' : 'rejected', ...(reply.ok ? {} : { code: reply.error.code }), position: () => { const now = inner.view(); return { step: now.step, revision: now.revision }; } });
+      return reply;
+    },
     variant: (request, context) => inner.variant(request, context),
     hint: (request, context) => inner.hint(request, context),
     png: context => inner.png(context),
@@ -117,6 +131,11 @@ export function benchId(now = new Date()): string { return now.toISOString().rep
 export async function libraryWorld(): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
   const world = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
   return { world, entries: new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
+}
+
+/** The public limits of the benched tasks that have them (PADR-0040), as a report records them. */
+export function taskLimitsOf(world: World, tasks: readonly string[]): Array<{ taskId: string; actions?: number; checks?: number }> {
+  return tasks.flatMap(taskId => { const limits = world.tasks.find(task => task.id === taskId)?.limits; return limits ? [{ taskId, ...limits }] : []; });
 }
 
 /** File names of a run's judged artifacts inside its run directory (`<bench>/<run-id>/`). */
@@ -153,6 +172,13 @@ export function infraNote(error: unknown): string {
 
 /** Agent processes that are running now; a forced stop (second Ctrl+C) ends their groups at once. */
 const runningAgents = new Set<number>();
+/** The running agent's process id (its process group's on POSIX), in the run folder. */
+const AGENT_PID_FILE = 'agent.pid';
+/** Whether the agent whose id a run folder records still runs (POSIX: anything of its process group). */
+function agentAlive(pid: number): boolean {
+  try { process.kill(process.platform === 'win32' ? pid : -pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
 export function killRunningAgents(): void { for (const pid of runningAgents) killProcessTree(pid, 'SIGKILL'); }
 
 export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: boolean; errorClasses: string[] } {
@@ -161,6 +187,10 @@ export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: bo
 }
 
 interface AgentOutcome { status: BenchRunV2['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
+/** How a run's note names a client failure; the gate reads the first two (rejected by the client). */
+export const CLIENT_FAILURE_WORDS = Object.freeze({ usage_limit: 'a usage or rate limit', auth: 'an authentication or billing error', api_error: 'an API error' });
+/** An external run the client's own stream marks as an infrastructure error: not judged. */
+class ClientInfraError extends Error { readonly outcome: AgentOutcome; constructor(outcome: AgentOutcome) { super(outcome.note ?? "infra_error"); this.outcome = outcome; } }
 
 /**
  * Ends an agent and everything it started. POSIX: the agent leads its own process group (spawned
@@ -186,6 +216,8 @@ async function runExternal(argv: string[], cwd: string, env: NodeJS.ProcessEnv, 
       const { command, args, windowsVerbatimArguments } = spawnable(argv);
       const child = spawn(command, args, { cwd, env, stdio: ['pipe', stdout.fd, stderr.fd], detached: posix, windowsHide: true, ...(windowsVerbatimArguments ? { windowsVerbatimArguments } : {}) });
       if (child.pid !== undefined) runningAgents.add(child.pid);
+      // Beside the run's logs: `bench --recover` refuses while the agent of a killed bench still runs.
+      if (child.pid !== undefined) try { writeFileSync(join(logs, AGENT_PID_FILE), `${child.pid}\n`, { mode: 0o600 }); } catch { /* recovery then cannot tell */ }
       let timedOut = false, interrupted = false, settled = false, hardKill: ReturnType<typeof setTimeout> | undefined;
       const stop = (): void => { killProcessTree(child.pid, 'SIGTERM'); hardKill = setTimeout(() => killProcessTree(child.pid, 'SIGKILL'), 3_000); hardKill.unref(); };
       const timer = setTimeout(() => { timedOut = true; stop(); }, deadlineMs);
@@ -287,7 +319,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
   const paths = await resolvedDataPaths(), id = benchId(), directory = join(paths.home, 'bench', id);
   await ensurePrivateDirectory(directory);
   const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
-  const runs: BenchRunV2[] = []; let interrupted = false;
+  const runs: BenchRunV2[] = []; let interrupted = false; let stopped: { run: string; remaining: string[] } | undefined;
   let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null };
   for (const [index, item] of plan.entries()) {
     if (interrupted || options.signal?.aborted) { interrupted = true; break; }
@@ -303,7 +335,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     try {
       // A bench host publishes only the run's own task (and refuses a change to another one), without
       // task-list facts: no reference length of any task is the agent's to see.
-      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, singleTask: true, taskInfo: {}, tokenDirectory: join(home, 'host'), controllerFactory: factory });
+      host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, singleTask: true, taskInfo: {}, tokenDirectory: join(home, 'host'), controllerFactory: factory, ...(options.checks !== undefined ? { checks: options.checks } : {}) });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       // The bridge's call log goes into the run folder, outside the agent's own folder (PADR-0039).
       const entry: McpServerEntry = { command: process.execPath, args: [CLI_ENTRY, 'mcp', '--host', host.origin, '--token-file', host.tokenFile, '--call-log', join(home, RUN_EVIDENCE.bridgeCalls)], env: { PRACTONAUT_HOME: agentDirectory } };
@@ -324,10 +356,22 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
         if (client.model === null && client.apiKeySource === null) client = init;
         // Tokens, turns and cost as the client states them (self-reported, PADR-0039).
         const figures = clientResult(await stdoutTail(join(home, 'agent.stdout')));
-        if (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null) runClient = { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures };
+        if (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null) runClient = { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures, ...(init.version !== null ? { version: init.version } : {}) };
+        // A run that could not show what the model can do is an infrastructure error, not judged
+        // (PADR-0040): the client's own stream reports a usage or rate limit or an API error, or the
+        // agent ended without completing and without a single tool call.
+        if (outcome.status !== 'interrupted' && !options.signal?.aborted) {
+          const failure = clientFailure((await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '');
+          const calls = counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check;
+          if (failure) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the client reported ${CLIENT_FAILURE_WORDS[failure.reason]} (${failure.detail})` };
+          else if (outcome.status !== 'completed' && calls === 0) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: outcome.note ? `${outcome.note}; the agent ended without a single tool call` : `the agent ended (${outcome.status}) without a single tool call` };
+        }
       }
       wallMs = Math.round(performance.now() - started);
-      if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
+      // An interrupted run is listed, not judged: its folder holds the agent's output, so the report
+      // names it (infra_error, "interrupted") and the task can be benched again (PADR-0040).
+      if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; throw new ClientInfraError({ status: 'infra_error', exitCode: outcome.exitCode, note: 'interrupted' }); }
+      if (outcome.status === 'infra_error') throw new ClientInfraError(outcome);
       // Judge the host's committed session, independently, in separate checker processes.
       const view = inner!.view(); finalActions = view.log.length;
       const session: SessionData = { schema: 'practonaut.session/1', world: view.world, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
@@ -352,11 +396,10 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText), ...await pictureAndTrace(home, world, item, sessionText, view.revision, recorder, inner!, options.mirror, logs !== undefined) };
       checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
     } catch (error) {
-      if (options.signal?.aborted) { interrupted = true; continue; }
-      outcome = { status: 'infra_error', exitCode: null, note: infraNote(error) };
+      if (!(error instanceof ClientInfraError) && options.signal?.aborted) interrupted = true;
+      outcome = error instanceof ClientInfraError ? error.outcome : interrupted ? { status: 'infra_error', exitCode: null, note: 'interrupted' } : { status: 'infra_error', exitCode: null, note: infraNote(error) };
       checker = null; artifacts = undefined;
     } finally { await host?.close().catch(() => {}); }
-    if (interrupted) break;
     // The logs explain the run whether or not it was judged; a log that cannot be written is left out.
     if (host && !logsTried) logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
     const run: BenchRunV2 = {
@@ -368,32 +411,157 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
+    if (interrupted) break;
+    // --stop-on-infra: a usage limit or an API error affects every later run as well; stop here and
+    // write the partial report so the operator can resume with the remaining tasks.
+    if (options.stopOnInfra && run.status === 'infra_error' && index < plan.length - 1) {
+      stopped = { run: runId, remaining: [...new Set(plan.slice(index).map(value => value.taskId))] };
+      options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} [infra_error]  ${run.note ?? ''}`);
+      interrupted = true; break;
+    }
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
   if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
-  // Every agent of this bench has ended: only now do the world and the references enter the bench folder.
+  const report = await assembleReport({ options, mirror: options.mirror, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client, planned: plan.length, partial: interrupted && runs.length < plan.length, ...(stopped ? { stopped } : {}) });
+  return { report, directory, interrupted, planned: plan.length };
+}
+
+/** The report of a bench's runs: the world and the references enter the bench folder only now, after
+ * every agent of the bench has ended (or, for a recovered bench, after it was killed). */
+async function assembleReport(input: {
+  options: Pick<BenchOptions, 'tasks' | 'seeds' | 'repeats' | 'timeoutSeconds' | 'maxActions' | 'mirrorRequested' | 'agent' | 'keepEnv' | 'label' | 'checks'>;
+  mirror: MirrorMode; prepared: BenchWorld; world: World; worldBytes: Buffer; worldSha256: string; references: ReadonlyMap<string, BenchReference>; referencesFile: string | null;
+  directory: string; runs: BenchRunV2[]; client: { model: string | null; apiKeySource: string | null }; planned: number; partial: boolean; stopped?: { run: string; remaining: string[] }; recovered?: true; createdAt?: string;
+}): Promise<BenchReportV2> {
+  const { options, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client } = input;
   await storeWorld(directory, worldBytes, worldSha256);
   let referencesBinding: BenchReportV2['references'] = null;
   if (referencesFile !== null) {
     await writeRunArtifact(directory, BENCH_REFERENCES_FILE, referencesFile);
-    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(referencesFile), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.steps.length }] : []; }) };
+    // Whether each reference is a proven minimal solution for every planned seed (PADR-0040).
+    referencesBinding = { path: BENCH_REFERENCES_FILE, sha256: sha256Hex(referencesFile), tasks: options.tasks.flatMap(taskId => { const value = references.get(taskId); return value ? [{ taskId, source: value.source, actions: value.steps.length, minimal: analyseLengthForSeeds(world, taskId, options.seeds, value.steps.length).kind === 'minimal' }] : []; }) };
   }
   const generated = options.tasks.flatMap(taskId => { const by = world.tasks.find(task => task.id === taskId)?.generatedBy; return by ? [{ taskId, ...by }] : []; });
+  const limits = taskLimitsOf(world, options.tasks);
   const model = options.agent.kind === 'builtin' ? null : client.model;
   const report: BenchReportV2 = {
-    schema: BENCH_SCHEMA, createdAt: new Date().toISOString(), ...(options.label !== undefined ? { label: options.label } : {}),
+    schema: BENCH_SCHEMA, createdAt: input.createdAt ?? new Date().toISOString(), ...(options.label !== undefined ? { label: options.label } : {}),
     environment: {
-      practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: options.mirror,
-      world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated },
+      practonaut: PACKAGE_VERSION, excalidraw: EXCALIDRAW_APP_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() }, mirror: input.mirror,
+      world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated, ...(limits.length ? { limits } : {}) },
     },
     agent: {
       kind: options.agent.kind, name: options.agent.name, command: displayCommand(options.agent.command), isolation: ISOLATION_OF[options.agent.kind],
       model, modelSource: model === null ? 'none' : options.agent.kind === 'preset' ? 'client-attested' : 'command-output',
       apiKeySource: options.agent.kind === 'builtin' ? null : client.apiKeySource, keptEnv: options.agent.kind === 'preset' ? [...(options.keepEnv ?? [])] : [],
     },
-    settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT },
+    settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT, ...(options.checks !== undefined ? { checks: options.checks } : {}) },
     references: referencesBinding,
-    runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length } } : {}), summary: summarize(runs, options.repeats),
+    // A report that holds every planned run (the last one interrupted) is not a partial report.
+    runs, ...(input.partial ? { interrupted: { plannedRuns: input.planned, ...(input.stopped ? { stopped: input.stopped } : {}) } } : {}),
+    ...(input.recovered ? { recovered: true as const } : {}), summary: summarize(runs, options.repeats),
   };
-  return { report: validateBenchReportV2(report), directory, interrupted, planned: plan.length };
+  return validateBenchReportV2(report);
+}
+
+/**
+ * `bench --recover <bench folder>` (PADR-0040): a bench that was killed (kill -9, power loss, a second
+ * Ctrl+C) leaves its run folders but no report. This rebuilds the partial report from them with the
+ * bench's own arguments (world, references, agent, settings): in plan order up to the first run
+ * without a folder, a run whose folder holds the checker's output is listed as judged, from its
+ * judged artifacts and evidence exactly as `report --verify` re-judges them (the caller verifies the
+ * report before it is written); a run without it is an infra_error, "interrupted" (or the limit or
+ * API error its client reported). Its counters come from the host-side mutation log, its client
+ * figures from the agent's own output; the agent's exit status is read from that output (a result
+ * event: completed or agent_failed; none: timeout). The report is dated by the last file the bench
+ * wrote, so a bench resumed before the recovery still merges after it.
+ */
+export async function recoverBench(options: BenchOptions, directory: string): Promise<{ report: BenchReportV2; remaining: string[] }> {
+  const prepared = options.world ?? await libraryBenchWorld();
+  const references: ReadonlyMap<string, BenchReference> = options.references ?? (prepared.source === 'library' ? libraryReferences(options.tasks) : new Map());
+  const referencesFile = references.size ? referencesText(references, options.tasks) : null;
+  const { world, bytes: worldBytes, sha256: worldSha256 } = await benchedWorld(prepared);
+  const plan = options.tasks.flatMap(taskId => options.seeds.flatMap(seed => Array.from({ length: options.repeats }, (_, index) => ({ taskId, seed, repeat: index + 1 }))));
+  // Every run folder of the bench folder is recovered: one outside these arguments' plan, or after a
+  // planned run without a folder, would be left out of the report (and refuse a challenge round).
+  const folders = (await readdir(directory, { withFileTypes: true }).catch(() => { throw new BenchReportError('the bench folder cannot be read'); })).filter(entry => entry.isDirectory() && /-s\d+-r\d+$/.test(entry.name)).map(entry => entry.name);
+  const planned = new Set(plan.map(entry => `${entry.taskId}-s${entry.seed}-r${entry.repeat}`));
+  const foreign = folders.find(name => !planned.has(name));
+  if (foreign !== undefined) throw new BenchReportError(`run folder ${foreign} is not in the plan of these arguments; recover with the bench's own arguments (world, tasks, seed list, repeats)`);
+  const runs: BenchRunV2[] = [];
+  let client: { model: string | null; apiKeySource: string | null } = { model: null, apiKeySource: null }, native = false, lastActivity = 0;
+  const file = async (home: string, name: string): Promise<string | null> => readFile(join(home, name), 'utf8').catch(() => null);
+  const external = options.agent.kind !== 'builtin';
+  for (const item of plan) {
+    const runId = `${item.taskId}-s${item.seed}-r${item.repeat}`, home = join(directory, runId);
+    const started = await stat(home).catch(() => null);
+    if (!started?.isDirectory()) break;
+    try {
+      // The bench was killed after the last file of its folders was written.
+      for (const entry of await readdir(home, { withFileTypes: true })) if (entry.isFile()) lastActivity = Math.max(lastActivity, (await stat(join(home, entry.name))).mtimeMs);
+      const stdout = external ? (await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '' : '';
+      const head = external ? await stdoutHead(join(home, 'agent.stdout')) : '', tail = external ? await stdoutTail(join(home, 'agent.stdout')) : '', init = clientInit(head);
+      if (external && client.model === null && client.apiKeySource === null) client = init;
+      const figures = external ? clientResult(tail) : null;
+      const runClient: BenchRunV2['client'] = external && figures && (init.model !== null || figures.turns !== null || figures.costUsd !== null || figures.tokens !== null)
+        ? { source: options.agent.kind === 'preset' ? 'client-attested' : 'command-output', model: init.model, ...figures, ...(init.version !== null ? { version: init.version } : {}) } : undefined;
+      // The host-side mutation log gives the counters, the normalised call log the reads; both are
+      // written when a run ends, so a run the kill cut short has neither.
+      const mutationsText = await file(home, RUN_EVIDENCE.mutations), callsText = await file(home, RUN_EVIDENCE.calls);
+      const records = mutationsText === null ? [] : parseMutations(mutationsText), counted = mutationCounts(records);
+      const calls = callsText === null ? [] : parseCallLog(callsText);
+      const reads = calls.filter(call => call.tool === 'observe' || call.tool === 'list_actions' || call.tool === 'explain_result').length + (calls.length ? 1 : 0);
+      const toolCalls = { observe: reads, act: counted.act, undo: counted.undoCalls, reset: counted.resetCalls, check: counted.checkCalls, total: reads + counted.act + counted.undoCalls + counted.resetCalls + counted.checkCalls };
+      const bridge = await readLogHead(join(home, RUN_EVIDENCE.bridgeCalls), MAX_LOG_BYTES);
+      const normalised = bridge === null ? null : normaliseCallLog(bridge.text, undefined, bridge.unreadLines);
+      const logs: BenchRunV2['logs'] | undefined = mutationsText === null ? undefined : {
+        calls: callsText === null ? null : { sha256: sha256Hex(callsText), entries: calls.length, dropped: normalised?.dropped ?? 0, omitted: normalised?.omitted ?? 0, clientTiming: calls.some(call => call.clientMs !== null) },
+        mutations: { sha256: sha256Hex(mutationsText), entries: records.length, omitted: 0 },
+      };
+      const sessionText = await file(home, RUN_ARTIFACTS.session), checkerText = await file(home, RUN_ARTIFACTS.checker), nativeText = await file(home, RUN_ARTIFACTS.native);
+      const ended = (await stat(join(home, external ? 'agent.stdout' : RUN_ARTIFACTS.checker)).catch(() => null))?.mtimeMs ?? started.birthtimeMs;
+      const base = {
+        id: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, pass: false,
+        acceptedActions: counted.accepted, rejectedActions: counted.rejected, undos: counted.undos, resets: counted.resets, toolCalls,
+        wallMs: Math.max(0, Math.round(ended - started.birthtimeMs)), referenceActions: references.get(item.taskId)?.steps.length ?? null, agentExitCode: null,
+        ...(runClient ? { client: runClient } : {}),
+      };
+      if (sessionText === null || checkerText === null) {
+        // The world and the references enter the bench folder only once every agent of the bench has
+        // ended: an agent the kill left running (its own process group) is ended first.
+        const pid = Number((await file(home, AGENT_PID_FILE))?.trim());
+        if (Number.isSafeInteger(pid) && pid > 0 && agentAlive(pid)) throw new BenchReportError(`run ${runId}: its agent (process ${pid}) still runs; end it and its process group (kill -9 -${pid}) and recover again`);
+        // Not judged: what the client's own stream reports (a limit, an API error), else interrupted.
+        const failure = external ? clientFailure(stdout) : null;
+        const note = failure ? scrubPaths(`the client reported ${CLIENT_FAILURE_WORDS[failure.reason]} (${failure.detail})`.replaceAll(homedir(), '~')).slice(0, 256) : 'interrupted';
+        runs.push({ ...base, status: 'infra_error', actions: 0, checker: null, note, ...(logs ? { logs } : {}) });
+        continue;
+      }
+      const session = JSON.parse(sessionText) as SessionData, raw = JSON.parse(checkerText) as { session: CheckerVerdict; native: CheckerVerdict | null };
+      if (!Array.isArray(session?.log)) throw new Error(`${RUN_ARTIFACTS.session} holds no session`);
+      if (nativeText !== null) native = true;
+      const trace = await file(home, RUN_EVIDENCE.trace), board = await file(home, RUN_EVIDENCE.board);
+      const status: BenchRunV2['status'] = !external ? 'completed' : /"type"\s*:\s*"result"/.test(tail) ? (/"is_error"\s*:\s*true/.test(tail) ? 'agent_failed' : 'completed') : 'timeout';
+      runs.push({
+        ...base, status, actions: session.log.length,
+        checker: { session: verdictOf(raw.session, item.taskId), native: raw.native === null ? null : verdictOf(raw.native, item.taskId) },
+        note: 'recovered from the run folder', ...(logs ? { logs } : {}),
+        artifacts: { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText),
+          ...(trace !== null && logs ? { trace: sha256Hex(trace) } : { trace: null, traceError: logs ? 'interrupted' : 'log_unwritten' }), board: board === null ? null : sha256Hex(board) },
+      });
+    } catch (error) {
+      if (error instanceof BenchReportError) throw error;
+      throw new BenchReportError(`run ${runId}: its folder cannot be recovered (${error instanceof Error ? error.message.slice(0, 200) : 'unreadable'})`);
+    }
+  }
+  const unplanned = folders.find(name => !runs.some(run => run.id === name));
+  if (unplanned !== undefined) throw new BenchReportError(`run folder ${unplanned} follows a planned run without a folder; recover with the bench's own arguments (world, tasks, seed list, repeats)`);
+  if (!runs.length) throw new BenchReportError(`the bench folder holds no run folder of these arguments' plan`);
+  // The mirror as run: a judged run with a native export ran with it; none judged, as requested.
+  const mirror: MirrorMode = native ? 'required' : runs.some(run => run.checker !== null) || options.mirrorRequested !== 'required' ? 'off' : 'required';
+  for (const run of runs) run.pass = derivedPass(run, mirror);
+  const report = await assembleReport({ options, mirror, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, client, planned: plan.length, partial: runs.length < plan.length, recovered: true, createdAt: new Date(lastActivity || Date.now()).toISOString() });
+  // Tasks without a judged run for every planned seed and repeat: what a resumed bench takes.
+  const remaining = options.tasks.filter(task => plan.some(entry => entry.taskId === task && !runs.some(run => run.id === `${entry.taskId}-s${entry.seed}-r${entry.repeat}` && run.status !== 'infra_error')));
+  return { report, remaining };
 }

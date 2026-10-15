@@ -135,7 +135,7 @@ function trajectoryOf(records: readonly MutationRecord[], world: World, run: Ben
   const count = (met: string): number => [...met].filter(char => char === '1').length;
   return records.map(record => {
     const text = record.op === 'act' && record.action ? describe(record.action, session?.state ?? null) : record.op;
-    if (record.outcome === 'accepted' && session) {
+    if (record.outcome === 'accepted' && record.op !== 'check' && session) {
       const result = record.op === 'act' ? session.act(record.action as Action) : record.op === 'undo' ? session.undo() : session.reset();
       if (!result.ok) session = null;
     }
@@ -280,7 +280,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
         try {
           const records = parseMutations(read.text);
           // Its points must be exactly the accepted mutations, in order, with their steps.
-          const accepted = records.filter(record => record.outcome === 'accepted');
+          const accepted = records.filter(record => record.outcome === 'accepted' && record.op !== 'check');
           if (trace && (trace.points.length !== accepted.length || trace.points.some((point, at) => point.seq !== accepted[at]!.seq || point.step !== accepted[at]!.step))) { trace = null; detail.conditionsMissing = 'unreadable'; }
           detail.trajectory = trajectoryOf(records, world, run, trace);
           detail.clients = [...new Set(records.flatMap(record => record.client === null ? [] : [record.client]))];

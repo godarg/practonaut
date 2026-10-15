@@ -1,6 +1,6 @@
 {
   "schema": "practonaut.bench/2",
-  "createdAt": "2026-10-14T23:57:34.922Z",
+  "createdAt": "2026-10-15T17:35:26.653Z",
   "label": "baseline",
   "environment": {
     "practonaut": "0.2.0-dev.0",
@@ -55,7 +55,8 @@
       {
         "taskId": "review-and-send",
         "source": "oracle-file",
-        "actions": 2
+        "actions": 2,
+        "minimal": true
       }
     ]
   },
@@ -80,7 +81,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 350,
+      "wallMs": 486,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -95,22 +96,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "41f765f45a32296f9b64ef82fa88914135d241f90051cfb611eb8f3bdfb0c4ac",
-        "native": "3c19cc54d583d6de50b2900ad92e78b866f59df15a48b451080455e95a196762",
+        "native": "ba84f3ebb439b04eb122e971d4a4f31fca29fe929a699d531fb55f72d48422cf",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "00fb1b53c4706512ce3283d3073fde91dbba6afbefeed19685d85f478e624a57",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "1571f659f8ed2c249a06a7188ffb3421a71567c5e71450af91986134d134ca5e",
+          "sha256": "2e9b2e2dae80b1e2e39703f778a064fe676be53e6f7e8226ba218115468431c6",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -135,7 +136,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 355,
+      "wallMs": 295,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -150,22 +151,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "41f765f45a32296f9b64ef82fa88914135d241f90051cfb611eb8f3bdfb0c4ac",
-        "native": "97f4b3e67f148808bac390622bc757ec606086aa1972bf819b272a9141197542",
+        "native": "57bf76ae8403a781af0ced1269244f2850af41bc4e1a0612a88e6a3334bd3262",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "00fb1b53c4706512ce3283d3073fde91dbba6afbefeed19685d85f478e624a57",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "2a125bf883efc6c868ae97d25d130f20c6cd33d8f412caaeca0136bc58efcaf4",
+          "sha256": "6446a5ad1545107b8765b1bee2b28d0e6120708af4f4289d0e91b63580dd5dfd",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -190,7 +191,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 365,
+      "wallMs": 279,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -205,22 +206,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "41f765f45a32296f9b64ef82fa88914135d241f90051cfb611eb8f3bdfb0c4ac",
-        "native": "5e2c24c4f1eb1bacbe56d05dafb6aa331309501b77f834ef52899dbf20867058",
+        "native": "2c279da4bc3dcc861b039eaf88b1c4c2726d7ae68a68190ef20a3ec24e436ae1",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "00fb1b53c4706512ce3283d3073fde91dbba6afbefeed19685d85f478e624a57",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "aa95106f8647a7f31fdaa460b3a00a63045395db60dc473e13d687c64290e2f7",
+          "sha256": "669f5d020842f593e5148e3d3c9ebe6cec2a73bc0626eabda216bc2fac40ce76",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -245,7 +246,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 396,
+      "wallMs": 295,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -260,22 +261,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "825371d57af38131827055de7d443096bdac4ac76a1ea96b2695c965e0e371d8",
-        "native": "620e9b2f95925d76e94a14e7089188a0a9a8ee4a9bc52ae7aa374ce8b4b78913",
+        "native": "203074e47bfc77991d394627038ab7f1b644083bc07ff5e10bc51e0c55131751",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "132d6db0ed2ad0ff4f63d3cacb980243cb098a2ebb8c9668206b38403b780f1d",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "ab03341bfedfdd77eb111f1ff13c325c150e784301c064a7a71494150eaf96f4",
+          "sha256": "9a3e9c2a194abafd07166743485e74e48bf65336432bca1a0814d9a32fd031a2",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -300,7 +301,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 330,
+      "wallMs": 313,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -315,22 +316,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "825371d57af38131827055de7d443096bdac4ac76a1ea96b2695c965e0e371d8",
-        "native": "89fb152244aac8e8177ef330cd7bfc3cdfa75ea2de77a45c565a8a79cc19e7a8",
+        "native": "f7271b4bdb9c066c795bef52fc6df750081efd23198b3b1a5c60cfef3c36a47e",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "132d6db0ed2ad0ff4f63d3cacb980243cb098a2ebb8c9668206b38403b780f1d",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "3be4a934f087b96348012a1d540da7dff581db8793d1e52254b49c04c1768804",
+          "sha256": "5e246f65ebcd75816e8bd5574c0c8ecd648a772e54fdbbd6a2aa786f7874b94f",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -355,7 +356,7 @@
         "check": 1,
         "total": 5
       },
-      "wallMs": 314,
+      "wallMs": 297,
       "referenceActions": 2,
       "checker": {
         "session": {
@@ -370,22 +371,22 @@
       "agentExitCode": 0,
       "artifacts": {
         "session": "825371d57af38131827055de7d443096bdac4ac76a1ea96b2695c965e0e371d8",
-        "native": "e8d2d83b3338410d07cad8bd9f9aa9292b82d4d3089744401dc278fd13c432df",
+        "native": "6a109bf91466881dd8e8967f90713e8a04184f954c0e7223db1d813e22d55025",
         "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
         "trace": "132d6db0ed2ad0ff4f63d3cacb980243cb098a2ebb8c9668206b38403b780f1d",
         "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
       },
       "logs": {
         "calls": {
-          "sha256": "5b7683228c164c11cc2b46414a4169e4078af899965b4c167fcbcc7eaa69c7fc",
+          "sha256": "d20e20786a0743932bb7c79b93d259559910e7907e4015514878ee7ca98c1dab",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
           "clientTiming": true
         },
         "mutations": {
-          "sha256": "8a31a9a59e65f55545c33bc2163dbc9f628978b903e25e544b93af53cfe7ae46",
-          "entries": 2,
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
           "omitted": 0
         }
       }
@@ -414,7 +415,7 @@
     "meanActions": 2,
     "meanActionsPassed": 2,
     "efficiencyVsReference": 1,
-    "meanWallMs": 351.6667,
+    "meanWallMs": 327.5,
     "rejectedActions": 0,
     "undos": 0,
     "resets": 0,
