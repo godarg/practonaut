@@ -8,14 +8,15 @@ const EXIT: Text = {
   0  success
   1  usage error (bad command, option or path; validate needs a regular file)
   2  package or source rejected (named code), failed check, rejected bench report, incomparable reports
-     or (compare --fail-on-regression) an instance regression or an incomplete candidate
+     or (compare --fail-on-regression) an instance regression or an incomplete candidate,
+     or (bench --fail-on-agent-error) a run whose agent failed
   3  environment missing (for example Chromium for --mirror required) or session shutdown failure`,
   de: `Exit-Codes:
   0  Erfolg
   1  Bedienfehler (unbekannter Befehl, Option oder Pfad; validate braucht eine reguläre Datei)
   2  Paket oder Quelle abgelehnt (benannter Code), nicht bestandene Prüfung, abgelehnter Bench-Bericht,
      nicht vergleichbare Berichte oder (compare --fail-on-regression) eine Instanz-Regression oder ein
-     unvollständiger Kandidat
+     unvollständiger Kandidat, oder (bench --fail-on-agent-error) ein Lauf mit gescheitertem Agenten
   3  Umgebung fehlt (etwa Chromium für --mirror required) oder Sitzung nicht sauber beendet`,
 };
 
@@ -34,7 +35,7 @@ Practice:
   serve [world]      same as play; for scripts use --no-open
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
   bench --agent <a>  score an agent on the task library or your own world (independent checker)
-  report <file>      show a bench report as a table or a static HTML page
+  report <file>      show a bench report as a table, an HTML page, JUnit XML or a result card
   compare <a> <b>    compare two bench reports instance by instance (instance regressions, McNemar)
   setup              download the Chromium headless shell once for the real Excalidraw mirror
   doctor             check the environment
@@ -66,7 +67,7 @@ Verwendung:
   serve [Welt]       wie play; für Skripte --no-open verwenden
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
   bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
-  report <Datei>     Bench-Bericht als Tabelle oder statische HTML-Seite zeigen
+  report <Datei>     Bench-Bericht als Tabelle, HTML-Seite, JUnit-XML oder Ergebniskarte zeigen
   compare <a> <b>    zwei Bench-Berichte Instanz für Instanz vergleichen (Instanz-Regressionen, McNemar)
   setup              Chromium Headless Shell einmalig für die echte Excalidraw-Spiegelung laden
   doctor             Umgebung prüfen
@@ -187,7 +188,7 @@ Werkzeuge: observe, list_actions, act, undo, reset, explain_result, check_result
                         [--world <dir|.pnworld>] [--tasks all|<id,id,…>] [--oracle <file,…>]
                         [--seeds <n> | --seed-list <seed,seed,…>] [--repeats <k>] [--timeout <seconds>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <report.json>]
-                        [--keep-env <name,…>] [--label <text>]
+                        [--keep-env <name,…>] [--label <text>] [--junit <out.xml>] [--fail-on-agent-error]
 
 Runs every task × seed × repeat in its own session and its own run folder. The agent
 reaches the session only through MCP; a command template gets {mcp_config} (path of a generated MCP
@@ -201,13 +202,17 @@ never reaches the agent. Without a reference a task has no efficiency. After the
 world and the references are stored in the bench folder, so report --verify can re-judge it anywhere.
 The claude-code preset gets no provider keys, tokens or billing switches (*_API_KEY, *_AUTH_TOKEN,
 CLAUDE_CODE_USE_*, …) from your environment, so Claude Code uses the login it has; --keep-env passes named ones on.
+--junit also writes the runs as JUnit XML for CI test views: one test case per run, a run that did not pass
+as a failure naming its unmet conditions and error classes, a run without a verdict as an error.
+--fail-on-agent-error exits 2 (agent_failed) after writing everything when a run's agent failed or could not
+start (a missing or expired login makes every run fail): in CI that stops the job before compare.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
 Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
                         [--max-actions <n>] [--mirror auto|required|off] [--out <bericht.json>]
-                        [--keep-env <Name,…>] [--label <Text>]
+                        [--keep-env <Name,…>] [--label <Text>] [--junit <out.xml>] [--fail-on-agent-error]
 
 Fährt jede Aufgabe × Seed × Wiederholung in eigener Sitzung und eigenem Laufordner. Der
 Agent erreicht die Sitzung nur über MCP; eine Befehlsvorlage bekommt {mcp_config} (Pfad einer erzeugten
@@ -222,11 +227,16 @@ Referenzen im Bench-Ordner gespeichert, sodass report --verify ihn überall neu 
 Die Voreinstellung claude-code bekommt keine Anbieterschlüssel, -token oder Abrechnungsschalter
 (*_API_KEY, *_AUTH_TOKEN, CLAUDE_CODE_USE_*, …) aus Ihrer Umgebung; Claude Code nutzt so seine eigene Anmeldung.
 --keep-env gibt genannte weiter.
+--junit schreibt die Läufe zusätzlich als JUnit-XML für Testansichten in CI: ein Testfall je Lauf, ein nicht
+bestandener Lauf als failure mit den nicht erfüllten Bedingungen und Fehlerklassen, ein Lauf ohne Urteil als error.
+--fail-on-agent-error endet nach dem Schreiben mit Exit 2 (agent_failed), wenn der Agent eines Laufs scheiterte
+oder nicht startete (fehlende oder abgelaufene Anmeldung lässt jeden Lauf scheitern): in CI vor compare.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
 Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
   },
   report: {
-    en: `Usage: practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]
+    en: `Usage: practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>]
+                         [--card <out>] [--badge <out.svg>] [--json]
 
 Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and aggregate is re-derived from
 the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
@@ -239,8 +249,15 @@ against that library's content), the references and every artifact and log again
 binds, every reference against the stored world, the independent checker on the session and the native
 export, and the condition trace; a /1 report is re-judged against the bundled task library. Any difference:
 exit 2, with bench_world_changed, bench_artifact_changed, bench_reference_invalid or bench_report_invalid. The
-output shows the world's content hash; validate --json prints it for a world package.`,
-    de: `Verwendung: practonaut report <bench.json> [--verify] [--runs <Ordner>] [--html <out.html>] [--json]
+output shows the world's content hash; validate --json prints it for a world package.
+--junit writes the runs as JUnit XML (one test case per run; a run without a verdict is an error).
+--card writes a 1280 × 640 result card: <out>-light.svg, <out>-dark.svg and both as PNG (drawn with the
+Chromium from practonaut setup). --badge writes a one-line SVG badge, light or dark as the reader's system
+prefers. Both carry the fraction with its 95 % interval, n, the verification status (consistency-checked
+unless --verify re-judged the runs), the isolation level, the mirror and any run without a verdict; the same
+report gives the same bytes.`,
+    de: `Verwendung: practonaut report <bench.json> [--verify] [--runs <Ordner>] [--html <out.html>] [--junit <out.xml>]
+                              [--card <Ziel>] [--badge <out.svg>] [--json]
 
 Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
 aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
@@ -254,7 +271,13 @@ Artefakt und Protokoll gegen die gebundenen Hashes, jede Referenz gegen die gesp
 Prüfer auf Sitzung und nativem Export und der Bedingungsverlauf; ein /1-Bericht wird gegen die mitgelieferte
 Aufgabenbibliothek nachgerechnet. Jede Abweichung: Exit 2, mit bench_world_changed, bench_artifact_changed,
 bench_reference_invalid oder bench_report_invalid. Die Ausgabe zeigt den Inhalts-Hash der Welt; validate --json
-gibt ihn für ein Weltpaket aus.`,
+gibt ihn für ein Weltpaket aus.
+--junit schreibt die Läufe als JUnit-XML (ein Testfall je Lauf; ein Lauf ohne Urteil ist ein error).
+--card schreibt eine Ergebniskarte mit 1280 × 640 Pixeln: <Ziel>-light.svg, <Ziel>-dark.svg und beide als PNG
+(gezeichnet mit dem Chromium aus practonaut setup). --badge schreibt ein einzeiliges SVG-Badge, hell oder dunkel,
+wie das System des Lesers es bevorzugt. Beide tragen den Bruch mit 95-%-Intervall, n, den Prüfstatus (auf
+Stimmigkeit geprüft, außer --verify hat die Läufe neu beurteilt), die Isolationsstufe, die Spiegelung und jeden
+Lauf ohne Urteil; derselbe Bericht ergibt dieselben Bytes.`,
   },
   compare: {
     en: `Usage: practonaut compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression]

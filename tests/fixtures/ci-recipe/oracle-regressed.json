@@ -1,0 +1,128 @@
+{
+  "schema": "practonaut.task-oracle/1",
+  "worldId": "review-and-send",
+  "taskId": "review-and-send",
+  "seeds": {
+    "drawn": 0
+  },
+  "steps": [
+    {
+      "name": "set_style",
+      "params": {
+        "id": "b",
+        "shape": "rectangle",
+        "stroke": "black",
+        "fill": "green"
+      }
+    },
+    {
+      "name": "connect",
+      "params": {
+        "from": "b",
+        "to": "c"
+      }
+    },
+    {
+      "name": "connect",
+      "params": {
+        "from": "a",
+        "to": "c"
+      }
+    },
+    {
+      "name": "disconnect",
+      "params": {
+        "id": {
+          "created": 2
+        }
+      }
+    }
+  ],
+  "nearMisses": [
+    {
+      "id": "near-1",
+      "kind": "wrong-colour",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "b",
+            "shape": "rectangle",
+            "stroke": "black",
+            "fill": "red"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ],
+      "violates": [
+        3
+      ]
+    },
+    {
+      "id": "near-2",
+      "kind": "missing-set-style",
+      "steps": [
+        {
+          "name": "connect",
+          "params": {
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ],
+      "violates": [
+        3
+      ]
+    },
+    {
+      "id": "near-3",
+      "kind": "reversed-arrow",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "b",
+            "shape": "rectangle",
+            "stroke": "black",
+            "fill": "green"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "c",
+            "to": "b"
+          }
+        }
+      ],
+      "violates": [
+        6
+      ]
+    },
+    {
+      "id": "near-4",
+      "kind": "missing-connect",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "b",
+            "shape": "rectangle",
+            "stroke": "black",
+            "fill": "green"
+          }
+        }
+      ],
+      "violates": [
+        1,
+        6
+      ]
+    }
+  ]
+}

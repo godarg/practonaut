@@ -56,7 +56,7 @@ if(entries.some(p=>!p.startsWith('package/')||p.includes('..'))||new Set(entries
 const files=entries.map(p=>p.slice('package/'.length)).sort();
 const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.startsWith("schemas/") || p.startsWith("examples/worlds/flow-diagram/") || p.startsWith("tasks/excalidraw/") || ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md"].includes(p);
 const extra = files.filter((p) => !allowed(p));
-const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "schemas/bench.v2.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/bench/report.css", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
+const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "schemas/bench.v2.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/bench/report.css", "dist/bench/card.css", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
 const missing = required.filter((p) => !files.includes(p));
 const packageMetadata = JSON.parse(execFileSync('tar',['-xOzf',tgzName,'package/package.json'],{...tarIn,encoding:'utf8',maxBuffer:1024*1024}));
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
@@ -174,6 +174,8 @@ FIRST="$(ls -td "$PRACTONAUT_HOME"/bench/*/ | head -n 1)"
 if [ $RC -eq 0 ] && grep -q -- "--pn-color-bg" "$TMP/bench.html" && grep -q "\.sch-step{" "$TMP/bench.html" && grep -q 'class="schematic pw-' "$TMP/bench.html"; then ok "installed report --html inlines the design tokens and the report stylesheet and draws the board"; else fail "installed report --html -> exit $RC"; fi
 "$BIN" compare "$TMP/bench.json" "$TMP/bench.json" --fail-on-regression >"$TMP/compare.out"; RC=$?
 if [ $RC -eq 0 ] && grep -q "not distinguishable at this n" "$TMP/compare.out"; then ok "installed compare (a report against itself: no regression)"; else cat "$TMP/compare.out" >&2; fail "installed compare -> exit $RC"; fi
+"$BIN" report "$TMP/bench.json" --runs "$FIRST" --junit "$TMP/bench.xml" --badge "$TMP/badge.svg" >/dev/null; RC=$?
+if [ $RC -eq 0 ] && grep -q '<testcase name="connect seed 1 repeat 1"' "$TMP/bench.xml" && grep -q '<title>Practonaut bench: oracle' "$TMP/badge.svg" && grep -q '[.]badge-text{fill:#' "$TMP/badge.svg"; then ok "installed report --junit and --badge (the card stylesheet resolved from the tokens)"; else fail "installed report --junit/--badge -> exit $RC"; fi
 "$BIN" bench --agent random --world "$TMP/flow.pnworld" --tasks T3 --mirror off --max-actions 3 >"$TMP/own.out" 2>"$TMP/own.err"; RC=$?
 if [ $RC -eq 0 ] && grep -q "no reference" "$TMP/own.out"; then ok "installed bench --world (own world, no reference)"; else cat "$TMP/own.err" >&2; fail "installed bench --world -> exit $RC"; fi
 OWN="$(ls -td "$PRACTONAUT_HOME"/bench/*/ | head -n 1)"
@@ -182,6 +184,8 @@ if [ $RC -eq 0 ] && grep -q "against the world stored in the bench folder (flow-
 
 "$BIN" setup; RC=$?
 [ $RC -eq 0 ] && ok "installed explicit Chromium setup" || fail "installed setup -> exit $RC"
+"$BIN" report "$TMP/bench.json" --card "$TMP/card" >/dev/null; RC=$?
+if [ $RC -eq 0 ] && [ "$(head -c 8 "$TMP/card-light.png" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] && [ -s "$TMP/card-dark.png" ] && grep -q '<text class="card-title"' "$TMP/card-dark.svg"; then ok "installed report --card (SVG and PNG, light and dark, through Chromium)"; else fail "installed report --card -> exit $RC"; fi
 node "$ROOT/tools/pack-smoke.mjs" "$BIN" "$TMP/flow.pnworld"; RC=$?
 [ $RC -eq 0 ] && ok "installed CLI Player/MCP smoke" || fail "installed CLI Player/MCP smoke -> exit $RC"
 

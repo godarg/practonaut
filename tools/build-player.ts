@@ -18,8 +18,9 @@ for (const input of Object.keys(result.metafile.inputs)) {
 await cp("src/player/index.html", join(output, "index.html"));
 await build({ entryPoints: { player: "src/player/player.css" }, outdir: output, bundle: true, minify: true, loader: { ".css": "css" }, legalComments: "none" });
 await cp("design/tokens.css", join(output, "tokens.css"));
-// The bench report's stylesheet ships beside the compiled renderer (dist/bench/render.js reads ./report.css).
-if (process.argv.includes("--dist")) { await mkdir("dist/bench", { recursive: true }); await cp("src/bench/report.css", "dist/bench/report.css"); }
+// The bench report's stylesheets ship beside the compiled renderers (dist/bench/render.js reads
+// ./report.css, dist/bench/card.js reads ./card.css).
+if (process.argv.includes("--dist")) { await mkdir("dist/bench", { recursive: true }); await cp("src/bench/report.css", "dist/bench/report.css"); await cp("src/bench/card.css", "dist/bench/card.css"); }
 const files = ["index.html", "player.js", "player.css", "tokens.css"];
 const inventory = await Promise.all(files.map(async file => {
   const bytes = await readFile(join(output, file));

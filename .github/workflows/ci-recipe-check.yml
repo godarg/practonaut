@@ -1,0 +1,102 @@
+# Proves the CI recipe (examples/ci/practonaut-bench.yml) on GitHub, with the oracle agent: no language
+# model, no secret. Started by hand only (Actions -> CI recipe check -> Run workflow), never on a push
+# or a pull request, and outside the required checks.
+#   plant_regression false: the candidate plays the fixture's reference, as the committed baseline did;
+#                           compare finds no instance regression and the job passes.
+#   plant_regression true:  the candidate plays tests/fixtures/ci-recipe/oracle-regressed.json, a valid
+#                           four-action reference under a budget of three actions: every repeat ends
+#                           with an extra arrow, compare --fail-on-regression exits 2
+#                           (instance_regression) and the job fails. The artifact is uploaded either way.
+# The steps are the recipe's, with these differences: Practonaut is this checkout, packed (the recipe
+# pins a published version); the agent is the oracle on the fixture world with --max-actions 3, as the
+# baseline was made, so no client is installed and no secret is used; the run is started by hand, so the
+# baseline is the checkout's (the recipe reads a pull request's baseline from its base commit); the
+# commands run outside the checkout, whose own package.json is Practonaut's.
+# tests/integration/ci-recipe.test.ts runs the same commands locally.
+name: CI recipe check
+
+on:
+  workflow_dispatch:
+    inputs:
+      plant_regression:
+        description: Bench a candidate whose instances regress (the compare step must then fail)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-recipe-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORLD: ${{ github.workspace }}/tests/fixtures/ci-recipe/world
+  BASELINE: ${{ github.workspace }}/tests/fixtures/ci-recipe/baseline.json
+
+jobs:
+  recipe:
+    name: ci recipe (oracle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Pack this checkout (stands in for practonaut@<version>)
+        env:
+          npm_config_ignore_scripts: 'true'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm pack --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.out"
+          echo "PRACTONAUT=$RUNNER_TEMP/$(tail -n 1 "$RUNNER_TEMP/pack.out")" >> "$GITHUB_ENV"
+      - name: Folders for Practonaut's data and the results
+        run: |
+          echo "PRACTONAUT_HOME=$RUNNER_TEMP/practonaut-home" >> "$GITHUB_ENV"
+          echo "OUT=$RUNNER_TEMP/practonaut-out" >> "$GITHUB_ENV"
+          echo "npm_config_ignore_scripts=true" >> "$GITHUB_ENV"
+      - name: Choose the candidate's reference
+        env:
+          PLANT: ${{ inputs.plant_regression }}
+        run: |
+          if [ "$PLANT" = "true" ]; then oracle=oracle-regressed.json; else oracle=oracle.json; fi
+          echo "ORACLE=$GITHUB_WORKSPACE/tests/fixtures/ci-recipe/$oracle" >> "$GITHUB_ENV"
+      - name: Download Chromium for the real Excalidraw mirror
+        working-directory: ${{ runner.temp }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut setup
+      - name: Check that Chromium starts
+        working-directory: ${{ runner.temp }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut doctor --adapter
+      - name: Bench the oracle (three repeats per instance)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p "$OUT"
+          status=0
+          npx --yes --package "$PRACTONAUT" -- practonaut bench --agent oracle \
+            --world "$WORLD" --oracle "$ORACLE" --seed-list 1,2 --repeats 3 --max-actions 3 --mirror required \
+            --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml" --fail-on-agent-error || status=$?
+          if report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json 2>/dev/null)"; then
+            cp "$report" "$OUT/report.json"
+            echo "BENCH=$(dirname "$report")" >> "$GITHUB_ENV"
+          fi
+          exit "$status"
+      - name: Render the report
+        if: ${{ !cancelled() && env.BENCH != '' }}
+        working-directory: ${{ runner.temp }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut report "$BENCH/report.json" --html "$OUT/report.html"
+      - name: Compare with the baseline (fails on an instance regression)
+        working-directory: ${{ runner.temp }}
+        run: npx --yes --package "$PRACTONAUT" -- practonaut compare "$BASELINE" "$BENCH/report.json" --fail-on-regression --html "$OUT/compare.html"
+      - name: Upload JUnit XML, the report and the HTML pages
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-recipe-${{ inputs.plant_regression && 'planted' || 'clean' }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/practonaut-out/
+          if-no-files-found: warn
+          retention-days: 7
