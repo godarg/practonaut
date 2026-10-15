@@ -103,6 +103,8 @@ interface RoundFacts {
    * (listed, never counted). */
   spent: { development: number; heldOut: number; total: number; rejected: number };
   releaseRuns: number;
+  /** The Claude Code versions the round's development and ladder runs reported, with the agents that ran on each. */
+  clientVersions: Array<{ version: string; agents: string[] }>;
 }
 export interface GateResult extends RoundFacts {
   agents: AgentResult[]; strongest: AgentResult; weakest: AgentResult;
@@ -118,6 +120,9 @@ export interface PreflightResult extends RoundFacts { oracle: AgentResult; rando
 
 const share = (value: number): string => `${(value * 100).toFixed(1)} %`;
 const sorted = (values: readonly string[]): string => [...values].sort().join('\u0000');
+/** A version's release line: `2.1.301` → `2.1`; a version that is not dotted numbers stays whole. */
+const releaseLine = (version: string): string => /^(\d+)\.(\d+)\./.exec(version)?.slice(1, 3).join('.') ?? version;
+const compareVersions = (a: string, b: string): number => a.localeCompare(b, 'en', { numeric: true });
 const fail = (message: string): never => { throw new GateInputError(message); };
 const guarded = <T>(work: () => T): T => { try { return work(); } catch (error) { if (error instanceof DeclarationError) fail(error.message); throw error; } };
 
@@ -185,8 +190,15 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   const external = [...input.development, ...(ladder ?? [])];
   for (const [field, of] of [['prompt', (r: BenchReportV2) => r.settings.prompt], ['kept environment', (r: BenchReportV2) => r.agent.keptEnv.join(',')], ['API key source', (r: BenchReportV2) => String(r.agent.apiKeySource)]] as const)
     if (new Set(external.map(value => of(value.report))).size > 1) fail(`the development and ladder reports differ in their ${field}`);
-  const versions = new Set(external.flatMap(value => value.report.runs.flatMap(run => run.client ? [run.client.version ?? null] : [])));
-  if (versions.size > 1) fail(`the development and ladder runs report different Claude Code versions (${[...versions].map(value => value ?? 'none').join(', ')})`);
+  // One client release line (major.minor) for the round. Claude Code is updated in the background by
+  // other processes on the same machine whatever the round's own environment says, so a patch update
+  // during a round is listed in the report, never a refusal (amended 2026-10-15, PADR-0040); another
+  // minor or major version, or runs without a version beside runs with one, refuse the round.
+  const clientRuns = external.flatMap(value => value.report.runs.flatMap(run => run.client ? [{ agent: input.development.includes(value) ? `development ${value.report.agent.model ?? 'none'}` : value.report.agent.model ?? 'none', version: run.client.version ?? null }] : []));
+  const releaseLines = new Set(clientRuns.map(entry => entry.version === null ? null : releaseLine(entry.version)));
+  if (releaseLines.size > 1) fail(`the development and ladder runs report different Claude Code release lines (${[...new Set(clientRuns.map(entry => entry.version ?? 'none'))].join(', ')}); a patch update during a round is listed, another minor or major version refuses it`);
+  const clientVersions = [...new Set(clientRuns.flatMap(entry => entry.version === null ? [] : [entry.version]))].sort(compareVersions)
+    .map(version => ({ version, agents: [...new Set(clientRuns.filter(entry => entry.version === version).map(entry => entry.agent))] }));
   // Development: per model the declared instances, each counted once and judged; the digest and the
   // outcomes are the declared ones.
   const devGroups = byModel(input.development, 'development');
@@ -243,7 +255,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     settings: { mirror: bench.mirror, timeoutSeconds: bench.timeoutSeconds, maxActions: bench.maxActions, checks: bench.checks },
     practonaut: base.environment.practonaut, dates: [...new Set(reports.map(report => report.createdAt.slice(0, 10)))].sort(),
     development: declaration.ladder.map((name, index) => ({ model: name, passed: passed[index]!.filter(Boolean).length, instances: passed[index]!.length })),
-    order: orderOf(passed), pair: { ...declaration.pair }, spent, releaseRuns,
+    order: orderOf(passed), pair: { ...declaration.pair }, spent, releaseRuns, clientVersions,
   };
   return { facts, plan, oracle, random, ladderGroups: ladder ? byModel(ladder, 'held-out') : [] };
 }
@@ -330,6 +342,7 @@ export function renderGate(result: GateResult): string {
   lines.push(`| World | \`${cell(result.world.id)}\` ${cell(result.world.version)}, content hash \`${result.world.contentHash.slice(0, 16)}…\` |`);
   lines.push(`| Settings | mirror ${cell(result.settings.mirror)}, timeout ${result.settings.timeoutSeconds} s, at most ${result.settings.maxActions} act/undo/reset calls${result.settings.checks === null ? '' : `, --checks ${result.settings.checks}`} |`);
   lines.push(`| Practonaut | ${cell(result.practonaut)}; reports dated ${result.dates.join(', ')} |`);
+  if (result.clientVersions.length) lines.push(`| Claude Code | ${result.clientVersions.map(entry => `${cell(entry.version)} (${entry.agents.map(agent => cell(agent)).join(', ')})`).join('; ')}${result.clientVersions.length > 1 ? ' — a patch update during the round is listed, not refused (PADR-0040)' : ''} |`);
   lines.push(`| Gate pair | strongest \`${cell(result.pair.strongest)}\`, weakest \`${cell(result.pair.weakest)}\` (fixed by the capability order before any run) |`);
   lines.push(`| Development | ${result.development.map(entry => `\`${cell(entry.model)}\` ${entry.passed}/${entry.instances}`).join(', ')}: ${orderLine(result)} |`, '');
   if (result.declaration.versions.length) {

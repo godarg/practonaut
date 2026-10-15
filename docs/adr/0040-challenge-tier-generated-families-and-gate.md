@@ -181,7 +181,13 @@ judged state and the error classes, and the judged state may hold whatever an ag
   reports no model is never passed and counts like an infrastructure error; a development run
   without a model is refused. All reports of a round come from one Practonaut version, and the
   development and ladder reports share the prompt, kept environment, API key source and Claude
-  Code version (from the init event).
+  Code release line (major.minor, from the init event). *Amended 2026-10-15, after the injection
+  round's runs and before its gate report:* the rule first required one exact version, but Claude Code
+  is updated in the background by other processes on the same machine whatever the bench's own
+  environment says (`DISABLE_AUTOUPDATER=1` covers only the bench's own client); a patch update
+  during a round is therefore listed in the gate report with the agents that ran on each version, and
+  only another minor or major version refuses the round. The rule decides whether a verdict is issued,
+  never a count.
 - **The gate pair is fixed by the capability order before any run** (changed before the first
   ladder run, second review): strongest = Opus, weakest = Haiku (with approved models: the first and
   the last model of the declared order). Reason: with 3 development instances per model the pair

@@ -734,6 +734,10 @@ reachable. After the round's branch is squash-merged into main, `gate` is not ex
 on main. The commands below are for a POSIX shell (bash or zsh; on Windows Git Bash or WSL):
 `$(node tools/challenge.ts args …)` relies on the shell splitting the printed arguments, which
 PowerShell and cmd do not do, and `args` refuses a set whose paths contain white space.
+Claude Code is also updated in the background by other processes on the machine (a running Claude
+app or session), which `DISABLE_AUTOUPDATER=1` does not stop: to keep one version for a whole round,
+put a copy of one version's executable first in `PATH`; a patch update during a round is listed in the
+gate report, another minor or major version refuses the round.
 Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
 settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, a login or billing
 error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`

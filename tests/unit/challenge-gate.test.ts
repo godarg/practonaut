@@ -347,12 +347,18 @@ test('development reports are the declared runs: their set, settings, digest and
   refused(() => computeGate({ ...base, oracle: [at(held('random', first(0)))] }), /oracle report is not from the oracle agent/);
 });
 
-test('one Practonaut, one prompt, one client set-up and one Claude Code version per round (second review nits)', () => {
+test('one Practonaut, one prompt, one client set-up and one Claude Code release line per round; patch updates are listed (second review nits, amended)', () => {
   const base = input(first(15), first(10), first(4));
   const ladder = (options: ReportOptions) => [at(held(OPUS, first(15), options)), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
   const run = (options: ReportOptions) => { const value = ladder(options); return () => computeGate({ ...base, ladder: value, spent: { development: 9, heldOut: spentOf(value) } }); };
   refused(run({ practonaut: '0.2.1' }), /made with different Practonaut versions/);
-  refused(run({ version: '2.2.0' }), /report different Claude Code versions \(2\.1\.0, 2\.2\.0\)/);
+  refused(run({ version: '2.2.0' }), /report different Claude Code release lines \(2\.1\.0, 2\.2\.0\)/);
+  // A patch update installed by another process during the round is listed, not refused (amended 2026-10-15).
+  const patched = run({ version: '2.1.7' })();
+  assert.equal(patched.verdict, 'passes');
+  assert.deepEqual(patched.clientVersions.map(entry => entry.version), ['2.1.0', '2.1.7']);
+  assert.deepEqual(patched.clientVersions[1]!.agents, [OPUS]);
+  assert.match(renderGate(patched), /\| Claude Code \| 2\.1\.0 \(development claude-opus-5-5, development claude-sonnet-5-5, development claude-haiku-5-5, claude-sonnet-5-5, claude-haiku-5-5\); 2\.1\.7 \(claude-opus-5-5\) — a patch update during the round is listed, not refused/);
   refused(run({ keptEnv: ['ANTHROPIC_MODEL'] }), /differ in their kept environment/);
 });
 
