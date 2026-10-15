@@ -81,6 +81,8 @@ export interface RoundInput {
   /** Model runs found in the bench folders: on the development set (a count) and on the held-out
    * tasks (each run folder), reruns included. */
   spent: { development: number; heldOut: readonly SpentRun[]; developmentRejected?: number };
+  /** The commit the held-out set was generated from and every version of the declaration in git. */
+  declarationGit?: { commit: string; versions: ReadonlyArray<{ commit: string; date: string }> };
 }
 export interface GateInput extends RoundInput {
   /** Every held-out ladder report (one or more per ladder model). */
@@ -89,7 +91,7 @@ export interface GateInput extends RoundInput {
 export interface Criterion { name: string; value: string; rule: string; met: boolean }
 interface RoundFacts {
   family: Family; round: number; generator: { id: string; version: string }; seeds: { low: number; high: number }; difficulty: string;
-  declaration: { sha256: string };
+  declaration: { sha256: string; commit: string | null; versions: Array<{ commit: string; date: string }> };
   world: { id: string; version: string; contentHash: string }; instances: number;
   settings: { mirror: string; timeoutSeconds: number; maxActions: number; checks: number | null };
   practonaut: string; dates: string[];
@@ -236,7 +238,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   const base = input.oracle[0]!.report, reports = all.map(value => value.report);
   const facts: RoundFacts = {
     family, round, generator: { id: generatorId(family), version: declaration.generator.version }, seeds: { low: Math.min(...input.seeds), high: Math.max(...input.seeds) }, difficulty: declaration.difficulty,
-    declaration: { sha256: declarationHash(declaration) },
+    declaration: { sha256: declarationHash(declaration), commit: input.declarationGit?.commit ?? null, versions: [...(input.declarationGit?.versions ?? [])] },
     world: { id: base.environment.world.worldId, version: base.environment.world.version, contentHash: base.environment.world.contentHash }, instances: plan.length,
     settings: { mirror: bench.mirror, timeoutSeconds: bench.timeoutSeconds, maxActions: bench.maxActions, checks: bench.checks },
     practonaut: base.environment.practonaut, dates: [...new Set(reports.map(report => report.createdAt.slice(0, 10)))].sort(),
@@ -322,7 +324,7 @@ export function renderGate(result: GateResult): string {
   lines.push('Preregistered in [PADR-0040](../../adr/0040-challenge-tier-generated-families-and-gate.md) (roadmap 0.2.0, item 4) and in this round\'s committed declaration. Every number below is computed by `node tools/challenge.ts gate` from the declaration, the development and held-out `practonaut.bench/2` reports (each validated and re-verified, resumed benches merged) and the model runs found in their bench folders, on a held-out set regenerated from the declaration.', '');
   lines.push('## Round', '');
   lines.push('| Fact | Value |', '|---|---|');
-  lines.push(`| Declaration | \`${cell(result.family)}-round-${result.round}.declaration.json\`, canonical SHA-256 \`${result.declaration.sha256.slice(0, 16)}…\` |`);
+  lines.push(`| Declaration | \`${cell(result.family)}-round-${result.round}.declaration.json\`, canonical SHA-256 \`${result.declaration.sha256.slice(0, 16)}…\`${result.declaration.commit ? `, held-out set generated from commit \`${result.declaration.commit.slice(0, 12)}\`` : ''} |`);
   lines.push(`| Generator | \`${cell(result.generator.id)}\` ${cell(result.generator.version)}, difficulty ${cell(result.difficulty)} |`);
   lines.push(`| Held-out instances | ${result.instances} (generator seeds ${result.seeds.low}–${result.seeds.high}, derived from the development runs; one counted run per agent per instance) |`);
   lines.push(`| World | \`${cell(result.world.id)}\` ${cell(result.world.version)}, content hash \`${result.world.contentHash.slice(0, 16)}…\` |`);
@@ -330,6 +332,12 @@ export function renderGate(result: GateResult): string {
   lines.push(`| Practonaut | ${cell(result.practonaut)}; reports dated ${result.dates.join(', ')} |`);
   lines.push(`| Gate pair | strongest \`${cell(result.pair.strongest)}\`, weakest \`${cell(result.pair.weakest)}\` (fixed by the capability order before any run) |`);
   lines.push(`| Development | ${result.development.map(entry => `\`${cell(entry.model)}\` ${entry.passed}/${entry.instances}`).join(', ')}: ${orderLine(result)} |`, '');
+  if (result.declaration.versions.length) {
+    lines.push('## Declaration history', '');
+    lines.push('Every version of the declaration file in git, newest first; the gated declaration is the one the held-out set was generated from.', '');
+    for (const version of result.declaration.versions) lines.push(`- \`${version.commit.slice(0, 12)}\` ${cell(version.date)}${version.commit === result.declaration.commit ? ' — the held-out set was generated from this version' : ''}`);
+    lines.push('');
+  }
   lines.push('## Agents', '');
   lines.push('| Agent | Model (client-reported) | Passed | Rate | 95 % Wilson interval | infra_error | Missing runs | Unattested runs | Reports |', '|---|---|---|---|---|---|---|---|---|');
   for (const agent of result.agents) lines.push(`| ${agent.role === 'ladder' ? 'ladder' : agent.role} (${cell(agent.name)}) | ${agent.model === null ? '—' : `\`${cell(agent.model)}\``} | ${agent.passed}/${agent.instances} | ${fixed(agent.rate)} | ${fixed(agent.interval.low)}–${fixed(agent.interval.high)} | ${agent.infraErrors} | ${agent.missing} | ${agent.unattested} | ${agent.reports} |`);

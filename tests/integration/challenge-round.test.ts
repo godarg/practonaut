@@ -4,7 +4,9 @@
 // declaration, and the gate's refusals of changed set files. The whole round through the preflight
 // and the gate (oracle, random and three ladder benches on 26 instances, one stopped by a usage limit
 // and resumed, every report re-verified, every near miss replayed, a hidden rerun found) takes about
-// twenty minutes on a busy machine, longer than test:integration gives a file; run it on its own:
+// twenty minutes on a busy machine, longer than test:integration gives a file; run it on its own,
+// after the engine build:
+//   npm run engine:build
 //   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -66,6 +68,10 @@ test('a round is declared from its development benches and the committed rounds 
   try {
     const { tool, git, bench, setArgs, dev, declare, declarationPath, declarations } = await developedRound(dir);
     const [devOpus, devSonnet, devHaiku] = dev as [string, string, string];
+    // The first declaration of a release creates its folder (third review).
+    const fresh = join(dir, 'repo', 'fresh', 'challenge', 'tight-budget-round-1.declaration.json');
+    const first_ = tool(['declare', '--family', 'tight-budget', '--round', '1', '--difficulty', '1', '--dev', dev.join(','), '--out', fresh]);
+    assert.equal(first_.status, 0, first_.stderr); assert.equal(validateDeclaration(await json(fresh)).round, 1);
     // A development bench that left its mirror to `auto` is refused: a round names its mirror.
     const auto = await bench('claude-code', setArgs(join(dir, 'dev')), { PN_FAKE_MODEL: SONNET });
     let refused = declare([devOpus, auto.path, devHaiku]);
@@ -124,13 +130,18 @@ test('a round is declared from its development benches and the committed rounds 
     assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`oracles/${first}\\.json is not the regenerated reference and near misses`));
     refused = await changedSet(async copy => { const path = join(copy, 'world', 'world.json'), world = await json(path); world.tasks[0].limits = { actions: 40 }; await writeFile(path, JSON.stringify(world)); });
     assert.equal(refused.status, 2); assert.match(refused.stderr, /world\/world\.json is not the world the generator makes from the declaration/);
-    // A declaration changed after the set was made: refused, and a second committed version too.
-    await writeFile(declarationPath, (await readFile(declarationPath, 'utf8')).replace('"round": 1', '"round":  1'));
-    refused = tool(['gate', '--preflight', '--declaration', declarationPath, '--set', join(dir, 'heldout'), '--dev', dev.join(','), '--oracle', 'o', '--random', 'r']);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /has changes that are not committed/);
+    // Later versions of the file are allowed while the gated declaration is the one the set came
+    // from (third review): a re-spaced second version passes the declaration check (and then stops
+    // at the report paths that do not exist); changed content is refused, committed or not.
+    const original = await readFile(declarationPath, 'utf8');
+    await writeFile(declarationPath, original.replace('"round": 1', '"round":  1'));
     git('add', '.'); git('commit', '-m', 'respace'); git('push');
-    refused = tool(['gate', '--preflight', '--declaration', declarationPath, '--set', join(dir, 'heldout'), '--dev', dev.join(','), '--oracle', 'o', '--random', 'r']);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /the declaration has 2 versions in git; a round's declaration is committed once and never changed/);
+    const preflight = () => tool(['gate', '--preflight', '--declaration', declarationPath, '--set', join(dir, 'heldout'), '--dev', dev.join(','), '--oracle', 'o', '--random', 'r']);
+    refused = preflight();
+    assert.equal(refused.status, 2); assert.doesNotMatch(refused.stderr, /declaration/); assert.match(refused.stderr, /ENOENT|no such file/);
+    await writeFile(declarationPath, original.replace('"difficulty": "1"', '"difficulty": "2"'));
+    refused = preflight();
+    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`the gated declaration differs from the one in commit ${manifest.declaration.commit.slice(0, 12)}, from which the held-out set was generated`));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

@@ -25,7 +25,7 @@ import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent
 import { RUN_ARTIFACTS } from '../bench/run.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
 import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
-import { committedFiles, declarationCommit, DeclarationGitError } from './git.ts';
+import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
 import { libraryWorld } from '../bench/run.ts';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -306,7 +306,7 @@ async function checkSetFolder(directory: string, declaration: Declaration, regen
   };
   if (manifest.schema !== SET_SCHEMA || manifest.family !== declaration.family || manifest.round !== declaration.round) fail(`instances.json is not the ${declaration.family} round ${declaration.round} set`);
   if (manifest.declaration?.sha256 !== declarationHash(declaration)) fail('instances.json was not generated from this declaration');
-  if (manifest.declaration?.commit !== commit) fail(`instances.json was generated from the declaration of commit ${String(manifest.declaration?.commit ?? 'none').slice(0, 12)}, not ${commit.slice(0, 12)}`);
+  if (manifest.declaration?.commit !== commit) fail(`instances.json names the declaration of commit ${String(manifest.declaration?.commit ?? 'none').slice(0, 12)}, not ${commit.slice(0, 12)}`);
   if (!isDeepStrictEqual(manifest.seeds, [...seeds])) fail('instances.json names other seeds than the declaration derives');
   if (manifest.world?.contentHash !== sha256Hex(canonicalJson(regenerated.world))) fail('its world is not the one the generator makes from the declaration');
   // The world folder itself, not only the manifest: a hand-edited world.json is refused here, and a
@@ -338,8 +338,17 @@ type RoundData = Omit<Parameters<typeof preflightGate>[0], never> & { declaratio
 async function roundData(files: GateFiles, ladder: readonly GateReport[] | null): Promise<RoundData & { ladderReports: GateReport[] }> {
   const fail = (message: string): never => { throw new GateInputError(message); };
   const declaration = await readDeclaration(files.declaration).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
-  const { commit, versions } = committedDeclaration(files.declaration);
-  if (versions !== 1) fail(`the declaration has ${versions} versions in git; a round's declaration is committed once and never changed`);
+  // The held-out set was generated from the declaration of the commit its manifest records: the gated
+  // declaration must be that one (third review), and the commit must stay reachable on a remote.
+  const recorded = (parseJsonEntry(await readFile(join(files.set, 'instances.json')), 'instances.json', 64) as { declaration?: { commit?: unknown } }).declaration?.commit;
+  const commit = typeof recorded === 'string' ? recorded : fail('the held-out set: instances.json names no declaration commit');
+  const committed = declarationAtCommit(files.declaration, commit);
+  if (committed === null) fail(`the declaration is not in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
+  let atCommit: Declaration | null = null;
+  try { atCommit = validateDeclaration(JSON.parse(committed!)); } catch { atCommit = null; }
+  if (!atCommit || declarationHash(atCommit) !== declarationHash(declaration)) fail(`the gated declaration differs from the one in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
+  if (!commitPushed(files.declaration, commit)) fail(`commit ${commit.slice(0, 12)} of the declaration is in no remote-tracking branch; keep the round's branch pushed`);
+  const versions = declarationVersions(files.declaration);
   const { set, seeds } = (() => { try { return heldOutSet(declaration); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } })();
   await checkSetFolder(files.set, declaration, set, seeds, commit);
   const read = async (paths: readonly string[]): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await verifiedReport(path)); return out; };
@@ -369,7 +378,7 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
   const spent = await scanSpend(roots, { developmentHash: declaration.development.world.contentHash, developmentTasks: declaration.development.seeds.map(seed => taskIdOf(declaration.family, seed)), heldOutTasks: tasks });
   return {
-    declaration, commit, tasks, seeds, worldContentHash: sha256Hex(canonicalJson(set.world)), development, oracle, random,
+    declaration, commit, declarationGit: { commit, versions }, tasks, seeds, worldContentHash: sha256Hex(canonicalJson(set.world)), development, oracle, random,
     nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
     previous, maintainerApproved: files.maintainerApproved ?? [], spent, ladderReports: ladder ? [...ladder] : [],
   };

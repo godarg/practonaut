@@ -211,7 +211,11 @@ judged state and the error classes, and the judged state may hold whatever an ag
   paid development runs, and every development run found is counted. **Git:** `generate --set
   heldout` refuses a declaration that is not committed, has changes in the working tree (staged or
   not) or is not contained in a remote-tracking branch, and records the commit in the set's
-  manifest; the gate checks the same and that the declaration has exactly one version in git history.
+  manifest. The gate requires that the gated declaration equals the declaration in that recorded
+  commit and that the commit is still on a remote-tracking branch; it lists every version of the
+  declaration file in git history (commit and date) in the gate report and refuses only a mismatch
+  with the recorded commit. A round runs on its own pushed branch, which is kept, and is gated there
+  before any squash or rebase; after a squash-merge to main the gate is not expected to run again.
 - **Gate set:** the declaration's held-out instances (`generate --set heldout --declaration`), not
   looked at while tuning; **one counted run per agent per instance** (`--seed-list 1` only: a
   generated world has one variant, so another seed would run the same instance again; `--repeats

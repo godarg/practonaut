@@ -521,16 +521,26 @@ pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; deve
 reported as a sanity check and never change it.
 
 **Operator procedure.** Run one family at a time on an otherwise idle machine that does not sleep
-(`caffeinate -i` on macOS), from a checkout of the commit to be gated, with Claude Code logged in.
+(`caffeinate -i` on macOS), with Claude Code logged in, on a branch of its own for the round
+(`git switch -c challenge/<family>-round-<k>` from the commit to be gated, also from a detached
+checkout, then `git push -u origin HEAD`). The declaration is committed and pushed on that branch,
+and the gate runs there before any squash or rebase. **Keep the branch** (never delete it): the
+held-out set records the declaration's commit, which must stay reachable. After the round's branch
+is squash-merged into main, `gate` is not expected to run again on main.
 Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
-settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit or an API error, the
-bench stops (exit 75) and names the remaining tasks; wait until the limit window is over, then bench
-those tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and pass every
-report to the tool. Do not rerun a task that was judged: the gate finds every run folder under the
-bench roots and refuses best-of-N.
+settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, a login or billing
+error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`
+keeps the loop from starting the next model; wait until the limit window is over, then bench those
+tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and continue the loop
+from that model. A bench stopped with Ctrl+C (exit 130) lists its run in progress as not judged and
+names the tasks to resume the same way; so does a bench that was killed (its unjudged run folders
+may be benched again). Pass every report to the tool. Do not rerun a task that was judged: the gate
+finds every run folder under the bench roots and refuses best-of-N.
 
 ```bash
 F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.declaration.json
+# 0. The round's branch, pushed.
+git switch -c challenge/$F-round-1 && git push -u origin HEAD
 # 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
 node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
 for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
@@ -538,7 +548,7 @@ for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
 done
 # 2. Declaration: freezes the round; commit and push it before step 3.
 node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL
-git add $DECL && git commit -s -m "challenge: declare $F round 1" && git push
+git add $DECL && git commit -s -m "challenge: declare $F round 1" && git push   # declare creates the folder
 # 3. The held-out set: its 26 seeds follow from the development runs; it prints the round's commands.
 node tools/challenge.ts generate $F --set heldout --declaration $DECL --out $D/heldout
 # 4. The baselines, then the preflight, before any ladder run.
@@ -568,7 +578,9 @@ family, round, generator version and the development digest, modulo 900 000 000)
 development runs can move them. `generate --set heldout` refuses a declaration that is not committed,
 changed or not pushed (in no remote-tracking branch) and records its commit in `instances.json`.
 
-`gate` checks the declaration in git (committed once, unchanged, pushed), regenerates the held-out
+`gate` checks that the gated declaration is the one in the commit the held-out set records (a later
+version of the file is allowed; the gate report lists every version with its date) and that this
+commit is still on a remote-tracking branch, regenerates the held-out
 set from it and refuses a set folder whose world, manifest or oracle files differ (the manifest
 records each oracle file's SHA-256 and near-miss count), re-verifies every report against its bench
 folder, merges each agent's reports (a task benched again counts only after an `infra_error`),
@@ -585,4 +597,13 @@ every near miss fails, every run counts, more than 5 % `infra_error`, missing or
 voids the round, at most 100 model runs per family and round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
 requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
 total is added to the gate report by hand until the bench records it.
+
+A whole round without a language model — stand-in `claude` scripts, a usage-limit stop and resume,
+the preflight, the gate and its ledger — is an opt-in integration test that takes about twenty
+minutes, longer than `test:integration` gives a file. Run it on its own, after the engine build:
+
+```bash
+npm run engine:build
+PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
+```
 

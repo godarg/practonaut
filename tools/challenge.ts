@@ -14,7 +14,7 @@
 // Families: repair, injection, long-horizon, limited-checks, tight-budget (roadmap order).
 // Seeds: development 1–999 (default 1…8), throwaway checks 10000–19999 (default 10001…10024),
 // held-out ≥ 1000000, derived from the round's committed and pushed declaration only.
-import { lstat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash } from '../src/challenge/declaration.ts';
@@ -136,6 +136,8 @@ async function declare(args: string[]): Promise<void> {
     family, round: whole(values['--round'], '--round'), difficulty: difficultyOf(values['--difficulty'] ?? fail('--difficulty is required')),
     development: list(values['--dev'] ?? fail('--dev names the development reports')), maintainerApproved: list(values['--maintainer-approved']), benchRoots: list(values['--bench-root']), out,
   });
+  // The first round of a release creates the declarations folder.
+  await mkdir(dirname(out), { recursive: true });
   await writeFile(out, text);
   const counts = declaration.development.passed.map((row, index) => `${declaration.ladder[index]} ${row.filter(Boolean).length}/${row.length}`).join(', ');
   process.stdout.write(`${family} round ${declaration.round}: gate pair ${declaration.pair.strongest} (strongest) vs ${declaration.pair.weakest} (weakest), fixed by the capability order\n`);

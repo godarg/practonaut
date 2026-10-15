@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { committedFiles, declarationCommit, DeclarationGitError } from '../../src/challenge/git.ts';
+import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from '../../src/challenge/git.ts';
 
 test('a declaration is used only committed, unchanged and pushed; its versions are counted', { timeout: 120_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-declaration-git-'));
@@ -41,6 +41,15 @@ test('a declaration is used only committed, unchanged and pushed; its versions a
     // A second version, committed and pushed: usable, and the gate sees two versions.
     git(work, 'commit', '-m', 'redeclare'); git(work, 'push');
     assert.equal(declarationCommit(file).versions, 2);
+    // Every version, newest first, and the content of each (third review).
+    const versions = declarationVersions(file);
+    assert.deepEqual(versions.map(version => version.commit), [git(work, 'rev-parse', 'HEAD'), pushed.commit]);
+    assert.ok(versions.every(version => /^\d{4}-\d{2}-\d{2}T/.test(version.date)));
+    assert.equal(declarationAtCommit(file, pushed.commit), '{"round":1}\n');
+    assert.equal(declarationAtCommit(file, '0'.repeat(40)), null);
+    assert.equal(commitPushed(file, pushed.commit), true);
+    git(work, 'commit', '--allow-empty', '-m', 'local only');
+    assert.equal(commitPushed(file, git(work, 'rev-parse', 'HEAD')), false);
     // Outside any repository.
     const loose = join(dir, 'loose'); await mkdir(loose); await writeFile(join(loose, 'repair-round-1.declaration.json'), '{}');
     assert.throws(() => declarationCommit(join(loose, 'repair-round-1.declaration.json')), /is not in a git repository; commit and push it first/);

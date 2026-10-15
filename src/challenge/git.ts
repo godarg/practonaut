@@ -38,6 +38,35 @@ export function declarationCommit(path: string): { commit: string; versions: num
   return { commit, versions: commits.length };
 }
 
+/** The repository's top level and the file's path in it, or null outside a repository. */
+function located(path: string): { root: string; rel: string } | null {
+  const file = realpathSync(path), top = git(dirname(file), ['rev-parse', '--show-toplevel']);
+  if (!top.ok) return null;
+  const root = realpathSync(top.out.trim());
+  return { root, rel: relative(root, file) };
+}
+/** Every committed version of the declaration file, newest first: commit and committer date. */
+export function declarationVersions(path: string): Array<{ commit: string; date: string }> {
+  const at = located(path);
+  if (!at) return [];
+  const listed = git(at.root, ['log', '--format=%H %cI', '--', at.rel]);
+  return listed.ok ? listed.out.split('\n').filter(Boolean).map(line => { const [commit, date] = line.split(' '); return { commit: commit!, date: date ?? '' }; }) : [];
+}
+/** The declaration file's content in a commit, or null when the commit or the file is not there. */
+export function declarationAtCommit(path: string, commit: string): string | null {
+  const at = located(path);
+  if (!at || !/^[0-9a-f]{40}$/.test(commit)) return null;
+  const shown = git(at.root, ['show', `${commit}:${at.rel}`]);
+  return shown.ok ? shown.out : null;
+}
+/** Whether a remote-tracking branch contains the commit (it was pushed and stays reachable). */
+export function commitPushed(path: string, commit: string): boolean {
+  const at = located(path);
+  if (!at || !/^[0-9a-f]{40}$/.test(commit)) return false;
+  const remote = git(at.root, ['branch', '-r', '--contains', commit]);
+  return remote.ok && remote.out.trim() !== '';
+}
+
 /** The committed files of a folder (names only), for counting earlier rounds. */
 export function committedFiles(folder: string): string[] {
   const listed = git(folder, ['ls-files', '--', '.']);

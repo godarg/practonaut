@@ -430,3 +430,10 @@ test('runs the client rejected before any model work are listed, not counted; an
   assert.deepEqual([fails.verdict, fails.voidReason], ['does not pass', null]);
 });
 
+test('the gate report lists every version of the declaration and names the one the set came from (third review)', () => {
+  const versions = [{ commit: 'b'.repeat(40), date: '2026-11-03T09:00:00+01:00' }, { commit: 'a'.repeat(40), date: '2026-11-02T09:00:00+01:00' }];
+  const markdown = renderGate(computeGate(input(first(15), first(10), first(4), { declarationGit: { commit: 'a'.repeat(40), versions } })));
+  assert.match(markdown, /held-out set generated from commit `aaaaaaaaaaaa`/);
+  assert.match(markdown, /## Declaration history\n\nEvery version of the declaration file in git, newest first[^\n]*\n\n- `bbbbbbbbbbbb` 2026-11-03T09:00:00\+01:00\n- `aaaaaaaaaaaa` 2026-11-02T09:00:00\+01:00 — the held-out set was generated from this version\n/);
+});
+
