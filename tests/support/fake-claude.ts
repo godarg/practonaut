@@ -8,6 +8,9 @@
 //   api-error      an is_error result "API Error: 529 … overloaded", no tool call, exit 1
 //   max-turns      observe, then an error_max_turns result, exit 1 (the agent's own failure)
 //   agent-error    observe, then an error_during_execution result, exit 1 (the agent's own failure)
+//   too-long       observe, then an is_error result "API Error: 400 … prompt is too long", exit 1
+//                  (the agent's own context overflow)
+//   login-expired  an is_error result "OAuth token has expired", status 401, no tool call, exit 1
 //   silent-crash   no output and no tool call, exit 1
 // With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
 // one hits the usage limit.
@@ -37,6 +40,10 @@ if (mode === 'usage-limit') {
   out({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000', num_turns: 1, total_cost_usd: 0 });
   process.exit(1);
 }
+if (mode === 'login-expired') {
+  out({ type: 'result', subtype: 'success', is_error: true, result: 'OAuth token has expired. Please run /login', api_error_status: 401, num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } });
+  process.exit(1);
+}
 if (mode === 'api-error') {
   out({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}', num_turns: 1, total_cost_usd: 0 });
   process.exit(1);
@@ -48,6 +55,7 @@ const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: pro
 await client.call('observe', {});
 await client.close();
 if (mode === 'max-turns') { out({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 30, total_cost_usd: 0 }); process.exit(1); }
+if (mode === 'too-long') { out({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}', num_turns: 9, total_cost_usd: 0 }); process.exit(1); }
 if (mode === 'agent-error') { out({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 2, total_cost_usd: 0 }); process.exit(1); }
 out({ type: 'result', subtype: 'success', is_error: false, num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } });
 `);

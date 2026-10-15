@@ -153,12 +153,13 @@ checker (never by the agent):
   agent's exit status (`completed`, `agent_failed`, `timeout`, `infra_error`). Also recorded:
   the **error classes** the checker found on a failed board. A run that could not show what the
   model can do is an `infra_error` and is not judged: its client's own stream reports a usage or
-  rate limit (a `rate_limit_event` that is not `allowed`, an `is_error` result naming a limit or
-  status 429) or an API error (an `is_error` result naming one, or an assistant message the client
-  marks as an API error), or the agent ended without completing and without a single tool call
-  (the bridge's start-up read counts as one, so this is an agent that never started its MCP server,
-  or a command that could not start). An
-  `error_max_turns` result or another error of the agent's own stays `agent_failed` and is judged.
+  rate limit (a `rate_limit_event` that is not `allowed`, status 429 or a limit named), an
+  authentication or billing error (status 401 or 403, an expired login) or a server error (5xx, 529
+  included) — in an `is_error` result or an assistant message the client marks as an API error —,
+  or the agent ended without completing and without a single tool call (the bridge's start-up read
+  counts as one, so this is an agent that never started its MCP server, or a command that could not
+  start). An `error_max_turns` result, a context overflow ("prompt is too long", status 400), any
+  other 4xx error and every other error of the agent's own stay `agent_failed` and are judged.
   The client's model and Claude Code's version from its init event are recorded per run, and
   `report --verify` checks the model against the agent's own `agent.stdout`.
 

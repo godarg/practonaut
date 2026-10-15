@@ -32,7 +32,7 @@ test('usage limits, API errors and silent ends are infra_error and unjudged; the
     };
     const one = async (mode: string) => { const { result, report, path } = await bench({ PN_FAKE_MODE: mode }, '--tasks', 'connect'); assert.equal(result.status, 0, result.stderr); return { run: report.runs[0] as Json, path }; };
     // Expected classes, by hand from the stand-in's behaviour.
-    for (const [mode, note] of [['usage-limit', /the client reported a usage or rate limit/], ['api-error', /the client reported an API error/], ['silent-crash', /the agent ended \(agent_failed\) without a single tool call/]] as const) {
+    for (const [mode, note] of [['usage-limit', /the client reported a usage or rate limit/], ['api-error', /the client reported an API error/], ['login-expired', /the client reported an authentication or billing error/], ['silent-crash', /the agent ended \(agent_failed\) without a single tool call/]] as const) {
       const { run, path } = await one(mode);
       assert.equal(run.status, 'infra_error', mode); assert.match(run.note, note, mode);
       assert.equal(run.checker, null, `${mode}: not judged`); assert.equal(run.artifacts, undefined);
@@ -40,7 +40,7 @@ test('usage limits, API errors and silent ends are infra_error and unjudged; the
       const verified = spawnSync(process.execPath, [CLI, 'report', path, '--verify'], { encoding: 'utf8' });
       assert.equal(verified.status, 0, verified.stderr);
     }
-    for (const mode of ['max-turns', 'agent-error']) {
+    for (const mode of ['max-turns', 'agent-error', 'too-long']) {
       const { run } = await one(mode);
       assert.equal(run.status, 'agent_failed', mode); assert.notEqual(run.checker, null, `${mode}: judged`);
       assert.equal(run.toolCalls.observe >= 1, true);

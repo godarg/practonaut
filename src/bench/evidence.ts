@@ -196,15 +196,34 @@ export function timelineOf(records: readonly MutationRecord[], omitted = 0): { t
 
 /** Why a run could not show what the model can do, as its client's own stream says it: a usage or
  * rate limit, or an API error. Such a run is an infrastructure error, not a model failure. */
-export interface ClientFailure { reason: 'usage_limit' | 'api_error'; detail: string }
-const LIMIT_TEXT = /usage limit|limit reached|hit your limit|rate.?limit|quota|too many requests|\b429\b/i;
-const API_ERROR_TEXT = /API Error|api_error|overloaded|internal server error|service unavailable|server_error|\b5\d\d\b|credit balance|billing|authentication|invalid api key|connection error/i;
+export interface ClientFailure { reason: 'usage_limit' | 'auth' | 'api_error'; detail: string }
+const LIMIT_TEXT = /usage limit|limit reached|hit your limit|rate.?limit|quota|too many requests/i;
+const AUTH_TEXT = /authentication|unauthori[sz]ed|forbidden|invalid (?:x-)?api.?key|oauth|(?:token|login|session|credentials?) (?:has |have )?expired|expired (?:token|login|session|credentials?)|\/login|not logged in|credit balance|billing/i;
+const SERVER_TEXT = /overloaded|internal server error|service unavailable|bad gateway|gateway time-?out|server_error|"api_error"|connection error/i;
+/** The class of an API error by its HTTP status (from `api_error_status` or "API Error: nnn") or its
+ * words: 429 and usage or rate limits; 401, 403, an expired login or billing; 5xx (529 included).
+ * Any other 4xx — a prompt that is too long, an invalid request — is the agent's (third review). */
+function errorClass(status: number | null, text: string): ClientFailure['reason'] | null {
+  if (status !== null) {
+    if (status === 429) return 'usage_limit';
+    if (status === 401 || status === 403) return 'auth';
+    if (status >= 500 && status <= 599) return 'api_error';
+    if (status >= 400) return null;
+  }
+  if (LIMIT_TEXT.test(text)) return 'usage_limit';
+  if (AUTH_TEXT.test(text)) return 'auth';
+  if (SERVER_TEXT.test(text)) return 'api_error';
+  return null;
+}
+const statusIn = (text: string): number | null => { const match = /API Error:?\s*(\d{3})\b/i.exec(text); return match ? Number(match[1]) : null; };
+const DETAIL: Record<ClientFailure['reason'], string> = { usage_limit: 'usage or rate limit', auth: 'authentication or billing', api_error: 'API error' };
 /**
  * Scans a stream-json client's output for its own failure reports (PADR-0040): a `rate_limit_event`
- * whose status is not `allowed`/`allowed_warning`, a `result` with `is_error` whose text or
- * `api_error_status` names a limit or an API error, or an assistant message the client marks as an
- * API error. `error_max_turns` and other agent errors are not client failures. The detail is fixed
- * text, never the client's own words.
+ * whose status is not `allowed`/`allowed_warning`; a `result` with `is_error` (not
+ * `error_max_turns`) or an assistant message the client marks as an API error, whose status or words
+ * name a usage or rate limit (429), an authentication or billing error (401, 403, an expired login)
+ * or a server error (5xx, 529 included). A context overflow and other 4xx errors stay the agent's.
+ * The detail is fixed text, never the client's own words.
  */
 export function clientFailure(stdout: string): ClientFailure | null {
   for (const line of stdout.split('\n')) {
@@ -218,15 +237,16 @@ export function clientFailure(stdout: string): ClientFailure | null {
     }
     if (event.type === 'result' && event.is_error === true && event.subtype !== 'error_max_turns') {
       const text = [event.result, event.error, ...(Array.isArray(event.errors) ? event.errors : [])].filter((value): value is string => typeof value === 'string').join(' ').slice(0, 4096);
-      const status = typeof event.api_error_status === 'number' ? event.api_error_status : null;
-      if (status === 429 || LIMIT_TEXT.test(text)) return { reason: 'usage_limit', detail: 'result is_error: usage or rate limit' };
-      if ((status !== null && status >= 400) || API_ERROR_TEXT.test(text)) return { reason: 'api_error', detail: 'result is_error: API error' };
+      const reason = errorClass(typeof event.api_error_status === 'number' ? event.api_error_status : statusIn(text), text);
+      if (reason) return { reason, detail: `result is_error: ${DETAIL[reason]}` };
       continue;
     }
     if (event.type === 'assistant' && (event.isApiErrorMessage === true || typeof event.error === 'string')) {
-      const text = typeof event.error === 'string' ? event.error : '';
-      if (LIMIT_TEXT.test(text)) return { reason: 'usage_limit', detail: 'assistant API error: usage or rate limit' };
-      if (event.isApiErrorMessage === true || API_ERROR_TEXT.test(text)) return { reason: 'api_error', detail: 'assistant API error' };
+      const content = (event.message as { content?: unknown } | undefined)?.content;
+      const words = Array.isArray(content) ? content.flatMap(part => typeof (part as { text?: unknown })?.text === 'string' ? [(part as { text: string }).text] : []) : [];
+      const text = [typeof event.error === 'string' ? event.error : '', ...words].join(' ').slice(0, 4096);
+      const reason = errorClass(statusIn(text), text);
+      if (reason) return { reason, detail: `assistant API error: ${DETAIL[reason]}` };
     }
   }
   return null;

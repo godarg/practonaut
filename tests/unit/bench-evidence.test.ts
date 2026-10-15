@@ -137,7 +137,7 @@ test('the checker splits every library goal into the same conditions the Player 
   }
 });
 
-test('client failures: a usage or rate limit and an API error are the client\'s, error_max_turns and other agent errors are not (review B-A)', () => {
+test('client failures: a usage or rate limit, a login or billing error and a server error are the client\'s; error_max_turns, a context overflow and other 4xx errors are not (review B-A, third review)', () => {
   const lines = (...events: unknown[]): string => events.map(event => JSON.stringify(event)).join('\n') + '\n';
   const init = { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
   assert.deepEqual(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'rejected' } })), { reason: 'usage_limit', detail: 'rate_limit_event not allowed' });
@@ -145,8 +145,18 @@ test('client failures: a usage or rate limit and an API error are the client\'s,
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000' }))?.reason, 'usage_limit');
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'x', api_error_status: 429 }))?.reason, 'usage_limit');
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'API Error: 529 overloaded' }))?.reason, 'api_error');
-  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, message: {} }))?.reason, 'api_error');
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'x', api_error_status: 503 }))?.reason, 'api_error');
+  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, message: { content: [{ type: 'text', text: 'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}' }] } }))?.reason, 'api_error');
   assert.equal(clientFailure(lines(init, { type: 'assistant', error: 'rate_limit', message: {} }))?.reason, 'usage_limit');
+  // Authentication and billing (third review): an expired login, 401 or 403.
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login', api_error_status: 401 }))?.reason, 'auth');
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'API Error: 403 forbidden' }))?.reason, 'auth');
+  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, error: 'authentication_failed', message: { content: [{ type: 'text', text: 'OAuth token has expired. Please run /login' }] } }))?.reason, 'auth');
+  // A context overflow and other 4xx errors are the agent's own (third review).
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}' })), null);
+  assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'Prompt is too long', api_error_status: 400 })), null);
+  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, message: { content: [{ type: 'text', text: 'API Error: 400 invalid_request_error' }] } })), null);
+  assert.equal(clientFailure(lines(init, { type: 'assistant', isApiErrorMessage: true, message: {} })), null, 'an API error without a status or words is not classed');
   // The agent's own failures.
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'error_max_turns', is_error: true, result: 'rate limit is mentioned in passing' })), null);
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'error_during_execution', is_error: true })), null);

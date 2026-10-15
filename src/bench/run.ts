@@ -179,6 +179,8 @@ export function verdictOf(verdict: CheckerVerdict, taskId: string): { passed: bo
 }
 
 interface AgentOutcome { status: BenchRunV2['status'] | 'interrupted'; exitCode: number | null; note?: string; stdout?: string }
+/** How a run's note names a client failure; the gate reads the first two (rejected by the client). */
+export const CLIENT_FAILURE_WORDS = Object.freeze({ usage_limit: 'a usage or rate limit', auth: 'an authentication or billing error', api_error: 'an API error' });
 /** An external run the client's own stream marks as an infrastructure error: not judged. */
 class ClientInfraError extends Error { readonly outcome: AgentOutcome; constructor(outcome: AgentOutcome) { super(outcome.note ?? "infra_error"); this.outcome = outcome; } }
 
@@ -351,7 +353,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
         if (outcome.status !== 'interrupted' && !options.signal?.aborted) {
           const failure = clientFailure((await readLogHead(join(home, 'agent.stdout'), MAX_LOG_BYTES))?.text ?? '');
           const calls = counters.observe + counters.act + counters.undoCalls + counters.resetCalls + counters.check;
-          if (failure) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the client reported ${failure.reason === 'usage_limit' ? 'a usage or rate limit' : 'an API error'} (${failure.detail})` };
+          if (failure) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: `the client reported ${CLIENT_FAILURE_WORDS[failure.reason]} (${failure.detail})` };
           else if (outcome.status !== 'completed' && calls === 0) outcome = { status: 'infra_error', exitCode: outcome.exitCode, note: outcome.note ? `${outcome.note}; the agent ended without a single tool call` : `the agent ended (${outcome.status}) without a single tool call` };
         }
       }
