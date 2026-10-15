@@ -14,7 +14,7 @@ import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, rea
 import type { World } from '../world/types.ts';
 import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { loadReportDetails } from '../bench/details.ts';
-import { compareReports, CompareError } from '../bench/compare.ts';
+import { agentKindDiffers, compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
 import { renderJunit } from '../bench/junit.ts';
 import { renderBadge, renderCard } from '../bench/card.ts';
@@ -370,7 +370,9 @@ export async function commandCompare(args: string[]): Promise<number> {
     // With --html the refusal is a page too, naming every difference.
     if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language));
     const field = (name: string): string => cliText(`compareField_${name}` as Parameters<typeof cliText>[0]);
-    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; ') }));
+    // A different isolation level is a different agent kind: other flags cannot fix it.
+    const hint = cliText(agentKindDiffers(error.differences) ? 'compareHintAgentKind' : 'compareHintSettings');
+    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; '), hint }));
   }
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verification: sides.baseline.verification }, candidate: { schema: candidate.schema, verification: sides.candidate.verification }, comparison }) + '\n');
   else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));

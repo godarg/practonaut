@@ -102,6 +102,12 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 
+- `compare` refusing two reports of different isolation levels says that the level follows from the
+  agent kind (oracle and random compare only with a built-in, the preset with itself, a command
+  template with a command template) and to bench a trusted configuration of the candidate's kind as the
+  baseline, in the terminal (EN/DE) and on the `--html` page; other refusals keep "bench the baseline
+  again with the candidate's settings".
+
 - `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
   works without `--verify` (it names where the run details come from).
 - **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 105 MB on

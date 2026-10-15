@@ -7,7 +7,7 @@
  * difference. Text from the reports is escaped.
  */
 import { isBenchReportV2, type BenchReport } from './report.ts';
-import { isolationOf, type Comparison, type Difference, type InstancePair } from './compare.ts';
+import { agentKindDiffers, isolationOf, type Comparison, type Difference, type InstancePair } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
 import { banner, chips, escapeHtml as esc, modelHeadline, page, prose, stackedTable, statusIcon, type Verification } from './render.ts';
@@ -146,7 +146,7 @@ export function renderIncomparableHtml(baseline: CompareInput, candidate: Compar
 <h1>${esc(heading(baseline, candidate, language))}</h1>
 <p class="headline">${esc(sentence(t.incomparableTitle))}</p>
 </header>
-${banner('warning', t.incomparableDiffers, `<p>${esc(t.incomparableLead)}</p>${list(items, 'fail')}<p>${esc(t.incomparableFix)}</p>`)}
+${banner('warning', t.incomparableDiffers, `<p>${esc(t.incomparableLead)}</p>${list(items, 'fail')}<p>${esc(agentKindDiffers(found) ? t.incomparableFixAgentKind : t.incomparableFix)}</p>`)}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides"><div class="figure"><dt>${esc(t.baseline)}</dt><dd class="detail">${chips(t.baseline, sideFacts(baseline, t, language))}</dd></div><div class="figure"><dt>${esc(t.candidate)}</dt><dd class="detail">${chips(t.candidate, sideFacts(candidate, t, language))}</dd></div></dl></section>
 <section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${esc(t.compareRules)}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);

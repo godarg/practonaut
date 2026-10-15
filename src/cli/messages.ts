@@ -388,8 +388,16 @@ export const CLI_CATALOG = {
     "de": "compare braucht zwei Bench-Berichte: {cli} compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]"
   },
   "compareIncomparable": {
-    "en": "the reports are not comparable (PADR-0039): {differences}. Bench the baseline again with the candidate's settings",
-    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+    "en": "the reports are not comparable (PADR-0039): {differences}. {hint}",
+    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. {hint}"
+  },
+  "compareHintSettings": {
+    "en": "Bench the baseline again with the candidate's settings",
+    "de": "Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+  },
+  "compareHintAgentKind": {
+    "en": "The isolation level follows from the agent kind: oracle and random compare only with a built-in, the claude-code preset only with itself, a command template only with a command template. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings",
+    "de": "Die Isolationsstufe folgt aus der Art des Agenten: oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, die Voreinstellung claude-code nur mit sich selbst, eine Befehlsvorlage nur mit einer Befehlsvorlage. Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen"
   },
   "compareDifference": {
     "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",

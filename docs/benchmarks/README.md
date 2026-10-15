@@ -12,12 +12,16 @@ the Practonaut MCP tools, and after it stops a separate checker process judges w
 The agent's own words are never read for scoring.
 
 ```bash
-npx practonaut bench --agent oracle --tasks all --seeds 2          # reference solutions: the ceiling
+npx practonaut bench --agent oracle --tasks all --seeds 2          # reference solutions: the score's ceiling
 npx practonaut bench --agent random --tasks all --seeds 2 --max-actions 30   # random actions: the floor
 npx practonaut bench --agent claude-code --tasks excalidraw/connect,excalidraw/insert-between
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut compare baseline/report.json candidate/report.json --fail-on-regression
 ```
+
+The built-ins mark the ends of the score; they are not a baseline for `compare`, which pairs only
+reports of the same agent kind (§6). The baseline for your agent is a configuration of it that you
+trust.
 
 Your own task, made from two drawings ([authoring guide](../authoring-guide.md) §1):
 
@@ -416,7 +420,12 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
 - **Comparable or refused.** Both reports must agree on the world content (its hash), the grid (the same
   tasks and seeds), the mirror, the action budget and the isolation level; otherwise `compare` exits 2
   with `compare_incomparable` and names every difference. Repeats, timeout, agent, model and version may
-  differ; a different timeout or version is listed as a caveat.
+  differ; a different timeout or version is listed as a caveat. The isolation level follows from the
+  agent kind (§2): `oracle` and `random` compare only with a built-in, the `claude-code` preset only
+  with itself, a command template only with a command template, so no flag makes the oracle a baseline
+  for your agent. As the baseline, bench a configuration of the candidate's own kind that you trust
+  (for a template: the command, model and prompt you trust) on the candidate's world, grid, mirror and
+  budget; the refusal says so.
 - **The unit is the instance** (task × seed). The repeats of an instance give one outcome per side:
   passed when at least half of all of them passed; a run that was not judged counts as not passed and
   is listed. Repeats are never counted as independent pairs. An instance missing on one side is listed
