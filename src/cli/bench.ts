@@ -15,11 +15,16 @@ import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/re
 import { loadReportDetails } from '../bench/details.ts';
 import { compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
+import { renderJunit } from '../bench/junit.ts';
+import { renderBadge, renderCard } from '../bench/card.ts';
+import { renderCardPngs } from '../bench/card-png.ts';
+import { chromiumCheck } from './doctor.ts';
+import { browserAdvice, launchFailureDetail } from './browser-start.ts';
 import type { BenchReport } from '../bench/report.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { inlineOptionValues } from './options.ts';
 
-const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--checks', '--recover'];
+const VALUED = ['--agent', '--tasks', '--seeds', '--seed-list', '--repeats', '--timeout', '--max-actions', '--mirror', '--out', '--keep-env', '--world', '--oracle', '--label', '--checks', '--recover', '--junit'];
 function flags(given: string[], valued: string[], booleans: string[] = []): { flags: Record<string, string>; positional: string[]; booleans: Set<string> } {
   const args = inlineOptionValues(given, valued);
   const out: Record<string, string> = {}, positional: string[] = [], seen = new Set<string>();
@@ -63,9 +68,13 @@ export interface BenchArguments {
   stopOnInfra?: boolean;
   /** `--recover <bench folder>`: rebuild the report of a killed bench from its run folders. */
   recover?: string;
+  /** `--junit <file>`: the runs as JUnit XML as well (junit.ts). */
+  junit?: string;
+  /** `--fail-on-agent-error`: exit 2 (`agent_failed`) when a run's agent failed or could not start. */
+  failOnAgentError: boolean;
 }
 export function parseBenchArguments(args: string[]): BenchArguments {
-  const parsed = flags(args, VALUED, ['--stop-on-infra']);
+  const parsed = flags(args, VALUED, ['--stop-on-infra', '--fail-on-agent-error']);
   if (parsed.positional.length || !parsed.flags['--agent']) throw new RuntimeError('usage', cliText('benchUsage'));
   const world = parsed.flags['--world'];
   const oracles = parsed.flags['--oracle'] === undefined ? [] : parsed.flags['--oracle'].split(',').map(value => value.trim());
@@ -100,6 +109,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
     ...(parsed.flags['--checks'] !== undefined ? { checks: checksOption(parsed.flags['--checks']) } : {}),
     ...(parsed.booleans.has('--stop-on-infra') ? { stopOnInfra: true } : {}),
     ...(parsed.flags['--recover'] !== undefined ? { recover: parsed.flags['--recover'] } : {}),
+    ...(parsed.flags['--junit'] ? { junit: parsed.flags['--junit'] } : {}), failOnAgentError: parsed.booleans.has('--fail-on-agent-error'),
   };
 }
 
@@ -121,7 +131,7 @@ export async function prepareBench(options: Pick<BenchArguments, 'world' | 'task
   return { world, tasks, references };
 }
 
-async function writeAtomic(path: string, text: string): Promise<void> {
+async function writeAtomic(path: string, text: string | Uint8Array): Promise<void> {
   const temporary = `${path}.tmp-${process.pid}`;
   try { await writeFile(temporary, text, { flag: 'wx', mode: 0o644 }); await rename(temporary, path); }
   catch (error) { await rm(temporary, { force: true }); throw new RuntimeError('usage', cliText('writeFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' })); }
@@ -169,6 +179,8 @@ export async function commandBench(args: string[]): Promise<number> {
   await writeAtomic(out, JSON.stringify(report, null, 2) + '\n');
   // The report's numbers come from the runs; why each failed comes from the bench folder (PADR-0039).
   const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
+  // The JUnit file names the same reasons as the table (unmet conditions from the bench folder).
+  if (options.junit) await writeAtomic(options.junit, renderJunit(report, getCliLanguage(), 'consistency-checked', details));
   process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
   const stopped = report.interrupted && 'stopped' in report.interrupted ? report.interrupted.stopped : undefined;
   // Tasks without a judged run for every planned seed and repeat: what a resumed bench takes.
@@ -176,7 +188,18 @@ export async function commandBench(args: string[]): Promise<number> {
   if (stopped) process.stdout.write(cliText('benchStopped', { run: stopped.run, note: safeText(report.runs.at(-1)!.note ?? 'infra_error'), runs: report.runs.length, planned: report.interrupted!.plannedRuns, tasks: stopped.remaining.join(',') }));
   else if (result.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: result.planned, tasks: report.settings.tasks.filter(task => !judged(task)).join(',') }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
-  return stopped ? EXIT_STOPPED : result.interrupted ? EXIT_INTERRUPTED : 0;
+  if (options.junit) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(options.junit)) }));
+  if (stopped) return EXIT_STOPPED;
+  if (result.interrupted) return EXIT_INTERRUPTED;
+  // An agent that failed (a missing or expired login, a crash) leaves runs that were judged on the board
+  // it left: in CI they would read as instance regressions. With the flag the bench fails by name
+  // instead, after the report, the JUnit file and the bench folder are written.
+  const failed = report.runs.filter(run => run.status === 'agent_failed');
+  if (options.failOnAgentError && failed.length) {
+    const shown = failed.slice(0, 10).map(run => safeText(run.id)).join(', ');
+    throw new RuntimeError('agent_failed', cliText('benchAgentFailed', { n: failed.length, runs: report.runs.length, list: failed.length > 10 ? cliText('benchAgentFailedMore', { list: shown, more: failed.length - 10 }) : shown }));
+  }
+  return 0;
 }
 /**
  * `bench … --recover <bench folder>`: the report of a bench that was killed, rebuilt from its run
@@ -237,10 +260,33 @@ async function verifyReport(report: BenchReport, runs: string): Promise<Verified
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
 }
 
-/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--json]: validates,
- * optionally re-judges, then renders with the run details from the bench folder. */
+/** The four files of `--card <out>`: `<out>-light.svg`, `<out>-dark.svg` and their PNGs (`.svg` or
+ * `.png` at the end of `<out>` is dropped first). A folder (`<out>` ends with a separator, or
+ * `folder` says it is an existing directory) gets them as `card-light.svg` … inside it. */
+export function cardPaths(out: string, folder = false): { light: { svg: string; png: string }; dark: { svg: string; png: string } } {
+  const base = folder || /[\\/]$/.test(out) ? join(out, 'card') : out.replace(/\.(svg|png)$/i, '');
+  return { light: { svg: `${base}-light.svg`, png: `${base}-light.png` }, dark: { svg: `${base}-dark.svg`, png: `${base}-dark.png` } };
+}
+/** `--card`: both themes as SVG, then as PNG through Chromium; nothing is written unless all four exist. */
+async function writeCard(out: string, report: BenchReport, language: ReturnType<typeof getCliLanguage>, verification: Verified['level']): Promise<string[]> {
+  if (!(await chromiumCheck(true)).ok) throw new RuntimeError('browser_runtime_missing', cliText('cardChromiumMissing'));
+  const folder = await stat(out).then(info => info.isDirectory(), () => false);
+  const tokens = await readTokensCss(), paths = cardPaths(out, folder);
+  const svgs = { light: renderCard(report, tokens, 'light', language, verification), dark: renderCard(report, tokens, 'dark', language, verification) };
+  let drawn: Awaited<ReturnType<typeof renderCardPngs>>;
+  try { drawn = await renderCardPngs([svgs.light, svgs.dark]); }
+  catch (error) { throw new RuntimeError('browser_start_failed', cliText('cardChromiumStart', { detail: launchFailureDetail(error), advice: browserAdvice() })); }
+  if (!drawn.sandbox) process.stderr.write(cliText('cardSandboxNotice'));
+  await writeAtomic(paths.light.svg, svgs.light); await writeAtomic(paths.dark.svg, svgs.dark);
+  await writeAtomic(paths.light.png, drawn.pngs[0]!); await writeAtomic(paths.dark.png, drawn.pngs[1]!);
+  return [paths.light.svg, paths.dark.svg, paths.light.png, paths.dark.png];
+}
+
+/** practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>]
+ * [--card <out>] [--badge <out.svg>] [--json]: validates, optionally re-judges, then renders with the run
+ * details from the bench folder. */
 export async function commandReport(args: string[]): Promise<number> {
-  const parsed = flags(args, ['--html', '--runs'], ['--json', '--verify']);
+  const parsed = flags(args, ['--html', '--runs', '--junit', '--card', '--badge'], ['--json', '--verify']);
   if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
   const path = parsed.positional[0]!, report = await readReport(path);
   // The bench folder: what --verify re-judges and where the run details come from.
@@ -248,9 +294,10 @@ export async function commandReport(args: string[]): Promise<number> {
   // Without --verify only the report's own arithmetic is checked.
   const verification: Verified = parsed.booleans.has('--verify') ? await verifyReport(report, runs) : { level: 'consistency-checked' };
   const language = getCliLanguage();
-  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
-  else {
+  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] && !parsed.flags['--junit'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
+  // With --json the one result line comes last, once every requested file is written: a file that
+  // fails ends the command with ok:false and its code instead.
+  if (!parsed.booleans.has('--json')) {
     process.stdout.write(renderTable(report, language, details, verification.level));
     if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
     else if (verification.world === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
@@ -268,6 +315,23 @@ export async function commandReport(args: string[]): Promise<number> {
     await writeAtomic(html, renderHtml(report, await readTokensCss(), language, verification.level, details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
   }
+  const junit = parsed.flags['--junit'];
+  if (junit) {
+    await writeAtomic(junit, renderJunit(report, language, verification.level, details));
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(junit)) }));
+  }
+  // The card and the badge depend on the report, the language and the verification level only.
+  const card = parsed.flags['--card'];
+  if (card) {
+    const written = await writeCard(card, report, language, verification.level);
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportCard', { paths: written.map(path => safeText(displayPath(path))).join(', ') }));
+  }
+  const badge = parsed.flags['--badge'];
+  if (badge) {
+    await writeAtomic(badge, renderBadge(report, await readTokensCss(), language, verification.level));
+    if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportBadge', { path: safeText(displayPath(badge)) }));
+  }
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
   return 0;
 }
 

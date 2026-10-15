@@ -344,8 +344,8 @@ export const CLI_CATALOG = {
     "de": "\nBericht: {path}\nLaufprotokolle und Artefakte: {logs}\nDarstellen: {cli} report <bericht.json> --html <out.html>   Nachrechnen: {cli} report <bericht.json> --verify --runs {logs}\n"
   },
   "reportUsage": {
-    "en": "report needs one bench report: {cli} report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--json]",
-    "de": "report braucht einen Bench-Bericht: {cli} report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--json]"
+    "en": "report needs one bench report: {cli} report <bench.json> [--verify [--runs <dir>]] [--html <out.html>] [--junit <out.xml>] [--card <out>] [--badge <out.svg>] [--json]",
+    "de": "report braucht einen Bench-Bericht: {cli} report <bench.json> [--verify [--runs <Ordner>]] [--html <out.html>] [--junit <out.xml>] [--card <out>] [--badge <out.svg>] [--json]"
   },
   "benchInterrupting": {
     "en": "\npractonaut bench: stopping — ending the agent, closing its session, writing a partial report … (press Ctrl+C again to stop at once)\n",
@@ -442,6 +442,38 @@ export const CLI_CATALOG = {
   "reportHtml": {
     "en": "HTML: {path}\n",
     "de": "HTML: {path}\n"
+  },
+  "reportJunit": {
+    "en": "JUnit XML: {path}\n",
+    "de": "JUnit-XML: {path}\n"
+  },
+  "benchAgentFailed": {
+    "en": "{n} of {runs} {runs:run|runs} ended with the agent failing ({list}): the agent exited with an error or could not start, for example with a missing or expired login. Their verdicts judge the board the agent left and are no regression signal; the report, the JUnit file and the bench folder are written",
+    "de": "{n} von {runs} {runs:Lauf|Läufen} endeten mit einem gescheiterten Agenten ({list}): Der Agent endete mit einem Fehler oder ließ sich nicht starten, etwa mit fehlender oder abgelaufener Anmeldung. Ihre Urteile beurteilen die Arbeitsfläche, die er hinterließ, und sind kein Regressionssignal; Bericht, JUnit-Datei und Bench-Ordner sind geschrieben"
+  },
+  "benchAgentFailedMore": {
+    "en": "{list} and {more} more",
+    "de": "{list} und {more} weitere"
+  },
+  "reportCard": {
+    "en": "Card: {paths}\n",
+    "de": "Karte: {paths}\n"
+  },
+  "reportBadge": {
+    "en": "Badge: {path}\n",
+    "de": "Badge: {path}\n"
+  },
+  "cardChromiumMissing": {
+    "en": "Chromium is not installed, but --card draws the card's PNG with it. Run {cli} setup once (an explicit download), then retry; --badge needs no browser.",
+    "de": "Chromium ist nicht installiert, --card zeichnet das PNG der Karte aber damit. Einmal {cli} setup ausführen (ausdrücklicher Download) und erneut versuchen; --badge braucht keinen Browser."
+  },
+  "cardChromiumStart": {
+    "en": "Chromium is installed but did not start ({detail}), and --card draws the card's PNG with it.\n{advice}--badge needs no browser.",
+    "de": "Chromium ist installiert, startet aber nicht ({detail}), und --card zeichnet das PNG der Karte damit.\n{advice}--badge braucht keinen Browser."
+  },
+  "cardSandboxNotice": {
+    "en": "practonaut: Chromium runs without its sandbox because this Linux system does not allow it (unprivileged user namespaces, AppArmor); it only draws the card's own SVG, with JavaScript off and no network. Set PRACTONAUT_CHROMIUM_SANDBOX=require to refuse instead.\n",
+    "de": "practonaut: Chromium läuft ohne Sandbox, weil dieses Linux sie nicht erlaubt (unprivilegierte User-Namespaces, AppArmor); es zeichnet nur das eigene SVG der Karte, ohne JavaScript und ohne Netz. PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen.\n"
   },
   "reportReverifiedWorld": {
     "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",

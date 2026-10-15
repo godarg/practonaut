@@ -251,6 +251,9 @@ test("bench report profile: report.css and the report renderer follow the same r
     put("src/bench/report.css", ".page { padding: var(--pn-space-2); color: var(--pn-color-text); }\n.bad { margin: 7px; color: red; }\n");
     put("src/bench/render.ts", "export const page = (x: string): string => `<main class=\"page\"><p class=\"missing\">${x}</p></main>`;\nexport const tint = '#ff0000';\n");
     put("src/bench/elsewhere.ts", "export const sneaky = '<p class=\"page\">';\n");
+    // The result card's stylesheet is linted like report.css, and card.ts's classes are checked against it.
+    put("src/bench/card.css", ".card-bg { fill: var(--pn-color-text); }\n.card-bad { font-size: 13px; fill: #00ff00; }\n");
+    put("src/bench/card.ts", "export const card = (): string => '<rect class=\"card-bg\"/><text class=\"card-missing\"/>';\n");
     const findings = lintRepository(root).findings.filter(f => f.severity === "error").map(f => `${f.file} ${f.rule}`);
     assert.ok(findings.includes("src/bench/report.css raw-space"), findings.join("\n"));
     assert.ok(findings.includes("src/bench/report.css color-literal"));
@@ -258,6 +261,10 @@ test("bench report profile: report.css and the report renderer follow the same r
     assert.ok(findings.includes("src/bench/render.ts color-literal"));
     assert.ok(findings.includes("src/bench/elsewhere.ts setup"), "markup outside REPORT_SOURCES is not silently skipped");
     assert.ok(!findings.some(f => f.startsWith("src/bench/report.css orphan-css")));
+    assert.ok(findings.includes("src/bench/card.css color-literal"), findings.join("\n"));
+    assert.ok(findings.includes("src/bench/card.css raw-type"), "a raw font size in card.css");
+    assert.ok(findings.includes("src/bench/card.ts unknown-class"), "a class neither stylesheet defines");
+    assert.ok(!findings.some(f => f.startsWith("src/bench/card.css orphan-css")));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

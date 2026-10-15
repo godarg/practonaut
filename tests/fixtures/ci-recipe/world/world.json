@@ -1,0 +1,984 @@
+{
+  "schema": "practonaut.world/2",
+  "id": "review-and-send",
+  "version": "1.0.0",
+  "app": {
+    "adapterId": "excalidraw",
+    "versionRange": "0.18.1",
+    "fontFamilies": [
+      3
+    ],
+    "excludedAttributes": {}
+  },
+  "units": {},
+  "objectTypes": [
+    {
+      "type": "frame",
+      "attributes": {}
+    },
+    {
+      "type": "step",
+      "attributes": {}
+    },
+    {
+      "type": "arrow",
+      "attributes": {}
+    }
+  ],
+  "initialState": {
+    "objects": {}
+  },
+  "actions": [
+    {
+      "name": "add_step",
+      "parameters": {
+        "frameId": {
+          "type": "nullable-id"
+        },
+        "label": {
+          "type": "string",
+          "max": 4096
+        },
+        "x": {
+          "type": "integer",
+          "min": -100000,
+          "max": 100000
+        },
+        "y": {
+          "type": "integer",
+          "min": -100000,
+          "max": 100000
+        },
+        "width": {
+          "type": "integer",
+          "min": 10,
+          "max": 4000
+        },
+        "height": {
+          "type": "integer",
+          "min": 10,
+          "max": 4000
+        },
+        "shape": {
+          "type": "enum",
+          "values": [
+            "rectangle",
+            "ellipse",
+            "diamond"
+          ]
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "rename_step",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "label": {
+          "type": "string",
+          "max": 4096
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "move_step",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "x": {
+          "type": "integer",
+          "min": -100000,
+          "max": 100000
+        },
+        "y": {
+          "type": "integer",
+          "min": -100000,
+          "max": 100000
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "connect",
+      "parameters": {
+        "from": {
+          "type": "id"
+        },
+        "to": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "reconnect_end",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "end": {
+          "type": "end"
+        },
+        "target": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "disconnect",
+      "parameters": {
+        "id": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "delete_step",
+      "parameters": {
+        "id": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "resize_step",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "width": {
+          "type": "integer",
+          "min": 10,
+          "max": 4000
+        },
+        "height": {
+          "type": "integer",
+          "min": 10,
+          "max": 4000
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "set_style",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "shape": {
+          "type": "enum",
+          "values": [
+            "rectangle",
+            "ellipse",
+            "diamond"
+          ]
+        },
+        "stroke": {
+          "type": "enum",
+          "values": [
+            "black",
+            "red",
+            "green",
+            "blue",
+            "orange"
+          ]
+        },
+        "fill": {
+          "type": "enum",
+          "values": [
+            "none",
+            "red",
+            "green",
+            "blue",
+            "yellow"
+          ]
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "rename_frame",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "name": {
+          "type": "string",
+          "min": 1,
+          "max": 256
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "group_steps",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "with": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "ungroup",
+      "parameters": {
+        "id": {
+          "type": "id"
+        }
+      },
+      "preconditions": []
+    },
+    {
+      "name": "set_frame",
+      "parameters": {
+        "id": {
+          "type": "id"
+        },
+        "frameId": {
+          "type": "nullable-id"
+        }
+      },
+      "preconditions": []
+    }
+  ],
+  "rules": [],
+  "tasks": [
+    {
+      "id": "review-and-send",
+      "title": {
+        "en": "Make the drawing match the goal",
+        "de": "Bringe die Zeichnung in den Zielzustand"
+      },
+      "prompt": {
+        "en": "Fill “Review” green. Connect “Review” to “Send”.",
+        "de": "Fülle „Review“ grün. Verbinde „Review“ mit „Send“."
+      },
+      "initialState": {
+        "objects": {
+          "a": {
+            "id": "a",
+            "deleted": false,
+            "type": "step",
+            "frameId": null,
+            "label": "Draft",
+            "x": 100,
+            "y": 100,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle",
+            "groupId": null,
+            "stroke": "black",
+            "fill": "none"
+          },
+          "b": {
+            "id": "b",
+            "deleted": false,
+            "type": "step",
+            "frameId": null,
+            "label": "Review",
+            "x": 400,
+            "y": 100,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle",
+            "groupId": null,
+            "stroke": "black",
+            "fill": "none"
+          },
+          "c": {
+            "id": "c",
+            "deleted": false,
+            "type": "step",
+            "frameId": null,
+            "label": "Send",
+            "x": 700,
+            "y": 100,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle",
+            "groupId": null,
+            "stroke": "black",
+            "fill": "none"
+          },
+          "ab": {
+            "id": "ab",
+            "deleted": false,
+            "type": "arrow",
+            "frameId": null,
+            "from": "a",
+            "to": "b"
+          }
+        }
+      },
+      "goal": {
+        "op": "all",
+        "args": [
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "step",
+              "as": "n",
+              "where": {
+                "op": "true"
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 3
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "arrow",
+              "as": "n",
+              "where": {
+                "op": "true"
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "all",
+                "args": [
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "label"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "Draft"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "shape"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "rectangle"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "stroke"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "black"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "fill"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "groupId"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": null
+                    }
+                  }
+                ]
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "all",
+                "args": [
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "label"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "Review"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "shape"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "rectangle"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "stroke"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "black"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "fill"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "green"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "groupId"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": null
+                    }
+                  }
+                ]
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "all",
+                "args": [
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "label"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "Send"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "shape"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "rectangle"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "stroke"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "black"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "fill"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  },
+                  {
+                    "op": "eq",
+                    "left": {
+                      "kind": "field",
+                      "variable": "s",
+                      "field": "groupId"
+                    },
+                    "right": {
+                      "kind": "literal",
+                      "value": null
+                    }
+                  }
+                ]
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "arrow",
+              "as": "a",
+              "where": {
+                "op": "all",
+                "args": [
+                  {
+                    "op": "exists",
+                    "type": "step",
+                    "as": "af",
+                    "where": {
+                      "op": "all",
+                      "args": [
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "af",
+                            "field": "id"
+                          },
+                          "right": {
+                            "kind": "field",
+                            "variable": "a",
+                            "field": "from"
+                          }
+                        },
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "af",
+                            "field": "label"
+                          },
+                          "right": {
+                            "kind": "literal",
+                            "value": "Draft"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "type": "step",
+                    "as": "at",
+                    "where": {
+                      "op": "all",
+                      "args": [
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "at",
+                            "field": "id"
+                          },
+                          "right": {
+                            "kind": "field",
+                            "variable": "a",
+                            "field": "to"
+                          }
+                        },
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "at",
+                            "field": "label"
+                          },
+                          "right": {
+                            "kind": "literal",
+                            "value": "Review"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "kind": "count",
+              "type": "arrow",
+              "as": "a",
+              "where": {
+                "op": "all",
+                "args": [
+                  {
+                    "op": "exists",
+                    "type": "step",
+                    "as": "af",
+                    "where": {
+                      "op": "all",
+                      "args": [
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "af",
+                            "field": "id"
+                          },
+                          "right": {
+                            "kind": "field",
+                            "variable": "a",
+                            "field": "from"
+                          }
+                        },
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "af",
+                            "field": "label"
+                          },
+                          "right": {
+                            "kind": "literal",
+                            "value": "Review"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "type": "step",
+                    "as": "at",
+                    "where": {
+                      "op": "all",
+                      "args": [
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "at",
+                            "field": "id"
+                          },
+                          "right": {
+                            "kind": "field",
+                            "variable": "a",
+                            "field": "to"
+                          }
+                        },
+                        {
+                          "op": "eq",
+                          "left": {
+                            "kind": "field",
+                            "variable": "at",
+                            "field": "label"
+                          },
+                          "right": {
+                            "kind": "literal",
+                            "value": "Send"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 1
+            }
+          }
+        ]
+      },
+      "hints": [
+        {
+          "en": "Every condition in the goal list must hold at the end. The order of your actions does not matter.",
+          "de": "Am Ende muss jede Bedingung der Zielliste erfüllt sein. Die Reihenfolge deiner Aktionen ist egal."
+        },
+        {
+          "en": "The goal has 3 steps and 2 arrows.",
+          "de": "Das Ziel hat 3 Schritte und 2 Pfeile."
+        }
+      ],
+      "errorClasses": [
+        {
+          "id": "missing-label-1",
+          "category": "accepted_but_violates_goal",
+          "when": {
+            "op": "not",
+            "arg": {
+              "op": "exists",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "eq",
+                "left": {
+                  "kind": "field",
+                  "variable": "s",
+                  "field": "label"
+                },
+                "right": {
+                  "kind": "literal",
+                  "value": "Draft"
+                }
+              }
+            }
+          },
+          "explanation": {
+            "en": "No step is labelled “Draft” yet. Add it or rename a step.",
+            "de": "Noch kein Schritt heißt „Draft“. Füge ihn hinzu oder benenne einen Schritt um."
+          }
+        },
+        {
+          "id": "missing-label-2",
+          "category": "accepted_but_violates_goal",
+          "when": {
+            "op": "not",
+            "arg": {
+              "op": "exists",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "eq",
+                "left": {
+                  "kind": "field",
+                  "variable": "s",
+                  "field": "label"
+                },
+                "right": {
+                  "kind": "literal",
+                  "value": "Review"
+                }
+              }
+            }
+          },
+          "explanation": {
+            "en": "No step is labelled “Review” yet. Add it or rename a step.",
+            "de": "Noch kein Schritt heißt „Review“. Füge ihn hinzu oder benenne einen Schritt um."
+          }
+        },
+        {
+          "id": "missing-label-3",
+          "category": "accepted_but_violates_goal",
+          "when": {
+            "op": "not",
+            "arg": {
+              "op": "exists",
+              "type": "step",
+              "as": "s",
+              "where": {
+                "op": "eq",
+                "left": {
+                  "kind": "field",
+                  "variable": "s",
+                  "field": "label"
+                },
+                "right": {
+                  "kind": "literal",
+                  "value": "Send"
+                }
+              }
+            }
+          },
+          "explanation": {
+            "en": "No step is labelled “Send” yet. Add it or rename a step.",
+            "de": "Noch kein Schritt heißt „Send“. Füge ihn hinzu oder benenne einen Schritt um."
+          }
+        },
+        {
+          "id": "extra-arrow",
+          "category": "accepted_but_violates_goal",
+          "when": {
+            "op": "gt",
+            "left": {
+              "kind": "count",
+              "type": "arrow",
+              "as": "a",
+              "where": {
+                "op": "true"
+              }
+            },
+            "right": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          "explanation": {
+            "en": "There are more arrows than the goal has (2). Remove the extra arrow.",
+            "de": "Es gibt mehr Pfeile als im Ziel (2). Entferne den überzähligen Pfeil."
+          }
+        },
+        {
+          "id": "loose-arrow",
+          "category": "accepted_but_violates_goal",
+          "when": {
+            "op": "exists",
+            "type": "arrow",
+            "as": "a",
+            "where": {
+              "op": "any",
+              "args": [
+                {
+                  "op": "eq",
+                  "left": {
+                    "kind": "field",
+                    "variable": "a",
+                    "field": "from"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": null
+                  }
+                },
+                {
+                  "op": "eq",
+                  "left": {
+                    "kind": "field",
+                    "variable": "a",
+                    "field": "to"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": null
+                  }
+                }
+              ]
+            }
+          },
+          "explanation": {
+            "en": "At least one arrow end is not attached to a step. Reconnect it or remove the arrow.",
+            "de": "Mindestens ein Pfeilende hängt an keinem Schritt. Verbinde es neu oder entferne den Pfeil."
+          }
+        }
+      ],
+      "conditionTexts": [
+        {
+          "en": "The drawing has exactly 3 steps.",
+          "de": "Die Zeichnung hat genau 3 Schritte."
+        },
+        {
+          "en": "The drawing has exactly 2 arrows.",
+          "de": "Die Zeichnung hat genau 2 Pfeile."
+        },
+        {
+          "en": "One rectangle “Draft” in the default style.",
+          "de": "Ein Rechteck „Draft“ im Standardstil."
+        },
+        {
+          "en": "One rectangle “Review” with black line and green fill.",
+          "de": "Ein Rechteck „Review“ mit Linie schwarz und Füllung grün."
+        },
+        {
+          "en": "One rectangle “Send” in the default style.",
+          "de": "Ein Rechteck „Send“ im Standardstil."
+        },
+        {
+          "en": "One arrow from “Draft” to “Review”.",
+          "de": "Ein Pfeil von „Draft“ nach „Review“."
+        },
+        {
+          "en": "One arrow from “Review” to “Send”.",
+          "de": "Ein Pfeil von „Review“ nach „Send“."
+        }
+      ]
+    }
+  ],
+  "variants": {
+    "generator": "finite-seeded-v1",
+    "cases": [
+      {
+        "id": "drawn",
+        "labels": {},
+        "params": {},
+        "layoutOffset": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "authors": [
+      "Practonaut contributors"
+    ],
+    "adapterVersion": "1.0.0",
+    "appVersion": "0.18.1",
+    "compileToolVersion": "0.0.0",
+    "recordings": []
+  },
+  "rights": {
+    "license": "CC0-1.0",
+    "assets": [],
+    "recordings": []
+  }
+}
