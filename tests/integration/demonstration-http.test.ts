@@ -34,7 +34,8 @@ async function events(host: RunningHost, until: (statuses: Array<DemonstrationSt
   const controller = new AbortController(); const statuses: Array<DemonstrationStatus | null> = [];
   const response = await fetch(host.origin + '/api/events', { headers: headers(host), signal: controller.signal });
   const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = '';
-  const deadline = setTimeout(() => controller.abort(), 30_000);
+  // Generous: on a loaded CI runner the real mirror confirms each step slowly.
+  const deadline = setTimeout(() => controller.abort(), 90_000);
   try {
     while (!until(statuses)) {
       const chunk = await reader.read(); if (chunk.done) break;
@@ -50,7 +51,7 @@ async function events(host: RunningHost, until: (statuses: Array<DemonstrationSt
   return statuses;
 }
 
-test('the bundled example offers the demonstration: Player metadata, confirmation, ownership, stop and the event stream', { timeout: 120_000 }, async () => {
+test('the bundled example offers the demonstration: Player metadata, confirmation, ownership, stop and the event stream', { timeout: 240_000 }, async () => {
   const f = await fixture(await example(), { demonstration: true, modelOnly: notice });
   try {
     const boot = await (await fetch(f.host.origin + '/api/bootstrap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: f.host.code }) })).json();

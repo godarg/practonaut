@@ -37,7 +37,8 @@ test('a browser cache with only the headless shell: doctor is ready and a sessio
     const deadline = Date.now() + 90_000;
     while (!/^Open: http/m.test(output) && child.exitCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
     const exit = new Promise<number | null>(resolve => child.once('exit', resolve)); child.kill('SIGINT');
-    assert.equal(await exit, 0, output);
+    // Windows cannot send a signal to another process: kill() terminates it, so no exit code.
+    assert.equal(await exit, process.platform === 'win32' ? null : 0, output);
     assert.match(output, /^Mode: real-engine$/m, output);
     assert.doesNotMatch(output, /Chromium is not installed/);
   } finally {
