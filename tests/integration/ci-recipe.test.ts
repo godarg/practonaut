@@ -1,7 +1,8 @@
 // The CI recipe (roadmap 0.2.0, Should 5), run locally with the commands of
 // .github/workflows/ci-recipe-check.yml and examples/ci/practonaut-bench.yml: the oracle agent benches
-// the fixture world (two instances × three repeats, real mirror) with --junit, the report is rendered,
-// and compare --fail-on-regression gates against the committed baseline. Without the planted
+// the fixture world (one instance × three repeats, real mirror: the world has one variant) with
+// --junit, the report is rendered, and compare --fail-on-regression gates against the committed
+// baseline. Without the planted
 // regression the gate passes (exit 0); with it — a valid reference that does not fit the action
 // budget, so every candidate repeat ends with an extra arrow — it fails with instance_regression.
 // Both JUnit files validate against the published JUnit schema (tests/support/junit-xsd.ts) and parse in
@@ -29,15 +30,15 @@ const benchRoot = (): string => join(process.env.PRACTONAUT_HOME!, 'bench');
 const benches = async (): Promise<Set<string>> => new Set(await readdir(benchRoot()).catch(() => [] as string[]));
 
 /** `bench` as the recipe runs it; returns the new bench folder and the JUnit file. */
-async function benchCandidate(out: string, oracle: string, name: string): Promise<{ folder: string; junit: string }> {
+async function benchCandidate(out: string, oracle: string, name: string): Promise<{ folder: string; junit: string; stderr: string }> {
   const before = await benches(), junit = join(out, `${name}.xml`);
   const result = practonaut('bench', '--agent', 'oracle', '--world', join(FIXTURE, 'world'), '--oracle', join(FIXTURE, oracle),
-    '--seed-list', '1,2', '--repeats', '3', '--max-actions', '3', '--mirror', 'required', '--label', name, '--junit', junit);
+    '--seed-list', '1', '--repeats', '3', '--max-actions', '3', '--mirror', 'required', '--label', name, '--junit', junit);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /JUnit XML: /);
   const created = [...await benches()].filter(entry => !before.has(entry));
   assert.equal(created.length, 1, `one new bench folder: ${created.join(', ')}`);
-  return { folder: join(benchRoot(), created[0]!), junit };
+  return { folder: join(benchRoot(), created[0]!), junit, stderr: result.stderr };
 }
 const testcases = (root: XmlElement): XmlElement[] => childElements(root, 'testsuite').flatMap(suite => childElements(suite, 'testcase'));
 
@@ -55,7 +56,9 @@ test('the CI recipe passes against the committed baseline and fails on a planted
     assert.deepEqual(validateJunit(goodXml), []);
     assert.equal(await chromiumParses(goodXml), true);
     const goodCases = testcases(parseXml(goodXml));
-    assert.equal(goodCases.length, 6, 'one test case per run: 1 task × 2 seeds × 3 repeats');
+    assert.equal(goodCases.length, 3, 'one test case per run: 1 task × 1 seed × 3 repeats');
+    // One seed of a one-variant world: no notice that two seeds share a board.
+    assert.equal(good.stderr.includes('seeds_share_variant'), false, good.stderr);
     assert.deepEqual(goodCases.flatMap(testcase => childElements(testcase).map(child => child.name)), [], 'every run passed');
     const rendered = practonaut('report', join(good.folder, 'report.json'), '--html', join(out, 'report.html'));
     assert.equal(rendered.status, 0, rendered.stderr);
@@ -69,7 +72,7 @@ test('the CI recipe passes against the committed baseline and fails on a planted
     assert.deepEqual(validateJunit(badXml), []);
     assert.equal(await chromiumParses(badXml), true);
     const badCases = testcases(parseXml(badXml));
-    assert.equal(badCases.length, 6);
+    assert.equal(badCases.length, 3);
     for (const testcase of badCases) {
       const [failure, ...rest] = childElements(testcase);
       assert.equal(rest.length, 0);
@@ -80,7 +83,7 @@ test('the CI recipe passes against the committed baseline and fails on a planted
     }
     const failed = practonaut('compare', join(FIXTURE, 'baseline.json'), join(bad.folder, 'report.json'), '--fail-on-regression', '--html', join(out, 'compare-planted.html'));
     assert.equal(failed.status, 2, failed.stdout);
-    assert.match(failed.stderr, /2 instance regressions .*review-and-send seed 1, review-and-send seed 2 \[instance_regression\]/);
+    assert.match(failed.stderr, /1 instance regression \(passed in every baseline repeat, failed in every candidate repeat\): review-and-send seed 1 \[instance_regression\]/);
     // The page is written before the gate fails, so CI can upload it.
     assert.match(await readFile(join(out, 'compare-planted.html'), 'utf8'), /<!doctype html>/);
   } finally {

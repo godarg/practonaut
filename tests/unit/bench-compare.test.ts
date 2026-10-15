@@ -145,6 +145,19 @@ test('every run counts: a run that was not judged counts as not passed, is named
   assert.match(renderCompareHtml({ report: onlyFirst, verification: 'consistency-checked' }, { report: onlySecond, verification: 'consistency-checked' }, nothing, ':root{}'), /<p class="verdict">Nothing to compare: no instance has runs on both sides\.<\/p>/);
 });
 
+test('a built-in side carries one chip that says "no language model", not two', () => {
+  const builtin = (value: BenchReportV2): void => { value.agent = { kind: 'builtin', name: 'oracle', command: [], isolation: 'builtin-baseline', model: null, modelSource: 'none', apiKeySource: null, keptEnv: [] }; };
+  const side = { report: report(instances([[true]]), builtin), verification: 'consistency-checked' as const };
+  const comparison = compareReports(side.report, side.report);
+  for (const [language, words] of [['en', 'no language model'], ['de', 'kein Sprachmodell|ohne Sprachmodell']] as const) {
+    const page = renderCompareHtml(side, side, comparison, ':root{}', language);
+    const chips = [...page.matchAll(/<li class="chip">([^<]*)<\/li>/g)].map(match => match[1]!);
+    // Two sides, one such chip each.
+    assert.equal(chips.filter(chip => new RegExp(words).test(chip)).length, 2, `${language}: ${chips.join(' | ')}`);
+  }
+  assert.match(renderCompareTable(side, side, comparison), /^Baseline: oracle · model only \(no mirror\) · built-in baseline: no language model, MCP only · consistency-checked, not re-verified · 2026-10-14$/m);
+});
+
 test('incomparable reports are refused, naming every difference', () => {
   const base = report(instances([[true]]));
   const differs = (change: (value: BenchReportV2) => void): string[] => {
@@ -193,6 +206,18 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     const refusal = readFileSync(join(dir, 'refused.html'), 'utf8').replace(/\u00a0/g, ' ');
     assert.match(refusal, /<p class="headline">Not comparable\.<\/p>/); assert.match(refusal, /<p class="banner-title">What differs<\/p>/); assert.match(refusal, /action budget: 50 on the baseline, 10 on the candidate/);
     assert.equal(existsSync(join(dir, 'refused.html')) && !/<script|style="/i.test(refusal), true);
+    assert.match(refused.stderr, /\. Bench the baseline again with the candidate's settings \[compare_incomparable\]/);
+    // The isolation level follows from the agent kind, so no flag of the candidate's makes the oracle a
+    // baseline for a command template: the refusal says which kind to bench instead (EN, DE, the page).
+    const oracle = write('o.json', report(instances([[true, true, true], [true, true, true]]), value => { value.agent = { kind: 'builtin', name: 'oracle', command: [], isolation: 'builtin-baseline', model: null, modelSource: 'none', apiKeySource: null, keptEnv: [] }; }));
+    const kinds = cli(oracle, candidate, '--html', join(dir, 'kinds.html'));
+    assert.equal(kinds.status, 2);
+    assert.match(kinds.stderr, /the isolation level differs \(builtin-baseline on the baseline, template-unrestricted on the candidate\)\. The isolation level follows from the agent kind: oracle and random compare only with a built-in, the claude-code preset only with itself, a command template only with a command template\. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings \[compare_incomparable\]/);
+    assert.equal(kinds.stderr.includes('Bench the baseline again'), false);
+    assert.match(readFileSync(join(dir, 'kinds.html'), 'utf8').replace(/ /g, ' '), /<p>The isolation level follows from the agent kind: .*As the baseline, bench a configuration of the candidate’s agent kind that you trust, with the candidate’s settings, then compare\.<\/p>/);
+    const german = spawnSync(process.execPath, [CLI, '--lang', 'de', 'compare', oracle, candidate], { encoding: 'utf8' });
+    assert.equal(german.status, 2);
+    assert.match(german.stderr, /Die Isolationsstufe folgt aus der Art des Agenten: oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, .* Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen \[compare_incomparable\]/);
     const json = JSON.parse(cli(baseline, candidate, '--json').stdout);
     assert.deepEqual([json.comparison.regressions.length, json.comparison.verdict], [1, 'not_distinguishable']);
     const html = renderCompareHtml({ report: report(instances([[true]]), value => { value.label = '<img src=x onerror=alert(1)>'; }), verification: 'consistency-checked' }, { report: report(instances([[true]])), verification: 'consistency-checked' }, compareReports(report(instances([[true]])), report(instances([[true]]))), ':root{}');

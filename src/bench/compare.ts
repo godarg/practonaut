@@ -51,6 +51,11 @@ export function differences(baseline: BenchReport, candidate: BenchReport): Diff
   return found;
 }
 
+/** True when the isolation levels differ. The level follows from the agent kind (oracle and random,
+ * the preset, a command template), so benching again with the candidate's flags cannot make the two
+ * comparable: the baseline has to be a trusted configuration of the candidate's own agent kind. */
+export function agentKindDiffers(found: readonly Difference[]): boolean { return found.some(difference => difference.field === 'isolation'); }
+
 export type PairKind = 'paired' | 'missing';
 export type Flip = 'regression' | 'fix' | 'single-down' | 'single-up' | 'changed-down' | 'changed-up' | null;
 export interface InstancePair {

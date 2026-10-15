@@ -12,21 +12,29 @@ the Practonaut MCP tools, and after it stops a separate checker process judges w
 The agent's own words are never read for scoring.
 
 ```bash
-npx practonaut bench --agent oracle --tasks all --seeds 2          # reference solutions: the ceiling
+npx practonaut bench --agent oracle --tasks all --seeds 2          # reference solutions: the score's ceiling
 npx practonaut bench --agent random --tasks all --seeds 2 --max-actions 30   # random actions: the floor
 npx practonaut bench --agent claude-code --tasks excalidraw/connect,excalidraw/insert-between
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut compare baseline/report.json candidate/report.json --fail-on-regression
 ```
 
+The built-ins mark the ends of the score; they are not a baseline for `compare`, which pairs only
+reports of the same agent kind (§6). The baseline for your agent is a configuration of it that you
+trust.
+
 Your own task, made from two drawings ([authoring guide](../authoring-guide.md) §1):
 
 ```bash
 npx practonaut tasks from-scenes start.excalidraw goal.excalidraw --out my-task
 npx practonaut bench --agent oracle --world my-task/world --oracle my-task/oracle.json   # does it solve?
-npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --seed-list 1,2 --label "my task"
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --repeats 3 --label "my task"
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify
 ```
+
+A world from `tasks from-scenes` has one variant, so every seed shows the same board: run it more
+often with `--repeats`, not with more seeds. Two seeds of one board would still count as two
+instances, and `bench` says so on stderr (`seeds_share_variant`, naming the task and its variants).
 
 The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setup` once);
 `--mirror off` runs model-only and is faster, but its results are not practice evidence.
@@ -39,7 +47,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 | `--world <dir\|.pnworld>` | the task library | your own world: a world folder (packed like `practonaut pack`; anything but `world.json` and allowed assets is refused) or a world package |
 | `--tasks all\|<ids>` | `all` | tasks, comma-separated: library tasks (`connect` or `excalidraw/connect`, list with `practonaut tasks list`), or with `--world` that world's task ids |
 | `--oracle <files>` | none | with `--world`: comma-separated reference solutions, one `practonaut.task-oracle/1` file per task (the `oracle.json` that `tasks from-scenes` writes beside the world) (§3) |
-| `--seeds <n>` | 1 | seeds 1…n; the seed picks the task's variant (labels) |
+| `--seeds <n>` | 1 | seeds 1…n; the seed picks the task's variant (labels). Seeds that pick the same variant bench the same board and are named on stderr (`seeds_share_variant`); a world with one variant needs one seed and `--repeats` |
 | `--seed-list <seeds>` | none | instead of `--seeds`: the seeds themselves, distinct, 0 to 999 999 999, e.g. `2,5` |
 | `--repeats <k>` | 1 | independent repeats per task and seed (needed for pass^k with k > 1) |
 | `--timeout <s>` | 300 | wall time per run; the agent's process group is stopped after it |
@@ -98,6 +106,29 @@ It names the session credential's private file, never the credential itself, and
 which lies outside the agent's own folder (§3). The agent's data
 folder and working directory are the run folder's `agent/` subfolder, which starts empty; the
 judged artifacts go into the run folder itself, after the agent has ended (§5).
+
+Name every file in a template by its absolute path: the agent starts in that empty folder, where a
+relative path does not resolve. What the agent prints is kept as `<run folder>/agent.stdout` and
+`<run folder>/agent.stderr`. An agent that cannot start (a script not found, a missing module) ends as
+`infra_error` "without a single tool call", and only its `agent.stderr` says why. Every template is
+reported as the agent `generic` (kind `command`): give each configuration its own `--label`, which the
+report shows and `compare` uses to name the two sides.
+
+A minimal agent without a language model,
+[`examples/agents/minimal-agent.mjs`](../../examples/agents/minimal-agent.mjs) (in the repository, not
+in the npm package), shows the plumbing: it reads `{mcp_config}`, starts `mcpServers.practonaut`
+(`command`, `args`, `env`) over stdio with the MCP SDK client, calls `observe`, plays each action with
+`act`, passing `baseStep` and `expectedRevision` from the latest reply, and ends with `check_result`.
+Its actions come from a plan file; an `oracle.json` has that shape, so on your own task it checks the
+wiring (it is handed the reference on purpose: its score says nothing about a model), and
+`--mistake` leaves out the last action to show a failed run. A real agent chooses each action from
+the replies. `tests/integration/bench-example-agent.test.ts` runs it as a template.
+
+```bash
+npm install @modelcontextprotocol/client@2.3.1     # in the folder you copied minimal-agent.mjs to
+npx practonaut bench --agent "node '$PWD/minimal-agent.mjs' {mcp_config} '$PWD/my-task/oracle.json'" \
+  --world my-task/world --oracle my-task/oracle.json --label "minimal agent"
+```
 
 **Codex.** There is no `codex` preset. Codex reads MCP servers from its own TOML configuration
 (not from a JSON file path), and we found no switch that limits it to MCP tools: its built-in
@@ -364,7 +395,13 @@ normally, come first and open, each with:
   dark-mode colours;
 - the **trajectory**: every act, undo, reset and check in order, "accepted (revision n)" or rejected with the
   reason in words, with the conditions met afterwards and which ones changed;
-- the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
+- the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own
+  figures; when the runs table counts other host calls, a note says why (the host also counts the
+  bridge's start-up read).
+
+A run with **no verdict** says why under "Technical details", as the runner note (for example "the
+agent ended (agent_failed) without a single tool call" or the limit its client reported). What the
+agent itself printed, its own errors included, is in `<run folder>/agent.stderr` and `agent.stdout`.
 
 Codes and identifiers — run ids, status and host codes, the runner's note, the full error-class text,
 the command (the home folder shown as `~`), the world content hash, generated instances, API key source
@@ -389,7 +426,12 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
 - **Comparable or refused.** Both reports must agree on the world content (its hash), the grid (the same
   tasks and seeds), the mirror, the action budget and the isolation level; otherwise `compare` exits 2
   with `compare_incomparable` and names every difference. Repeats, timeout, agent, model and version may
-  differ; a different timeout or version is listed as a caveat.
+  differ; a different timeout or version is listed as a caveat. The isolation level follows from the
+  agent kind (§2): `oracle` and `random` compare only with a built-in, the `claude-code` preset only
+  with itself, a command template only with a command template, so no flag makes the oracle a baseline
+  for your agent. As the baseline, bench a configuration of the candidate's own kind that you trust
+  (for a template: the command, model and prompt you trust) on the candidate's world, grid, mirror and
+  budget; the refusal says so.
 - **The unit is the instance** (task × seed). The repeats of an instance give one outcome per side:
   passed when at least half of all of them passed; a run that was not judged counts as not passed and
   is listed. Repeats are never counted as independent pairs. An instance missing on one side is listed
@@ -408,6 +450,13 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
   compared get a page that names every difference.
 - `--verify` re-verifies each report from its own folder first; the output names both reports'
   verification status.
+
+`compare` names a regressed instance; why its runs failed is on the candidate's own report page, with
+the unmet conditions, error classes and trajectory of each run (§5):
+
+```bash
+npx practonaut report <candidate>/report.json --html candidate.html
+```
 
 **How many instances?** To detect a 20-point difference in instance pass rate with the exact test
 above (α = 0.05, the verdict in the candidate's favour), assuming the share ψ of instances on which the
@@ -439,7 +488,7 @@ committed baseline report:
 
 ```bash
 npx practonaut bench --agent claude-code --world practonaut/world --oracle practonaut/oracle.json \
-  --seed-list 1,2 --repeats 3 --mirror required --junit out/junit.xml --fail-on-agent-error
+  --seed-list 1 --repeats 3 --mirror required --junit out/junit.xml --fail-on-agent-error
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html out/report.html
 npx practonaut compare practonaut/baseline.json ~/.practonaut/bench/<id>/report.json --fail-on-regression
 ```
@@ -480,7 +529,7 @@ however the agents ended (130 when it was stopped, 2 for a refused world or orac
 that starts under `--mirror required`). A timed-out run is a result, not an agent failure: it does not
 trip the flag.
 
-**JUnit XML.** `bench --junit <file>` writes it next to the report; `report <report.json> --junit
+**JUnit XML.** `bench --junit <file>` also writes JUnit XML to `<file>`; `report <report.json> --junit
 <file>` writes it for any report (with `--verify`, from the re-verified one). The format is the Apache
 Ant JUnit schema as Windy Road publishes it (`JUnit.xsd`, the version of commit `332b8f3f`), which CI test
 views read:
@@ -494,11 +543,13 @@ views read:
 One `<testsuite>` per task in plan order, one `<testcase>` per run by seed (plan order) and repeat;
 `classname` is the instance (`<world>.<task>.seed-<seed>`), so a test view groups its repeats. Every
 suite carries the report's facts as properties (`practonaut.runs`, `practonaut.runs.unjudged`,
-`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror`, world and content hash, label,
-self-reported model) and the header line as `system-out`. The schema requires a timestamp without zone
-and a host name: the timestamp is the report's creation time in UTC, the host name is always
-`localhost`, never the machine's. Text from the report and the bench folder is escaped; characters XML
-1.0 does not allow are written as `\u{…}`, as in the terminal. The same report gives the same bytes.
+`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror` (`required`: the real engine ran;
+`off`: model-only; the default `--mirror auto` reads `required` when Chromium ran), world and content
+hash, label, self-reported model) and the header line as `system-out`. The schema requires a
+timestamp without zone and a host name: the timestamp is the report's creation time in UTC, the host
+name is always `localhost`, never the machine's. Text from the report and the bench folder is escaped;
+characters XML 1.0 does not allow are written as `\u{…}`, as in the terminal. The same report gives the
+same bytes.
 A JUnit failure is a run that did not pass, not a regression: an agent that fails a task in the
 baseline and the candidate alike regressed nothing. Gate on `compare`, not on the JUnit counts.
 
@@ -511,7 +562,7 @@ runs (§6). Every job costs tasks × seeds × 3 agent runs on your account.
 
 **The repository's own check.** `.github/workflows/ci-recipe-check.yml` runs the same steps by hand
 (`workflow_dispatch`, outside the required checks) with the `oracle` agent on a small fixture world
-(`tests/fixtures/ci-recipe/`: one task made with `tasks from-scenes`, two seeds × three repeats, budget
+(`tests/fixtures/ci-recipe/`: one task made with `tasks from-scenes`, one seed × three repeats, budget
 three actions) against its committed baseline, with Practonaut packed from the checkout. With
 `plant_regression` the candidate plays a valid reference that needs four actions, so every repeat ends
 with an extra arrow and `compare` fails with `instance_regression`. `tests/integration/ci-recipe.test.ts`

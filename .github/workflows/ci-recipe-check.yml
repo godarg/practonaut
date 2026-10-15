@@ -26,8 +26,10 @@ on:
 permissions:
   contents: read
 
+# One group per ref and mode: the clean and the planted run, dispatched back to back, both finish;
+# a second dispatch of the same mode replaces the first.
 concurrency:
-  group: ci-recipe-check-${{ github.ref }}
+  group: ci-recipe-check-${{ github.ref }}-${{ inputs.plant_regression }}
   cancel-in-progress: true
 
 env:
@@ -72,13 +74,15 @@ jobs:
       - name: Check that Chromium starts
         working-directory: ${{ runner.temp }}
         run: npx --yes --package "$PRACTONAUT" -- practonaut doctor --adapter
+      # One seed: the fixture world has one variant, so a second seed would bench the same board as
+      # another instance (the recipe does the same).
       - name: Bench the oracle (three repeats per instance)
         working-directory: ${{ runner.temp }}
         run: |
           mkdir -p "$OUT"
           status=0
           npx --yes --package "$PRACTONAUT" -- practonaut bench --agent oracle \
-            --world "$WORLD" --oracle "$ORACLE" --seed-list 1,2 --repeats 3 --max-actions 3 --mirror required \
+            --world "$WORLD" --oracle "$ORACLE" --seed-list 1 --repeats 3 --max-actions 3 --mirror required \
             --label "candidate ${GITHUB_SHA::7}" --junit "$OUT/junit.xml" --fail-on-agent-error || status=$?
           if report="$(ls "$PRACTONAUT_HOME"/bench/*/report.json 2>/dev/null)"; then
             cp "$report" "$OUT/report.json"

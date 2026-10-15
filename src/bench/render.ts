@@ -422,6 +422,8 @@ function callsHtml(detail: RunDetail, language: Language): string {
   if (!calls) return `<p class="note">${esc(fill(language, t.callsMissing, { reason: detail.callsMissing === 'changed' ? t.missingChanged : detail.callsMissing === 'unreadable' ? t.missingUnreadable : t.callsMissingNone }))}</p>`;
   const lines = [`${fill(language, t.callsLine, { calls: calls.calls, bytes: `${number(calls.resultBytes / 1024, 1, language)} KB`, bridge: calls.bridgeMedianMs === null ? t.none : number(calls.bridgeMedianMs, 1, language), client: calls.clientMedianMs === null ? t.clientUnavailable : fill(language, t.clientMedian, { ms: number(calls.clientMedianMs, 1, language) }) })}.`,
     fill(language, t.callsTools, { list: calls.byTool.map(([tool, count]) => `${tool} ${count}`).join(', ') || t.none })];
+  // The runs table's host calls are the host's own count (the bridge's start-up read included), not this log's.
+  if (detail.run.toolCalls.total !== calls.calls) lines.push(fill(language, t.callsHost, { n: detail.run.toolCalls.total }));
   const failed = calls.codes.reduce((sum, [, count]) => sum + count, 0);
   if (failed) lines.push(fill(language, t.callsFailed, { n: failed }));
   if (calls.dropped) lines.push(fill(language, t.callsDropped, { n: calls.dropped }));

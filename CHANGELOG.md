@@ -95,8 +95,18 @@ All notable changes are recorded here. The format follows
   (kill -9, power loss, a second Ctrl+C) from its run folders, re-verified as `report --verify` does.
   Model ids may carry a bracketed suffix (`[1m]`); Claude Code's version is recorded per run, and
   `report --verify` checks each run's model against the agent's own output.
+- `bench` prints a notice (`seeds_share_variant`, EN/DE) when planned seeds pick the same variant of
+  the benched tasks, naming the tasks and their variant count: such seeds bench the same board, while
+  each still counts as an instance of its own. A world from `tasks from-scenes` has one variant; the
+  docs and the CI recipe now bench it with one seed and `--repeats`.
 
 ### Changed
+
+- `compare` refusing two reports of different isolation levels says that the level follows from the
+  agent kind (oracle and random compare only with a built-in, the preset with itself, a command
+  template with a command template) and to bench a trusted configuration of the candidate's kind as the
+  baseline, in the terminal (EN/DE) and on the `--html` page; other refusals keep "bench the baseline
+  again with the candidate's settings".
 
 - `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
   works without `--verify` (it names where the run details come from).
@@ -150,6 +160,11 @@ All notable changes are recorded here. The format follows
   goal conditions as a person and act through semantic actions, not the GUI.
 - [PADR-0035](docs/adr/0035-no-design-capture-or-invariants-until-needed.md): `design:capture` and
   `design:invariants`, named in PADR-0020, are not built until a review needs them.
+- [`examples/agents/minimal-agent.mjs`](examples/agents/minimal-agent.mjs): a minimal command-template
+  agent without a model (MCP SDK client; observe, act with `baseStep` and `expectedRevision` from the
+  latest reply, check_result), run as a template by `tests/integration/bench-example-agent.test.ts`.
+  The benchmark docs say to name a template's files by absolute path, where an agent's own errors
+  land (`agent.stderr`) and that every template is reported as `generic` (use `--label`).
 
 ## [0.1.0] - 2026-10-13
 

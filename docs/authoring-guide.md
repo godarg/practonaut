@@ -11,7 +11,21 @@ practise and that the independent checker can score.
 ## 1. From two drawings
 
 Draw the start in Excalidraw, save it as `start.excalidraw`; change the drawing into the goal and
-save it as `goal.excalidraw`. Then:
+save it as `goal.excalidraw`. What a drawing needs, so that Practonaut reads it as you meant it:
+
+- **Where:** [excalidraw.com](https://excalidraw.com) or Excalidraw 0.18.1, the version Practonaut
+  runs, saved as a `.excalidraw` file.
+- **Steps** are rectangles, ellipses or diamonds, each with its label typed inside the box (double-click
+  the box, then type). Text placed next to a box is not its label and is reported as ignored. Give
+  each step its own label: arrows are identified by the labels at their ends.
+- **Arrows** (the arrow tool, not lines) are attached to a box at both ends: drag each end onto a box
+  until the box is highlighted. A goal arrow with a loose end cannot be built by any action
+  (`oracle_unavailable`).
+- **Colours** come from the five swatches Excalidraw shows beside *Stroke* (black, red, green, blue,
+  orange) and *Background* (none, red, green, blue, yellow); any other colour counts as the nearest
+  of these.
+
+`tasks/excalidraw/sources/` holds a start and a goal drawing for each library task to copy from. Then:
 
 ```bash
 npx practonaut tasks from-scenes start.excalidraw goal.excalidraw --out my-task
@@ -58,9 +72,13 @@ Drawing elements the model does not cover (for example images) are reported as i
 
 ```bash
 npx practonaut bench --agent oracle --world my-task/world --oracle my-task/oracle.json      # solvable through MCP?
-npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --seed-list 1,2
+npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/oracle.json --repeats 3
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify
 ```
+
+A task from two drawings has one variant: every seed shows the same board. Run it more often with
+`--repeats`, not with more seeds, which would count the same board as several instances (`bench` says
+so on stderr, `seeds_share_variant`).
 
 Before any run the checker must accept the oracle for every seed (`bench_oracle_invalid` otherwise);
 it never reaches the agent, and the report's efficiency compares each run with its length. Without

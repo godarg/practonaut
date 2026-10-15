@@ -69,7 +69,7 @@ recording. See the [authoring guide](docs/authoring-guide.md).
 ## Benchmark your agent
 
 ```bash
-npx practonaut bench --agent oracle --tasks all --seeds 2            # reference solutions: the ceiling
+npx practonaut bench --agent oracle --tasks all --seeds 2            # reference solutions: the score's ceiling
 npx practonaut bench --agent random --tasks all --max-actions 30       # random actions: the floor
 npx practonaut bench --agent claude-code --tasks excalidraw/insert-between --repeats 3
 npx practonaut bench --agent "my-agent --mcp {mcp_config} --prompt {prompt}"   # any agent
@@ -102,7 +102,10 @@ the real Excalidraw's own export, or a schematic labelled as such — beside an 
 call log and the tokens, turns and cost the client reports about itself. `compare` puts two reports
 side by side instance by instance: it refuses reports that are not comparable, names instance
 regressions (three repeats a side, all passed before, all failed after) and says "not
-distinguishable at this n" when an exact McNemar test cannot tell the two apart.
+distinguishable at this n" when an exact McNemar test cannot tell the two apart. Both reports must come
+from the same kind of agent: `oracle` and `random` mark the ends of the score and compare only with a
+built-in, a command template only with a command template; as the baseline for your agent, bench a
+configuration of it that you trust.
 
 In CI, [`examples/ci/practonaut-bench.yml`](examples/ci/practonaut-bench.yml) benches your agent with
 your own credentials and fails the job on an instance regression against a committed baseline; `--junit`

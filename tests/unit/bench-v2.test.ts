@@ -15,6 +15,7 @@ import { BENCH_SCHEMA_V2, ISOLATION_OF, summarize, validateBenchReport, validate
 import { renderHtml, renderTable } from '../../src/bench/render.ts';
 import { clientInit } from '../../src/bench/agents.ts';
 import { parseBenchArguments } from '../../src/cli/bench.ts';
+import { cliText } from '../../src/cli/messages.ts';
 import { assertReferencesFit, libraryReferences, ownBenchWorld, ownReferences, readAtMost, readOracleFile, readRegularFile, referencesText, resolveWorldTasks, validateOwnReferences, worldContentHash } from '../../src/bench/world.ts';
 import { libraryAnchor } from '../../src/bench/verify.ts';
 import { oracleDigest } from '../oracles/core-hash.ts';
@@ -347,4 +348,12 @@ test('task limits and --checks are shown with the report (PADR-0040)', () => {
   assert.match(renderHtml(value, ":root{}"), /<dt>Task limits<\/dt><dd>Flow: at most[ \u00a0]3[ \u00a0]changes, at most[ \u00a0]1[ \u00a0]check<\/dd>/);
   const plain = v2Report();
   assert.doesNotMatch(renderTable(plain), /Task limits|--checks/);
+});
+
+test('the re-verified line agrees in number: one run from its artifacts, several from their artifacts', () => {
+  assert.match(cliText('reportReverified', { runs: 1, unjudged: 0 }), /Re-verified: 1 run re-judged by the checker from its artifacts; every verdict matches/);
+  assert.match(cliText('reportReverified', { runs: 2, unjudged: 0 }), /Re-verified: 2 runs re-judged by the checker from their artifacts; every verdict matches/);
+  const world = { world: 'w', version: '1.0.0', hash: 'h', unjudged: 0, references: 1 };
+  assert.match(cliText('reportReverifiedWorld', { ...world, runs: 1 }), /Re-verified: 1 run re-judged by the checker from its artifacts, against the world/);
+  assert.match(cliText('reportReverifiedWorld', { ...world, runs: 3 }), /Re-verified: 3 runs re-judged by the checker from their artifacts, against the world/);
 });
