@@ -75,6 +75,7 @@ npx practonaut bench --agent claude-code --world my-task/world --oracle my-task/
 npx practonaut report ~/.practonaut/bench/<id>/report.json --html report.html
 npx practonaut report ~/.practonaut/bench/<id>/report.json --verify     # re-judge from the run files
 npx practonaut compare before/report.json after/report.json --fail-on-regression   # did a change break an instance?
+npx practonaut report ~/.practonaut/bench/<id>/report.json --junit runs.xml --card card --badge badge.svg
 ```
 
 Each run gets its own session and data folder; the agent reaches the session only through the
@@ -100,6 +101,12 @@ call log and the tokens, turns and cost the client reports about itself. `compar
 side by side instance by instance: it refuses reports that are not comparable, names instance
 regressions (three repeats a side, all passed before, all failed after) and says "not
 distinguishable at this n" when an exact McNemar test cannot tell the two apart.
+
+In CI, [`examples/ci/practonaut-bench.yml`](examples/ci/practonaut-bench.yml) benches your agent with
+your own credentials and fails the job on an instance regression against a committed baseline; `--junit`
+gives CI test views one test case per run. `--card` and `--badge` draw the header line as a 1280 × 640
+card (SVG and PNG, light and dark) and a badge, with n, the interval, the verification status and the
+isolation level on them.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bench-report-dark.png">
