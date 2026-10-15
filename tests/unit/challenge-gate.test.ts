@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeGate, mergeAgentRuns, preflightGate, renderGate, renderPreflight, GateInputError, RUNS_AFTER_FIRST_ROUNDS, type GateInput, type GateReport, type SpentRun } from '../../src/challenge/gate.ts';
-import { DECLARATION_SCHEMA, HELD_OUT_SPAN, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, tierOf, validateDeclaration, DeclarationError, type Declaration } from '../../src/challenge/declaration.ts';
+import { DECLARATION_SCHEMA, HELD_OUT_SPAN, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, tierOf, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from '../../src/challenge/declaration.ts';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,8 +47,11 @@ function report(agent: 'oracle' | 'random' | string, passes: boolean[], planned:
 }
 const DEV_PASSED: boolean[][] = [[true, true, false], [true, false, false], [false, false, false]];
 const devReport = (model: string, passed: boolean[], options: ReportOptions = {}): BenchReportV2 => report(model, passed, devTasks, { world: '9', ...options });
-const devReports = (passed: boolean[][] = DEV_PASSED): GateReport[] => [OPUS, SONNET, HAIKU].map((model, index) => ({ report: devReport(model, passed[index]!), bench: `dev-${index}` }));
-const digestOf = (reports: readonly GateReport[]): string => developmentDigest(reports.flatMap(value => value.report.runs.map(run => digestRunOf(run, value.report.agent.model!))));
+/** A judged session per run, as files.ts reads it from session.json: a state hash and an action log. */
+const sessionFor = (run: BenchRunV2, model: string): DigestSession => ({ hash: `state-${model}-${run.taskId}-${run.pass}`, log: [{ action: { name: 'connect', params: { from: 'a', to: run.taskId } }, hash: `step-${run.pass}` }] });
+const devAt = (value: BenchReportV2, bench: string): GateReport => ({ report: value, bench, sessions: new Map(value.runs.filter(run => run.artifacts).map(run => [run.id, sessionFor(run, value.agent.model!)])) });
+const devReports = (passed: boolean[][] = DEV_PASSED): GateReport[] => [OPUS, SONNET, HAIKU].map((model, index) => devAt(devReport(model, passed[index]!), `dev-${index}`));
+const digestOf = (reports: readonly GateReport[]): string => developmentDigest(reports.flatMap(value => value.report.runs.map(run => digestRunOf(run, value.report.agent.model!, value.sessions!.get(run.id)!))));
 function declarationOf(extra: Partial<Declaration> = {}, development: Partial<Declaration['development']> = {}, budget: Partial<Declaration['budget']> = {}): Declaration {
   return {
     schema: DECLARATION_SCHEMA, family: 'repair', round: 1, generator: { id: 'challenge-repair', version: '1.0.0' }, difficulty: 'mixed',
@@ -118,10 +121,22 @@ test('held-out seeds follow from the development runs\' verified content only; t
   assert.deepEqual(heldOutSeeds(declarationOf({}, { spent: 12 })), seeds);
   // The digest ignores report order and file layout; a new development run changes it.
   assert.equal(digestOf([...devReports()].reverse()), declaration.development.digest);
-  const rerun = devReports(); rerun[1] = { report: devReport(SONNET, [true, false, false], { version: '2.1.0' }), bench: 'x' };
-  (rerun[1].report.runs[0]!.artifacts as { session: string }).session = hash('7');
+  // The reviewer's free redraws (third review B2): a status edited completed → timeout, and a
+  // re-spaced session file whose new byte hash the report binds. Neither moves the seeds.
+  const edited = devReports();
+  edited[1]!.report.runs[0]!.status = 'timeout';
+  (edited[1]!.report.runs[1]!.artifacts as { session: string }).session = hash('7');
+  assert.equal(digestOf(edited), declaration.development.digest);
+  assert.equal(computeGate(input(first(15), first(10), first(4), { development: edited })).verdict, 'passes');
+  // Another action log is another run: the digest and the seeds change.
+  const rerun = devReports(), first_ = rerun[1]!.report.runs[0]!;
+  (rerun[1]!.sessions as Map<string, DigestSession>).set(first_.id, { ...sessionFor(first_, SONNET), log: [{ action: { name: 'connect', params: { from: 'b', to: first_.taskId } }, hash: 'step-true' }] });
   assert.notEqual(digestOf(rerun), declaration.development.digest);
   assert.notDeepEqual(heldOutSeeds(declarationOf({}, { digest: digestOf(rerun) })), seeds);
+  refused(() => computeGate(input(first(15), first(10), first(4), { development: rerun })), /the development runs are not the ones the declaration digests/);
+  // So is another board or another verdict.
+  const board = devReports(); (board[2]!.sessions as Map<string, DigestSession>).set(board[2]!.report.runs[0]!.id, { ...sessionFor(board[2]!.report.runs[0]!, HAIKU), hash: 'state-other' });
+  assert.notEqual(digestOf(board), declaration.development.digest);
   assert.notEqual(declarationHash(declarationOf({}, {}, { releaseRunsBefore: 122, earlier: [{ declaration: 'injection-round-1.declaration.json', runs: 87, from: 'declaration' }] })), declarationHash(declaration), 'the manifest still binds the whole declaration');
 });
 
@@ -301,7 +316,7 @@ test('ladder agents are the declared models, every run on its own report\'s mode
   refused(() => computeGate({ ...base, ladder: builtin, spent: { development: 9, heldOut: spentOf(builtin) } }), /not from the claude-code preset/);
   // Another model needs the maintainer's approval in the declaration and again at the gate.
   const other = 'gpt-9';
-  const otherDev: GateReport[] = [OPUS, other, HAIKU].map((model, index) => ({ report: devReport(model, DEV_PASSED[index]!), bench: `dev-${index}` }));
+  const otherDev: GateReport[] = [OPUS, other, HAIKU].map((model, index) => devAt(devReport(model, DEV_PASSED[index]!), `dev-${index}`));
   for (const value of otherDev) if (value.report.agent.model === other) Object.assign(value.report.agent, { kind: 'command', name: 'command', isolation: ISOLATION_OF.command, modelSource: 'command-output' });
   for (const run of otherDev[1]!.report.runs) Object.assign(run.client!, { source: 'command-output' });
   const approved = declarationOf({ ladder: [OPUS, other, HAIKU], maintainerApproved: [other] }, { digest: digestOf(otherDev) });
@@ -317,7 +332,7 @@ test('ladder agents are the declared models, every run on its own report\'s mode
 
 test('development reports are the declared runs: their set, settings, digest and outcomes', () => {
   const base = input(first(15), first(10), first(4));
-  const replace = (index: number, value: BenchReportV2): GateReport[] => devReports().map((entry, at_) => at_ === index ? { report: value, bench: entry.bench } : entry);
+  const replace = (index: number, value: BenchReportV2): GateReport[] => devReports().map((entry, at_) => at_ === index ? devAt(value, entry.bench) : entry);
   refused(() => computeGate({ ...base, development: replace(0, devReport(OPUS, [true, true, true])) }), /the development runs are not the ones the declaration digests/);
   refused(() => computeGate({ ...base, development: replace(0, devReport(OPUS, [true, true, false], { world: '8' })) }), /was not made on the declared development set/);
   refused(() => computeGate({ ...base, development: replace(0, devReport(OPUS, [true, true, false], { checks: 1 })) }), /differs from the declaration in mirror \(as requested and as run\), timeout, action cap or check limit/);
@@ -325,7 +340,7 @@ test('development reports are the declared runs: their set, settings, digest and
   refused(() => computeGate({ ...base, development: replace(0, devReport(OPUS, [true, true, false], { runModel: () => null })) }), /a development run of claude-opus-5-5 reports no model/);
   refused(() => computeGate({ ...base, development: replace(0, devReport(OPUS, [true, true, false], { infra: [1] })) }), /the development run of claude-opus-5-5 on repair-2 is an infra_error; bench it again after the limit window/);
   // A development rerun after an infra_error, merged: the digest is the counted runs'.
-  const resumed = [{ report: devReport(OPUS, [true, true, false], { infra: [1] }), bench: 'dev-0' }, { report: devReport(OPUS, [true, true, false], { only: [1], createdAt: '2026-11-02T11:00:00.000Z' }), bench: 'dev-0b' }, ...devReports().slice(1)];
+  const resumed = [devAt(devReport(OPUS, [true, true, false], { infra: [1] }), 'dev-0'), devAt(devReport(OPUS, [true, true, false], { only: [1], createdAt: '2026-11-02T11:00:00.000Z' }), 'dev-0b'), ...devReports().slice(1)];
   assert.equal(computeGate({ ...base, development: resumed }).verdict, 'passes');
   refused(() => computeGate({ ...base, oracle: [at(held('oracle', first(N), { world: 'x' }))] }), /the oracle report was not made on the held-out set the declaration names/);
   refused(() => computeGate({ ...base, oracle: [at(held('oracle', first(N), { generated: seeds.map(seed => seed + 1) }))] }), /was not made by challenge-repair 1\.0\.0 from its declared seed/);

@@ -557,7 +557,8 @@ exactly the development set the generator makes for their seeds and difficulty, 
 per model and judged (`--seed-list 1 --repeats 1`), every run on the model its report names, with an
 explicit `--mirror` and at most the family's `--max-actions`. The declaration records the pair, the
 development outcomes and whether they follow the capability order, the digest of the development
-runs' verified content, the development runs found (reruns included), the bench settings, the sizes
+runs' canonical content (model, task, seed, the checker's verdict, the judged session's state hash
+and action log), the development runs found (reruns included), the bench settings, the sizes
 and the release runs before the round — derived: 35 plus, for every earlier round committed in the
 same folder, its gate ledger's spend or its declared 87; more than 500 with the round is refused
 ("budget exhausted — a maintainer decides on a second round"). The held-out seeds are 26

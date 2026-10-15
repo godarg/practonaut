@@ -21,7 +21,8 @@ import { clientInit } from '../bench/agents.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, SEED_RANGES, generateSet, taskIdOf, worldIdOf, type ChallengeSet } from './build.ts';
-import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, pairOf, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration } from './declaration.ts';
+import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, pairOf, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
+import { RUN_ARTIFACTS } from '../bench/run.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
 import { computeGate, mergeAgentRuns, preflightGate, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
 import { committedFiles, declarationCommit, DeclarationGitError } from './git.ts';
@@ -136,12 +137,20 @@ export async function verifySet(dir: string, seeds: readonly number[] = [1]): Pr
   return { world, instances: world.tasks.length, references: { total: oracles.length * seeds.length, passed }, nearMisses: await judgeNearMisses(world, oracles, seeds) };
 }
 
-/** Reads, validates and re-verifies a report against its bench folder. */
-async function verifiedReport(path: string): Promise<GateReport> {
+/** Reads, validates and re-verifies a report against its bench folder; with `sessions`, also the
+ * judged session of each judged run (verified above), for the development digest. */
+async function verifiedReport(path: string, sessions = false): Promise<GateReport> {
   const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
   if (!isBenchReportV2(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report; the gate needs practonaut.bench/2`);
   await verifyBenchV2(report, dirname(path), libraryWorld);
-  return { report, bench: basename(dirname(resolve(path))) };
+  const read = new Map<string, DigestSession>();
+  if (sessions) for (const run of report.runs) {
+    if (!run.artifacts) continue;
+    const session = parseJsonEntry(await readFile(join(dirname(path), run.id, RUN_ARTIFACTS.session)), 'session.json', 64) as { hash?: unknown; log?: unknown };
+    if (typeof session.hash !== 'string' || !Array.isArray(session.log)) throw new GateInputError(`run ${run.id}: its session has no state hash and action log`);
+    read.set(run.id, { hash: session.hash, log: session.log });
+  }
+  return { report, bench: basename(dirname(resolve(path))), ...(sessions ? { sessions: read } : {}) };
 }
 export async function readDeclaration(path: string): Promise<Declaration> {
   return validateDeclaration(parseJsonEntry(await readFile(path), 'declaration.json', 16));
@@ -216,7 +225,7 @@ export interface DeclareFiles { family: Family; round: number; difficulty: Diffi
 export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[] }> {
   const fail = (message: string): never => { throw new DeclarationError(message); };
   const reads: GateReport[] = [];
-  for (const path of files.development) reads.push(await verifiedReport(path));
+  for (const path of files.development) reads.push(await verifiedReport(path, true));
   const approved = files.maintainerApproved ?? [];
   const given: string[] = [];
   for (const read of reads) { const name = read.report.agent.model ?? fail(`${read.report.agent.name}: a development report needs the model its client reported`); if (!given.includes(name)) given.push(name); }
@@ -251,7 +260,8 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
     for (const task of devTasks) {
       const entry = merged.get(task);
       if (!entry || entry.run.status === 'infra_error') fail(`the development run of ${name} on ${task} is ${entry ? 'an infra_error' : 'missing'}; bench it again after the limit window`);
-      digestRuns.push(digestRunOf(entry!.run, name)); row.push(entry!.run.pass);
+      const session = entry!.source.sessions?.get(entry!.run.id) ?? fail(`the development run ${entry!.run.id} of ${name} has no judged session to digest`);
+      digestRuns.push(digestRunOf(entry!.run, name, session)); row.push(entry!.run.pass);
     }
     passed.push(row);
   }
@@ -330,7 +340,8 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   const { set, seeds } = (() => { try { return heldOutSet(declaration); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } })();
   await checkSetFolder(files.set, declaration, set, seeds, commit);
   const read = async (paths: readonly string[]): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await verifiedReport(path)); return out; };
-  const development = await read(files.development);
+  const development: GateReport[] = [];
+  for (const path of files.development) development.push(await verifiedReport(path, true));
   const oracle = await read(files.oracle), random = await read(files.random);
   if (!oracle.length) fail('name the oracle report(s) (--oracle)');
   // Each oracle bench played the regenerated references.

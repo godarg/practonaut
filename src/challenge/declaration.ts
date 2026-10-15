@@ -84,18 +84,21 @@ export function orderOf(passed: ReadonlyArray<readonly boolean[]>): 'consistent'
   return counts.some((count, index) => counts.slice(index + 1).some(later => later > count)) ? 'contradicted' : 'consistent';
 }
 
-/** What a development run contributes to the digest: only content `report --verify` binds. */
-export interface DigestRun { model: string; taskId: string; seed: number; status: string; pass: boolean; artifacts: { session: string; native: string | null; checker: string } | null }
-/** The SHA-256 of the development runs' verified content (model, task, seed, status, outcome and the
- * hashes of the judged session, native export and checker output), in a fixed order. File bytes
- * never enter it: a re-spaced or copied report gives the same digest; a new run gives another. */
+/** What a development run contributes to the digest: canonical content only — the model, task and
+ * seed, the checker's verdict, the judged session's state hash and its action log in canonical JSON.
+ * Self-reported fields (status) and byte hashes of files never enter it (third review B2). */
+export interface DigestRun { model: string; taskId: string; seed: number; pass: boolean; hash: string; log: string }
+/** The SHA-256 of the development runs' canonical content, in a fixed order: a re-spaced file, a
+ * copied report or an edited status gives the same digest; only another run (another action log,
+ * board or verdict) gives another. */
 export function developmentDigest(runs: readonly DigestRun[]): string {
   const ordered = [...runs].sort((a, b) => a.model.localeCompare(b.model) || a.taskId.localeCompare(b.taskId) || a.seed - b.seed);
   return sha256Hex(canonicalJson({ digest: 'practonaut.challenge-development/1', runs: ordered }));
 }
-export const digestRunOf = (run: BenchReportV2['runs'][number], model: string): DigestRun => ({
-  model, taskId: run.taskId, seed: run.seed, status: run.status, pass: run.pass,
-  artifacts: run.artifacts ? { session: run.artifacts.session, native: run.artifacts.native, checker: run.artifacts.checker } : null,
+/** A judged session as the digest reads it: its state hash and its action log. */
+export interface DigestSession { hash: string; log: unknown }
+export const digestRunOf = (run: BenchReportV2['runs'][number], model: string, session: DigestSession): DigestRun => ({
+  model, taskId: run.taskId, seed: run.seed, pass: run.pass, hash: session.hash, log: canonicalJson(session.log),
 });
 
 /** The canonical SHA-256 of a declaration: what the held-out set's manifest binds. */

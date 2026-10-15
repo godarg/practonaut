@@ -198,8 +198,9 @@ judged state and the error classes, and the judged state may hold whatever an ag
   makes for their seeds; `--max-actions` at most the family's cap): family, round, generator
   version, difficulty, the three model ids in capability order, maintainer approvals, the gate pair,
   bench settings (mirror, timeout, `--max-actions`, `--checks`), development seeds, the **digest of
-  the development runs' verified content** (per run: model, task, seed, status, outcome and the
-  SHA-256 of the judged session, native export and checker output — never file bytes), their
+  the development runs' canonical content** (per run: model, task, seed, the checker's verdict, the
+  judged session's state hash and its action log in canonical JSON — no self-reported field such as
+  the status and no byte hash of a file, so an edited status or a re-spaced file draws nothing), their
   outcomes, the model runs found on the development set (reruns included), the sizes (9
   development runs, 26 held-out instances, 87 model runs) and the release runs before the round,
   which are **derived, not given**: 35 plus, for every earlier round committed in the same folder,

@@ -10,7 +10,7 @@
  */
 import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
 import type { BenchReportV2, BenchRunV2 } from '../bench/report.ts';
-import { BUDGET_EXHAUSTED, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, orderOf, unattestedRuns, DeclarationError, type Declaration } from './declaration.ts';
+import { BUDGET_EXHAUSTED, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, orderOf, unattestedRuns, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
 import { generatorId, type Family } from './families.ts';
 import { taskIdOf } from './build.ts';
 
@@ -33,8 +33,9 @@ export class GateInputError extends Error {
   constructor(message: string) { super(message); this.name = 'GateInputError'; }
 }
 
-/** A validated, re-verified report and the name of its bench folder. */
-export interface GateReport { report: BenchReportV2; bench: string }
+/** A validated, re-verified report and the name of its bench folder; for a development report, the
+ * judged sessions of its runs (by run id), which the development digest reads. */
+export interface GateReport { report: BenchReportV2; bench: string; sessions?: ReadonlyMap<string, DigestSession> }
 /** A model run found in a bench folder (a run folder with the agent's own output). `status`: as its
  * bench's report lists it; `unjudged` when no report lists it and it has no checker output (a killed
  * bench); null when it was judged but no report lists it. */
@@ -107,13 +108,13 @@ const guarded = <T>(work: () => T): T => { try { return work(); } catch (error) 
 /** One agent's runs over its reports (a resumed bench has several): per task the run of the latest
  * report; a task benched again counts its later run only when every earlier run was an infra_error
  * (both are spent), otherwise the round is refused (no best-of-N; second review S-2). */
-export function mergeAgentRuns(reports: readonly GateReport[], label: string): Map<string, { run: BenchRunV2; bench: string }> {
+export function mergeAgentRuns(reports: readonly GateReport[], label: string): Map<string, { run: BenchRunV2; bench: string; source: GateReport }> {
   const ordered = [...reports].sort((a, b) => a.report.createdAt.localeCompare(b.report.createdAt) || a.bench.localeCompare(b.bench));
-  const merged = new Map<string, { run: BenchRunV2; bench: string }>();
-  for (const { report, bench } of ordered) for (const run of report.runs) {
+  const merged = new Map<string, { run: BenchRunV2; bench: string; source: GateReport }>();
+  for (const source of ordered) for (const run of source.report.runs) {
     const earlier = merged.get(run.taskId);
     if (earlier && earlier.run.status !== 'infra_error') fail(`${label}: task ${run.taskId} was benched again although its run in ${earlier.bench} was not an infra_error (no best-of-N)`);
-    merged.set(run.taskId, { run, bench });
+    merged.set(run.taskId, { run, bench: source.bench, source });
   }
   return merged;
 }
@@ -183,7 +184,8 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     for (const task of devTasks) {
       const entry = merged.get(task);
       if (!entry || entry.run.status === 'infra_error') fail(`the development run of ${name} on ${task} is ${entry ? 'an infra_error' : 'missing'}; bench it again after the limit window`);
-      digestRuns.push(digestRunOf(entry!.run, name)); row.push(entry!.run.pass);
+      const session = entry!.source.sessions?.get(entry!.run.id) ?? fail(`the development run ${entry!.run.id} of ${name} has no judged session to digest`);
+      digestRuns.push(digestRunOf(entry!.run, name, session)); row.push(entry!.run.pass);
     }
     passed.push(row);
   }
