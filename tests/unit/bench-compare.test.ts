@@ -145,6 +145,19 @@ test('every run counts: a run that was not judged counts as not passed, is named
   assert.match(renderCompareHtml({ report: onlyFirst, verification: 'consistency-checked' }, { report: onlySecond, verification: 'consistency-checked' }, nothing, ':root{}'), /<p class="verdict">Nothing to compare: no instance has runs on both sides\.<\/p>/);
 });
 
+test('a built-in side carries one chip that says "no language model", not two', () => {
+  const builtin = (value: BenchReportV2): void => { value.agent = { kind: 'builtin', name: 'oracle', command: [], isolation: 'builtin-baseline', model: null, modelSource: 'none', apiKeySource: null, keptEnv: [] }; };
+  const side = { report: report(instances([[true]]), builtin), verification: 'consistency-checked' as const };
+  const comparison = compareReports(side.report, side.report);
+  for (const [language, words] of [['en', 'no language model'], ['de', 'kein Sprachmodell|ohne Sprachmodell']] as const) {
+    const page = renderCompareHtml(side, side, comparison, ':root{}', language);
+    const chips = [...page.matchAll(/<li class="chip">([^<]*)<\/li>/g)].map(match => match[1]!);
+    // Two sides, one such chip each.
+    assert.equal(chips.filter(chip => new RegExp(words).test(chip)).length, 2, `${language}: ${chips.join(' | ')}`);
+  }
+  assert.match(renderCompareTable(side, side, comparison), /^Baseline: oracle · model only \(no mirror\) · built-in baseline: no language model, MCP only · consistency-checked, not re-verified · 2026-10-14$/m);
+});
+
 test('incomparable reports are refused, naming every difference', () => {
   const base = report(instances([[true]]));
   const differs = (change: (value: BenchReportV2) => void): string[] => {

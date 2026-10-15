@@ -440,7 +440,7 @@ export const CLI_CATALOG = {
     "de": "\nAuf Stimmigkeit geprüft, nicht nachgerechnet: Jedes Bestehen und jede Kennzahl folgt aus den Urteilen in der Datei. --verify beurteilt die Laufartefakte neu.\n"
   },
   "reportReverified": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts; every verdict matches ({unjudged} not judged).\n",
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from {runs:its|their} artifacts; every verdict matches ({unjudged} not judged).\n",
     "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt; jedes Urteil stimmt ({unjudged} nicht bewertet).\n"
   },
   "reportJson": {
@@ -484,7 +484,7 @@ export const CLI_CATALOG = {
     "de": "practonaut: Chromium läuft ohne Sandbox, weil dieses Linux sie nicht erlaubt (unprivilegierte User-Namespaces, AppArmor); es zeichnet nur das eigene SVG der Karte, ohne JavaScript und ohne Netz. PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen.\n"
   },
   "reportReverifiedWorld": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from {runs:its|their} artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
     "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}, Inhalts-Hash {hash}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
   },
   "reportWorldOwn": {

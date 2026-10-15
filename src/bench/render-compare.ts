@@ -38,9 +38,10 @@ function sideText(side: Comparison['baseline'], language: Language): string {
  * isolation level, verification status and date. */
 function sideFacts(input: CompareInput, t: Words, language: Language): string[] {
   const report = input.report;
-  const model = report.agent.kind === 'builtin' ? t.builtin : modelHeadline(report, language);
+  // A built-in has no model: its isolation chip already says "no language model", once.
+  const model = report.agent.kind === 'builtin' ? [] : [modelHeadline(report, language)];
   const isolation = { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[isolationOf(report)];
-  return [report.agent.name, ...(isBenchReportV2(report) && report.label !== undefined ? [report.label] : []), model, report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff, isolation, input.verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.createdAt.slice(0, 10)];
+  return [report.agent.name, ...(isBenchReportV2(report) && report.label !== undefined ? [report.label] : []), ...model, report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff, isolation, input.verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.createdAt.slice(0, 10)];
 }
 /** The side of a flip that had no verdict at all (every run unjudged), if any: it did not fail, it was
  * not judged, and it counts as not passed. */

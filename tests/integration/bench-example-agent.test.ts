@@ -4,7 +4,8 @@
 // passes; with --mistake its last action is missing and the checker fails the run, judged. Named by a
 // relative path, the script is not found from the run's agent/ folder: the run ends as infra_error
 // without a single tool call, and only agent.stderr says why. Expected values come from the plan file.
-// The same bench with two seeds on this one-variant world prints the notice seeds_share_variant.
+// The report page explains why its host calls exceed the call log by one. The same bench with two
+// seeds on this one-variant world prints the notice seeds_share_variant.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -42,6 +43,15 @@ test('the minimal example agent passes with its plan, fails judged with --mistak
   const [run] = solved.report.runs as Json[];
   assert.deepEqual([run!.status, run!.pass, run!.actions, run!.toolCalls.act, run!.toolCalls.check], ['completed', true, plan, plan, 1]);
   assert.match(await readFile(join(solved.folder, run!.id, 'agent.stdout'), 'utf8'), /^check_result: passed$/m);
+  // The page says why its runs table counts one host call more than the call log: the bridge's
+  // start-up read. The agent made observe, one act per plan step and check_result.
+  assert.equal(run!.toolCalls.total, plan + 3);
+  const page = join(solved.folder, 'page.html');
+  const rendered = spawnSync(process.execPath, [CLI, 'report', join(solved.folder, 'report.json'), '--html', page], { encoding: 'utf8', env: process.env });
+  assert.equal(rendered.status, 0, rendered.stderr);
+  const text = (await readFile(page, 'utf8')).replace(/<[^>]+>/g, ' ').replace(/\u00a0/g, ' ');
+  assert.match(text, new RegExp(`${plan + 2} calls · `));
+  assert.ok(text.includes(`The runs table counts ${plan + 3} host calls: the host counts what reached it, the bridge’s start-up read included.`), 'the host-call note');
 
   const mistaken = await bench(template(EXAMPLE, '--mistake'));
   const [failed] = mistaken.report.runs as Json[];
