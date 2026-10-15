@@ -59,6 +59,15 @@ Hostile fixtures are generated at test time by an independent, permissive zip wr
   solutions; its bench score is not a sealed result.
 - `tools/agent-runs.ts` executes opt-in real agent practice runs; ordinary test suites never call
   a model provider.
+- The bundled example's demonstration plays public content only (each task's third hint).
+  `tests/e2e/first-minute.test.ts` scans every reply, asset and event the Player receives during it
+  for the reference steps and near misses of every library task and the example's held-out task
+  (`tests/support/oracle-scan.ts`), with a planted marker as positive control.
+- `tools/measure-first-action.ts` measures the time from `npx practonaut` (packed tarball, warm npx
+  cache, npm offline so no registry lookup; `--local` for `dist/`) to the first demonstrated action
+  on the board, model-only and with the real engine; the click is automated. Median of three runs,
+  written to `.local/measure-first-action/<time>-<commit>.json` with the commit and whether the tree
+  had changes. Budget 30 s.
 
 ## Known gaps
 

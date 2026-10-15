@@ -219,7 +219,7 @@ test('320 px: a board wider than the screen is a named, focusable region with a 
     const overflow = await region.evaluate(node => node.scrollWidth > node.clientWidth);
     assert.equal(overflow, true, 'the fixture board is wider than 320 px');
     await f.page.getByTestId('board-scroll-hint').waitFor();
-    assert.equal(await f.page.getByTestId('board-scroll-hint').innerText(), 'Swipe sideways to see the whole board.');
+    assert.equal(await f.page.getByTestId('board-scroll-hint').innerText(), 'Scroll sideways to see the whole board.');
     assert.equal(await region.getAttribute('aria-describedby'), 'board-scroll-hint');
     assert.match(await region.getAttribute('class') ?? '', /is-clipped-end/);
     await region.focus(); await f.page.keyboard.press('ArrowRight');

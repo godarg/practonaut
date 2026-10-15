@@ -20,7 +20,7 @@ user-given command template.
 |---|---|
 | The user's machine (files, processes, network) | A world or an agent must not get code execution or file access through Practonaut. |
 | Session integrity (state, action log, hashes) | Practice feedback and bench scores depend on it. |
-| Hidden task data (reference solutions, near misses, held-out tasks and checker bundles) | If an agent can read them, its score means nothing. The goal conditions are deliberately public: Player and agent see the same condition sentences and the same formal form of each goal clause. |
+| Hidden task data (reference solutions, near misses, held-out tasks and checker bundles) | If an agent can read them, its score means nothing. The goal conditions are deliberately public: Player and agent see the same condition sentences and the same formal form of each goal clause. The bundled example's demonstration plays a solution derived from each task's public third hint, never a checker fixture and never a library or bench task; the host enforces this by the world's id and version plus the CLI flag (`src/host/demonstration.ts`). |
 | Session credentials (one-use link code, session token, token file) | Whoever holds them can act in the session. |
 | Recordings | May contain personal or proprietary content. |
 | Release artifacts (npm package, provenance) | One compromised publish reaches every user. |

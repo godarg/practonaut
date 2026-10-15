@@ -3,7 +3,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixture, assertOracle, type Fixture } from "../tests/e2e/harness.ts";
 import { TOKEN_HEADER, type HostReply, type MutationReply } from "../src/host/protocol.ts";
-import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -143,6 +143,10 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   try {
     await setLanguage(workspaces.page, language);
     for (const st of PLAYER_STATES.filter(x => x.id.startsWith("practice-export-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    // The bundled example's demonstration: asking, playing, finished, stopped and stopped early.
+    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("demo-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    // The editor states below work on a plain attempt, never on the demonstration's board.
+    await practiceBaseline(workspaces);
     for (const st of PLAYER_STATES.filter(x => x.workspace === "editor")) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
     for (const st of [...PLAYER_STATES.filter(x => x.workspace === "author"), ...CREATE_PROGRESS_STATES]) {
       try { await st.enter(workspaces); await state(workspaces, st.id, stem, CREATE_GATES ? failures : createFindings); }

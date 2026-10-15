@@ -310,7 +310,7 @@ export async function createPracticeController(input: World, options: PracticeSe
     catch (error) { const loggingCode = (error as { code?: string }).code; return reject(loggingCode === 'diagnostic_limit' ? 'diagnostic_limit' : 'diagnostic_unavailable', 'Private mirror diagnostics failed; the board was not changed'); }
     return reject(code!, mirror ? 'Mirror rejected the action and was restored; the board was not changed' : 'Mirror unavailable; restart the session. The board was not changed');
   };
-  const mutate = async (request: RevisionRequest, build: (context:TransactionContext) => { candidate: Session; action?: Action; effects?: HistoryItem['effects']; reset?: boolean; actor?: HistoryItem['actor'] },suppliedContext?:TransactionContext): Promise<HostReply<MutationReply>> => {
+  const mutate = async (request: RevisionRequest, build: (context:TransactionContext) => { candidate: Session; action?: Action; effects?: HistoryItem['effects']; reset?: boolean; attempt?: number; actor?: HistoryItem['actor'] },suppliedContext?:TransactionContext): Promise<HostReply<MutationReply>> => {
     const context=contextFor(suppliedContext),invalid = guard<MutationReply>(request,context,false); if (invalid) return rejected(invalid);
     busy = true;
     const started = performance.now();let mirrorWritten=false;
@@ -322,7 +322,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       const description = next.action ? actionDescription(next.action, session.state, next.candidate.state) : undefined;
       const projectedHistory = next.reset ? [] : next.action ? [...history, { description: description!, actor: structuredClone(next.actor ?? { kind: 'human' as const }), step: next.candidate.step, action: structuredClone(next.action), hash: next.candidate.hash, effects: next.effects ?? [], consequences: candidateConsequences, ruleIds: next.candidate.world.rules.filter(rule => rule.action === next.action!.name).map(rule => rule.id), mirrorConfirmed: mode === 'required', latencyMs: 999999999 }] : history.slice(0, next.candidate.step);
       // A new task starts at attempt 1; a reset or a new variant of the same task counts on.
-      const nextAttempt = next.candidate.taskId === session.taskId ? attempt + 1 : 1;
+      const nextAttempt = next.attempt ?? (next.candidate.taskId === session.taskId ? attempt + 1 : 1);
       admit(makeView(next.candidate, { revision: revision + 1, history: projectedHistory, result: null, ...(next.reset ? { attempt: nextAttempt, hintsOpened: 0, hints: [] } : {}) }));
       deadline(context);const synchronized = await synchronize(next.candidate,context, next.action);
       if (!synchronized.ok) return rejected(synchronized);
@@ -368,7 +368,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       return { candidate, action, effects: applied.effects, ...(request.actor ? { actor: request.actor } : {}) };
     },context),
     undo: (request,context) => mutate(request, budget => { const candidate = candidateFromLog(budget); const undone = candidate.undo(); if (!undone.ok) throw undone.error; return { candidate }; },context),
-    reset: (request: ResetRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Reset needs confirmation'))) : mutate(request, () => ({ candidate: new Session(original, session.seed, session.taskId), reset: true }),context),
+    reset: (request: ResetRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Reset needs confirmation'))) : mutate(request, () => ({ candidate: new Session(original, session.seed, session.taskId), reset: true, ...(request.attempt === undefined ? {} : { attempt: request.attempt }) }),context),
     variant: (request: VariantRequest,context) => request.confirmed !== true ? Promise.resolve(rejected(reject('invalid_request', 'Task or variant change needs confirmation')))
       : options.singleTask && request.taskId !== undefined && request.taskId !== session.taskId ? Promise.resolve(rejected(reject('invalid_request', 'This session offers only its own task'))) : mutate(request, budget => {
       let seed = session.seed;
@@ -378,7 +378,7 @@ export async function createPracticeController(input: World, options: PracticeSe
         while (selectVariant(original, seed).id === selectVariant(original, session.seed).id && seed < session.seed + 10_000) {deadline(budget);seed++;}
       }
       if (!Number.isSafeInteger(seed)) throw { code: 'invalid_argument', message: 'Seed limit reached' };
-      return { candidate: new Session(original, seed, request.taskId ?? session.taskId), reset: true };
+      return { candidate: new Session(original, seed, request.taskId ?? session.taskId), reset: true, ...(request.attempt === undefined ? {} : { attempt: request.attempt }) };
     },context),
     hint: async (request,suppliedContext) => {
       const context=contextFor(suppliedContext),invalid = guard<HostView>(request,context); if (invalid) return rejected(invalid);

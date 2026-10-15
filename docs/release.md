@@ -53,6 +53,10 @@ Node version that ships a recent npm. See npm's
    | `src/version.ts` | `PACKAGE_VERSION` (what `--version`, MCP `serverInfo`, sessions and bench reports name) |
    | `src/checker/state.ts` | add the version to the known session writers (`toolVersion`); keep the earlier ones, so their sessions stay readable |
 
+   After a Playwright update since the last release, the headless-shell download size that `setup`
+   names must belong to the pinned Playwright: `node tools/measure-headless-shell.ts --write`
+   (`tests/unit/setup.test.ts` fails until it has run).
+
    Tests guard the coupling: `--version` must equal `package.json` (`tests/unit/cli.test.ts`),
    `npm run check` compares `server.json` with `package.json`, and the checker must accept a session
    written by the current version (`tests/unit/checker.test.ts`). Then move the `Unreleased`

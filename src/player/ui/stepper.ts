@@ -68,6 +68,24 @@ export function step(options: StepOptions, ...body: Child[]): HTMLDetailsElement
   return node;
 }
 
+/**
+ * Step list: the parts of something that runs by itself (the bundled example's demonstration), as
+ * a static numbered list. The marker follows the stepper's grammar (number; ring when current;
+ * check when done) and every row says its state in words, so the marker is never the only carrier.
+ * Not interactive, nothing opens. Styles: src/player/css/ui.css.
+ */
+export interface StepListItem { title: string; detail: Child; state: StepState; testid?: string }
+export function stepList(options: { label?: string; class?: string; labelledBy?: string }, items: StepListItem[]): HTMLOListElement {
+  const list = h('ol', { class: classes('pn-steplist', options.class), attrs: { 'aria-label': options.label, 'aria-labelledby': options.labelledBy } });
+  items.forEach((item, index) => {
+    const marker = h('span', { class: `pn-steplist__marker pn-steplist__marker--${item.state}`, attrs: { 'aria-hidden': 'true' } });
+    if (item.state === 'done') marker.append(icon('check')); else marker.append(h('span', { text: String(index + 1) }));
+    list.append(h('li', { class: 'pn-steplist__item', testid: item.testid }, marker,
+      h('div', { class: 'pn-steplist__body' }, h('p', { class: 'pn-steplist__title', text: item.title }), h('div', { class: 'pn-steplist__detail' }, item.detail))));
+  });
+  return list;
+}
+
 /** Ordered list of steps with an accessible name; each step sits in its own list item. */
 export function stepper(options: { label: string; class?: string }, ...steps: HTMLDetailsElement[]): HTMLOListElement {
   const list = h('ol', { class: classes('pn-stepper', options.class), attrs: { 'aria-label': options.label } });

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { BUNDLED_WORLD, fallbackNotice, parseServeArguments, resolveMirror, startHostWithMirror } from '../../src/cli/serve.ts';
+import { BUNDLED_WORLD, fallbackNotice, modelOnlyNotice, parseServeArguments, resolveMirror, startHostWithMirror } from '../../src/cli/serve.ts';
+import { invocationName } from '../../src/cli/invocation.ts';
+import { headlessShellMegabytes } from '../../src/cli/chromium-download.ts';
 import { browserAdvice, launchFailureDetail, type StartResult } from '../../src/cli/browser-start.ts';
 import { AdapterInitializationError } from '../../src/adapters/excalidraw/index.ts';
 import type { RunningHost } from '../../src/host/protocol.ts';
@@ -49,6 +51,23 @@ test('browser start failures are reported as one telling line with platform advi
   assert.equal(launchFailureDetail(new Error('a\u001b[2Jb')), 'a\\u{001b}[2Jb');
   assert.match(browserAdvice('linux'), /--with-deps chromium/); assert.match(browserAdvice('linux'), /AppArmor/);
   assert.doesNotMatch(browserAdvice('darwin'), /AppArmor/);
+});
+
+test('the Player learns why a session is model-only and what gets the real engine, named with its download size', async () => {
+  const cli = invocationName();
+  assert.deepEqual(modelOnlyNotice('auto', { mode: 'off', fallback: true, reason: 'missing' }), { reason: 'missing', command: `${cli} setup`, download: { name: 'Chromium headless shell', megabytes: headlessShellMegabytes() } });
+  assert.deepEqual(modelOnlyNotice('auto', { mode: 'off', fallback: true, reason: 'start', detail: 'x' }), { reason: 'start', command: `${cli} doctor --adapter` });
+  assert.deepEqual(modelOnlyNotice('off', { mode: 'off', fallback: false }), { reason: 'off' });
+  assert.equal(modelOnlyNotice('auto', { mode: 'required', fallback: false }), undefined);
+  // The host gets the notice of the fallback that actually happened.
+  const notices: unknown[] = [];
+  const fake = { url: 'u' } as unknown as RunningHost;
+  await startHostWithMirror('auto', { mode: 'off', fallback: true, reason: 'missing' }, async (mode, notice) => { notices.push([mode, notice?.reason]); return fake; });
+  await startHostWithMirror('off', { mode: 'off', fallback: false }, async (mode, notice) => { notices.push([mode, notice?.reason]); return fake; });
+  await startHostWithMirror('auto', { mode: 'required', fallback: false }, async (mode, notice) => { notices.push([mode, notice?.reason]); if (mode === 'required') throw new AdapterInitializationError(new Error('boom'), undefined, []); return fake; });
+  assert.deepEqual(notices, [['off', 'missing'], ['off', 'off'], ['required', undefined], ['off', 'start']]);
+  // The terminal names the same download.
+  assert.match(fallbackNotice({ mode: 'off', fallback: true, reason: 'missing' }), new RegExp(`one download: Chromium headless shell, about ${headlessShellMegabytes()} MB`));
 });
 
 test('auto keeps the session when the mirror itself fails to start; required names the failure', async () => {
