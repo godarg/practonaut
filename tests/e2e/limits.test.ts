@@ -88,3 +88,32 @@ test('under a check limit the Player shows error explanations only through a che
   assert.equal(await shown({ actions: 5, checks: 1 }), false, 'with a check limit it does not');
 });
 
+test('with every change used, no refused action is the primary one: the Player points to another task (second review, design)', { timeout: 120_000 }, async () => {
+  const s = await startPlayer({ world: limitsWorld(), taskId: 'T1', phase3: false, mirror: 'off' });
+  try {
+    await s.page.getByTestId('changes-used').waitFor();
+    // Solve (one change), check (passes), then use the last two changes.
+    assert.equal((await s.post('act', { action: { name: 'connect', params: { from: 'b', to: 'c' } } })).ok, true);
+    await s.page.getByTestId('check').click();
+    await s.page.getByTestId('goal-new-variant').waitFor();
+    assert.match(await s.page.getByTestId('goal-new-variant').getAttribute('class') ?? '', /pn-btn--primary/, 'with changes left, a new variant is the way on');
+    assert.equal((await s.post('act', { action: { name: 'move_step', params: { id: 'a', x: 120, y: 100 } } })).ok, true);
+    assert.equal((await s.post('undo')).ok, true);
+    // The board is solved again; the second check says so, with every change and check used.
+    await s.page.getByTestId('changes-none').waitFor();
+    await s.page.getByTestId('check').click();
+    await s.page.waitForFunction(() => (document.querySelector('[data-testid=check]') as HTMLButtonElement | null)?.disabled === true);
+    await s.page.getByTestId('goal-new-variant').waitFor();
+    assert.equal(await s.page.getByTestId('changes-none').textContent(), 'No changes left in this attempt. Choose another task to start a new one.');
+    assert.doesNotMatch(await s.page.getByTestId('goal-new-variant').getAttribute('class') ?? '', /pn-btn--primary/);
+    assert.equal(await s.page.locator('.pn-btn--primary').count(), 0, 'no refused action is primary');
+    assert.equal(await s.page.getByTestId('new-variant').isVisible(), true, 'New variant stays visible');
+    await s.page.getByTestId('choose-task').click();
+    await s.page.getByTestId('task-picker-list').waitFor({ state: 'visible' });
+    await s.page.keyboard.press('Escape');
+    await setLanguage(s.page, 'de'); await settle(s.page);
+    assert.equal(await s.page.getByTestId('changes-none').textContent(), 'In diesem Versuch sind keine Änderungen mehr übrig. Wähle eine andere Aufgabe, um einen neuen zu beginnen.');
+    assert.equal(await s.page.getByTestId('choose-task').textContent(), 'Andere Aufgabe wählen');
+  } finally { await s.close(); }
+});
+
