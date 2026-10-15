@@ -166,10 +166,12 @@ export async function commandBench(args: string[]): Promise<number> {
   const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
   process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
   const stopped = report.interrupted && 'stopped' in report.interrupted ? report.interrupted.stopped : undefined;
+  // Tasks without a judged run for every planned seed and repeat: what a resumed bench takes.
+  const judged = (task: string): boolean => report.settings.seeds.every(seed => Array.from({ length: report.settings.repeats }, (_, index) => index + 1).every(repeat => report.runs.some(run => run.taskId === task && run.seed === seed && run.repeat === repeat && run.status !== 'infra_error')));
   if (stopped) process.stdout.write(cliText('benchStopped', { run: stopped.run, note: safeText(report.runs.at(-1)!.note ?? 'infra_error'), runs: report.runs.length, planned: report.interrupted!.plannedRuns, tasks: stopped.remaining.join(',') }));
-  else if (report.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
+  else if (result.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: result.planned, tasks: report.settings.tasks.filter(task => !judged(task)).join(',') }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
-  return stopped ? EXIT_STOPPED : report.interrupted ? EXIT_INTERRUPTED : 0;
+  return stopped ? EXIT_STOPPED : result.interrupted ? EXIT_INTERRUPTED : 0;
 }
 /** EX_TEMPFAIL: the bench stopped at an infra_error run (`--stop-on-infra`); resume later. */
 const EXIT_STOPPED = 75;

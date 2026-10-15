@@ -258,7 +258,8 @@ outside it is referenced, so it can be moved, archived or handed over:
 hash, every run with a reference length). A bench stopped with Ctrl+C, SIGTERM or SIGHUP ends the running agent
 with its whole process group (on Windows its process tree), closes the session and writes the runs
 that finished as a partial report (`interrupted.plannedRuns`, exit 130); the run in progress is
-not scored. That can take a few seconds (an agent that ignores SIGTERM gets a 3-second grace
+listed as an `infra_error` with the note `interrupted` and not judged, and the output names the tasks
+to bench again (`--tasks …`). That can take a few seconds (an agent that ignores SIGTERM gets a 3-second grace
 period); a second Ctrl+C stops at once: the running agent's process group is killed and no report
 is written (exit 130). With `--stop-on-infra` the bench stops itself after the first `infra_error`
 run — a usage limit hits every later run too — and writes the partial report with

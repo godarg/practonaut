@@ -5,6 +5,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeGate, mergeAgentRuns, preflightGate, renderGate, renderPreflight, GateInputError, RUNS_AFTER_FIRST_ROUNDS, type GateInput, type GateReport, type SpentRun } from '../../src/challenge/gate.ts';
 import { DECLARATION_SCHEMA, HELD_OUT_SPAN, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, tierOf, validateDeclaration, DeclarationError, type Declaration } from '../../src/challenge/declaration.ts';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { scanSpend } from '../../src/challenge/files.ts';
 import { BENCH_SCHEMA_V2, ISOLATION_OF, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 
 const hash = (c: string): string => c.repeat(64);
@@ -253,12 +257,12 @@ test('a resumed bench is merged; a task run again counts only after an infra_err
   assert.deepEqual([resumed.strongest.passed, resumed.strongest.reports, resumed.strongest.infraErrors, resumed.spent.heldOut, resumed.verdict], [15, 2, 0, 79, 'passes']);
   // Run again although the first run was judged: refused.
   const twice = [at(held(OPUS, first(15)), 'b201'), at(held(OPUS, first(15), { only: [6], createdAt: '2026-11-02T12:00:00.000Z' }), 'b202'), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
-  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: twice })), new RegExp(`task ${tasks[6]} was run more than once for claude-opus-5-5 \\(bench folders b201, b202\\) and the earlier run was not an infra_error \\(no best-of-N\\)`));
+  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: twice })), new RegExp(`task ${tasks[6]} was run more than once for claude-opus-5-5 \\(bench folders b201, b202\\) and the earlier run was judged \\(no best-of-N\\)`));
   assert.throws(() => mergeAgentRuns(twice.slice(0, 2), OPUS), new RegExp(`claude-opus-5-5: task ${tasks[6]} was benched again although its run in b201 was not an infra_error \\(no best-of-N\\)`));
   // A run left out of the gate is still found in the bench folders.
   const given = [at(held(OPUS, first(15)), 'b301'), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
   const hiddenEarlier: SpentRun = { bench: 'b300', runId: `${tasks[9]}-s1-r1`, taskId: tasks[9]!, model: OPUS, status: 'completed' };
-  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: given, spent: { development: 9, heldOut: [...spentOf(given), hiddenEarlier] } })), new RegExp(`task ${tasks[9]} was run more than once for claude-opus-5-5 \\(bench folders b300, b301\\) and the earlier run was not an infra_error`));
+  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: given, spent: { development: 9, heldOut: [...spentOf(given), hiddenEarlier] } })), new RegExp(`task ${tasks[9]} was run more than once for claude-opus-5-5 \\(bench folders b300, b301\\) and the earlier run was judged`));
   const hiddenLater: SpentRun = { ...hiddenEarlier, bench: 'b399' };
   const laterInput = input(first(15), first(10), first(4), { ladder: given, spent: { development: 9, heldOut: [...spentOf(given).map(run => run.taskId === tasks[9] && run.model === OPUS ? { ...run, status: 'infra_error' } : run), hiddenLater] } });
   refused(() => computeGate(laterInput), new RegExp(`the latest run of ${tasks[9]} for claude-opus-5-5 \\(bench folder b399\\) was not given to the gate`));
@@ -348,3 +352,39 @@ test('the preflight checks everything but the ladder before any ladder run, and 
   refused(() => preflightGate({ ...round, oracle: [at(held('oracle', first(N), { infra: [3] }))] }), /the oracle baseline has no judged run/);
   refused(() => preflightGate({ ...round, development: devReports().slice(1) }), /no development report of claude-opus-5-5/);
 });
+
+test('an interrupted or killed run may be benched again; a judged run that no report lists may not (third review B1)', () => {
+  const given = [at(held(OPUS, first(15)), 'b501'), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
+  const spent = (extra: SpentRun) => ({ development: 9, heldOut: [...spentOf(given), extra] });
+  // A killed bench left task 9 unjudged (no report entry, no checker output) before the resumed bench counted it.
+  const killed: SpentRun = { bench: 'b500', runId: `${tasks[9]}-s1-r1`, taskId: tasks[9]!, model: OPUS, status: 'unjudged' };
+  const resumed = computeGate(input(first(15), first(10), first(4), { ladder: given, spent: spent(killed) }));
+  assert.deepEqual([resumed.verdict, resumed.spent.heldOut], ['passes', 79]);
+  // A killed run with nothing after it: the task is missing for that model, not a refusal.
+  const partial = [at(held(OPUS, first(15), { missing: [9] }), 'b501'), at(held(SONNET, first(10))), at(held(HAIKU, first(4)))];
+  const missing = computeGate(input(first(15), first(10), first(4), { ladder: partial, spent: { development: 9, heldOut: [...spentOf(partial), { ...killed, bench: 'b599' }] } }));
+  assert.equal(missing.strongest.missing, 1);
+  // A judged run that no report lists (its folder holds checker output) refuses the round, before or after.
+  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: given, spent: spent({ ...killed, status: null }) })), new RegExp(`task ${tasks[9]} was run more than once for claude-opus-5-5 \\(bench folders b500, b501\\) and the earlier run was judged`));
+  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: given, spent: spent({ ...killed, bench: 'b599', status: null }) })), new RegExp(`task ${tasks[9]} was run more than once`));
+  // Another attempt after a judged run, even one killed before its verdict, is a second attempt.
+  refused(() => computeGate(input(first(15), first(10), first(4), { ladder: given, spent: spent({ ...killed, bench: 'b599' }) })), /and the earlier run was judged \(no best-of-N\)/);
+});
+
+test('the spend scan: a run its report lists keeps its status; one no report lists is unjudged without checker output, unknown with it (third review B1)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pn-spend-'));
+  try {
+    const run = async (bench: string, id: string, files: string[]) => { await mkdir(join(root, bench, id), { recursive: true }); for (const name of files) await writeFile(join(root, bench, id, name), name === 'agent.stdout' ? `{"type":"system","subtype":"init","model":"${OPUS}"}\n` : '{}'); };
+    // An interrupted bench with its report (the interrupted run listed as infra_error).
+    await run('b1', `${tasks[0]}-s1-r1`, ['agent.stdout', 'checker.json']); await run('b1', `${tasks[1]}-s1-r1`, ['agent.stdout']);
+    await writeFile(join(root, 'b1', 'report.json'), JSON.stringify({ runs: [{ id: `${tasks[0]}-s1-r1`, status: 'completed' }, { id: `${tasks[1]}-s1-r1`, status: 'infra_error' }] }));
+    // A hard-killed bench: no report; one run judged before the kill, one cut off.
+    await run('b2', `${tasks[2]}-s1-r1`, ['agent.stdout', 'checker.json']); await run('b2', `${tasks[3]}-s1-r1`, ['agent.stdout']);
+    // A built-in agent's run (no agent output) and a run of another task are not model runs here.
+    await run('b3', `${tasks[4]}-s1-r1`, ['checker.json']); await run('b3', 'connect-s1-r1', ['agent.stdout']);
+    const found = await scanSpend([root], { developmentHash: hash('9'), developmentTasks: [], heldOutTasks: tasks });
+    assert.deepEqual(found.heldOut.map(value => [value.bench, value.taskId, value.model, value.status]),
+      [['b1', tasks[0], OPUS, 'completed'], ['b1', tasks[1], OPUS, 'infra_error'], ['b2', tasks[2], OPUS, null], ['b2', tasks[3], OPUS, 'unjudged']]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+

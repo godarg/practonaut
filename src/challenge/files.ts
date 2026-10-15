@@ -172,8 +172,12 @@ export async function scanSpend(roots: readonly string[], sets: { developmentHas
         const task = match[1]!;
         if (sets.heldOutTasks.includes(task)) {
           const head = await readLogHead(join(folder, entry.name, 'agent.stdout'), 64 * 1024);
-          const status = report?.runs?.find(run => run.id === entry.name)?.status;
-          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status: typeof status === 'string' ? status : null });
+          // A run its bench's report does not list (a hard kill, an older interrupted bench) is
+          // unjudged when its folder holds no checker output, and may be benched again; one that was
+          // judged but is listed nowhere stays unknown (status null) and refuses the round.
+          const listed = report?.runs?.find(run => run.id === entry.name)?.status;
+          const status = typeof listed === 'string' ? listed : await exists(join(folder, entry.name, 'checker.json')) ? null : 'unjudged';
+          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status });
         } else if (sets.developmentTasks.includes(task) && (report === null || report.environment?.world?.contentHash === sets.developmentHash)) development++;
       }
     }

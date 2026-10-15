@@ -356,7 +356,9 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
         }
       }
       wallMs = Math.round(performance.now() - started);
-      if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; continue; }
+      // An interrupted run is listed, not judged: its folder holds the agent's output, so the report
+      // names it (infra_error, "interrupted") and the task can be benched again (PADR-0040).
+      if (outcome.status === 'interrupted' || options.signal?.aborted) { interrupted = true; throw new ClientInfraError({ status: 'infra_error', exitCode: outcome.exitCode, note: 'interrupted' }); }
       if (outcome.status === 'infra_error') throw new ClientInfraError(outcome);
       // Judge the host's committed session, independently, in separate checker processes.
       const view = inner!.view(); finalActions = view.log.length;
@@ -382,11 +384,10 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       artifacts = { session: sha256Hex(sessionText), native: nativeText === null ? null : sha256Hex(nativeText), checker: sha256Hex(checkerText), ...await pictureAndTrace(home, world, item, sessionText, view.revision, recorder, inner!, options.mirror, logs !== undefined) };
       checker = { session: verdictOf(sessionRaw, item.taskId), native: nativeRaw === null ? null : verdictOf(nativeRaw, item.taskId) };
     } catch (error) {
-      if (options.signal?.aborted) { interrupted = true; continue; }
-      outcome = error instanceof ClientInfraError ? error.outcome : { status: 'infra_error', exitCode: null, note: infraNote(error) };
+      if (!(error instanceof ClientInfraError) && options.signal?.aborted) interrupted = true;
+      outcome = error instanceof ClientInfraError ? error.outcome : interrupted ? { status: 'infra_error', exitCode: null, note: 'interrupted' } : { status: 'infra_error', exitCode: null, note: infraNote(error) };
       checker = null; artifacts = undefined;
     } finally { await host?.close().catch(() => {}); }
-    if (interrupted) break;
     // The logs explain the run whether or not it was judged; a log that cannot be written is left out.
     if (host && !logsTried) logs = await writeRunLogs(home, recorder, options.agent.kind === 'builtin' ? clientCalls : undefined).catch(() => undefined);
     const run: BenchRunV2 = {
@@ -398,6 +399,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     };
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
+    if (interrupted) break;
     // --stop-on-infra: a usage limit or an API error affects every later run as well; stop here and
     // write the partial report so the operator can resume with the remaining tasks.
     if (options.stopOnInfra && run.status === 'infra_error' && index < plan.length - 1) {
@@ -432,7 +434,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
     },
     settings: { tasks: options.tasks, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirror: options.mirrorRequested, prompt: options.agent.kind === 'builtin' ? '' : BENCH_PROMPT, ...(options.checks !== undefined ? { checks: options.checks } : {}) },
     references: referencesBinding,
-    runs, ...(interrupted ? { interrupted: { plannedRuns: plan.length, ...(stopped ? { stopped } : {}) } } : {}), summary: summarize(runs, options.repeats),
+    // A report that holds every planned run (the last one interrupted) is not a partial report.
+    runs, ...(interrupted && runs.length < plan.length ? { interrupted: { plannedRuns: plan.length, ...(stopped ? { stopped } : {}) } } : {}), summary: summarize(runs, options.repeats),
   };
   return { report: validateBenchReportV2(report), directory, interrupted, planned: plan.length };
 }

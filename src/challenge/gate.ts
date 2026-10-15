@@ -35,8 +35,12 @@ export class GateInputError extends Error {
 
 /** A validated, re-verified report and the name of its bench folder. */
 export interface GateReport { report: BenchReportV2; bench: string }
-/** A model run found in a bench folder (a run folder with the agent's own output). */
+/** A model run found in a bench folder (a run folder with the agent's own output). `status`: as its
+ * bench's report lists it; `unjudged` when no report lists it and it has no checker output (a killed
+ * bench); null when it was judged but no report lists it. */
 export interface SpentRun { bench: string; runId: string; taskId: string; model: string | null; status: string | null }
+/** Runs that may be benched again: listed as infra_error, or never judged. */
+const resumable = (status: string | null): boolean => status === 'infra_error' || status === 'unjudged';
 export interface AgentResult {
   role: 'oracle' | 'random' | 'ladder'; name: string; model: string | null;
   /** Instances passed; every planned instance counts, a missing, unjudged or unattested run is not passed. */
@@ -207,7 +211,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   for (const run of input.spent.heldOut) { const key = `${run.model ?? '?'}\u0000${run.taskId}`; groups.set(key, [...(groups.get(key) ?? []), run]); }
   for (const runs of groups.values()) {
     const ordered = [...runs].sort((a, b) => a.bench.localeCompare(b.bench));
-    for (const run of ordered.slice(0, -1)) if (run.status !== 'infra_error') fail(`task ${run.taskId} was run more than once for ${run.model ?? 'an unknown model'} (bench folders ${ordered.map(value => value.bench).join(', ')}) and the earlier run was not an infra_error (no best-of-N)`);
+    for (const run of ordered.slice(0, -1)) if (!resumable(run.status)) fail(`task ${run.taskId} was run more than once for ${run.model ?? 'an unknown model'} (bench folders ${ordered.map(value => value.bench).join(", ")}) and the earlier run was judged (no best-of-N)`);
   }
   const spentDevelopment = Math.max(declaration.development.spent, input.spent.development), spentHeldOut = input.spent.heldOut.length;
   const spent = { development: spentDevelopment, heldOut: spentHeldOut, total: spentDevelopment + spentHeldOut };
@@ -255,7 +259,7 @@ export function computeGate(input: GateInput): GateResult {
     for (const run of input.spent.heldOut.filter(value => value.model === name)) {
       const counted = merged.get(run.taskId);
       const latest = input.spent.heldOut.filter(value => value.model === name && value.taskId === run.taskId).sort((a, b) => a.bench.localeCompare(b.bench)).at(-1)!;
-      if (latest === run && (!counted || counted.bench !== run.bench || counted.run.id !== run.runId)) fail(`the latest run of ${run.taskId} for ${name} (bench folder ${run.bench}) was not given to the gate`);
+      if (latest === run && !resumable(run.status) && (!counted || counted.bench !== run.bench || counted.run.id !== run.runId)) fail(`the latest run of ${run.taskId} for ${name} (bench folder ${run.bench}) was not given to the gate`);
     }
     return agentResult('ladder', group[0]!.report.agent.name, name, merged, plan, unattested, group.length);
   });

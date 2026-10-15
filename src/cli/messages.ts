@@ -360,8 +360,8 @@ export const CLI_CATALOG = {
     "de": "\nAngehalten nach Lauf {run}: {note}. Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen. Warte, bis das Limitfenster des Clients vorbei ist, und benche dann die übrigen Aufgaben: --tasks {tasks}\n"
   },
   "benchInterrupted": {
-    "en": "\nInterrupted: this partial report holds {runs} of {planned} planned runs; the run in progress was not scored.\n",
-    "de": "\nAbgebrochen: Dieser Teilbericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf wurde nicht bewertet.\n"
+    "en": "\nInterrupted: this report holds {runs} of {planned} planned runs; the run in progress is listed as not judged (infra_error, “interrupted”). To resume, bench the remaining tasks: --tasks {tasks}\n",
+    "de": "\nAbgebrochen: Dieser Bericht enthält {runs} von {planned} geplanten Läufen; der laufende Lauf steht als nicht bewertet darin (infra_error, „interrupted“). Zum Fortsetzen die übrigen Aufgaben benchen: --tasks {tasks}\n"
   },
   "benchInterruptedEmpty": {
     "en": "practonaut bench: interrupted before the first run finished; no report written (run logs: {logs}).\n",
