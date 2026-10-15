@@ -442,7 +442,9 @@ Rule of thumb: if two surfaces show the same kind of thing, they show it with th
 One app, one top bar, three workspaces. The bar is glass: brand wordmark on the left, the workspace
 segmented control in the centre (**Practice · Excalidraw · Create**; DE **Üben · Excalidraw ·
 Erstellen**), language (EN/DE) and appearance (System/Light/Dark) on the right. Below 48em the bar
-becomes two rows: brand and settings, then the workspace control full width.
+becomes two rows: brand and settings, then the workspace control full width. While a picked
+workspace is being prepared, the current one stays pressed (it is where you are) and a click on it is
+kept, never dropped: once the preparation has ended, the person is back where they clicked.
 
 Below the bar is the **stage**: one CSS grid with named areas. Nodes that must never move in the DOM
 (the real editor iframe) and nodes that are re-rendered share the stage as siblings and are placed by
