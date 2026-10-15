@@ -395,7 +395,13 @@ normally, come first and open, each with:
   dark-mode colours;
 - the **trajectory**: every act, undo, reset and check in order, "accepted (revision n)" or rejected with the
   reason in words, with the conditions met afterwards and which ones changed;
-- the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own figures.
+- the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own
+  figures; when the runs table counts other host calls, a note says why (the host also counts the
+  bridge's start-up read).
+
+A run with **no verdict** says why under "Technical details", as the runner note (for example "the
+agent ended (agent_failed) without a single tool call" or the limit its client reported). What the
+agent itself printed, its own errors included, is in `<run folder>/agent.stderr` and `agent.stdout`.
 
 Codes and identifiers — run ids, status and host codes, the runner's note, the full error-class text,
 the command (the home folder shown as `~`), the world content hash, generated instances, API key source
@@ -444,6 +450,13 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
   compared get a page that names every difference.
 - `--verify` re-verifies each report from its own folder first; the output names both reports'
   verification status.
+
+`compare` names a regressed instance; why its runs failed is on the candidate's own report page, with
+the unmet conditions, error classes and trajectory of each run (§5):
+
+```bash
+npx practonaut report <candidate>/report.json --html candidate.html
+```
 
 **How many instances?** To detect a 20-point difference in instance pass rate with the exact test
 above (α = 0.05, the verdict in the candidate's favour), assuming the share ψ of instances on which the
@@ -516,7 +529,7 @@ however the agents ended (130 when it was stopped, 2 for a refused world or orac
 that starts under `--mirror required`). A timed-out run is a result, not an agent failure: it does not
 trip the flag.
 
-**JUnit XML.** `bench --junit <file>` writes it next to the report; `report <report.json> --junit
+**JUnit XML.** `bench --junit <file>` also writes JUnit XML to `<file>`; `report <report.json> --junit
 <file>` writes it for any report (with `--verify`, from the re-verified one). The format is the Apache
 Ant JUnit schema as Windy Road publishes it (`JUnit.xsd`, the version of commit `332b8f3f`), which CI test
 views read:
@@ -530,11 +543,13 @@ views read:
 One `<testsuite>` per task in plan order, one `<testcase>` per run by seed (plan order) and repeat;
 `classname` is the instance (`<world>.<task>.seed-<seed>`), so a test view groups its repeats. Every
 suite carries the report's facts as properties (`practonaut.runs`, `practonaut.runs.unjudged`,
-`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror`, world and content hash, label,
-self-reported model) and the header line as `system-out`. The schema requires a timestamp without zone
-and a host name: the timestamp is the report's creation time in UTC, the host name is always
-`localhost`, never the machine's. Text from the report and the bench folder is escaped; characters XML
-1.0 does not allow are written as `\u{…}`, as in the terminal. The same report gives the same bytes.
+`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror` (`required`: the real engine ran;
+`off`: model-only; the default `--mirror auto` reads `required` when Chromium ran), world and content
+hash, label, self-reported model) and the header line as `system-out`. The schema requires a
+timestamp without zone and a host name: the timestamp is the report's creation time in UTC, the host
+name is always `localhost`, never the machine's. Text from the report and the bench folder is escaped;
+characters XML 1.0 does not allow are written as `\u{…}`, as in the terminal. The same report gives the
+same bytes.
 A JUnit failure is a run that did not pass, not a regression: an agent that fails a task in the
 baseline and the candidate alike regressed nothing. Gate on `compare`, not on the JUnit counts.
 
