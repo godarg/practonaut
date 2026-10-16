@@ -6,11 +6,28 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
+"Real signal" ([roadmap](docs/roadmap.md#020--real-signal-target-december-2026)): bench your own
+tasks, results you can act on, a lean agent surface, the first 60 seconds, and a challenge tier whose
+families are published only after a preregistered ladder gate. Measured for this release:
+
+- Agent surface against 0.1.0 on `excalidraw/connect` (same machine, same day): an `act` result
+  866 bytes instead of up to 63 KB, client round trip 10.4 ms instead of 133.7 ms (33.6 ms instead
+  of 150.0 ms with the real mirror); oracle episodes on the six hardest tasks −79 % result bytes; no
+  paired regression on the 0.1.0 grid (24/24 with Opus and Haiku on both versions).
+- From `npx practonaut` to the first demonstrated action: 2.1 s model-only, 2.5 s with the real
+  engine (median of 3, warm npx cache, Apple M4).
+<<LADDER>>
+- Model runs for the whole release: <<RUNS>> of the 500 budgeted, all through a Claude
+  subscription (`apiKeySource: none`), <<COST>> at list price as reported by the client.
+
 ### Added
 
 - **Bench your own tasks.** `practonaut bench --world <dir|.pnworld> [--oracle <file>]` scores any
   MCP agent on a world of your own, for example one made with `tasks from-scenes`, with its
-  `oracle.json` as the reference once the checker accepts it; `--seed-list 2,5` and `--label` as well.
+  `oracle.json` as the reference once the checker accepts it; `--label`, and `--seed-list` for a world
+  with several variants.
 - **Report `practonaut.bench/2`** ([PADR-0036](docs/adr/0036-bench-report-v2-any-world-stored-world.md)):
   the world is stored in the bench folder and `report --verify` re-judges against it (named codes
   `bench_world_changed`, `bench_artifact_changed`, `bench_reference_invalid`); every agent has an
@@ -107,7 +124,6 @@ All notable changes are recorded here. The format follows
   template with a command template) and to bench a trusted configuration of the candidate's kind as the
   baseline, in the terminal (EN/DE) and on the `--html` page; other refusals keep "bench the baseline
   again with the candidate's settings".
-
 - `report` prints fractions instead of `pass@1 0.50` and "(50.0 %)"; `--runs <bench folder>` also
   works without `--verify` (it names where the run details come from).
 - **`practonaut setup` downloads only the Chromium headless shell** the mirror runs (about 105 MB on
@@ -115,7 +131,6 @@ All notable changes are recorded here. The format follows
   browser as well) and names it with its size before anything is fetched; `doctor` counts a cache
   with only the headless shell as installed. After a Playwright update,
   `node tools/measure-headless-shell.ts --write` measures the sizes again.
-
 - **The `claude-code` preset no longer passes provider keys.** `bench` withholds provider keys,
   tokens and billing switches in your environment from the preset agent (`*_API_KEY`,
   `*_AUTH_TOKEN`, `CLAUDE_CODE_USE_*`, gateway, profile and federation credentials,
@@ -123,9 +138,8 @@ All notable changes are recorded here. The format follows
   to switch it to API billing without notice. `bench` names what it withheld; `--keep-env <name,…>`
   passes named variables on
   ([PADR-0034](docs/adr/0034-preset-agents-get-no-provider-credentials.md)).
-- `main` carries the development version `0.2.0-dev.0`; the checker accepts its sessions, and
-  [docs/release.md](docs/release.md) lists every place a version bump touches.
-
+- [docs/release.md](docs/release.md) lists every place a version bump touches; the checker keeps
+  accepting sessions written by the 0.2.0 development builds.
 - **Lean agent surface** ([PADR-0038](docs/adr/0038-lean-mcp-replies.md)). `observe` is compact by
   default (task with goal conditions, live objects, step, revision, recent history, last check) and
   takes `detail`, `lang` and `history`; `act`, `undo` and `reset` answer with what changed instead
