@@ -1,0 +1,74 @@
+{
+  "schema": "practonaut.challenge-declaration/1",
+  "family": "injection",
+  "round": 1,
+  "generator": {
+    "id": "challenge-injection",
+    "version": "1.1.0"
+  },
+  "difficulty": "3",
+  "ladder": [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5"
+  ],
+  "maintainerApproved": [],
+  "pair": {
+    "strongest": "claude-opus-5-5",
+    "weakest": "claude-haiku-5-5"
+  },
+  "bench": {
+    "mirror": "required",
+    "timeoutSeconds": 600,
+    "maxActions": 50,
+    "checks": null
+  },
+  "development": {
+    "seeds": [
+      101,
+      102,
+      103
+    ],
+    "world": {
+      "id": "challenge-injection-dev",
+      "contentHash": "d90b846be72c4fa2887c5237756b7936cf07e94e1597cb9f990134ca887ee028"
+    },
+    "digest": "02d5ff97ed99c635d6118f2d9b9aaa3256d9972b41da0ea6dff54c2efda07816",
+    "passed": [
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ]
+    ],
+    "spent": 9,
+    "order": "consistent"
+  },
+  "heldOut": {
+    "instances": 26
+  },
+  "budget": {
+    "developmentRuns": 9,
+    "heldOutRuns": 78,
+    "roundRuns": 87,
+    "releaseRunsBefore": 122,
+    "releaseBudget": 500,
+    "earlier": [
+      {
+        "declaration": "repair-round-1.declaration.json",
+        "runs": 87,
+        "from": "ledger"
+      }
+    ]
+  }
+}
