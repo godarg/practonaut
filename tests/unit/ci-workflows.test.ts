@@ -1,7 +1,8 @@
 // The CI recipe's two workflow files (roadmap 0.2.0, Should 5), read as YAML (tests/support/yaml.ts)
 // and checked by structure: every action pinned by commit SHA; the repository's own check runs only by
-// hand, outside the required checks, with read-only permissions, and benches the plan its committed
-// baseline was made with (compare would refuse anything else); the example pins an exact Practonaut
+// hand, outside the required checks, with read-only permissions and one concurrency group per mode,
+// and benches the plan its committed baseline was made with (compare would refuse anything else); the
+// example pins an exact Practonaut
 // version, skips forks (no secrets), takes a pull request's baseline from its base commit, installs
 // Practonaut without install scripts, keeps secrets in step environments and expressions out of shell
 // code, stops on a failed agent before comparing, and gates on instance regressions with the repeats
@@ -85,6 +86,9 @@ test('the repository check runs only by hand, outside the required checks, with 
   assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
   assert.deepEqual(map(map(map(doc.on).workflow_dispatch).inputs).plant_regression, { description: 'Bench a candidate whose instances regress (the compare step must then fail)', type: 'boolean', default: 'false' });
   assert.deepEqual(doc.permissions, { contents: 'read' });
+  // The clean and the planted mode, dispatched back to back, must not cancel each other: the input is
+  // part of the concurrency group.
+  assert.deepEqual(doc.concurrency, { group: 'ci-recipe-check-${{ github.ref }}-${{ inputs.plant_regression }}', 'cancel-in-progress': 'true' });
   // The required checks are `test (<os>)` and `secret scan` (ci.yml); no job here may answer for them.
   for (const job of Object.values(map(doc.jobs))) assert.equal(/^test \(|^secret scan$/.test(String(map(job).name)), false, String(map(job).name));
 });

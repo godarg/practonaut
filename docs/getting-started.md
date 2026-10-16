@@ -12,15 +12,19 @@ This starts a local session on `127.0.0.1` with the bundled example and opens it
 browser. The terminal prints:
 
 ```text
-Practonaut is running: world …, task …
-Mode: real-engine            (or: model-only, see step 2)
+Practonaut is running: “Build the flow” (world flow-diagram, task T1)
+Mode: real-engine
 Host origin: http://127.0.0.1:<port>
-Token file: <private file in ~/.practonaut/host/>
-Open: http://127.0.0.1:<port>/#code=…
+Token file: <home>/.practonaut/host/session-<pid>-<…>.token
+Open: http://127.0.0.1:<port>/#code=<…>
+The link works once and expires after 5 minutes. Type o and Enter for a new link; Ctrl+C stops the session.
+Connect an agent: npx practonaut mcp --host http://127.0.0.1:<port> --token-file <home>/.practonaut/host/session-<pid>-<…>.token
+practonaut: asked your browser to open the session. If no Practonaut page appears (some sandboxed browsers cannot read local files), open this link yourself: http://127.0.0.1:<port>/#code=<…>
 ```
 
-The link works once and expires after five minutes. Type `o` and Enter for a new one, Ctrl+C to
-stop. `--no-open` prints the link without opening a browser.
+Without the real engine the second line reads `Mode: model-only (never practice evidence)` (step 2).
+`--no-open` prints the same lines without the last one and opens no browser. The token file is the
+session's private credential: the `Connect an agent` line names the file, never its content.
 
 Pick a task from the library instead of the example:
 
@@ -127,7 +131,8 @@ Or demonstrate a change in the **Create** view. See the [authoring guide](author
 
 Everything Practonaut writes goes to `~/.practonaut` (or `PRACTONAUT_HOME` when set): the session
 credential, recordings, saved projects, compiled tasks and bench runs. Nothing is written to the
-current directory. Exports from the Player are ordinary browser downloads.
+current directory unless you name a path there (`--out`, `--html`, `--junit`, `--card`, `--badge`).
+Exports from the Player are ordinary browser downloads.
 
 ## Help
 

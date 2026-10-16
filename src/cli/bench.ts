@@ -10,10 +10,11 @@ import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../benc
 import { existsSync } from 'node:fs';
 import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
 import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
-import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
+import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, seedVariants, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
+import type { World } from '../world/types.ts';
 import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
 import { loadReportDetails } from '../bench/details.ts';
-import { compareReports, CompareError } from '../bench/compare.ts';
+import { agentKindDiffers, compareReports, CompareError } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
 import { renderJunit } from '../bench/junit.ts';
 import { renderBadge, renderCard } from '../bench/card.ts';
@@ -131,6 +132,16 @@ export async function prepareBench(options: Pick<BenchArguments, 'world' | 'task
   return { world, tasks, references };
 }
 
+/** The notice `bench` prints when two planned seeds pick the same variant: they bench the same board,
+ * and each still counts as an instance of its own. Null when every seed gives a board of its own. */
+export function seedVariantNotice(world: World, tasks: readonly string[], seeds: readonly number[]): string | null {
+  const { variants, distinct } = seedVariants(world, seeds);
+  if (distinct === seeds.length) return null;
+  const shown = tasks.slice(0, 10).map(safeText).join(', ');
+  const named = tasks.length > 10 ? cliText('benchAgentFailedMore', { list: shown, more: tasks.length - 10 }) : shown;
+  return cliText('benchSeedsShareVariant', { n: tasks.length, tasks: named, variants, count: seeds.length, distinct });
+}
+
 async function writeAtomic(path: string, text: string | Uint8Array): Promise<void> {
   const temporary = `${path}.tmp-${process.pid}`;
   try { await writeFile(temporary, text, { flag: 'wx', mode: 0o644 }); await rename(temporary, path); }
@@ -151,6 +162,9 @@ export async function commandBench(args: string[]): Promise<number> {
   if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
+  // Seeds that pick the same variant would inflate n without a board of their own: said, not refused.
+  const notice = seedVariantNotice(prepared.world.world, prepared.tasks, options.seeds);
+  if (notice) process.stderr.write(notice);
   if (prepared.world.source === 'own') process.stderr.write(cliText('benchWorldOwn', { world: safeText(prepared.world.world.id), version: safeText(prepared.world.world.version), refs: prepared.references.size, tasks: prepared.tasks.length }));
   process.stderr.write(cliText('benchStart', { runs: prepared.tasks.length * options.seeds.length * options.repeats, agent: agent.name, mode: mirror.mode === 'required' ? 'real-engine' : cliText('modelOnly') }));
   // Ctrl+C, SIGTERM and SIGHUP stop the bench in order: the running agent (its whole process group or
@@ -356,7 +370,9 @@ export async function commandCompare(args: string[]): Promise<number> {
     // With --html the refusal is a page too, naming every difference.
     if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language));
     const field = (name: string): string => cliText(`compareField_${name}` as Parameters<typeof cliText>[0]);
-    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; ') }));
+    // A different isolation level is a different agent kind: other flags cannot fix it.
+    const hint = cliText(agentKindDiffers(error.differences) ? 'compareHintAgentKind' : 'compareHintSettings');
+    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; '), hint }));
   }
   if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verification: sides.baseline.verification }, candidate: { schema: candidate.schema, verification: sides.candidate.verification }, comparison }) + '\n');
   else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));

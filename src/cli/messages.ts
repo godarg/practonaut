@@ -388,8 +388,16 @@ export const CLI_CATALOG = {
     "de": "compare braucht zwei Bench-Berichte: {cli} compare <basis.json> <kandidat.json> [--html <out.html>] [--fail-on-regression] [--verify] [--json]"
   },
   "compareIncomparable": {
-    "en": "the reports are not comparable (PADR-0039): {differences}. Bench the baseline again with the candidate's settings",
-    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+    "en": "the reports are not comparable (PADR-0039): {differences}. {hint}",
+    "de": "die Berichte sind nicht vergleichbar (PADR-0039): {differences}. {hint}"
+  },
+  "compareHintSettings": {
+    "en": "Bench the baseline again with the candidate's settings",
+    "de": "Die Basis mit den Einstellungen des Kandidaten erneut benchen"
+  },
+  "compareHintAgentKind": {
+    "en": "The isolation level follows from the agent kind: oracle and random compare only with a built-in, the claude-code preset only with itself, a command template only with a command template. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings",
+    "de": "Die Isolationsstufe folgt aus der Art des Agenten: oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, die Voreinstellung claude-code nur mit sich selbst, eine Befehlsvorlage nur mit einer Befehlsvorlage. Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen"
   },
   "compareDifference": {
     "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",
@@ -432,7 +440,7 @@ export const CLI_CATALOG = {
     "de": "\nAuf Stimmigkeit geprüft, nicht nachgerechnet: Jedes Bestehen und jede Kennzahl folgt aus den Urteilen in der Datei. --verify beurteilt die Laufartefakte neu.\n"
   },
   "reportReverified": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts; every verdict matches ({unjudged} not judged).\n",
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from {runs:its|their} artifacts; every verdict matches ({unjudged} not judged).\n",
     "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt; jedes Urteil stimmt ({unjudged} nicht bewertet).\n"
   },
   "reportJson": {
@@ -476,7 +484,7 @@ export const CLI_CATALOG = {
     "de": "practonaut: Chromium läuft ohne Sandbox, weil dieses Linux sie nicht erlaubt (unprivilegierte User-Namespaces, AppArmor); es zeichnet nur das eigene SVG der Karte, ohne JavaScript und ohne Netz. PRACTONAUT_CHROMIUM_SANDBOX=require verweigert den Start stattdessen.\n"
   },
   "reportReverifiedWorld": {
-    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from their artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
+    "en": "\nRe-verified: {runs} {runs:run|runs} re-judged by the checker from {runs:its|their} artifacts, against the world stored in the bench folder ({world} {version}, content hash {hash}); every verdict matches ({unjudged} not judged); {references} {references:reference|references} re-checked.\n",
     "de": "\nNachgerechnet: {runs} {runs:Lauf|Läufe} vom Prüfer aus den Artefakten neu beurteilt, mit der im Bench-Ordner gespeicherten Welt ({world} {version}, Inhalts-Hash {hash}); jedes Urteil stimmt ({unjudged} nicht bewertet); {references} {references:Referenz|Referenzen} neu geprüft.\n"
   },
   "reportWorldOwn": {
@@ -510,6 +518,10 @@ export const CLI_CATALOG = {
   "benchSeedList": {
     "en": "--seed-list needs distinct whole numbers from 0 to 999999999, comma-separated (at most 1000)",
     "de": "--seed-list braucht verschiedene ganze Zahlen von 0 bis 999999999, durch Kommas getrennt (höchstens 1000)"
+  },
+  "benchSeedsShareVariant": {
+    "en": "practonaut bench: notice seeds_share_variant: {n:task|tasks} {tasks} {n:has|have} {variants} {variants:variant|variants}, but the {count} seeds give only {distinct} distinct {distinct:board|boards} per task. Seeds that pick the same variant bench the same board, and each still counts as an instance of its own (in the interval and in compare). For more runs of one board, give one seed per variant and add --repeats\n",
+    "de": "practonaut bench: Hinweis seeds_share_variant: {n:Aufgabe|Aufgaben} {tasks} {n:hat|haben} {variants} {variants:Variante|Varianten}, die {count} Seeds ergeben aber nur {distinct} {distinct:Arbeitsfläche|verschiedene Arbeitsflächen} je Aufgabe. Seeds, die dieselbe Variante wählen, benchen dieselbe Arbeitsfläche, und jeder zählt trotzdem als eigene Instanz (im Intervall und in compare). Für mehr Läufe derselben Arbeitsfläche einen Seed je Variante angeben und --repeats ergänzen\n"
   },
   "benchLabel": {
     "en": "--label needs a text of 1 to {max} characters",
