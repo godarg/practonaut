@@ -41,6 +41,12 @@ Baseline measured on 2026-10-14 (published package, details in the
 
 ## 0.2.0 — Real signal (target: December 2026)
 
+*Released 2026-10-16* ([changelog](../CHANGELOG.md)). Ladder round 1 of the challenge tier: none of
+the five candidate families passes; Opus, Sonnet and Haiku solve almost every held-out instance, so
+there is no headroom ([gate reports](benchmarks/challenge/README.md)). A second round needs new
+budget (470 of the 500 model runs are spent); otherwise the zero-family branch below applies to
+0.3.0 — a maintainer decision.
+
 **Question:** does a Practonaut score tell two agents apart, and does it say why?
 
 Work in waves of one deliverable per session, in this order: Must 0 → 1 → 2 → 3 → 4, then Should
