@@ -1,0 +1,564 @@
+{
+  "schema": "practonaut.challenge-ledger/1",
+  "family": "long-horizon",
+  "round": 1,
+  "declaration": {
+    "sha256": "fd1a6720b9f9f634004272a095f93b0d567d7efffb19cf97515d356880709889",
+    "commit": "3021d1988ec6562f9fbbaa4bba1d24f470380a32"
+  },
+  "spent": {
+    "development": 9,
+    "heldOut": 78,
+    "total": 87,
+    "rejected": 0
+  },
+  "releaseRuns": 296,
+  "heldOutRuns": [
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332963-s1-r1",
+      "taskId": "long-horizon-427332963",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332964-s1-r1",
+      "taskId": "long-horizon-427332964",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332965-s1-r1",
+      "taskId": "long-horizon-427332965",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332966-s1-r1",
+      "taskId": "long-horizon-427332966",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332967-s1-r1",
+      "taskId": "long-horizon-427332967",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332968-s1-r1",
+      "taskId": "long-horizon-427332968",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332969-s1-r1",
+      "taskId": "long-horizon-427332969",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332970-s1-r1",
+      "taskId": "long-horizon-427332970",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332971-s1-r1",
+      "taskId": "long-horizon-427332971",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332972-s1-r1",
+      "taskId": "long-horizon-427332972",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332973-s1-r1",
+      "taskId": "long-horizon-427332973",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332974-s1-r1",
+      "taskId": "long-horizon-427332974",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332975-s1-r1",
+      "taskId": "long-horizon-427332975",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332976-s1-r1",
+      "taskId": "long-horizon-427332976",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332977-s1-r1",
+      "taskId": "long-horizon-427332977",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332978-s1-r1",
+      "taskId": "long-horizon-427332978",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332979-s1-r1",
+      "taskId": "long-horizon-427332979",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332980-s1-r1",
+      "taskId": "long-horizon-427332980",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332981-s1-r1",
+      "taskId": "long-horizon-427332981",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332982-s1-r1",
+      "taskId": "long-horizon-427332982",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332983-s1-r1",
+      "taskId": "long-horizon-427332983",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332984-s1-r1",
+      "taskId": "long-horizon-427332984",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332985-s1-r1",
+      "taskId": "long-horizon-427332985",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332986-s1-r1",
+      "taskId": "long-horizon-427332986",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332987-s1-r1",
+      "taskId": "long-horizon-427332987",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T071658Z-6fc8",
+      "runId": "long-horizon-427332988-s1-r1",
+      "taskId": "long-horizon-427332988",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332963-s1-r1",
+      "taskId": "long-horizon-427332963",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332964-s1-r1",
+      "taskId": "long-horizon-427332964",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332965-s1-r1",
+      "taskId": "long-horizon-427332965",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332966-s1-r1",
+      "taskId": "long-horizon-427332966",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332967-s1-r1",
+      "taskId": "long-horizon-427332967",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332968-s1-r1",
+      "taskId": "long-horizon-427332968",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332969-s1-r1",
+      "taskId": "long-horizon-427332969",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332970-s1-r1",
+      "taskId": "long-horizon-427332970",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332971-s1-r1",
+      "taskId": "long-horizon-427332971",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332972-s1-r1",
+      "taskId": "long-horizon-427332972",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332973-s1-r1",
+      "taskId": "long-horizon-427332973",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332974-s1-r1",
+      "taskId": "long-horizon-427332974",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332975-s1-r1",
+      "taskId": "long-horizon-427332975",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332976-s1-r1",
+      "taskId": "long-horizon-427332976",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332977-s1-r1",
+      "taskId": "long-horizon-427332977",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332978-s1-r1",
+      "taskId": "long-horizon-427332978",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332979-s1-r1",
+      "taskId": "long-horizon-427332979",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332980-s1-r1",
+      "taskId": "long-horizon-427332980",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332981-s1-r1",
+      "taskId": "long-horizon-427332981",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332982-s1-r1",
+      "taskId": "long-horizon-427332982",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332983-s1-r1",
+      "taskId": "long-horizon-427332983",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332984-s1-r1",
+      "taskId": "long-horizon-427332984",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332985-s1-r1",
+      "taskId": "long-horizon-427332985",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332986-s1-r1",
+      "taskId": "long-horizon-427332986",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332987-s1-r1",
+      "taskId": "long-horizon-427332987",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T081024Z-dcff",
+      "runId": "long-horizon-427332988-s1-r1",
+      "taskId": "long-horizon-427332988",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332963-s1-r1",
+      "taskId": "long-horizon-427332963",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332964-s1-r1",
+      "taskId": "long-horizon-427332964",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332965-s1-r1",
+      "taskId": "long-horizon-427332965",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332966-s1-r1",
+      "taskId": "long-horizon-427332966",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332967-s1-r1",
+      "taskId": "long-horizon-427332967",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332968-s1-r1",
+      "taskId": "long-horizon-427332968",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332969-s1-r1",
+      "taskId": "long-horizon-427332969",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332970-s1-r1",
+      "taskId": "long-horizon-427332970",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332971-s1-r1",
+      "taskId": "long-horizon-427332971",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332972-s1-r1",
+      "taskId": "long-horizon-427332972",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332973-s1-r1",
+      "taskId": "long-horizon-427332973",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332974-s1-r1",
+      "taskId": "long-horizon-427332974",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332975-s1-r1",
+      "taskId": "long-horizon-427332975",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332976-s1-r1",
+      "taskId": "long-horizon-427332976",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332977-s1-r1",
+      "taskId": "long-horizon-427332977",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332978-s1-r1",
+      "taskId": "long-horizon-427332978",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332979-s1-r1",
+      "taskId": "long-horizon-427332979",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332980-s1-r1",
+      "taskId": "long-horizon-427332980",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332981-s1-r1",
+      "taskId": "long-horizon-427332981",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332982-s1-r1",
+      "taskId": "long-horizon-427332982",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332983-s1-r1",
+      "taskId": "long-horizon-427332983",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332984-s1-r1",
+      "taskId": "long-horizon-427332984",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332985-s1-r1",
+      "taskId": "long-horizon-427332985",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332986-s1-r1",
+      "taskId": "long-horizon-427332986",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332987-s1-r1",
+      "taskId": "long-horizon-427332987",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T084932Z-3ac8",
+      "runId": "long-horizon-427332988-s1-r1",
+      "taskId": "long-horizon-427332988",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    }
+  ]
+}
