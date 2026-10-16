@@ -18,9 +18,13 @@ families are published only after a preregistered ladder gate. Measured for this
   paired regression on the 0.1.0 grid (24/24 with Opus and Haiku on both versions).
 - From `npx practonaut` to the first demonstrated action: 2.1 s model-only, 2.5 s with the real
   engine (median of 3, warm npx cache, Apple M4).
-<<LADDER>>
-- Model runs for the whole release: <<RUNS>> of the 500 budgeted, all through a Claude
-  subscription (`apiKeySource: none`), <<COST>> at list price as reported by the client.
+- Challenge tier, ladder round 1 under the preregistered gate (Claude Opus, Sonnet and Haiku, 26
+  held-out instances per family, real mirror): none of the five candidate families passes. Every
+  round is valid (oracle 26/26, random 0/26, no infrastructure error), but Opus and Sonnet solve every
+  instance and Haiku all but two (24/26 on tight-budget), so there is no headroom; the families stay
+  unpublished ([overview](docs/benchmarks/challenge/README.md)).
+- Model runs for the whole release: 470 of the 500 budgeted, all through a Claude
+  subscription (`apiKeySource: none`), 70.22 USD at list price as reported by the client.
 
 ### Added
 
@@ -156,6 +160,11 @@ families are published only after a preregistered ladder gate. Measured for this
 - **Faster transactions** ([PADR-0037](docs/adr/0037-fork-the-committed-session-for-candidates.md)):
   a candidate forks the committed session instead of being rebuilt from the log, and the world is
   validated once and frozen; the replay checks before every result check and publication stay.
+
+### Fixed
+
+- A click on Practice while the Excalidraw workspace is still being prepared is no longer lost: when
+  the preparation ends, the Player goes to the workspace chosen last.
 
 ### Internal
 
