@@ -52,3 +52,4 @@ Model runs spent in this round: 78 on the held-out set and 9 on the development 
 Power at this size: if the two agents disagreed on 20 % of the instances, all in the stronger one's favour, the exact McNemar test would reach p < 0.05 with probability 0.42; "does not pass" on discrimination is not evidence that the agents are equal.
 Second round: budget exhausted — a maintainer decides on a second round. After the five first rounds of 87 model runs each the release has 30 of the 465 runs it had left at preregistration, fewer than one round.
 
+List-price equivalent of this round's 87 model runs, as each run's client reported it (Claude Code's `total_cost_usd`; the runs went through a Claude subscription, `apiKeySource: none`): 30.03 USD (development 2.91 USD, held-out 27.12 USD). Added by hand after the gate, as PADR-0040 says until the bench records cost.
