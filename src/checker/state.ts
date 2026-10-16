@@ -70,7 +70,7 @@ const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const scalar = z.union([z.string().max(4096), z.number().int().safe(), z.boolean(), z.null()]);
 const SessionSchema = z.strictObject({
   schema: z.literal("practonaut.session/1"), world: z.strictObject({ id: z.string().max(64), version: z.string().max(64) }),
-  seed: z.number().int().safe(), taskId: id, toolVersion: z.enum(["0.0.0", "0.1.0-dev.0", "0.1.0", "0.2.0-dev.0", "0.2.0"]), // Explicit known Session writers (docs/release.md §3); app version is world.app.versionRange.
+  seed: z.number().int().safe(), taskId: id, toolVersion: z.enum(["0.0.0", "0.1.0-dev.0", "0.1.0", "0.2.0-dev.0", "0.2.0", "0.3.0-dev.0"]), // Explicit known Session writers (docs/release.md §3); app version is world.app.versionRange.
   log: z.array(z.strictObject({ action: z.strictObject({ name: z.string().max(64), params: z.record(id, scalar), baseStep: z.number().int().min(0).max(10_000).optional() }), hash })).max(10_000),
   state: z.union([SubmissionStateSchema, SubmissionStateSchemaV2]), hash,
 });
