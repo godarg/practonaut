@@ -1,0 +1,564 @@
+{
+  "schema": "practonaut.challenge-ledger/1",
+  "family": "limited-checks",
+  "round": 1,
+  "declaration": {
+    "sha256": "a488aa2108497d10f94ba9fab08393e04b91cecce81454f476472a01a60bec3d",
+    "commit": "56f5684261b6e403f6c41de0e80ba1a3978f99ca"
+  },
+  "spent": {
+    "development": 9,
+    "heldOut": 78,
+    "total": 87,
+    "rejected": 0
+  },
+  "releaseRuns": 383,
+  "heldOutRuns": [
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219811996-s1-r1",
+      "taskId": "limited-checks-219811996",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219811997-s1-r1",
+      "taskId": "limited-checks-219811997",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219811998-s1-r1",
+      "taskId": "limited-checks-219811998",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219811999-s1-r1",
+      "taskId": "limited-checks-219811999",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812000-s1-r1",
+      "taskId": "limited-checks-219812000",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812001-s1-r1",
+      "taskId": "limited-checks-219812001",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812002-s1-r1",
+      "taskId": "limited-checks-219812002",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812003-s1-r1",
+      "taskId": "limited-checks-219812003",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812004-s1-r1",
+      "taskId": "limited-checks-219812004",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812005-s1-r1",
+      "taskId": "limited-checks-219812005",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812006-s1-r1",
+      "taskId": "limited-checks-219812006",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812007-s1-r1",
+      "taskId": "limited-checks-219812007",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812008-s1-r1",
+      "taskId": "limited-checks-219812008",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812009-s1-r1",
+      "taskId": "limited-checks-219812009",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812010-s1-r1",
+      "taskId": "limited-checks-219812010",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812011-s1-r1",
+      "taskId": "limited-checks-219812011",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812012-s1-r1",
+      "taskId": "limited-checks-219812012",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812013-s1-r1",
+      "taskId": "limited-checks-219812013",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812014-s1-r1",
+      "taskId": "limited-checks-219812014",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812015-s1-r1",
+      "taskId": "limited-checks-219812015",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812016-s1-r1",
+      "taskId": "limited-checks-219812016",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812017-s1-r1",
+      "taskId": "limited-checks-219812017",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812018-s1-r1",
+      "taskId": "limited-checks-219812018",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812019-s1-r1",
+      "taskId": "limited-checks-219812019",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812020-s1-r1",
+      "taskId": "limited-checks-219812020",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T104611Z-7509",
+      "runId": "limited-checks-219812021-s1-r1",
+      "taskId": "limited-checks-219812021",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219811996-s1-r1",
+      "taskId": "limited-checks-219811996",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219811997-s1-r1",
+      "taskId": "limited-checks-219811997",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219811998-s1-r1",
+      "taskId": "limited-checks-219811998",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219811999-s1-r1",
+      "taskId": "limited-checks-219811999",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812000-s1-r1",
+      "taskId": "limited-checks-219812000",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812001-s1-r1",
+      "taskId": "limited-checks-219812001",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812002-s1-r1",
+      "taskId": "limited-checks-219812002",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812003-s1-r1",
+      "taskId": "limited-checks-219812003",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812004-s1-r1",
+      "taskId": "limited-checks-219812004",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812005-s1-r1",
+      "taskId": "limited-checks-219812005",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812006-s1-r1",
+      "taskId": "limited-checks-219812006",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812007-s1-r1",
+      "taskId": "limited-checks-219812007",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812008-s1-r1",
+      "taskId": "limited-checks-219812008",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812009-s1-r1",
+      "taskId": "limited-checks-219812009",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812010-s1-r1",
+      "taskId": "limited-checks-219812010",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812011-s1-r1",
+      "taskId": "limited-checks-219812011",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812012-s1-r1",
+      "taskId": "limited-checks-219812012",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812013-s1-r1",
+      "taskId": "limited-checks-219812013",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812014-s1-r1",
+      "taskId": "limited-checks-219812014",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812015-s1-r1",
+      "taskId": "limited-checks-219812015",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812016-s1-r1",
+      "taskId": "limited-checks-219812016",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812017-s1-r1",
+      "taskId": "limited-checks-219812017",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812018-s1-r1",
+      "taskId": "limited-checks-219812018",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812019-s1-r1",
+      "taskId": "limited-checks-219812019",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812020-s1-r1",
+      "taskId": "limited-checks-219812020",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T111603Z-3179",
+      "runId": "limited-checks-219812021-s1-r1",
+      "taskId": "limited-checks-219812021",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219811996-s1-r1",
+      "taskId": "limited-checks-219811996",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219811997-s1-r1",
+      "taskId": "limited-checks-219811997",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219811998-s1-r1",
+      "taskId": "limited-checks-219811998",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219811999-s1-r1",
+      "taskId": "limited-checks-219811999",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812000-s1-r1",
+      "taskId": "limited-checks-219812000",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812001-s1-r1",
+      "taskId": "limited-checks-219812001",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812002-s1-r1",
+      "taskId": "limited-checks-219812002",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812003-s1-r1",
+      "taskId": "limited-checks-219812003",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812004-s1-r1",
+      "taskId": "limited-checks-219812004",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812005-s1-r1",
+      "taskId": "limited-checks-219812005",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812006-s1-r1",
+      "taskId": "limited-checks-219812006",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812007-s1-r1",
+      "taskId": "limited-checks-219812007",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812008-s1-r1",
+      "taskId": "limited-checks-219812008",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812009-s1-r1",
+      "taskId": "limited-checks-219812009",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812010-s1-r1",
+      "taskId": "limited-checks-219812010",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812011-s1-r1",
+      "taskId": "limited-checks-219812011",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812012-s1-r1",
+      "taskId": "limited-checks-219812012",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812013-s1-r1",
+      "taskId": "limited-checks-219812013",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812014-s1-r1",
+      "taskId": "limited-checks-219812014",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812015-s1-r1",
+      "taskId": "limited-checks-219812015",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812016-s1-r1",
+      "taskId": "limited-checks-219812016",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812017-s1-r1",
+      "taskId": "limited-checks-219812017",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812018-s1-r1",
+      "taskId": "limited-checks-219812018",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812019-s1-r1",
+      "taskId": "limited-checks-219812019",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812020-s1-r1",
+      "taskId": "limited-checks-219812020",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T113511Z-e212",
+      "runId": "limited-checks-219812021-s1-r1",
+      "taskId": "limited-checks-219812021",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    }
+  ]
+}

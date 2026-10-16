@@ -7,6 +7,7 @@
 | [Getting started](getting-started.md) | install, first task in the browser, the real-engine mirror, first agent, first bench |
 | [Agent guide](agent-guide.md) | connecting MCP agents, the seven tools, practice vs. bench |
 | [Benchmarks](benchmarks/README.md) | `practonaut bench` and `report`: options, agents, scoring, isolation, report format |
+| [Challenge tier, round 1](benchmarks/challenge/README.md) | the ladder gate of the five candidate families: [repair](benchmarks/challenge/repair-round1.md), [injection](benchmarks/challenge/injection-round1.md), [long-horizon](benchmarks/challenge/long-horizon-round1.md), [limited-checks](benchmarks/challenge/limited-checks-round1.md), [tight-budget](benchmarks/challenge/tight-budget-round1.md); none passes |
 | [Authoring guide](authoring-guide.md) | making tasks from two drawings or from a demonstration |
 | [Glossary](glossary.md) | terms used in code and docs |
 

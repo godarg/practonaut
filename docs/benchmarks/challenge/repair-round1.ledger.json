@@ -1,0 +1,564 @@
+{
+  "schema": "practonaut.challenge-ledger/1",
+  "family": "repair",
+  "round": 1,
+  "declaration": {
+    "sha256": "be4ff91b78d75439a2c43ad68bc9eecea0d6617db0f13bdbfd284e3489eb0d51",
+    "commit": "c0643f638fa6993d8160eca0c3823dd52c472929"
+  },
+  "spent": {
+    "development": 9,
+    "heldOut": 78,
+    "total": 87,
+    "rejected": 0
+  },
+  "releaseRuns": 122,
+  "heldOutRuns": [
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367396-s1-r1",
+      "taskId": "repair-803367396",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367397-s1-r1",
+      "taskId": "repair-803367397",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367398-s1-r1",
+      "taskId": "repair-803367398",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367399-s1-r1",
+      "taskId": "repair-803367399",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367400-s1-r1",
+      "taskId": "repair-803367400",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367401-s1-r1",
+      "taskId": "repair-803367401",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367402-s1-r1",
+      "taskId": "repair-803367402",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367403-s1-r1",
+      "taskId": "repair-803367403",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367404-s1-r1",
+      "taskId": "repair-803367404",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367405-s1-r1",
+      "taskId": "repair-803367405",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367406-s1-r1",
+      "taskId": "repair-803367406",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367407-s1-r1",
+      "taskId": "repair-803367407",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367408-s1-r1",
+      "taskId": "repair-803367408",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367409-s1-r1",
+      "taskId": "repair-803367409",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367410-s1-r1",
+      "taskId": "repair-803367410",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367411-s1-r1",
+      "taskId": "repair-803367411",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367412-s1-r1",
+      "taskId": "repair-803367412",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367413-s1-r1",
+      "taskId": "repair-803367413",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367414-s1-r1",
+      "taskId": "repair-803367414",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367415-s1-r1",
+      "taskId": "repair-803367415",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367416-s1-r1",
+      "taskId": "repair-803367416",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367417-s1-r1",
+      "taskId": "repair-803367417",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367418-s1-r1",
+      "taskId": "repair-803367418",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367419-s1-r1",
+      "taskId": "repair-803367419",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367420-s1-r1",
+      "taskId": "repair-803367420",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T191705Z-4fd5",
+      "runId": "repair-803367421-s1-r1",
+      "taskId": "repair-803367421",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367396-s1-r1",
+      "taskId": "repair-803367396",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367397-s1-r1",
+      "taskId": "repair-803367397",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367398-s1-r1",
+      "taskId": "repair-803367398",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367399-s1-r1",
+      "taskId": "repair-803367399",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367400-s1-r1",
+      "taskId": "repair-803367400",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367401-s1-r1",
+      "taskId": "repair-803367401",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367402-s1-r1",
+      "taskId": "repair-803367402",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367403-s1-r1",
+      "taskId": "repair-803367403",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367404-s1-r1",
+      "taskId": "repair-803367404",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367405-s1-r1",
+      "taskId": "repair-803367405",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367406-s1-r1",
+      "taskId": "repair-803367406",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367407-s1-r1",
+      "taskId": "repair-803367407",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367408-s1-r1",
+      "taskId": "repair-803367408",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367409-s1-r1",
+      "taskId": "repair-803367409",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367410-s1-r1",
+      "taskId": "repair-803367410",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367411-s1-r1",
+      "taskId": "repair-803367411",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367412-s1-r1",
+      "taskId": "repair-803367412",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367413-s1-r1",
+      "taskId": "repair-803367413",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367414-s1-r1",
+      "taskId": "repair-803367414",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367415-s1-r1",
+      "taskId": "repair-803367415",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367416-s1-r1",
+      "taskId": "repair-803367416",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367417-s1-r1",
+      "taskId": "repair-803367417",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367418-s1-r1",
+      "taskId": "repair-803367418",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367419-s1-r1",
+      "taskId": "repair-803367419",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367420-s1-r1",
+      "taskId": "repair-803367420",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T192707Z-9335",
+      "runId": "repair-803367421-s1-r1",
+      "taskId": "repair-803367421",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367396-s1-r1",
+      "taskId": "repair-803367396",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367397-s1-r1",
+      "taskId": "repair-803367397",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367398-s1-r1",
+      "taskId": "repair-803367398",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367399-s1-r1",
+      "taskId": "repair-803367399",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367400-s1-r1",
+      "taskId": "repair-803367400",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367401-s1-r1",
+      "taskId": "repair-803367401",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367402-s1-r1",
+      "taskId": "repair-803367402",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367403-s1-r1",
+      "taskId": "repair-803367403",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367404-s1-r1",
+      "taskId": "repair-803367404",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367405-s1-r1",
+      "taskId": "repair-803367405",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367406-s1-r1",
+      "taskId": "repair-803367406",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367407-s1-r1",
+      "taskId": "repair-803367407",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367408-s1-r1",
+      "taskId": "repair-803367408",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367409-s1-r1",
+      "taskId": "repair-803367409",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367410-s1-r1",
+      "taskId": "repair-803367410",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367411-s1-r1",
+      "taskId": "repair-803367411",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367412-s1-r1",
+      "taskId": "repair-803367412",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367413-s1-r1",
+      "taskId": "repair-803367413",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367414-s1-r1",
+      "taskId": "repair-803367414",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367415-s1-r1",
+      "taskId": "repair-803367415",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367416-s1-r1",
+      "taskId": "repair-803367416",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367417-s1-r1",
+      "taskId": "repair-803367417",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367418-s1-r1",
+      "taskId": "repair-803367418",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367419-s1-r1",
+      "taskId": "repair-803367419",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367420-s1-r1",
+      "taskId": "repair-803367420",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T193520Z-9c86",
+      "runId": "repair-803367421-s1-r1",
+      "taskId": "repair-803367421",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    }
+  ]
+}

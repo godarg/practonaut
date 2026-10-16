@@ -1,0 +1,68 @@
+{
+  "schema": "practonaut.challenge-declaration/1",
+  "family": "repair",
+  "round": 1,
+  "generator": {
+    "id": "challenge-repair",
+    "version": "1.0.0"
+  },
+  "difficulty": "mixed",
+  "ladder": [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5"
+  ],
+  "maintainerApproved": [],
+  "pair": {
+    "strongest": "claude-opus-5-5",
+    "weakest": "claude-haiku-5-5"
+  },
+  "bench": {
+    "mirror": "required",
+    "timeoutSeconds": 600,
+    "maxActions": 50,
+    "checks": null
+  },
+  "development": {
+    "seeds": [
+      101,
+      102,
+      103
+    ],
+    "world": {
+      "id": "challenge-repair-dev",
+      "contentHash": "865db2ae0202b06f31ef1dc0060bf056b7d10a81a31c3a38984f2e0f629ce9dc"
+    },
+    "digest": "4c2d3bbe6116a35bb8d95ab21f4c67b9cc108263fddd5a463d0deb2a219c1bc1",
+    "passed": [
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ],
+      [
+        true,
+        true,
+        true
+      ]
+    ],
+    "spent": 9,
+    "order": "consistent"
+  },
+  "heldOut": {
+    "instances": 26
+  },
+  "budget": {
+    "developmentRuns": 9,
+    "heldOutRuns": 78,
+    "roundRuns": 87,
+    "releaseRunsBefore": 35,
+    "releaseBudget": 500,
+    "earlier": []
+  }
+}
