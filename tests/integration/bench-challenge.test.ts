@@ -85,3 +85,16 @@ test('--checks reaches the host in a bench run and is recorded; a limited-checks
     assert.equal(own.report.runs[0].note, undefined, 'the instance allows one check, which the oracle uses');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('the largest held-out set the gate takes (26 long-horizon instances at difficulty 3) packs within the package limits', { timeout: 400_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-size-'));
+  try {
+    // Indented, this world is 4.3 MB, above the package reader's 4 MiB per entry, and no bench could load it.
+    const made = run([TOOL, 'generate', 'long-horizon', '--set', 'check', '--seed', '10001', '--count', '26', '--difficulty', '3', '--out', join(dir, 'set')]);
+    assert.equal(made.status, 0, made.stderr);
+    const packed = run([CLI, 'pack', join(dir, 'set', 'world'), '--out', join(dir, 'set.pnworld')]);
+    assert.equal(packed.status, 0, packed.stdout + packed.stderr);
+    const validated = run([CLI, 'validate', join(dir, 'set.pnworld')]);
+    assert.equal(validated.status, 0, validated.stdout + validated.stderr);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
