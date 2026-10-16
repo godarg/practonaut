@@ -1,0 +1,564 @@
+{
+  "schema": "practonaut.challenge-ledger/1",
+  "family": "injection",
+  "round": 1,
+  "declaration": {
+    "sha256": "02fc4ecbc6afb6ac8efb46e4786ec2c0e2b1b59fdb4f524d4f55cc6f7da2cc6c",
+    "commit": "efc98bf5e8653592490dcc509aaece09b3ea1706"
+  },
+  "spent": {
+    "development": 9,
+    "heldOut": 78,
+    "total": 87,
+    "rejected": 0
+  },
+  "releaseRuns": 209,
+  "heldOutRuns": [
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279671-s1-r1",
+      "taskId": "injection-187279671",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279672-s1-r1",
+      "taskId": "injection-187279672",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279673-s1-r1",
+      "taskId": "injection-187279673",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279674-s1-r1",
+      "taskId": "injection-187279674",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279675-s1-r1",
+      "taskId": "injection-187279675",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279676-s1-r1",
+      "taskId": "injection-187279676",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279677-s1-r1",
+      "taskId": "injection-187279677",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279678-s1-r1",
+      "taskId": "injection-187279678",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279679-s1-r1",
+      "taskId": "injection-187279679",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279680-s1-r1",
+      "taskId": "injection-187279680",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279681-s1-r1",
+      "taskId": "injection-187279681",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279682-s1-r1",
+      "taskId": "injection-187279682",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279683-s1-r1",
+      "taskId": "injection-187279683",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279684-s1-r1",
+      "taskId": "injection-187279684",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279685-s1-r1",
+      "taskId": "injection-187279685",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279686-s1-r1",
+      "taskId": "injection-187279686",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279687-s1-r1",
+      "taskId": "injection-187279687",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279688-s1-r1",
+      "taskId": "injection-187279688",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279689-s1-r1",
+      "taskId": "injection-187279689",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279690-s1-r1",
+      "taskId": "injection-187279690",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279691-s1-r1",
+      "taskId": "injection-187279691",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279692-s1-r1",
+      "taskId": "injection-187279692",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279693-s1-r1",
+      "taskId": "injection-187279693",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279694-s1-r1",
+      "taskId": "injection-187279694",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279695-s1-r1",
+      "taskId": "injection-187279695",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T201334Z-fc36",
+      "runId": "injection-187279696-s1-r1",
+      "taskId": "injection-187279696",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279671-s1-r1",
+      "taskId": "injection-187279671",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279672-s1-r1",
+      "taskId": "injection-187279672",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279673-s1-r1",
+      "taskId": "injection-187279673",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279674-s1-r1",
+      "taskId": "injection-187279674",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279675-s1-r1",
+      "taskId": "injection-187279675",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279676-s1-r1",
+      "taskId": "injection-187279676",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279677-s1-r1",
+      "taskId": "injection-187279677",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279678-s1-r1",
+      "taskId": "injection-187279678",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279679-s1-r1",
+      "taskId": "injection-187279679",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279680-s1-r1",
+      "taskId": "injection-187279680",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279681-s1-r1",
+      "taskId": "injection-187279681",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279682-s1-r1",
+      "taskId": "injection-187279682",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279683-s1-r1",
+      "taskId": "injection-187279683",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279684-s1-r1",
+      "taskId": "injection-187279684",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279685-s1-r1",
+      "taskId": "injection-187279685",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279686-s1-r1",
+      "taskId": "injection-187279686",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279687-s1-r1",
+      "taskId": "injection-187279687",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279688-s1-r1",
+      "taskId": "injection-187279688",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279689-s1-r1",
+      "taskId": "injection-187279689",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279690-s1-r1",
+      "taskId": "injection-187279690",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279691-s1-r1",
+      "taskId": "injection-187279691",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279692-s1-r1",
+      "taskId": "injection-187279692",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279693-s1-r1",
+      "taskId": "injection-187279693",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279694-s1-r1",
+      "taskId": "injection-187279694",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279695-s1-r1",
+      "taskId": "injection-187279695",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T203002Z-da68",
+      "runId": "injection-187279696-s1-r1",
+      "taskId": "injection-187279696",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279671-s1-r1",
+      "taskId": "injection-187279671",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279672-s1-r1",
+      "taskId": "injection-187279672",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279673-s1-r1",
+      "taskId": "injection-187279673",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279674-s1-r1",
+      "taskId": "injection-187279674",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279675-s1-r1",
+      "taskId": "injection-187279675",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279676-s1-r1",
+      "taskId": "injection-187279676",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279677-s1-r1",
+      "taskId": "injection-187279677",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279678-s1-r1",
+      "taskId": "injection-187279678",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279679-s1-r1",
+      "taskId": "injection-187279679",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279680-s1-r1",
+      "taskId": "injection-187279680",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279681-s1-r1",
+      "taskId": "injection-187279681",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279682-s1-r1",
+      "taskId": "injection-187279682",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279683-s1-r1",
+      "taskId": "injection-187279683",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279684-s1-r1",
+      "taskId": "injection-187279684",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279685-s1-r1",
+      "taskId": "injection-187279685",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279686-s1-r1",
+      "taskId": "injection-187279686",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279687-s1-r1",
+      "taskId": "injection-187279687",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279688-s1-r1",
+      "taskId": "injection-187279688",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279689-s1-r1",
+      "taskId": "injection-187279689",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279690-s1-r1",
+      "taskId": "injection-187279690",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279691-s1-r1",
+      "taskId": "injection-187279691",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279692-s1-r1",
+      "taskId": "injection-187279692",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279693-s1-r1",
+      "taskId": "injection-187279693",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279694-s1-r1",
+      "taskId": "injection-187279694",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279695-s1-r1",
+      "taskId": "injection-187279695",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261015T204457Z-ee1b",
+      "runId": "injection-187279696-s1-r1",
+      "taskId": "injection-187279696",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    }
+  ]
+}
