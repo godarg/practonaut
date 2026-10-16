@@ -66,7 +66,9 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   }
   await mkdir(join(out, 'world'), { recursive: true }); await mkdir(join(out, 'oracles'), { recursive: true });
   const worldPath = join(out, 'world', 'world.json');
-  await writeFile(worldPath, JSON.stringify(set.world, null, 2) + '\n', { flag: 'wx' });
+  // Compact: a held-out set of 26 long-horizon instances at difficulty 3 is 4.3 MB indented, above the
+  // package reader's 4 MiB per entry, and 1.5 MB compact. The gate compares the world by content.
+  await writeFile(worldPath, JSON.stringify(set.world) + '\n', { flag: 'wx' });
   const oraclePaths: string[] = [];
   for (const oracle of set.oracles) {
     const path = join(out, 'oracles', `${oracle.taskId}.json`);
