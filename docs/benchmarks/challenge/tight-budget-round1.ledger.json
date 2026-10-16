@@ -1,0 +1,564 @@
+{
+  "schema": "practonaut.challenge-ledger/1",
+  "family": "tight-budget",
+  "round": 1,
+  "declaration": {
+    "sha256": "5d421de62c39e99ca0b0188a64189869aecadf7fbf1cb51a8667fcaf44e74465",
+    "commit": "71f783fee4812aeea3336ae4041a6e50fd8bfe22"
+  },
+  "spent": {
+    "development": 9,
+    "heldOut": 78,
+    "total": 87,
+    "rejected": 0
+  },
+  "releaseRuns": 470,
+  "heldOutRuns": [
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810978-s1-r1",
+      "taskId": "tight-budget-654810978",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810979-s1-r1",
+      "taskId": "tight-budget-654810979",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810980-s1-r1",
+      "taskId": "tight-budget-654810980",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810981-s1-r1",
+      "taskId": "tight-budget-654810981",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810982-s1-r1",
+      "taskId": "tight-budget-654810982",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810983-s1-r1",
+      "taskId": "tight-budget-654810983",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810984-s1-r1",
+      "taskId": "tight-budget-654810984",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810985-s1-r1",
+      "taskId": "tight-budget-654810985",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810986-s1-r1",
+      "taskId": "tight-budget-654810986",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810987-s1-r1",
+      "taskId": "tight-budget-654810987",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810988-s1-r1",
+      "taskId": "tight-budget-654810988",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810989-s1-r1",
+      "taskId": "tight-budget-654810989",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810990-s1-r1",
+      "taskId": "tight-budget-654810990",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810991-s1-r1",
+      "taskId": "tight-budget-654810991",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810992-s1-r1",
+      "taskId": "tight-budget-654810992",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810993-s1-r1",
+      "taskId": "tight-budget-654810993",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810994-s1-r1",
+      "taskId": "tight-budget-654810994",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810995-s1-r1",
+      "taskId": "tight-budget-654810995",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810996-s1-r1",
+      "taskId": "tight-budget-654810996",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810997-s1-r1",
+      "taskId": "tight-budget-654810997",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810998-s1-r1",
+      "taskId": "tight-budget-654810998",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654810999-s1-r1",
+      "taskId": "tight-budget-654810999",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654811000-s1-r1",
+      "taskId": "tight-budget-654811000",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654811001-s1-r1",
+      "taskId": "tight-budget-654811001",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654811002-s1-r1",
+      "taskId": "tight-budget-654811002",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T122202Z-011a",
+      "runId": "tight-budget-654811003-s1-r1",
+      "taskId": "tight-budget-654811003",
+      "model": "claude-opus-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810978-s1-r1",
+      "taskId": "tight-budget-654810978",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810979-s1-r1",
+      "taskId": "tight-budget-654810979",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810980-s1-r1",
+      "taskId": "tight-budget-654810980",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810981-s1-r1",
+      "taskId": "tight-budget-654810981",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810982-s1-r1",
+      "taskId": "tight-budget-654810982",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810983-s1-r1",
+      "taskId": "tight-budget-654810983",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810984-s1-r1",
+      "taskId": "tight-budget-654810984",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810985-s1-r1",
+      "taskId": "tight-budget-654810985",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810986-s1-r1",
+      "taskId": "tight-budget-654810986",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810987-s1-r1",
+      "taskId": "tight-budget-654810987",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810988-s1-r1",
+      "taskId": "tight-budget-654810988",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810989-s1-r1",
+      "taskId": "tight-budget-654810989",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810990-s1-r1",
+      "taskId": "tight-budget-654810990",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810991-s1-r1",
+      "taskId": "tight-budget-654810991",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810992-s1-r1",
+      "taskId": "tight-budget-654810992",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810993-s1-r1",
+      "taskId": "tight-budget-654810993",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810994-s1-r1",
+      "taskId": "tight-budget-654810994",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810995-s1-r1",
+      "taskId": "tight-budget-654810995",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810996-s1-r1",
+      "taskId": "tight-budget-654810996",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810997-s1-r1",
+      "taskId": "tight-budget-654810997",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810998-s1-r1",
+      "taskId": "tight-budget-654810998",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654810999-s1-r1",
+      "taskId": "tight-budget-654810999",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654811000-s1-r1",
+      "taskId": "tight-budget-654811000",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654811001-s1-r1",
+      "taskId": "tight-budget-654811001",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654811002-s1-r1",
+      "taskId": "tight-budget-654811002",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T124341Z-9517",
+      "runId": "tight-budget-654811003-s1-r1",
+      "taskId": "tight-budget-654811003",
+      "model": "claude-sonnet-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810978-s1-r1",
+      "taskId": "tight-budget-654810978",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810979-s1-r1",
+      "taskId": "tight-budget-654810979",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810980-s1-r1",
+      "taskId": "tight-budget-654810980",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810981-s1-r1",
+      "taskId": "tight-budget-654810981",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810982-s1-r1",
+      "taskId": "tight-budget-654810982",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810983-s1-r1",
+      "taskId": "tight-budget-654810983",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810984-s1-r1",
+      "taskId": "tight-budget-654810984",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810985-s1-r1",
+      "taskId": "tight-budget-654810985",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810986-s1-r1",
+      "taskId": "tight-budget-654810986",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810987-s1-r1",
+      "taskId": "tight-budget-654810987",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810988-s1-r1",
+      "taskId": "tight-budget-654810988",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810989-s1-r1",
+      "taskId": "tight-budget-654810989",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810990-s1-r1",
+      "taskId": "tight-budget-654810990",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810991-s1-r1",
+      "taskId": "tight-budget-654810991",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810992-s1-r1",
+      "taskId": "tight-budget-654810992",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810993-s1-r1",
+      "taskId": "tight-budget-654810993",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810994-s1-r1",
+      "taskId": "tight-budget-654810994",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810995-s1-r1",
+      "taskId": "tight-budget-654810995",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810996-s1-r1",
+      "taskId": "tight-budget-654810996",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810997-s1-r1",
+      "taskId": "tight-budget-654810997",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810998-s1-r1",
+      "taskId": "tight-budget-654810998",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654810999-s1-r1",
+      "taskId": "tight-budget-654810999",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654811000-s1-r1",
+      "taskId": "tight-budget-654811000",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654811001-s1-r1",
+      "taskId": "tight-budget-654811001",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654811002-s1-r1",
+      "taskId": "tight-budget-654811002",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    },
+    {
+      "bench": "20261016T125823Z-c032",
+      "runId": "tight-budget-654811003-s1-r1",
+      "taskId": "tight-budget-654811003",
+      "model": "claude-haiku-5-5",
+      "status": "completed"
+    }
+  ]
+}
