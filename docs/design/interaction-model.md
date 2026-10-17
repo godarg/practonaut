@@ -50,7 +50,7 @@ Scope does not include loading/result/unknown screens: the existing reference sp
 
 ## Risks and verification limits
 
-- Manual VoiceOver and 200% zoom checks by a person are still to be done. This DOM probe does not hear speech or establish screen-reader quick-navigation compatibility. A human must execute the agreed path.
+- Manual VoiceOver and 200% zoom checks: one run by a person (2026-10-17, VoiceOver with Chrome on macOS, no findings; see manual-player-checks.md); other screen readers are not tested. This DOM probe does not hear speech or establish screen-reader quick-navigation compatibility. A human must execute the agreed path.
 - Source/destination naming must remain consistent: Shift+R always changes source; R always changes destination. Never label both as “rewire” without the endpoint.
 - Responsive production diagrams must retain model geometry and readable alternatives. This prototype's restacking is view-only illustrative geometry, not runtime state.
 - The loose-state visual fixture keeps its old path while relation text says the end is unattached; production must draw actual unbound geometry from state. Treat this fixture as copy/announcement evidence only.

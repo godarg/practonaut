@@ -2,8 +2,9 @@
 
 Automated tests scan the Player with axe-core, keyboard scripts, reflow at 320 px and reduced
 motion (`npm run test:a11y`). They cannot tell whether a screen reader user can actually do a task.
-That needs a person. These checks have **not been done yet**; reports are very welcome (open an
-issue with your findings).
+That needs a person. One run has been done so far (see [Runs](#runs)); reports from other screen
+readers, browsers and from regular screen-reader users are very welcome (open an issue with your
+findings).
 
 ## Setup (about 30 minutes)
 
@@ -47,3 +48,12 @@ say whether the shortcut help was confusing.
 | 200 % zoom: all controls and text available | |
 | Light/dark, focus visibility, reflow | |
 | Findings: step, expected, observed, severity | |
+
+## Runs
+
+| Date | Who | OS, browser, assistive technology | Practonaut | Path | Result |
+|---|---|---|---|---|---|
+| 2026-10-17 | maintainer | macOS 27.0.1, Chrome 155.0.8059.80 (arm64), VoiceOver; 200 % browser zoom | 0.2.0 | the path above, as reported | every step worked with VoiceOver; at 200 % all controls and text stayed visible and readable; no findings |
+
+Not covered yet: NVDA, JAWS and Orca, Safari and Firefox, and a person who uses a screen reader
+every day — one run by the maintainer is evidence that the path works, not that it is comfortable.

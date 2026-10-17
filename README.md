@@ -178,8 +178,9 @@ reference solution, the near misses and held-out checker data never reach it ove
   people better at the real tool has not been studied.
 - Without Chromium Practonaut runs **model-only**: tasks work, but nothing is checked against the
   real app, and it says so.
-- Screen-reader and 200 % zoom checks by a person have not been done
-  ([manual checks](docs/design/manual-player-checks.md)).
+- Screen-reader and 200 % zoom checks by a person: one run so far (VoiceOver on macOS with Chrome,
+  2026-10-17), no problems found; other screen readers and regular screen-reader users are not
+  tested yet ([manual checks](docs/design/manual-player-checks.md)).
 
 ## Requirements
 
