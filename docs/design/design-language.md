@@ -734,8 +734,9 @@ Version 1.0 was reviewed in five independent rounds on rendered captures of ever
 (practice, Excalidraw workspace, Create, cross-cutting), light and dark, desktop and phone widths,
 between 2026-10-07 and 2026-10-09. Scores rose from 0.66 to 0.89 overall; the final round had no
 blocker and no major finding, and the maintainer accepted the design as the binding baseline on
-2026-10-09. Manual screen-reader and 200 % zoom checks by a person are still to be done
-([manual checks](manual-player-checks.md)).
+2026-10-09. The manual screen-reader and 200 % zoom path was run once by a person on 2026-10-17
+(VoiceOver, macOS, Chrome, 0.2.0) without findings; other screen readers and regular screen-reader
+users are not tested yet ([manual checks](manual-player-checks.md)).
 
 Release 0.2.0 added the bench report v2 and the compare page (§10.5). They were reviewed in two
 independent rounds on rendered captures of every report and compare state, light and dark, at 1280

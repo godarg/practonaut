@@ -210,4 +210,4 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
 await writeFile(output + "/measurement.json", JSON.stringify({ date: new Date().toISOString(), tags, ledger, failures, createFindings, createGates: CREATE_GATES, manualVoiceOver: "OPEN", manualZoom200: "OPEN", claimC7: "partial automated evidence, human checks OPEN" }, null, 2) + "\n");
 if (createFindings.length) { console.log(`CREATE (reported, not gating until the create rebuild lands; run with --gate-create): ${createFindings.length} finding(s)`); for (const finding of createFindings) console.log("  " + finding); }
 if (failures.length) { for (const failure of failures) console.error(failure); process.exitCode = 1; }
-else console.log(`Player automated accessibility: ${ledger.length} observations, 0 violations/overflow; C7 human VoiceOver/zoom OPEN`);
+else console.log(`Player automated accessibility: ${ledger.length} observations, 0 violations/overflow; human screen-reader and zoom runs: docs/design/manual-player-checks.md`);
