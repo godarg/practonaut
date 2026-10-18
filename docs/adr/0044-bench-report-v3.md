@@ -6,7 +6,8 @@ Status: proposed · Date: 2026-10-18 · Roadmap 0.3.0, strand P3 (issue #46) · 
 carries the verdict level of [PADR-0043](0043-artifact-judged-verdict-level.md) and the run facts the
 gate of [PADR-0042](0042-gate-for-families-on-toolchains.md) reads · Revised after three
 independent reviews on 2026-10-18 (a multi-lens Claude Opus review with an adversarial check per
-finding, OpenAI Codex `gpt-6.1-sol`, Google `gemini-3.8-flash`; disposition at the end) · To be
+finding, OpenAI Codex `gpt-6.1-sol`, Google `gemini-3.8-flash`) and again after a re-review the
+same day (two Claude Opus re-reviewers and Codex; dispositions at the end) · To be
 accepted after the coordinator's check of this revision; the change that implements it (P3b)
 follows
 
@@ -111,13 +112,15 @@ own runs' evidence* (chosen).
 include the person's edits. (2) *Agent-only counters, the actor on every mutation record, every
 co-actor record matched to its schedule entry* (chosen).
 
-**What an artifact run contributes to a round's digest.** (1) *The checker's reading of the stored
-result.* It depends on reading-rules code, and its diagnostic lists (skipped pseudo-elements,
-unmodeled values) change with verdict-neutral edits: an added `cameraUpdate` moves the seeds for
-free (Codex review, finding 1). (2) *The proxy's call log.* Bound by hash only; an edit and a new
-hash move the seeds for free. (3) *The stored result's bytes, anchored when the run ends in the
-release ledger, read under a rules version the round's declaration fixes* (chosen): an edit after
-the run no longer matches its ledger record.
+**What an artifact run contributes to a round's digest.** (1) *The checker's whole reading of the
+stored result.* Its diagnostic lists (skipped pseudo-elements, unmodeled values) change with
+verdict-neutral edits: an added `cameraUpdate` moves the seeds for free (Codex review, finding 1).
+(2) *The proxy's call log, or the result's byte hash.* Bound by hash only; a re-spacing and a new
+hash move the seeds, unless a ledger anchor catches it, and an anchor that is not yet pushed can be
+rewritten with it. (3) *The judged state alone, in canonical JSON, read under a rules version that a
+pushed probe plan fixes before the first run, with the result's bytes anchored in pushed ledger
+records for integrity* (chosen): re-formatting draws nothing, re-judging is refused, and the trust
+boundary is the push.
 
 **Old reports.** (1) *A converter that writes /3 files.* A converted file would look like a native
 /3 report and claim evidence nobody recorded. (2) *A read-only view with explicit "not recorded"
@@ -146,12 +149,15 @@ strands adding required fields in parallel conflict, and a field decided twice m
    - **When an artifact run is judged.** A run whose client ended (completed, failed or timed out)
      is judged, also without a readable result. It is `infra_error` only when (a) the client's
      shipped parser classifies a usage limit, a login or billing error or an API error in the run's
-     bound stdout; (b) the runner-side proxy records a failure of the foreign server (it did not
-     start, it exited, or it answered a forwarded call with an error the toolchain definition's
-     shipped classification attributes to the server); (c) the proxy saw nothing at all — no
-     `initialize` — and the client did not complete, which is an agent that never started its tools,
-     the artifact-level counterpart of /2's "without a single tool call" (PADR-0043 decision 7); or
-     (d) the run was interrupted or the runner itself failed.
+     bound stdout; (b) the foreign server failed before the first forwarded `tools/call` — it did
+     not start, it exited (the runner-side endpoint sees its process end), or it answered
+     `initialize` with an error; (c) the proxy saw nothing at all — no `initialize` — and the client
+     did not complete, which is an agent that never started its tools, the artifact-level
+     counterpart of /2's "without a single tool call" (PADR-0043 decision 7); (d) the run's proxy
+     log is not complete (`evidence_incomplete`, decision 4); or (e) the run was interrupted or the
+     runner itself failed. A server failure after the first forwarded `tools/call` may come from the
+     agent's own arguments, so the run is judged on the last result a server reply named before the
+     failure, or on the start file when there is none.
    - **Result and start files.** The runner writes the delivered start file and hashes it before
      the client starts. It takes the result's locator from the server's own reply, as the toolchain
      definition names the field (decision 4), never from the agent's stream; the locator value must
@@ -179,9 +185,10 @@ strands adding required fields in parallel conflict, and a field decided twice m
      `infra_error`, and `failure` (decision 9) exactly then; `artifacts` exactly when judged;
      `pass === derivedPass(run)`. **Session level:** every other /2 rule, with decision 7's changes.
      **Artifact level:** `artifacts.result === null` exactly when `checker.result` is `absent`;
-     `proxy.calls ≤ settings.maxActions`; `failure.reason: no_tool_call` only with `proxy.starts`
-     and `proxy.calls` zero; the absences listed above; no `toolCalls`, action counters, `logs`
-     (mutations, calls, trace, board) or `coActor` (the schema has none).
+     `proxyLog` present on every judged run; `proxy.calls ≤ settings.maxActions`;
+     `failure.reason: no_tool_call` only with `proxy.starts` and `proxy.calls` zero; the absences
+     listed above; no `toolCalls`, action counters, `logs` (mutations, calls, trace, board) or
+     `coActor` (the schema has none).
    - **Derived pass.** Session: as /2 (`src/bench/report.ts:276-280`). Artifact:
      `checker !== null && checker.result === "read" && checker.artifact.passed`.
    - **`report --verify` of an artifact report** checks, in order, with a named code and exit 2 on
@@ -189,7 +196,8 @@ strands adding required fields in parallel conflict, and a field decided twice m
      every artifact, the proxy log and every stdout against its hash (`bench_artifact_changed`); that
      this Practonaut ships the report's toolchain definition and the block equals it
      (`bench_toolchain_unknown`, decision 4); for every run that binds a proxy log, judged or not, the
-     proxy counts and the locator line re-derived from the log; then per judged run
+     proxy counts and the locator line re-derived from the log, and for a judged run that the log is
+     complete; then per judged run
      (`bench_report_invalid`): the start file, read by the same rules, equals the instance's start
      state on the declared attributes (PADR-0043 decision 5); the judged file, read again, gives the
      stored reading; the checker, run again on it in a separate process, gives the stored checker
@@ -230,7 +238,8 @@ strands adding required fields in parallel conflict, and a field decided twice m
      changes — no world's canonical JSON, content hash or variant choice, and no stored /2 report.
      Two worlds of one task set on two applications carry the same key and the same variant cases in
      the same order; an existing world needs no change, because a new world can name it (its id and
-     version) as its task set.
+     version) as its task set. The key aligns which instances the same seeds select, and so the
+     coverage and the run counts of the two sides; pairing itself never depends on it.
    - **Identity.** Per instance (task × bench seed): `identity = SHA-256(canonicalJson({ identity:
      "practonaut.task-identity/1", task }))` with `canonicalJson` and `sha256Hex` of `src/canonical`.
      `task` is the task as `generateVariant(world, seed)` materialises it from the validated world,
@@ -260,22 +269,41 @@ strands adding required fields in parallel conflict, and a field decided twice m
      (seeds that select one variant), the page names a caveat with the number of distinct identities.
    - **`compare` across worlds** (content hashes differ) pairs by identity when both reports are at
      the same verdict level, both list identities, and their applications or their toolchains
-     differ. The pairing is a multiset: every run of one identity on a side — whatever its task id,
-     seed or repeat — aggregates into one outcome for that side, which passes when at least half of
-     all those runs passed, a run without a verdict counting as not passed (PADR-0039 C.2). Duplicate
-     identities never refuse a pair. The paired instances are the identities on both sides; an
-     identity on one side only is listed as "not compared", with its side, task ids and seeds, and
-     left out of every statistic, as /2 lists a missing instance (`src/bench/compare.ts:119`); with
-     none on both sides the verdict is "nothing to compare". The grid rule (the same task ids and
-     seeds, `src/bench/compare.ts:44-47`) does not apply: the identity sets replace it. Rows are named
-     by each side's task ids and seeds. Wilson intervals and McNemar count paired identities. Flips
-     are listed as differences between the two configurations, and the page says that titles,
-     prompts, hints, actions and behaviour rules are not compared and may differ. Identities are the
-     reports' claims unless `--verify` re-derived them, which the page shows like the verification
-     status today. `--fail-on-regression` refuses an identity-paired comparison
-     (`compare_incomparable`, field `world`): a regression gate compares one world with itself.
-     A test pairs two worlds with different ids and the same task set, three variant cases each,
-     over seeds 1–5, and shows every instance paired; without the task-set key it shows them unpaired.
+     differ.
+     - *The unit is the distinct identity.* Across worlds a task id and a seed name nothing the two
+       sides share; the content is the only common unit. Every run of one identity on a side —
+       whatever its task id, seed or repeat — is a repeat of that instance and aggregates into one
+       outcome by PADR-0039's rule (it passes when at least half of all its runs passed; a run
+       without a verdict counts as not passed). Instances with one content are one board, and
+       PADR-0039 already treats repeats of one board as not independent. This amends PADR-0039 C.2
+       for cross-world comparisons only; within one world its unit (task × seed) stays.
+     - *Coverage.* Duplicate identities never refuse a pair. An identity on one side only is listed
+       as "not compared", with its side, task ids and seeds, and left out of every statistic, as /2
+       lists a missing instance (`src/bench/compare.ts:119`); with none on both sides the verdict is
+       "nothing to compare". The grid rule (the same task ids and seeds,
+       `src/bench/compare.ts:44-47`) does not apply: the identity sets replace it. Rows are named by
+       each side's task ids and seeds.
+     - *Equal run counts.* An outcome decided by a majority of more runs passes more often (ties
+       pass, `src/bench/stats.ts:80`), so rate claims — each side's Wilson interval and the McNemar
+       verdict — use only the paired identities with the same number of runs on both sides. The
+       page lists the paired identities whose run counts differ, with both counts, as a caveat, and
+       shows their outcomes without counting them; with none at equal counts there is no rate
+       verdict. Two worlds of one task set benched with the same seed list and repeats have equal
+       counts by construction.
+     - *No regression labels.* Flips are listed as differences between the two configurations, never
+       as instance regressions or fixes (PADR-0039 C.3), and `--fail-on-regression` refuses an
+       identity-paired comparison (`compare_incomparable`, field `world`): a regression gate compares
+       one world with itself. The page says that titles, prompts, hints, actions and behaviour rules
+       are not compared and may differ, and that identities are the reports' claims unless `--verify`
+       re-derived them.
+     - *The test.* Two worlds with different ids and three variant cases each, over seeds 1–5. With
+       one task-set key, both identity multisets are equal, every identity is paired and every run
+       count is equal. Without the key, the expected pairs are computed in the test independently of
+       the code under test (the case each world selects per seed, from SHA-256 over a hand-written
+       canonical text): for `excalidraw-library` 1.1.0 and `drawio-library` 1.1.0 the sides select
+       cases 0, 1, 1, 2, 1 and 2, 0, 0, 2, 0, so cases 0 and 2 are paired, case 1 is "not
+       compared", and both paired cases have unequal run counts (1 against 3, 1 against 2) and
+       carry no rate claim.
    - Otherwise the `world` difference stands, as in /2.
    - A hand-made side-by-side table of one task set at both levels (P7) matches instances by identity
      in the same way and follows PADR-0043 decision 1: each column names its level, no combined
@@ -285,7 +313,8 @@ strands adding required fields in parallel conflict, and a field decided twice m
      `maxActions` are.
 
 4. **Toolchain record.** Every report has `toolchain`. Session level: `{ kind: "practonaut", id:
-   "practonaut" }` (Practonaut's own actions over MCP, at the version `environment.practonaut`).
+   "practonaut", tools }` (Practonaut's own actions over MCP, at the version
+   `environment.practonaut`; `tools`, the tool names its bridge advertised, decision 6).
    Artifact level: `kind: "foreign-mcp"`; `id`, the toolchain part of a unit name (PADR-0042
    decision 1, for example `excalidraw-mcp-0.3.2`); `server` with its name, pinned version, source
    (where the archive came from: a URL without credentials or query) and the archive's SHA-256;
@@ -299,7 +328,8 @@ strands adding required fields in parallel conflict, and a field decided twice m
      id, server version and archive SHA-256, locator, rules, allowlist with effects, and the
      application version the rules were tested against — keyed by id and rules version. A
      definition, with its reading rules and their conformance fixtures, is frozen from its first use
-     in a committed report or declaration: a changed reading needs a new rules version, and the
+     in a committed report, probe plan or declaration, or from the first release that ships it,
+     whichever comes first: a changed reading needs a new rules version, and the
      fixtures with their expected readings run as behaviour tests in `npm test`. `bench` writes the
      shipped definition; `--verify` refuses a block this Practonaut does not ship or that differs
      from it (`bench_toolchain_unknown`), and `environment.app.version` must be the definition's.
@@ -307,14 +337,16 @@ strands adding required fields in parallel conflict, and a field decided twice m
    - **The proxy counts on the runner's side.** The stdio proxy the client starts only forwards to
      a runner-side endpoint, as the bridge forwards to the host. That endpoint starts the pinned
      server, applies the allowlist and `maxActions`, takes the locator, counts, and the runner writes
-     `proxy.jsonl` after the agent has ended. One line per request: sequence, MCP method, tool, the
-     outcome (`forwarded`, `refused-allowlist`, `refused-budget`, `invalid`), for a forwarded call
-     its result (`ok` or `error`), result bytes and time, and on the reply that named the result the
-     locator value; never the arguments. Forwarded calls are never omitted; refusals beyond 100 of
-     each kind and other requests beyond the log's line cap are counted in `omitted`. Each artifact
-     run carries `proxy: { starts, calls, refused, omitted }` (`starts`: `initialize` requests;
-     `calls`: forwarded `tools/call`; `refused`: both refusal kinds). `--verify` re-derives them, and
-     checks that exactly the line the selection rule picks names the stored result.
+     `proxy.jsonl` after the agent has ended. One line per request: sequence, MCP method (null for a
+     request whose method does not fit the pattern, which is `invalid`), tool, the outcome
+     (`forwarded`, `refused-allowlist`, `refused-budget`, `invalid`), for a forwarded call its result
+     (`ok` or `error`), result bytes and time, and on the reply that named the result the locator
+     value; never the arguments. **The log is complete or the run is not judged:** nothing is
+     omitted, and a run whose log reaches the line cap (100 000 lines; the runner then ends the
+     agent) or cannot be written is `infra_error` with the reason `evidence_incomplete`. Each artifact
+     run carries `proxy: { starts, calls, refused }` (`starts`: `initialize` requests; `calls`:
+     forwarded `tools/call`; `refused`: both refusal kinds). `--verify` re-derives them, and checks
+     that exactly the line the selection rule picks names the stored result.
    - A difference in toolchain id between two reports of one world is a caveat `compare` names, not a
      refusal: the toolchain is what such a comparison tests. A difference in rules version is a
      caveat too, and `--fail-on-regression` refuses it (`compare_incomparable`, field `rules`): a
@@ -345,27 +377,37 @@ strands adding required fields in parallel conflict, and a field decided twice m
      configures a loopback endpoint, `api-key` when it keeps a provider key by name, `subscription`
      when it runs on the client's own login, `unknown` for a template;
    - per run, `client.billing`, after the run: `{ class, source, via }` — the class the preset's
-     parser derives, its source, and `via`, the fixed identifier of the statement it read (for
-     example `claude-code/1:init.apiKeySource`, or for a local preset the endpoint in the client's
-     output). The source is re-derivable from the run's bound stdout (`client-attested`) or the
-     preset's own recorded configuration (`preset-requested`). The report never holds the statement
-     itself, no output of a login-status command, and no account name, e-mail address, organisation
-     or key fragment.
-   - **Counting rule** for the release ledger: a model run counts against the 800 unless both its
-     requested and its observed class are `local`; `api-key`, `subscription` and `unknown` count
-     (maintainer decision of 2026-10-18: the project's Claude runs use an API key under the
-     Commercial Terms and count as subscription runs for D4); built-in runs never count. `local`
-     shows how the client was configured (its own output names the loopback endpoint), not that a
-     local model answered.
+     parser derives, its source, and `via`, a fixed identifier per parser naming the statement it
+     read (for example `claude-code-stream/1:init.apiKeySource` or `codex/1:banner.endpoint`), never
+     a value taken from the output. The source is re-derivable from the run's bound stdout
+     (`client-attested`) or the preset's own recorded configuration (`preset-requested`). The
+     report holds neither the statement itself nor an endpoint, no output of a login-status
+     command, and no account name, e-mail address, organisation or key fragment.
+   - **Billing class and budget category.** PADR-0042 counts budgets in two categories,
+     subscription and local. The mapping: an agent whose requested class is `subscription`,
+     `api-key` or `unknown` is a **subscription agent** — for the 800 runs, for D4's "at most three
+     subscription agents", for the round-size formula (held-out + pre-probe) × subscription agents
+     ≤ 100, and for the declaration's ladder and shape A or B (maintainer decision of 2026-10-18:
+     the project's Claude runs use an API key under the Commercial Terms and count as subscription
+     runs). An agent whose requested class is `local` is a **local agent**; each of its runs counts
+     like a subscription run unless its observed class is `local` too, and a run not observed as
+     `local` refuses the agent as a local ladder agent (PADR-0042 decision 5). Built-in runs never
+     count. `local` shows how the client was
+     configured (its own output names the loopback endpoint), not that a local model answered.
+   - **The start guard reserves.** The ledger's start entry, taken before the client starts
+     (PADR-0042 decision 4), counts every model run, local ones included, as a reservation. Only
+     the run-end record of decision 8, holding both classes as `local` with a `client-attested`
+     source, releases it. At the cap, any start that could count is refused.
 
    Evidence sources: `client-attested` (a shipped preset client's own structured output in the run's
    bound stdout), `preset-requested` (Practonaut's own record of what a shipped preset started or
    asked for, before the client started), `command-output` (a line in a command template's output;
    which program printed it is unknown), `none` (a value is null exactly then). The validator allows
    `client-attested` and `preset-requested` only for a preset and `command-output` only for a
-   template, as /2 does for `modelSource`, and a `preset` only with a preset name this Practonaut
-   knows; `--verify` checks `command` against that preset's argument list when the report's
-   Practonaut version is its own, and otherwise says that it did not.
+   template, as /2 does for `modelSource`. It does not refuse a preset name it does not know, so
+   `report`, `compare`, `--card` and `--badge` keep reading an older /3 report after a preset is
+   renamed or dropped; `--verify` checks the name and `command` against that preset's argument list
+   when the report's Practonaut version is its own, and otherwise says that it did not.
    - **Stdout binding.** Every external run (preset or template) has `stdout: { sha256, bytes } |
      null`, a run field of its own, outside `logs`. Null means the runner could not read
      `agent.stdout`; then every value derived from it is absent or `none`: no `client` block,
@@ -374,13 +416,15 @@ strands adding required fields in parallel conflict, and a field decided twice m
      a stream, whatever its size (`bytes` shows the cost), and the parsers read only the bounded
      parts the runner reads (the init event in the first 64 KiB, the result event in the last
      256 KiB, failure events in the first 16 MiB).
-   - **Parsers are versioned** (`claude-code-stream/1`). `--verify` re-derives every client-attested
-     or command-output value with the named parser. When this Practonaut does not ship that parser,
-     it says that the values were not re-derived, and the gate and the ledger treat them as not
-     attested (`none`, billing `unknown`, no exemption).
+   - **Parsers are versioned** (`claude-code-stream/1`), and every external run with a bound stdout
+     names the parser that read it (`client.parser`), whether the run succeeded or not. `--verify`
+     re-derives every client-attested or command-output value with that parser. When this Practonaut
+     does not ship that parser, it says that the values were not re-derived, and the gate and the
+     ledger treat them as not attested (`none`, billing `unknown`, no exemption).
    - **What this shows.** As in /2, `--verify` shows that the folder's files agree with the report,
-     not who wrote them (`src/bench/verify.ts:30-32`). The run-end ledger record of decision 8 is what
-     ties a gate run's stdout and judged artifacts to the moment the run ended.
+     not who wrote them (`src/bench/verify.ts:30-32`). For gate runs, the pushed run-end ledger
+     record of decision 8 is what ties stdout and judged artifacts to the moment the run ended,
+     within the trust boundary decision 8 states.
    - The parsers and each preset's values are the presets strand's (P4, whose record refines
      PADR-0034); this record fixes the fields, their sources and the counting rule. A gate pair needs
      `modelSource: "client-attested"` (PADR-0042 decision 6).
@@ -394,8 +438,11 @@ strands adding required fields in parallel conflict, and a field decided twice m
    (`no-evidence` or `tool-outside-servers`).
    - **Membership** is exact: every tool name the client lists equals, after the preset's documented
      naming (Claude Code: `mcp__<server>__<tool>`), a tool the run's own server advertised in that
-     run — the bridge's tool list at session level, the shipped definition's allowlist at artifact
-     level — and the client's listed MCP servers are exactly the run's server. At artifact level
+     run — at session level the tool names Practonaut's bridge advertised, which the report records
+     (`toolchain.tools`; every run of a bench starts the same bridge), at artifact level the shipped
+     definition's allowlist — and the client's listed MCP servers are exactly the run's server.
+     `--verify` uses the recorded list, so a later Practonaut that renames a tool does not turn an
+     older report's evidence into a tool outside. At artifact level
      every allowlisted tool must also have the effect `run-store` in the shipped definition
      (PADR-0043 decision 8). A name that does not fit the bounded pattern, or a list longer than 256
      names, is evidence of a tool outside.
@@ -404,9 +451,11 @@ strands adding required fields in parallel conflict, and a field decided twice m
    - The evidence lives per run: `client.tools` (the offered names as the client lists them) and
      `isolation: { level, evidence }`. `--verify` checks the stdout's hash, re-reads the offered tools
      with the preset's parser, recomputes each run's level and the report's, and refuses a difference
-     (`bench_report_invalid`). For the shipped preset the review measured, on 200 stored `agent.stdout`
-     files of 0.2.0 runs (local, not in the repository; not re-measured here), that Claude Code
-     2.1.299, 2.1.300 and 2.1.301 list exactly the seven `mcp__practonaut__` tools.
+     (`bench_report_invalid`). For the shipped preset the re-review measured, on 465 stored
+     `agent.stdout` files of 0.2.0 runs (local, not in the repository; 200 in the first check; not
+     re-measured here), that Claude Code 2.1.299, 2.1.300 and 2.1.301 list exactly the seven
+     `mcp__practonaut__` tools and the one server `practonaut`. P3b's parser test uses one such init
+     event, with paths and session ids removed, and states the seven expected names by hand.
 
 7. **Co-actor.** At session level only (PADR-0042 decision 1 refuses the co-actor family on foreign
    toolchains; the validator refuses co-actor fields at artifact level).
@@ -422,16 +471,20 @@ strands adding required fields in parallel conflict, and a field decided twice m
      record also `entry`, the index of its schedule entry, and `client: null`. The co-actor is
      host-only, like the demonstration; no request can claim it. A /2 log is read with the /2 record
      schema, every record the agent's. `--verify` re-materialises the schedule from the stored world
-     and the seed and checks every co-actor record against its entry — its operation and action, and
-     its position against the entry's trigger as the scenario record defines triggers; entries fire
-     in schedule order, each at most once per attempt (once in the run unless the scenario record
-     lets the schedule fire again after a reset); a co-actor record that matches no entry refuses
-     (`bench_report_invalid`). This is PADR-0042's `verifySchedule`.
+     and the seed, replays the log, and computes itself where each entry's trigger is reached (as
+     the scenario record defines triggers). It then requires both directions: every co-actor record
+     matches its entry — operation, action, and the position where that entry's trigger is reached
+     — and every entry whose trigger the replay reaches has exactly one co-actor record there. A
+     missing, extra, late or repeated intervention refuses (`bench_report_invalid`). Entries fire in
+     schedule order, each at most once per attempt (once in the run unless the scenario record lets
+     the schedule fire again after a reset). This is PADR-0042's `verifySchedule`; the scenario
+     record decides the trigger semantics, not whether completeness is checked.
    - **A complete log.** The /3 recorder never omits an accepted act, undo or reset (they are bounded
      by `maxActions`, at most 10 000) nor any co-actor record (bounded by the schedule); past the
      line cap only check records and budget refusals are counted instead of kept, so the replay is
-     always complete. A co-actor run whose mutation log cannot be written is `infra_error`
-     (`runner`, never exempt), and `--verify` refuses a co-actor run without its complete log.
+     always complete. A co-actor run whose mutation log cannot be written is `infra_error` with the
+     reason `evidence_incomplete` (never exempt), and `--verify` refuses a co-actor run without its
+     complete log.
    - **Counting.** `acceptedActions`, `rejectedActions`, `undos`, `resets` and `toolCalls` count the
      agent only, as `mutationCounts` does per actor (`src/bench/evidence.ts:175-178` gains the
      actor); `settings.maxActions` caps the agent's calls only; a task's action limit is counted from
@@ -460,48 +513,71 @@ strands adding required fields in parallel conflict, and a field decided twice m
    - Efficiency, mean actions and mean actions when passed use `agentActions`; the summary fields
      keep their names, and a report without a co-actor gives the same values as under /2.
 
-8. **Inputs of a round's development digest.** No held-out seed moves without a new run that
-   counts.
-   - **Fixed by the declaration.** A 0.3.0 declaration (PADR-0042 decision 3) also names, per unit,
-     the verdict level, the toolchain (id, server version and archive SHA-256) and, at artifact
-     level, the reading rules (format and version), fixed before the first pre-probe run. The gate
-     refuses any development, pre-probe or held-out run whose report names another toolchain or
-     rules version.
-   - **Anchored when the run ends.** When a run ends, the runner adds to its entry in the release
-     ledger (PADR-0042 decision 4) the SHA-256 of the run's judged artifact — `session.json`, or the
-     stored result — and of its stdout. `declare` and `gate` refuse a run whose report binds other
-     hashes than its ledger record. The ledger is append-only and hash-chained, and its committed
-     copy must hold every local entry, so rewriting it shows in git history.
+8. **Inputs of a round's development digest.** No choice made after a run may move the held-out
+   seeds. P1 implements the following; it amends what PADR-0042 decisions 3, 4 and 7 say about the
+   declaration, the ledger and the pre-probe.
+   - **A probe plan, pushed before the first run.** Before the first pre-probe run of a unit, P1
+     commits and pushes its probe plan: the unit, the verdict level, the toolchain pin (id, server
+     version and archive SHA-256), at artifact level the reading-rules version, and the development
+     (pre-probe) seeds. The declaration repeats these values. `declare` and `gate` refuse a
+     development, pre-probe or held-out run whose report or ledger records name another toolchain
+     or rules version, so a result cannot be re-judged under another shipped rules version to
+     change its `pass`.
+   - **Two ledger records per run, both appended.** The start entry (PADR-0042 decision 4), taken
+     before the client starts, names the unit, the toolchain id, the rules version and the
+     requested billing class. When the run ends, the runner that took the start appends one
+     run-end record — a new record that names its start entry, never an amendment of it — with the
+     toolchain id, the rules version, the SHA-256 of the judged artifact (`session.json` or the
+     stored result, null when `absent`), of `agent.stdout` and of `checker.json`, and the observed
+     billing class with its source. There is at most one run-end record per start entry; `bench
+     --recover` never writes one. A judged run without a run-end record counts against the budget,
+     is never digested or scored, and its task may be benched again as after an `infra_error`.
+   - **Read only once pushed.** `declare` reads a development run, and `gate` a development or
+     held-out run, only when its start and run-end records are in a commit contained in a
+     remote-tracking branch, as PADR-0040 already requires of
+     the declaration before the held-out set exists, and refuses a run whose report binds other
+     hashes, toolchain or rules version than those records. `declare` and `gate` check that every
+     committed version of the release ledger in git history is a prefix of the current one, and the
+     gate report lists those versions.
    - **Digest `practonaut.challenge-development/2`** (0.2.0 declarations keep /1). Per development
      run: `model` (reported), `taskId`, `seed`, `pass`, and then at session level `hash` (the judged
      session's state hash) and `log` (the canonical JSON of its action log), as /1; at artifact
-     level `result`, the SHA-256 of the stored result's bytes as its ledger record anchors it (null
-     when `absent`). Runs are sorted by model, then task id, then seed, comparing strings by UTF-16
-     code units as `canonicalJson` sorts keys, never by a locale.
-   - **Not in it:** the verdict level, the toolchain and the identity (the declaration and the
-     development world fix them), the checker's reading and its diagnostic lists, the proxy log, the
-     client's figures and the status. A result's byte hash is safe here although PADR-0040 kept byte
-     hashes out: a re-spaced or edited result no longer matches its ledger record and is refused
-     instead of drawing new seeds, and the digest does not depend on reading-rules code.
-   - **How an edited `result.json` is caught:** an edit alone fails `--verify`
-     (`bench_artifact_changed`); an edit with a matching report fails `declare` and `gate` against
-     the run's ledger record; an edit of the ledger breaks its chain or differs from its committed
-     copy. The unit enters the seed derivation through P1 (PADR-0042 decision 1).
+     level `result` (`read`, `absent` or `unreadable`) and `state`, the SHA-256 of the canonical JSON
+     of the judged state in `reading.json`, read under the probe plan's rules version — without the
+     skipped and unmodeled lists. Runs are sorted by model, then task id, then seed, comparing
+     strings by UTF-16 code units as `canonicalJson` sorts keys, never by a locale.
+   - **Not in it:** the verdict level, the toolchain and the identity (the probe plan and the
+     development world fix them), any byte hash of a file, the reading's diagnostic lists, the proxy
+     log, the client's figures and the status. PADR-0040's rule holds without exception: a
+     re-spaced result, or one with an extra pseudo-element, gives the same digest. The byte hashes
+     in the ledger check integrity; they do not feed the seeds.
+   - **The trust boundary.** Caught: an accidental or careless edit (`--verify`,
+     `bench_artifact_changed`); a re-judging under another rules version (the probe plan); any edit
+     of a run, a report or a ledger record after its records are pushed (the run-end record and the
+     prefix check); and verdict-neutral re-formatting at any time (the canonical digest). Not caught:
+     an operator who, before pushing, rewrites a run's folder, its report and the unpushed tail of
+     the local ledger together, with a different judged state. That is a forged run, which `--verify`
+     cannot tell from a real one at session level either (`src/bench/verify.ts:30-32`); the
+     declaration's own git history (PADR-0040) and the ledger's prefix history are the controls
+     after the push. The unit enters the seed derivation through P1 (PADR-0042 decision 1).
 
 9. **Infrastructure errors per client.** An `infra_error` run (as /2: not judged, counted as not
    passed) carries `failure`: `reason` — `usage_limit`, `auth`, `api_error` (from the client's
-   parser), `server_error` (artifact level, from the proxy and the toolchain definition),
-   `no_tool_call`, `interrupted` or `runner`; `parser`, the versioned identifier of the parser that
-   classified it (null for the runner's own reasons); `code`, the client's or server's own identifier
-   where it gives one (an HTTP status, an event subtype; letters, digits and `_.:-`, at most 64
-   characters), never free text; and `beforeModelWork` — true or false as the client's parser
-   decides, null when unknown. The note keeps its fixed words; the gate reads `failure`, not the
+   parser), `server_error` (artifact level, a server failure before the first forwarded
+   `tools/call`, decision 1), `no_tool_call`, `evidence_incomplete` (a proxy log or a co-actor
+   mutation log that is not complete), `interrupted` or `runner`; `parser`, the versioned
+   identifier of the parser that classified it (null for the runner's own reasons); `code`, the
+   client's or server's own identifier where it gives one (an HTTP status, an event subtype;
+   letters, digits and `_.:-`, at most 64 characters), never free text; and `beforeModelWork` —
+   true or false as the client's parser decides, null when unknown. The note keeps its fixed words; the gate reads `failure`, not the
    note (`src/challenge/gate.ts:46-52`). "No tool call" means, at session level, no host call (the
    bridge's start-up read counts, as in /2) and, at artifact level, nothing the proxy saw (decision 1,
    case c).
    - **Budget exemption** (PADR-0040's runs rejected by the client, PADR-0042 decision 4). A run
-     counts against no budget only when all of these hold: `beforeModelWork` is true; `parser` is a
-     parser this Practonaut ships and `--verify` re-derived `failure` from the bound stdout;
+     counts against no budget only when all of these hold: its reason is `usage_limit` or `auth`,
+     the two PADR-0040 names (`src/challenge/gate.ts:46-50`), never `api_error`, `server_error` or a
+     runner's reason; `beforeModelWork` is true; `parser` is a parser this Practonaut ships and
+     `--verify` re-derived `failure` from the bound stdout;
      Practonaut's own counters show no model work (session level: no act, undo, reset or check, at
      most the bridge's start-up read; artifact level: no forwarded `tools/call`); and the client's
      tokens are zero or not reported. The validator refuses `beforeModelWork: true` with
@@ -517,7 +593,8 @@ strands adding required fields in parallel conflict, and a field decided twice m
       later change needs /4.
     - **No converter.** Every consumer reads a report through one read-only view, typed on its own
       (sketch below) with `readFrom` naming the source version; it is never written to disk and the
-      /3 validator never runs on it. Unchanged leaf values are copied. Moved: /1's and /2's
+      /3 validator never runs on it. Unchanged leaf values are copied, `createdAt`, `label`,
+      `recovered` and `interrupted` included. Moved: /1's and /2's
       `environment.excalidraw` becomes `environment.app` (`adapterId: "excalidraw"`); /1's
       `environment.library` becomes `environment.world` (source `library`, `package: null`, no
       generated instances, no limits). Facts the old format fixes: `verdictLevel: "session"`,
@@ -578,9 +655,12 @@ shape, unchanged.
 type Sha256 = string;        // /^[a-f0-9]{64}$/
 type Id = string;            // an identifier, never free text: /^[A-Za-z0-9][A-Za-z0-9_.:@\/-]{0,63}$/
 type LocatorValue = string;  // no path separator: /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
-type McpMethod = string;     // an MCP method name: /^[a-z][A-Za-z]{0,31}(?:\/[a-z][A-Za-z]{0,31}){0,3}$/
+type McpMethod = string;     // /^[a-z][A-Za-z_]{0,31}(?:\/[a-z][A-Za-z_]{0,31}){0,3}$/,
+                             // e.g. 'notifications/roots/list_changed'; a method that does not fit is logged as null
 type ToolName = string;      // /^[A-Za-z0-9_.:-]{1,128}$/; a name that does not fit is a tool outside
-type SemVer = string;        // /^\d{1,6}\.\d{1,6}\.\d{1,6}$/
+type SemVer = string;        // /^\d{1,6}\.\d{1,6}\.\d{1,6}$/ (server pins and rules versions)
+type WorldId = string;       // the world schema's own id validator (src/world/schema.ts)
+type WorldVersion = string;  // the world schema's own semver validator, pre-release and build included
 type Count = number;         // a non-negative safe integer
 
 /** Where a value comes from; a value is never shown stronger than its source. */
@@ -598,7 +678,7 @@ type BillingClass = 'subscription' | 'api-key' | 'local' | 'unknown';
 interface Verdict { passed: boolean; errorClasses: string[] }                                     // as /2
 
 /** World/2 gains one optional field (decision 3); absent, nothing changes. */
-interface WorldV2Addition { taskSet?: { id: string; version: SemVer } }
+interface WorldV2Addition { taskSet?: { id: WorldId; version: WorldVersion } }
 
 interface BenchReportV3 {
   schema: 'practonaut.bench/3';
@@ -620,7 +700,10 @@ interface BenchReportV3 {
   summary: SessionSummary | ArtifactSummary;                 // by verdictLevel
 }
 
-interface PractonautToolchain { kind: 'practonaut'; id: 'practonaut' }
+interface PractonautToolchain {
+  kind: 'practonaut'; id: 'practonaut';
+  tools: ToolName[];                                         // the tool names the bridge advertised (decision 6)
+}
 interface ForeignToolchain {                                 // equal to a shipped definition (decision 4)
   kind: 'foreign-mcp';
   id: Id;                                                    // e.g. 'excalidraw-mcp-0.3.2'
@@ -660,11 +743,13 @@ interface RunClientV3 {
   model: string | null; turns: Count | null; costUsd: number | null;          // as /2, client-stated
   tokens: { input: Count; output: Count; cacheRead: Count; cacheCreation: Count } | null;  // as /2
   version?: string | null;                                   // as /2
+  parser: Id;                                                // the versioned parser that read the stdout
   tools?: { names: ToolName[] /* ≤ 256 */; omitted: Count };  // offered tools as the client lists them
-  billing?: { class: BillingClass; source: 'client-attested' | 'preset-requested'; via: Id };
+  billing?: { class: BillingClass; source: 'client-attested' | 'preset-requested'; via: Id };  // via: fixed per parser
 }
 interface RunFailure {
-  reason: 'usage_limit' | 'auth' | 'api_error' | 'server_error' | 'no_tool_call' | 'interrupted' | 'runner';
+  reason: 'usage_limit' | 'auth' | 'api_error' | 'server_error' | 'no_tool_call' | 'evidence_incomplete'
+    | 'interrupted' | 'runner';                              // exempt only usage_limit and auth (decision 9)
   parser: Id | null;                                         // versioned, e.g. 'claude-code-stream/1'
   code: string | null;                                       // /^[A-Za-z0-9_.:-]{1,64}$/, never free text
   beforeModelWork: boolean | null;
@@ -683,9 +768,9 @@ interface SessionRun extends RunBase {
 interface ArtifactRun extends RunBase {
   verdictLevel: 'artifact';
   checker: { artifact: Verdict; result: 'read' | 'absent' | 'unreadable' } | null;
-  proxy: { starts: Count; calls: Count; refused: Count; omitted: Count };
+  proxy: { starts: Count; calls: Count; refused: Count };   // from a complete proxy log
   artifacts?: { start: Sha256; result: Sha256 | null; reading: Sha256; checker: Sha256 };  // exactly when judged
-  proxyLog: { sha256: Sha256; entries: Count } | null;
+  proxyLog: { sha256: Sha256; entries: Count } | null;       // never null on a judged run
 }
 
 type SessionSummary = BenchSummaryV2;   // as /2; mean actions and efficiency over agentActions
@@ -700,20 +785,37 @@ interface ArtifactSummary {
 type MutationRecordV3 = MutationRecordV2 & ({ actor: 'agent' } | { actor: 'co-actor'; entry: Count; client: null });
 /** proxy.jsonl (artifact level), written by the runner after the agent ended; never the arguments. */
 interface ProxyRecord {
-  seq: Count; method: McpMethod; tool: ToolName | null;
+  seq: Count; method: McpMethod | null; tool: ToolName | null;  // null method: outcome 'invalid'
   outcome: 'forwarded' | 'refused-allowlist' | 'refused-budget' | 'invalid';
   result: 'ok' | 'error' | null;                             // forwarded calls only
   resultBytes: Count; ms: number;
   locator?: LocatorValue;                                    // on the reply that named a result
 }
 
-/** A development run in a 0.3.0 round's digest (decision 8). */
-type DigestRunV2 = { model: string; taskId: string; seed: number; pass: boolean }
-  & ({ hash: Sha256; log: string } | { result: Sha256 | null });
+/** The two release-ledger records of a run (decision 8; P1 writes them, PADR-0042 decision 4). */
+interface LedgerStart { kind: 'start'; seq: Count; prev: Sha256; unit: Id; toolchain: Id; rules: SemVer | null; requested: BillingClass }
+interface LedgerRunEnd {                                     // appended once per start entry, never an amendment
+  kind: 'run-end'; seq: Count; prev: Sha256; start: Count;   // `start`: the seq of its start entry
+  toolchain: Id; rules: SemVer | null;
+  judged: Sha256 | null; stdout: Sha256 | null; checker: Sha256 | null;   // session.json or result; agent.stdout; checker.json
+  observed: { class: BillingClass; source: EvidenceSource };
+}
 
-/** What every consumer reads (decision 10); /1 and /2 are mapped in memory, never rewritten. */
+/** A development run in a 0.3.0 round's digest (decision 8): canonical content only, no file hash. */
+type DigestRunV2 = { model: string; taskId: string; seed: number; pass: boolean }
+  & ({ hash: Sha256; log: string }                           // session level, as /1
+   | { result: 'read' | 'absent' | 'unreadable'; state: Sha256 });   // artifact level: judged state, no lists
+
+/** What every consumer reads (decision 10); /1 and /2 are mapped in memory, never rewritten.
+ *  Replaced fields are removed per member with Omit before they are redefined. */
+type ViewRun<R extends SessionRun | ArtifactRun> = Omit<R, 'isolation' | 'failure'> & {
+  isolation: { level: IsolationLevel | null; evidence: RunBase['isolation']['evidence'] | 'not-recorded' };
+  failure?: RunFailure | 'not-recorded';                     // /2 infra_error runs: 'not-recorded'
+};
 interface BenchReportView {
   readFrom: 'practonaut.bench/1' | 'practonaut.bench/2' | 'practonaut.bench/3';
+  createdAt: string; label?: string;                         // as the source
+  recovered?: true; interrupted?: BenchInterruptedV2;        // as the source (/1: plannedRuns only)
   verdictLevel: VerdictLevel;                                // /1, /2: 'session'
   environment: Omit<BenchReportV3['environment'], 'world'> & {
     world: Omit<BenchWorldV2, 'package'> & { package: BenchWorldV2['package'] | null };  // /1: null
@@ -723,10 +825,7 @@ interface BenchReportView {
   agent: Omit<AgentV3, 'isolation'> & { isolation: IsolationLevel | null };   // /1: null, not recorded
   references: BenchReferencesV2 | null | 'not-recorded';     // /1: 'not-recorded'
   settings: BenchSettingsV2; summary: SessionSummary | ArtifactSummary;
-  runs: Array<(SessionRun | ArtifactRun) & {
-    isolation: { level: IsolationLevel | null; evidence: RunBase['isolation']['evidence'] | 'not-recorded' };
-    failure?: RunFailure | 'not-recorded';                   // /2 infra_error runs: 'not-recorded'
-  }>;
+  runs: Array<ViewRun<SessionRun> | ViewRun<ArtifactRun>>;
 }
 ```
 
@@ -741,7 +840,14 @@ interface BenchReportView {
   (the task-set key, under `.claude/rules/deterministic-core.md`), `docs/world-format.md` and
   `tools/schemas.ts`. P1 reads only `readFrom: practonaut.bench/3` for 0.3.0 rounds: the level and
   toolchain for the unit, the agent identity for the ladder, `failure` and its exemption rule,
-  `agent.billing` and `client.billing` for the release ledger, the run-end ledger anchor, digest /2.
+  `agent.billing` and `client.billing` for the release ledger, digest /2.
+- P1 also gains what decision 8 and decision 5 require of it, amending PADR-0042 decisions 3, 4, 5
+  and 7: a probe plan committed and pushed before a unit's first pre-probe run; the start entry and
+  an appended run-end record per run; `declare` reading a run only once both records are pushed; the
+  check that every committed ledger version is a prefix of the current one; the start guard's
+  reservation for every model run; and the billing-class mapping for the ladder, the shapes and the
+  round-size formula. PADR-0042 is still proposed, so these land in its accepted text or in a short
+  amendment, as the coordinator decides.
 - External runs bind their stdout, so `--verify` hashes each stdout in full once more. An artifact
   run keeps its start file, result, reading, checker output, proxy log and stdout.
 - The `claude-code` preset keeps "tool-restricted" (decision 6). A preset whose client does not list
@@ -750,10 +856,15 @@ interface BenchReportView {
 - `compare` refuses more pairs (mixed levels; `--fail-on-regression` on an identity-paired pair or
   across reading-rules versions; different `checks`) and pairs some it refused before (the same task
   set on two applications or toolchains); the caveats grow by toolchain, reading rules, client
-  version, client settings, report version, isolation basis and shared identities within one world.
+  version, client settings, report version, isolation basis, shared identities within one world and
+  unequal run counts across worlds. Across worlds its unit is the distinct identity (an amendment of
+  PADR-0039 C.2 for that case only).
 - The checker keeps every reading-rules version and toolchain definition from its first committed
-  use: a maintenance cost, the price of verifying an artifact report with a later Practonaut, as
-  /2 does for a session report (PADR-0036).
+  use or first release: a maintenance cost, the price of verifying an artifact report with a later
+  Practonaut, as /2 does for a session report (PADR-0036).
+- A run whose evidence is not complete (a proxy log at artifact level, a co-actor run's mutation
+  log) is `infra_error` (`evidence_incomplete`) and may be benched again; it is never exempt from
+  the budget, and more than 5 % of them voids a gate round (PADR-0040).
 - The co-actor's schedule is public task content, so the scenario record (item 4) must place it
   there and define the triggers that `--verify` checks.
 - Tokens and cost stay the client's own statements, as in /2 (PADR-0039 A.5); the release ledger
@@ -770,7 +881,8 @@ foreign toolchain whose result is not one local file, or needs more than one loc
 bench two applications or two verdict levels in one bench; an adapter whose judged state needs
 application-specific attributes; a reading-rules version or toolchain definition that cannot be kept
 for old reports; a new task or state field (the identity's exclusion list); a co-actor that checks or
-has its own budget, or a schedule that must stay hidden; the first change /3 needs after the 0.3.0
+has its own budget, or a schedule that must stay hidden; agents that reach the proxy log's line
+cap, so that `evidence_incomplete` becomes more than rare; the first change /3 needs after the 0.3.0
 release.
 
 ## Review (2026-10-18)
@@ -873,7 +985,7 @@ are id and version.
 | codex gap: draw.io attributes | adopted | D3: the judged state has no rendering attributes of an application (`src/world/schema.ts:52-56`) |
 | codex gap: cost meaning | adopted with change | Consequences: cost stays the client's statement; the ledger counts runs |
 | codex gap: stdout does not authenticate | adopted | D5: the origin limit restated |
-| codex gap: /1 not verifiable after a library change | refuted | Already the /1 rule (PADR-0036 decision 7), not a /3 change; D10 states it |
+| codex gap: /1 not verifiable after a library change | refuted | An existing limitation, documented: the /1 rule (PADR-0036 decision 7), not a /3 change; D10 states it |
 | gemini-1 (blocker) | adopted | D3 |
 | gemini-2 (blocker) | adopted | D1: `checkRuns` split by level, `derivedPass` per level (coordinator C) |
 | gemini-3 (major) | adopted | D7 |
@@ -887,3 +999,54 @@ are id and version.
 | gemini gap 4: recovery of artifact runs | adopted | D11: with the artifact strand; P3b's recovery refuses artifact folders |
 
 Counts over the 100 rows: adopted 69, adopted with change 26, refuted 5.
+
+## Re-review (2026-10-18)
+
+A re-review of the revision by two Claude Opus reviewers — one checking each first-round
+resolution (ids `res-…`), one looking for new problems (ids `new-…`) — and by Codex `gpt-6.1-sol`
+(`codex-r1` … `codex-r9`, and its gaps). They confirmed 21 first-round blocker and major findings
+resolved and all five refutations (code-09, gate-6, needs-cut-rules-kept-forever, Gemini gap 1, the
+Codex /1 gap); the Opus re-reviewer re-measured code-09 on 465 stored `agent.stdout` files. The
+coordinator decided the converging points (1: no free redraw; 2: pairing across worlds;
+3: completeness; 4: budget and ladder; 5: freezing; 6: the minors); this revision applies them.
+
+| Finding | Disposition | Where, or why not |
+|---|---|---|
+| gate-3, still open (res) | adopted | D8: a probe plan pushed before the first run fixes the toolchain and rules version; both ledger records name them and the run-end record binds `checker.json`; `declare` and `gate` refuse others (coordinator 1b) |
+| codex-1, still open (res) | adopted | D8: the trust boundary stated plainly; `declare` reads a run only once its ledger records are pushed; prefix check of the ledger's history (coordinator 1c) |
+| res-1 [minor] | adopted | Sketch: `ViewRun` removes the replaced fields per member with `Omit` |
+| res-2 [minor] | adopted | D3: the test's expected pairs computed independently (cases 0 and 2 paired, case 1 not compared, unequal run counts) |
+| res-3 [minor] | adopted | D4: frozen at the first committed use or the first release, whichever comes first (coordinator 5) |
+| res-4 [minor] | adopted | D1: a server failure after the first forwarded call is judged on the last named result or the start file (coordinator 4) |
+| res-5 [minor] | adopted | D9: only `usage_limit` and `auth` can be exempt (coordinator 4) |
+| res-6 [minor] | adopted | D8: the run-end record is a new appended record naming its start entry (coordinator 1a) |
+| res-7 [minor] | adopted with change | D6: the bridge's advertised tool names are recorded once per report (`toolchain.tools`), since every run of a bench starts the same bridge |
+| res-8 [minor] | adopted | D5: the validator no longer refuses an unknown preset name; `--verify` checks it in its own version |
+| res-9 [minor] | adopted | D5: `via` is a fixed per-parser identifier; no endpoint value is stored |
+| res-10 [minor] | adopted | Sketch: `McpMethod` allows `_`; a method that does not fit is logged as null with `outcome: 'invalid'` |
+| res-11 [minor] | adopted | D1: `proxyLog` required on every judged artifact run |
+| res-12 [minor] | adopted | D7: `--verify` checks that every entry whose trigger the replay reaches has exactly one record (coordinator 3) |
+| res-13 [minor] | adopted | Sketch: `taskSet` uses the world schema's id and version validators |
+| codex-1 / gate-4 / security-13, still open (new) | adopted | D8 (coordinator 1) |
+| gate-3, still open (new) | adopted | D8 (coordinator 1b) |
+| codex-11, still open (new) | adopted | D5: the start guard reserves every model run; only a pushed run-end record with both classes `local` releases it |
+| new-1 [major] | adopted | D8: guarantee stated, push before `declare`, ledger prefix check, canonical judged state in the digest instead of bytes, so PADR-0040's rule holds without exception |
+| new-2 [major] | adopted | D8: probe plan and ledger records fix and bind the rules version before any run |
+| new-3 [major] | adopted with change | D3: rate claims use only identities with equal run counts, the others are listed as a caveat, no regression labels; pairing is not refused (coordinator 2) |
+| new-4 [minor] | adopted | D3: test with independently computed pairs |
+| new-5 [minor] | adopted | D8: one run-end record per start entry, never written by `--recover`; a judged run without one counts, is never digested or scored, and may be benched again |
+| new-6 [minor] | adopted | D5: reservation at the start guard |
+| new-7 [minor] | adopted | Sketch: `WorldId` and `WorldVersion` |
+| codex-r1 (blocker) | adopted | D8: start and run-end as separate appended records; pushed prefix; canonical digest; the PADR-0040 exception removed |
+| codex-r2 (major) | adopted with change | D3: across worlds the unit is the distinct identity (coordinator 2), since instances with one content are one board and PADR-0039 already treats its repeats as not independent; stated as an amendment of PADR-0039 C.2 for cross-world comparisons only. A one-to-one matching of instances is not adopted: across worlds, which seed selects which case is arbitrary. Unequal run counts carry no rate claim |
+| codex-r3 (major) | adopted | Sketch: `ViewRun` per member; `createdAt`, `label`, `recovered`, `interrupted` in the view (D10) |
+| codex-r4 (major) | adopted | D4: the proxy log is complete or the run is not judged (`evidence_incomplete`); no `omitted` counter (coordinator 3) |
+| codex-r5 (major) | adopted | D7: schedule completeness |
+| codex-r6 (major) | adopted | D5: billing classes mapped onto PADR-0042's subscription and local agents for the 800, the three-agent limit, the round-size formula and shapes A and B (coordinator 4) |
+| codex-r7 (minor) | adopted | D5 and sketch: `client.parser` on every external run with a bound stdout |
+| codex-r8 (minor) | adopted | As new-7 |
+| codex-r9 (minor) | adopted | As res-2 |
+| codex-r gap: code-09 not verifiable from the repository | adopted with change | D6: P3b's parser test uses one stored init event with paths and session ids removed and the seven tool names written by hand |
+| codex-r gap: /1 disposition wording | adopted | First-round row reworded: an existing limitation, documented |
+
+Counts over the 36 rows of the re-review: adopted 32, adopted with change 4, refuted 0.
