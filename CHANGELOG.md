@@ -21,7 +21,13 @@ All notable changes are recorded here. The format follows
   only from its runs' evidence of the tools its client offered. The validator also holds the
   artifact-judged level that artifact mode will write.
 - `report --verify` re-verifies /3 reports: the application adapter and every task identity against
-  the stored world, every stdout against its hash, and every value the shipped parser reads from it.
+  the stored world, every stdout against its hash (and no readable stdout behind an unbound run), and
+  every value the shipped parser reads from it — the client block, isolation, the failure of any run,
+  and the agent's model, `apiKeySource`, client version, vendor, client, and for its own version the
+  requested billing and settings. A report of this or an older Practonaut that names a parser this one
+  does not ship is refused; a newer one's values are shown as the report's claims on every surface and
+  are never taken by the challenge gate, which exempts a /3 run from the budget only by a failure its
+  shipped parser re-derives. An application adapter id can no longer name a path.
 - `compare` refuses reports of different verdict levels by name, and different `--checks`; it pairs
   the same tasks benched on two applications or toolchains by task identity (the distinct identity is
   the unit, rate claims only at equal run counts, no regression labels; `--fail-on-regression`

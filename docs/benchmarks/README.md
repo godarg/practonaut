@@ -405,13 +405,21 @@ Two levels of checking, and the output always says which one ran:
   For a `/3` report (session level) it also checks: the report's application adapter is the stored
   world's, and every listed task identity is the one the stored world gives (`bench_world_changed`);
   every external run's `agent.stdout` against its bound hash and size (`bench_artifact_changed`);
-  with the parser this Practonaut ships, everything read from that stdout again — the client block
-  (model, version, figures, offered tools, attested billing), the run's isolation and evidence, the
-  failure of a run the client rejected, and the agent's model, `apiKeySource` and client version
-  from the first run that reports each (`bench_report_invalid`); a value read by a parser this
-  Practonaut does not ship is named as not re-derived. A preset's name and command are checked
-  against this Practonaut's presets when the report was made with this version, and the output says
-  when they were not. A task's action limit is counted from the agent's own records. An artifact-level
+  an external run that binds no stdout must have no readable `agent.stdout` in its folder
+  (`bench_artifact_changed`); with the parser this Practonaut ships, everything read from that stdout
+  again — the client block (model, version, figures, offered tools, attested billing), the run's
+  isolation and evidence, the run's failure whatever its status (a client failure the report leaves
+  out of a judged run is refused too), and the agent's model, `apiKeySource`, client version with its
+  source, vendor and client program, and for a report of this version its requested billing class and
+  settings (`bench_report_invalid`). A report made with this Practonaut or an older one can only name
+  parsers this one ships; any other is refused. Only a newer Practonaut's parser, or a preset this one
+  does not know, leaves the values not re-derived: the output names them, and the header line, the
+  page, the card, the badge and the JUnit properties then show the model and a preset's isolation as
+  the report's claims, never confirmed. A preset's name and command are checked against this
+  Practonaut's presets when the report was made with this version, and the output says when they were
+  not. The 0.2.0 challenge gate takes a `/3` report only when every value was re-derived and the
+  preset checked, and exempts a `/3` run from the budget only for a usage limit or a login or billing
+  error before model work that the shipped parser re-derives from the run's own bound stdout. A task's action limit is counted from the agent's own records. An artifact-level
   report and a co-actor run are not re-verified by this version (they are refused by name).
 
   What the stored world is anchored to, `--verify` says: a library bench of this Practonaut's library
