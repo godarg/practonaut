@@ -10,7 +10,7 @@ a request, decision 5) and [PADR-0040](0040-challenge-tier-generated-families-an
 PADR-0044 decision 9; uses the unit `human-edit.practonaut` of
 [PADR-0042](0042-gate-for-families-on-toolchains.md) · Needs first a separate small change: a
 single-task (bench) host refuses every variant request (decision 7) · Revised after three
-independent reviews on 2026-10-18 (dispositions at the end) · To be accepted after the
+independent reviews and a re-review on 2026-10-18 (dispositions at the end) · To be accepted after the
 coordinator's check of this revision, before the code that implements it
 
 ## Context
@@ -142,8 +142,11 @@ only if such passes become common* (chosen).
 **A refusal of the colleague's transaction.** (1) *Every refusal not by the core is an
 infrastructure error* (first draft): an agent could cause one, for example by growing the view to
 its limit, and more than 5 % of them void a gate round. (2) *Every refusal judged*: a browser crash
-would count against the agent. (3) *What follows from the board is judged; only a fault of
-Practonaut's own machinery is an infrastructure error, told apart by a closed list of codes*
+would count against the agent. (3) *Classified by code* (second draft): a code names a class of
+error, not who caused it — `mirror_timeout`, for one, is also raised by a deadline check before any
+mirror call (`src/host/session.ts:269`). (4) *Classified by the stage at which the transaction
+failed, recorded by the host with the code; what admission, size, the error classes or the core
+decide is judged, only machinery after the colleague's own admission is an infrastructure error*
 (chosen).
 
 **The agent's stale refusal after a colleague change.** (1) *One free refusal per entry* (first
@@ -221,10 +224,13 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
      it takes back the most recent change, whoever made it.
    - **Predictable on purpose.** The measured skill is reaching the goal on a board that changes
      under the agent: noticing that it moved, reading it again, and finishing one's own part on the
-     changed board, for example around a step the colleague added. On the family's instances an
-     agent that ignores the colleague's changes fails (decision 11). What an announced schedule
-     still allows, and passes under the end-state rule, is named in decision 9. Whether an announced
-     colleague leaves headroom is what the pre-probe measures
+     changed board, around a step the colleague added. What the family's instances guarantee, and
+     no more (decision 11): a plan computed in advance that neither reads the board nor recomputes
+     the ids the core assigns fails unless it removes the colleague's step, which the report shows
+     (decision 9). A plan that models the colleague exactly can pass without reading the board — the
+     reference does, and ids are deterministic (PADR-0004) — so "the agent read the board" is
+     likely, not proven. Whether an announced colleague leaves headroom is what the pre-probe
+     measures
      ([PADR-0041](0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)
      decision 4); an unannounced variant needs its own record.
    - **What the schedule reveals.** The public triggers tell a reader that m ≥ `after_e` + *e*
@@ -242,8 +248,13 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
    transaction emits no generic `rejected` event (the host emits one for every refused request
    today, `src/host/session.ts:282-284`); it changes only the entry's status in the view, published
    as a `changed` event at the same revision, so no surface presents it as someone's own refused
-   request. The co-actor exists only on a task with a schedule and never shares a task with the
-   demonstration (the bundled example has no schedule).
+   request. An entry's status only moves forward — `pending` to `done` or `refused`, never back: the
+   host's reply to the owner carries the statuses as they stand when it is sent, after the
+   colleague's outcome, and the Player keeps a status it has shown when a view of the same revision
+   says `pending` (it absorbs equal revisions, `src/player/main.ts:205`), so whichever of the event
+   and the reply arrives last, a refusal never shows as `pending` again. The co-actor exists only on
+   a task with a schedule and never shares a task with the demonstration (the bundled example has no
+   schedule).
 
 5. **One transaction per colleague change, under the owner's lock.** A due entry runs as its own
    transaction through the host's mutation path: a fork of the committed session, `Session.act` with
@@ -313,29 +324,46 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
      checker resolves with its own implementation in `src/checker`, never the host's code
      (architecture §3 shares only canonical hashing and bounded predicate evaluation). Both are
      tested against hand-computed resolution vectors in `tests/oracles/`.
-   - **A refusal that follows from the board is judged.** The core's refusals
-     (`precondition_failed`, `invalid_argument`, `unmodeled`, `limit_exceeded`,
-     `checker_fuel_exhausted`) and the host's admission refusal `result_too_large` (the view with the
-     colleague's history item would exceed 3 MiB, `src/host/session.ts:260-262`) follow from the
-     board and the history the owner built. The entry is recorded as refused with that code (fired,
-     not accepted); the colleague does nothing instead and never retries. The run is judged.
-   - **Only a fault of Practonaut's machinery is an infrastructure error.** `mirror_timeout`,
-     `mirror_unavailable`, `real_tool_disagrees`, `replay_mismatch`, `diagnostic_limit`,
-     `diagnostic_unavailable`, and a session closed during the transaction mean the browser crashed
-     or hung, the adapter and the model disagree on an action the core accepted, or an integrity
-     check failed — none of which the core's rules derive from the board. The run is `infra_error`
+   - **Classified by stage, recorded by the host.** A refused colleague transaction is recorded with
+     the stage at which it failed and the code. The stages, in the order of the mutation path
+     (`src/host/session.ts:334-375`), and every code each can produce:
+
+     | Stage | What fails | Codes | Class |
+     |---|---|---|---|
+     | `admission` | the colleague's guard: a session closed while the owner's request ran (its revision and step are current, it uses no budget, it holds the lock, its own deadline has just started) | `mirror_unavailable` | judged |
+     | `core` | `Session.act` on the candidate returns a refusal (preconditions are evaluated with the bounded predicate evaluator) | `precondition_failed`, `invalid_argument`, `unmodeled`, `limit_exceeded`, `checker_fuel_exhausted`, `checker_invalid` | judged |
+     | `view` | the candidate's error classes cannot be evaluated, or its view would exceed 3 MiB (`src/host/session.ts:238-262`) | `checker_fuel_exhausted`, `checker_invalid`, `result_too_large` | judged |
+     | `replay` | the candidate's full replay differs from its history | `replay_mismatch` | infrastructure |
+     | `mirror` | apply, read-back, snapshot, recovery or their diagnostics | `real_tool_disagrees`, `mirror_timeout`, `mirror_unavailable`, `diagnostic_limit`, `diagnostic_unavailable` | infrastructure |
+     | `deadline` | the colleague's own deadline expired at any check after its admission, a cancelled replay included | `mirror_timeout` | infrastructure |
+
+     The core can return no other code for a colleague action: `stale_base` needs a stale step,
+     and the remaining values of the error vocabulary (`src/world/types.ts:93`) belong to the
+     checker, the package reader, replay or the mirror. Any other pair of stage and code — an exception the
+     host did not expect included — is a defect: the run is `infra_error` `co_actor_fault` with
+     the stage `defect`, and `--verify` refuses the report (`bench_report_invalid`), so a defect is
+     fixed, never scored.
+   - **What the board decides is judged.** `admission`, `core` and `view` are decided by the board,
+     the history and the task the owner and the world produced. The entry is recorded as refused
+     (fired, not accepted); the colleague does nothing instead and never retries. The run is judged.
+     Today the error-class evaluation throws a bare `Error` whose code is lost and the transaction
+     reports `replay_mismatch` (`src/host/session.ts:240`, `:373`) — a defect that also mislabels the
+     owner's own refusals; the implementation keeps the predicate's code and the stage `view`, with a
+     test in which an error class exceeds the predicate budget only on the colleague's candidate.
+   - **Only machinery after the colleague's admission is an infrastructure error.** `replay`,
+     `mirror` and `deadline` mean an integrity check failed, the browser crashed or hung, the
+     adapter and the model disagree on an action the core accepted, or time ran out — none of which
+     the core's rules or the view's bounded checks derive from the board. The run is `infra_error`
      with the reason `co_actor_fault` (a new value of PADR-0044 decision 9's enumeration, added
-     through the schema holder), never judged; it counts as not passed and towards a gate round's
-     5 % void rule. The Player shows the entry refused with its code.
-   - **How the two are told apart:** by the code, from these two closed lists. No other code can
-     reach a colleague transaction (it uses no budget, carries the current revision and step, and
-     holds the lock); a record with any other code is refused by the validator. `--verify` checks
-     the classification (decision 10).
-   - **Keeping agents from causing machinery faults.** A board the agent built could slow the
-     mirror. The family bounds its boards like PADR-0040's stress boards (the goal plus one object
-     per allowed action); before the first gate the implementation measures a colleague transaction
-     on each stress board with the real mirror, as PADR-0022 C4 measured long logs; and
-     `co_actor_fault` in more than 1 % of a round's runs is a re-assessment trigger.
+     through the schema holder, as is the record's `stage`), never judged; it counts as not passed.
+     The Player shows the entry refused with its code. `--verify` re-derives the stage (decision 10).
+   - **Keeping agents from causing machinery faults, and reporting them.** A board the agent built
+     could slow the mirror or a replay. The family bounds its boards like PADR-0040's stress boards
+     (the goal plus one object per allowed action); before the first gate the implementation
+     measures a colleague transaction on each stress board with the real mirror, as PADR-0022 C4
+     measured long logs. A gate round's `co_actor_fault` runs are listed in its gate report with
+     stage and code, and their share is compared with a threshold the declaration preregisters
+     (decision 12) — a round is never void for them without that statement.
 
 9. **The judging rule.** The verdict stays end-state only: the final board against the public goal,
    which states the board after the colleague's changes as content. A run fails exactly when the
@@ -383,14 +411,27 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
       for the run's seed; replay every accepted record, the agent's and the co-actor's, with the
       checker's own transition code; count the agent's accepted act, undo and reset records. Where
       the count reaches `after_e`, the very next record must be entry *e*'s, its action equal to the
-      checker's own resolution (decision 8) on the replayed board. Its outcome must be consistent:
-      accepted — the checker's code accepts the action; refused with a core code — the checker's
-      code refuses it too (a refusal it would accept is a forged refusal); refused with
-      `result_too_large` — taken as recorded (the checker cannot rebuild the host's view; it is the
-      host's record, like the code of any refused agent call); refused with a machinery code — the
-      run must be `infra_error` `co_actor_fault`, and such a run must hold one. No co-actor record
-      anywhere else, none for an entry twice or out of order, none for a trigger the replay never
-      reaches, and `coActor` equal to the records. Each mismatch refuses (`bench_report_invalid`).
+      checker's own resolution (decision 8) on the replayed board. Its stage and outcome are
+      re-derived as far as the checker can, in the order of the stages:
+      1. the checker's own transition code applies the resolved action — if it refuses, the record
+         must be refused at `core` (a `core` refusal the checker would accept is a forged refusal);
+      2. otherwise the task's error classes are evaluated on the successor with the bounded
+         evaluator and the predicate budget the host uses, under the same check-limit rule
+         (PADR-0040: none are evaluated while a check limit applies) — if that fails, the record
+         must be refused at `view` with that code;
+      3. otherwise the record is accepted, or refused at `admission`, at `view` with
+         `result_too_large`, or at `replay`, `mirror` or `deadline`. These the checker cannot
+         rebuild — it has no host view, no engine and no clock — so they are taken as the host
+         recorded them, like the code of any refused agent call; the family's size bound rules out
+         `result_too_large` on its instances (decision 11).
+
+      A record at `replay`, `mirror` or `deadline` requires the run to be `infra_error`
+      `co_actor_fault`, and such a run must hold one; any other pair of stage and code, and the
+      stage `defect`, refuse. No co-actor record anywhere else, none for an entry twice or out of
+      order, none for a trigger the replay never reaches, and `coActor` equal to the records. Each
+      mismatch refuses (`bench_report_invalid`). So a run cannot be turned into an infrastructure
+      error by a board the core or the error classes refuse; an infrastructure claim on a board both
+      accept stays the host's statement.
     - **Bound to the judged session, with or without a trace.** For every judged co-actor run the
       replay's final history — every action and every step hash — and its final state hash must
       equal the judged session's (`session.json`), and the actors are assigned on exactly that
@@ -418,24 +459,45 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
       reveal only a lower bound on m (decision 3). Entries name start objects only, so no entry waits
       for something the owner must make first; an entry is refused only when the owner made the
       board differ from R's in a way the core refuses, and the end-state rule then judges the run.
-    - **Selection: an agent that ignores the colleague must fail.** The *ignoring replay* plays P0
-      with the schedule applied as an agent that does not read the board would: a stale step is
-      resent with the current step and revision, a step the core refuses is skipped, a change to the
-      same value is accepted. An instance qualifies only when its ignoring replay fails the goal. The
-      edit kinds follow from that:
-      - `add_step` and `connect` (creations): every plan that ignores the colleague fails, not only
-        P0 — it makes the object itself, and the goal's exact count refuses the second one;
-      - `delete_step` only of a start object that P0 reuses (for example renames into a new step);
-        checked on P0 only — a plan that deletes and re-creates instead would survive, and the
-        record says so rather than claim more;
-      - `rename_step`, `set_style`, `set_frame` and `reconnect_end` only beside a qualifying entry:
-        alone they are idempotent with any plan that reads the goal, because the core accepts a
-        change to the same value;
-      - `move_step` and `resize_step` are not used: a from-scenes goal states neither positions nor
-        sizes of unchanged steps, so the goal could not state the colleague's change.
+    - **Selection: a plan made in advance fails unless it removes the colleague's step.** A *blind
+      plan* is any action sequence computed before the run from the start state, the goal and the
+      published schedule, and played without reading the board: a stale step is resent with the
+      step and revision the refusal names, a step the core refuses is skipped, and ids come only from
+      the plan's own replies. It may model the colleague, but it never learns the id the core gives
+      the colleague's new step: that id reaches an agent only through `observe` (a reply describes the
+      owner's own change; a `stale_base` refusal names step and revision only), unless the plan
+      recomputes the core's id function (`src/core/apply.ts:34-36`) from public data — possible,
+      because ids are deterministic (PADR-0004), and excluded from the claim.
+      - Every instance has at least one *qualifying entry*: an `add_step` whose new step the goal
+        requires the owner to change — an arrow to or from it, or a shape, colour, label, frame or
+        group the colleague did not give it — with the steps of R that make that change using
+        `{ coActorCreated: e }`.
+      - For a qualifying entry, every blind plan either removes the colleague's step (an undo, or a
+        reset after the trigger; the report shows it, decision 9) or fails: (i) the colleague's
+        `add_step` is always accepted on the family's worlds — it targets only a frame or none,
+        frames cannot be deleted, and generated worlds have no rules and no preconditions
+        (`src/authoring/from-scenes.ts:486-489`, `src/world/schema.ts:135`); (ii) if the step is
+        kept, the goal's exact counts — from-scenes states the total of steps and the count of each
+        signature for every goal — leave no room for a second step of the plan's own, so the change
+        the goal requires must be made on the colleague's step; (iii) every action that changes a
+        step or ends an arrow on it takes its id, which a blind plan does not have. A blind plan
+        that does not model the colleague (P0, or any other solution of the task without the
+        colleague) fails outright: it makes the step itself and leaves one step too many.
+      - **The generator checks it per instance**: the structural conditions of (i)–(iii) — the
+        qualifying entry's kind and frame target, no rules and no preconditions in the world, the
+        exact count clauses, the dependent change in R — and, in the checker with the schedule
+        applied, two blind replays that must fail: P0 played blind, and the own-copy replay (R with
+        every use of `{ coActorCreated: e }` redirected to an equal step the owner makes itself, the
+        colleague's step kept and untouched). An instance that misses any of them is redrawn.
+      - Further entries may accompany a qualifying one: `connect`, `delete_step`, `rename_step`,
+        `set_style`, `set_frame` and `reconnect_end`. Alone they prove nothing — a blind plan can
+        pre-empt a deletion or a connection (deleting the target first gets the colleague's action
+        refused) and is idempotent with a rename, restyle, re-frame or re-target — and the record
+        claims nothing for them. `move_step` and `resize_step` are not used: a from-scenes goal
+        states neither positions nor sizes of unchanged steps.
 
-      Every entry changes a count or an attribute the goal states, and the family's schedules have
-      1–3 entries by difficulty.
+      Every entry changes a count or an attribute the goal states; schedules have 1–3 entries by
+      difficulty.
     - **Size bound.** The generator checks, from the family's label bounds, that the view stays
       under 3 MiB on its stress boards with every colleague item, so `result_too_large` cannot occur
       on a family instance.
@@ -454,10 +516,10 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
       back, delete the created step, disconnect the created arrow, add a step equal to the deleted
       one; (c) for a creation, the same object also made by the owner before the trigger (inserted;
       every later `{ created: k }` renumbered). Each clobber fails under the end-state rule: after
-      (a) or (b) the final board is R's goal board with *e*'s effect reverted and the steps that relied on
-      it skipped (for an added step that R uses through `{ coActorCreated: e }`, those steps no
-      longer resolve), and the goal states *e*'s effect, which R never makes itself; after (c) the
-      board holds one object more than the goal's exact count. Each is still replayed in the
+      (a) or (b) the final board is R's goal board with *e*'s effect reverted and the steps that
+      relied on it skipped (for an added step that R uses through `{ coActorCreated: e }`, those
+      steps no longer resolve), and the goal states *e*'s effect, which R never makes itself; after
+      (c) the board holds one object more than the goal's exact count. Each is still replayed in the
       checker. A near miss that passes or applies nowhere redraws the draft — its code joins the
       generator's redraw list, so it never aborts the set.
     - **Sidecar.** Every task with a schedule has a `practonaut.task-oracle/2` sidecar: R, the near
@@ -474,7 +536,11 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
     witness, the selection rule and the size bound, the oracle at 100 % with the mirror (which runs
     every colleague transaction of the held-out set through the real engine), random at most 5 %, and
     every near miss failing in a checker process with the checker's own trigger counting and
-    resolution. Everything else follows PADR-0040 and PADR-0042: pre-probe, held-out size, gate
+    resolution. The declaration preregisters a threshold for `co_actor_fault` runs (proposed: 1 %
+    of the round's ladder runs, so a single run at 78 to 90 runs); above it the gate report names the
+    colleague's machinery as the cause, lists every such run with its stage and code, and says
+    whether PADR-0040's 5 % void rule applies — a round is never void for these runs without that
+    statement. Everything else follows PADR-0040 and PADR-0042: pre-probe, held-out size, gate
     pair, budget and the outcomes "passes", "does not pass" or "admitted, not gated for budget".
     `compare` needs nothing new: the schedule is in the world's content hash and in the task
     identity, so reports with different schedules never pair; `co_actor_fault` runs are runs without
@@ -482,15 +548,16 @@ counts. (2) *The family's cap is raised by the number of entries* (chosen).
 
 13. **What is measured, and what is not.** Measured: whether the agent (or a person in the Player)
     reaches the public goal while a scripted colleague makes announced changes. On the family's
-    instances an agent that ignores those changes fails (decision 11), so a pass needs the changed
-    board read — or the colleague's changes removed and made again, which the report marks
-    (decision 9). Reported beside the verdict, never in it: for each entry whether it fired, was
-    accepted, changed the board and was kept. Not measured, and never claimed: collaboration with a
-    real person; reacting to unannounced or adaptive changes (the colleague never responds to the
-    agent); concurrent editing or merging (the colleague acts only between two of the owner's
-    changes, atomically); preserving object identity; who made the final change; that the agent
-    kept the colleague's change rather than redoing it. Reports and docs say "scripted colleague",
-    never "human collaborator".
+    instances a plan made in advance that neither reads the board nor recomputes the core's ids
+    fails unless it removes the colleague's step (decision 11), and the report marks a pass that did
+    not keep it (decision 9). A plan that models the colleague and recomputes ids could pass without
+    reading the board, so reading the board is likely, not proven. Reported beside the verdict,
+    never in it: for each entry whether it fired, was accepted, changed the board and was kept. Not
+    measured, and never claimed: collaboration with a real person; reacting to unannounced or
+    adaptive changes (the colleague never responds to the agent); concurrent editing or merging (the
+    colleague acts only between two of the owner's changes, atomically); preserving object identity;
+    who made the final change; that the agent kept the colleague's change rather than redoing it.
+    Reports and docs say "scripted colleague", never "human collaborator".
 
 **Example** (a creation entry). Start: steps “Pack”, “Ship” and “Invoice” in frame “Shop”, arrows
 Pack → Ship → Invoice. Goal: “Ship” renamed “Ship parcels”, “Invoice” filled green, and a new
@@ -500,8 +567,10 @@ actions (add, rename, colour, re-target, connect). Schedule: one entry, adding �
 from [1, min(4, 2)]; say 2. A run renames (1) and colours (2); the colleague's step is published
 before the reply to change 2 returns; the agent's re-targeting, which names the revision of that
 reply, is refused `stale_base` (an ordinary refusal); it observes, finds the new step, re-targets
-(3), connects (4) and passes. An agent that plays P0 without reading the board adds a second
-“Check stock” and fails (the selection rule). A run that undoes the colleague's step and adds one
+(3), connects (4) and passes. The entry qualifies: the goal's two arrows end on the colleague's
+step. An agent that plays P0 without reading the board adds a second “Check stock” and fails; a
+plan made in advance that leaves the step to the colleague cannot draw the arrows to it without its
+id. A run that undoes the colleague's step and adds one
 itself passes and is shown "colleague's changes kept: 0 of 1". The clobbers — undo, delete the
 step, or add it before change 2 — fail.
 
@@ -513,19 +582,22 @@ step, or add it before change 2 — fail.
   under the deterministic-core rules; the host's resolver and the checker's own (`src/checker`),
   with vectors in `tests/oracles/`; `src/host/protocol.ts` (the actor, the view's `schedule`),
   `src/host/session.ts` (due entries in the mutation path under one lock, uncounted, own deadline,
-  no generic `rejected` event; variant counted like a reset; the in-process outcomes) and
-  `src/host/server.ts` (the outcomes never serialised); `src/mcp/bridge.ts`, `src/mcp/replies.ts`,
-  `src/mcp/contracts.ts` (view schema, compact view, fixed texts); `src/player/main.ts` — `mutate`
-  announces the person's own change from the reply (`reply.value.view` at the owner's revision and
-  `reply.value.delta.created`), not from `current.history.at(-1)` (`:226`), which may already be the
-  colleague's item absorbed from an event; the colleague's change is announced separately as the
-  colleague's, and its refusal only as the entry's status, never through `rejected` (`:869`) — with
-  the history chip and the schedule panel under design-language §13; `src/bench/run.ts` (record
-  order, full co-actor actions, `co_actor_fault`), `src/bench/baselines.ts` (the oracle),
-  `src/bench/world.ts` (sidecar `/2`), `src/bench/verify.ts` and the checker (`verifySchedule`, the
-  session binding), `src/authoring/from-scenes.ts` (replay with the schedule, skip rule),
-  `src/challenge/` (the family, P0 and R, the draws, selection, size bound, redraw list,
-  preflight). The schema parts go through PADR-0044's schema holder.
+  no generic `rejected` event, statuses that only move forward; the stage of every refused colleague
+  transaction, and the error-class evaluation keeping its code; variant counted like a reset; the
+  in-process outcomes) and `src/host/server.ts` (the outcomes never serialised);
+  `src/mcp/bridge.ts`, `src/mcp/replies.ts`, `src/mcp/contracts.ts` (view schema, compact view,
+  fixed texts); `src/player/main.ts` — `mutate` announces the person's own change from the reply
+  (`reply.value.view` at the owner's revision and `reply.value.delta.created`), not from
+  `current.history.at(-1)` (`:226`), which may already be the colleague's item absorbed from an
+  event; the colleague's change is announced separately as the colleague's, and its refusal only as
+  the entry's status, never through `rejected` (`:869`); a status it has shown never goes back to
+  `pending` — with the history chip and the schedule panel under design-language §13;
+  `src/bench/run.ts` (record order, full co-actor actions with their stage, `co_actor_fault`),
+  `src/bench/baselines.ts` (the oracle), `src/bench/world.ts` (sidecar `/2`), `src/bench/verify.ts`
+  and the checker (`verifySchedule`, the session binding), `src/authoring/from-scenes.ts` (replay
+  with the schedule, skip rule), `src/challenge/` (the family, P0 and R, the draws, the qualifying
+  entry and the blind replays, size bound, redraw list, preflight, the `co_actor_fault` threshold in
+  the declaration and the gate report). The schema parts go through PADR-0044's schema holder.
 - **Docs**: `docs/world-format.md` (the field), `docs/session-host.md` (the actor, the lock, the
   deadline, the view), `docs/agent-guide.md` (the colleague, `stale_base`, undo),
   `docs/benchmarks/README.md` (the family, the cap, `co_actor_fault`, "kept"), the glossary
@@ -541,20 +613,26 @@ step, or add it before change 2 — fail.
   - an HTTP request claiming `co-actor` refused; resolution with one, none and two live matches, a
     tombstoned start object and an arrow with a loose end, host and checker against the same
     hand-computed vectors; ambiguity in one variant case refused;
-  - `result_too_large` and `checker_fuel_exhausted` judged, a machinery code giving `co_actor_fault`,
-    an unknown code refused by the validator;
+  - each row of decision 8's stage table: a refusal at `admission`, `core` (including
+    `checker_invalid` from a precondition that compares a label with a number once a label
+    changes), and `view` (including an error class that exceeds the predicate budget only on the
+    colleague's candidate) judged; `replay`, `mirror` and `deadline` (including a deadline that
+    expires before any mirror call) giving `co_actor_fault`; an unexpected exception giving the
+    stage `defect` and a refused report;
   - the record order and the trace; `--verify` refusing a missing, extra, late, repeated,
-    wrong-action and forged-refusal record, a misclassified fault, and a valid schedule log combined
-    with another valid session (without a trace);
+    wrong-action and forged-refusal record, an infrastructure stage claimed where the checker's code
+    or the error classes refuse, any other pair of stage and code, and a valid schedule log
+    combined with another valid session (without a trace);
   - the four examples of decision 9, a temporary undo with full restoration passing, a run that never
     reached the trigger, and the kept count;
-  - the ignoring replay failing on qualifying instances and passing on a lone rename or a delete
-    that P0 also performs (not emitted); draws inside their range with a witness;
+  - on qualifying instances both blind replays failing (P0 played blind, the own-copy replay) and a
+    blind plan that undoes the colleague's step passing with "kept: 0 of 1"; an instance with only a
+    rename, a delete or a connection not emitted; draws inside their range with a witness;
   - the oracle passing on consecutive triggers, random and every near miss failing under the
     schedule, including an add-step entry that R uses through `{ coActorCreated: e }` with all
     three clobbers failing and the instance written;
-  - the Player announcing its own change when the colleague's event arrives before the reply (e2e,
-    axe).
+  - the Player announcing its own change when the colleague's event arrives before the reply, and
+    keeping a refused status when a reply of the same revision says `pending` (e2e, axe).
 - The acceptance line of item 4 is measured by the oracle, random and near-miss tests above, the
   removed-object example of decision 9, and the family's gate report — "passes", "does not pass" or
   "admitted, not gated for budget".
@@ -566,10 +644,11 @@ step, or add it before change 2 — fail.
 
 ## Re-assessment triggers
 
-A passing run in which an entry did not fire (decision 2's bound is wrong); `co_actor_fault` in
-more than 1 % of a round's runs; more than 10 % of a round's passing ladder runs keeping fewer
+A passing run in which an entry did not fire (decision 2's bound is wrong); `co_actor_fault` above
+the preregistered threshold; more than 10 % of a round's passing ladder runs keeping fewer
 colleague changes than were accepted; a measured cleanup that breaks the bridge-margin check; a
-plan other than P0 that ignores the colleague and passes a qualifying instance; the pre-probe
+passing run that kept every colleague step and, by its call log, never observed after the trigger
+(it recomputed ids, or decision 11's argument is wrong); the pre-probe
 outside 10–80 % because the announced colleague is too easy to work around; a request for an
 unannounced, randomised or adaptive colleague, for one that acts on reads or on time, or for one
 that targets objects created during the run; a goal that must judge object identity or who acted; a
@@ -631,3 +710,24 @@ revision applies them.
 Counts over the 38 rows: adopted 25, adopted with change 7 (three of them with a part refuted:
 gemini-1, gemini-5, gemini gap 2), confirmed 3, noted 1, refuted 1, refuted with one clarification
 adopted 1.
+
+## Re-review (2026-10-18)
+
+Codex `gpt-6.1-sol` re-reviewed the revision (`codex-r1` … `codex-r4`, its confirmations and gaps).
+It confirmed the deadline refinement, the session binding, the dropped stale-refusal quota,
+reachability with the end-state rule, and the refutations of gemini-4 and gemini gap 1. The
+coordinator decided the four open points (1: classify by stage; 2: sweep the codes; 3: a fixed plan
+made from the start state and the public schedule; 4: the Player rule); this revision applies them.
+
+| Finding | Disposition | Where, or why not |
+|---|---|---|
+| codex-r1 (major) | adopted | D8: a refused colleague transaction is classified by its stage, recorded by the host with the code; `admission`, `core` and `view` judged, only `replay`, `mirror` and `deadline` after the colleague's own admission are infrastructure; the view-stage defect (`src/host/session.ts:240`, `:373`) fixed, with Codex's boundary case as a test. D10: `--verify` re-derives the `core` and `view` stages with the checker's own transition code and the bounded evaluator, so a board-decided failure cannot pass as infrastructure. D12: a preregistered threshold, every fault listed with stage and code, never a void without that statement (coordinator 1) |
+| codex-r1 gap: no proof that agents cannot cause infrastructure faults | adopted with change | The stage rule removes every board-decided route (core, error classes, size). A slow mirror or replay caused by a large board remains possible in principle; bounded boards, the stress-board measurement and the threshold report cover it, and the record claims no proof of exclusion |
+| codex-r2 (major) | adopted | D8: `checker_invalid` judged at `core` and `view`; the codes swept per stage from the code (`src/core/apply.ts`, `src/predicate/index.ts`, the error vocabulary `src/world/types.ts:93`); `stale_base` shown unreachable; any other pair, and an unexpected exception as the stage `defect`, refused by `--verify` (coordinator 2) |
+| codex-r3 (major) | adopted with change | D11: a blind plan — computed in advance from the start state, the goal and the published schedule, played without reading the board — fails on every instance unless it removes the colleague's step, which the report shows; the argument rests on a qualifying `add_step` entry whose step the goal requires the owner to change; the generator checks the structural conditions and two blind replays per instance. The unqualified form cannot hold: the reference R is itself such a plan once the colleague's id is recomputed (ids are deterministic, PADR-0004), and an undo after the trigger needs no id; D3 and D13 now claim only this. Codex's example (a lone deletion pre-empted by deleting first) no longer qualifies (coordinator 3) |
+| codex-r4 (minor) | adopted | D4: statuses only move forward; the reply carries the statuses as they stand when it is sent; the Player keeps a shown status against a same-revision `pending`; e2e test (coordinator 4) |
+| codex re-review: confirmations | confirmed | Deadline refinement, session binding, budget without a quota, reachability and the end-state rule, and the gemini-4 and gemini gap 1 refutations stand; no change |
+| codex re-review gap: a design is not an implementation | noted | `verifySchedule`, the generator and the tests come with the implementing changes (Consequences) |
+| codex re-review gap: scope | noted | A static review with isolated probes; the implementation's tests carry the measurements |
+
+Counts over the 8 rows: adopted 3, adopted with change 2, confirmed 1, noted 2.
