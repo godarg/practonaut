@@ -42,7 +42,7 @@ import { apiKeySourceValue } from './parsers.ts';
 import { instanceIdentities } from './identity.ts';
 import { MCP_TOOL_NAMES } from '../mcp/contracts.ts';
 import { spawnable } from '../platform/spawnable.ts';
-import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, presetIsolation, summarize, validateBenchReportV3, type AgentV3, type BenchReportV3, type RunFailure, type SessionReportV3, type SessionRunV3 } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, nativeFileName, presetIsolation, summarize, validateBenchReportV3, type AgentV3, type BenchReportV3, type RunFailure, type SessionReportV3, type SessionRunV3 } from './report.ts';
 import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
 
@@ -146,7 +146,7 @@ export function taskLimitsOf(world: World, tasks: readonly string[]): Array<{ ta
 /** File names of a run's judged artifacts inside its run directory (`<bench>/<run-id>/`); `native` is
  * the Excalidraw adapter's (/1, /2), `nativeFile` names it per adapter (/3, PADR-0044 decision 1). */
 export const RUN_ARTIFACTS = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
-export const nativeFile = (adapterId: string): string => `native.${adapterId}`;
+export const nativeFile = (adapterId: string): string => nativeFileName(adapterId);
 /** The tool names Practonaut's bridge advertises to every bench agent (`toolchain.tools`). */
 export const BRIDGE_TOOLS: readonly string[] = Object.freeze([...MCP_TOOL_NAMES]);
 /** Writes a judged artifact through a fresh temporary file and a rename, so it replaces whatever the

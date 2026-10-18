@@ -254,6 +254,15 @@ export type BenchReportV2 = z.infer<typeof BenchReportSchemaV2>;
 
 /** An identifier, never free text (parsers, toolchains, clients, vendors, setting names). */
 export const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,63}$/;
+/** An application adapter id: the world id's letters, digits, `_` and `-` — never a separator, `:` or `..`,
+ * since it names the native export's file in a run folder. */
+export const ADAPTER_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+/** The file name of a session run's native export, per adapter (decision 1); refuses anything but an
+ * adapter id (defence in depth: the schema already does). */
+export function nativeFileName(adapterId: string): string {
+  if (!ADAPTER_ID.test(adapterId) || adapterId.includes('..')) throw new BenchReportError(`not an application adapter id: ${JSON.stringify(adapterId).slice(0, 80)}`);
+  return `native.${adapterId}`;
+}
 /** A tool name as a client lists it; a name that does not fit is evidence of a tool outside. */
 export const TOOL_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
 /** The most tool names a run keeps; a longer list is evidence of a tool outside. */
@@ -397,7 +406,7 @@ export const BenchReportSchemaV3 = z.strictObject({
   environment: z.strictObject({
     practonaut: text(64), node: text(64), os,
     /** The world's adapter and the pinned application version (decision 2). */
-    app: z.strictObject({ adapterId: identifier, version: text(64) }),
+    app: z.strictObject({ adapterId: z.string().regex(ADAPTER_ID), version: text(64) }),
     /** Session level only. */
     mirror: z.enum(['required', 'off']).optional(),
     world: z.strictObject({
