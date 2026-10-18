@@ -13,8 +13,9 @@ import { RuntimeError } from '../cli/runtime.ts';
  *
  * So the waiter is created first (arm), then any preparation runs, then one page round trip completes
  * after it (barrier), and only then is the input sent (trigger). The whole sequence, from arming to
- * the event, shares one time limit. The input is never sent once the wait has ended or the event has
- * already arrived, and every refusal is a named `transfer_invalid` that says in which phase it
+ * the event, shares one time limit, enforced by a timer and checked against the clock before the input
+ * and for the event. The input is never sent once the wait has ended, the event has already arrived or
+ * the limit has passed, and every refusal is a named `transfer_invalid` that says in which phase it
  * happened and whether the input was sent.
  */
 export interface ArmBarrierTriggerSteps<T> {
@@ -27,23 +28,28 @@ export interface ArmBarrierTriggerSteps<T> {
   prepare?(left: () => number): Promise<void>;
   barrier(left: () => number): Promise<void>;
   trigger(left: () => number): Promise<void>;
+  /** Monotonic clock in milliseconds; `performance.now` unless a test moves time itself. */
+  now?(): number;
 }
 type Phase = 'prepare' | 'barrier' | 'trigger' | 'event';
-type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
+type Outcome<T> = ({ ok: true; value: T } | { ok: false; error: unknown }) & { at: number };
 const firstLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).split('\n')[0]!;
 
 export async function armBarrierTrigger<T>(steps: ArmBarrierTriggerSteps<T>): Promise<T> {
-  const start = performance.now();
-  const left = (): number => Math.max(1, Math.floor(steps.limitMs - (performance.now() - start)));
+  const now = steps.now ?? (() => performance.now()), start = now();
+  const elapsed = (): number => now() - start;
+  const left = (): number => Math.max(1, Math.floor(steps.limitMs - elapsed()));
   let phase: Phase = 'prepare', sent = false, outcome: Outcome<T> | undefined, timer: ReturnType<typeof setTimeout> | undefined;
   const refuse = (why: string, cause?: unknown): RuntimeError => {
-    const error = new RuntimeError('transfer_invalid', `${steps.label}: ${why} during ${phase} after ${Math.round(performance.now() - start)} ms; ${steps.input} ${sent ? 'was sent' : 'not sent'}`);
+    const error = new RuntimeError('transfer_invalid', `${steps.label}: ${why} during ${phase} after ${Math.round(elapsed())} ms; ${steps.input} ${sent ? 'was sent' : 'not sent'}`);
     if (cause !== undefined) error.cause = cause;
     return error;
   };
-  // The waiter is observed from here on, so a refusal before the trigger never leaves it unhandled.
-  const waiter: Promise<Outcome<T>> = steps.arm().then(value => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
-  void waiter.then(value => { outcome = value; });
+  // The waiter's own handlers record its settlement and the time it was observed, with no promise
+  // stage in between; observed from here on, a refusal before the trigger never leaves it unhandled.
+  const waiter: Promise<Outcome<T>> = steps.arm().then(
+    value => (outcome = { ok: true as const, value, at: elapsed() }),
+    (error: unknown) => (outcome = { ok: false as const, error, at: elapsed() }));
   const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(refuse(`the limit of ${steps.limitMs} ms passed`)), steps.limitMs); });
   limit.catch(() => undefined);
   // Before the input: the wait ending, or an event the input did not cause, interrupts at once.
@@ -58,11 +64,17 @@ export async function armBarrierTrigger<T>(steps: ArmBarrierTriggerSteps<T>): Pr
     if (steps.prepare) await guard(steps.prepare(left));
     phase = 'barrier'; await guard(steps.barrier(left));
     phase = 'trigger';
+    // One macrotask turn: every promise chain already under way, a settling waiter included, runs to
+    // its end before the checks below, however many microtask stages it has.
+    await new Promise<void>(resolve => setImmediate(resolve));
     if (outcome) throw outcome.ok ? refuse('the event arrived before the input') : refuse(`the wait for the event ended (${firstLine(outcome.error)})`, outcome.error);
+    // The clock, not only the timer: a blocked event loop runs this continuation before an overdue timer.
+    if (elapsed() >= steps.limitMs) throw refuse(`the limit of ${steps.limitMs} ms passed`);
     sent = true; await guard(steps.trigger(left));
     phase = 'event';
     const result = await Promise.race([waiter, limit]);
     if (!result.ok) throw refuse(`no event arrived (${firstLine(result.error)})`, result.error);
+    if (result.at > steps.limitMs) throw refuse(`the event arrived after the limit of ${steps.limitMs} ms (at ${Math.round(result.at)} ms)`);
     return result.value;
   } finally { clearTimeout(timer); }
 }

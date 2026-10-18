@@ -67,6 +67,61 @@ test('an event that arrives before the input is refused; the input is never sent
   assert.equal(triggered, false);
 });
 
+test('an event already there when the round trip returns at once is refused, not returned', { timeout: 3_000 }, async () => {
+  let triggered = false;
+  await assert.rejects(armBarrierTrigger(steps({ arm: () => Promise.resolve('foreign chooser'), barrier: () => Promise.resolve(), trigger: async () => { triggered = true; } })),
+    named(/^Native Open: the event arrived before the input during \w+ after \d+ ms; shortcut not sent$/));
+  assert.equal(triggered, false);
+});
+
+test('a wait that ends right after the round trip resolves stops the input', { timeout: 3_000 }, async () => {
+  const calls: string[] = [];
+  let fail!: (error: Error) => void;
+  await assert.rejects(armBarrierTrigger(steps({
+    arm: () => new Promise<never>((_, reject) => { fail = reject; }),
+    barrier: () => { const resolved = Promise.resolve(); calls.push('barrier-resolved'); void resolved.then(() => { calls.push('wait-ended'); fail(new Error('timed out')); }); return resolved; },
+    trigger: async () => { calls.push('trigger'); },
+  })), named(/^Native Open: the wait for the event ended \(timed out\) during \w+ after \d+ ms; shortcut not sent$/));
+  assert.deepEqual(calls, ['barrier-resolved', 'wait-ended']);
+});
+
+test('a wait that ends several microtasks after the round trip still stops the input', { timeout: 3_000 }, async () => {
+  const calls: string[] = [];
+  let fail!: (error: Error) => void;
+  await assert.rejects(armBarrierTrigger(steps({
+    arm: () => new Promise<never>((_, reject) => { fail = reject; }),
+    barrier: () => {
+      void (async () => { for (let turn = 0; turn < 8; turn++) await null; calls.push('wait-ended'); fail(new Error('timed out')); })();
+      return Promise.resolve();
+    },
+    trigger: async () => { calls.push('trigger'); },
+  })), named(/the wait for the event ended \(timed out\) during \w+ after \d+ ms; shortcut not sent$/));
+  assert.deepEqual(calls, ['wait-ended']);
+});
+
+/** A clock the test moves; the real limit timer (5 s) never fires in these tests. */
+function manualClock(): { now: () => number; advance(ms: number): void } {
+  let time = 1_000;
+  return { now: () => time, advance: ms => { time += ms; } };
+}
+
+test('a round trip that returns after the limit, before the limit timer could fire, stops the input', { timeout: 3_000 }, async () => {
+  const clock = manualClock();
+  let triggered = false;
+  await assert.rejects(armBarrierTrigger(steps({ limitMs: 30, now: clock.now, arm: hang,
+    barrier: async () => { clock.advance(92); }, trigger: async () => { triggered = true; } })),
+  named(/^Native Open: the limit of 30 ms passed during trigger after 92 ms; shortcut not sent$/));
+  assert.equal(triggered, false);
+});
+
+test('an event observed after the limit is refused, not returned', { timeout: 3_000 }, async () => {
+  const clock = manualClock();
+  let emit!: (value: string) => void;
+  await assert.rejects(armBarrierTrigger(steps({ limitMs: 30, now: clock.now, arm: () => new Promise<string>(resolve => { emit = resolve; }),
+    trigger: async () => { clock.advance(45); emit('late chooser'); } })),
+  named(/^Native Open: the event arrived after the limit of 30 ms \(at 45 ms\) during event after 45 ms; shortcut was sent$/));
+});
+
 test('no event after the input is named with the wait\'s own error as cause', { timeout: 3_000 }, async () => {
   const timeout = new Error('Timeout 40ms exceeded while waiting for event "filechooser"\n  call log');
   await assert.rejects(armBarrierTrigger(steps({ arm: async () => { await after(40); throw timeout; } })), error => {

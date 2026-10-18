@@ -60,21 +60,27 @@ run any preparation (the click on the editor), complete one page round trip afte
 (**barrier**), and only then send the input (**trigger**). The Open's round trip also checks that
 keyboard focus is inside the editor container; otherwise the attempt fails at once with
 `transfer_invalid` and names the focused element, instead of a lost shortcut and a timeout. The
-input is never sent once the wait has ended or a dialog event has already arrived.
+input is never sent once the wait has ended or a dialog event has already arrived: after the round
+trip the helper lets one macrotask turn pass, so a settlement already under way is recorded however
+many promise stages it has, and only then checks.
 
 Time limit: the whole Open, from arming through click, round trip and shortcut to the dialog event,
 runs under one limit, the per-step cap of at most 10 s counted from arming. A part that hangs ends
 the Open at that limit with a `transfer_invalid` naming the phase and whether the shortcut was sent.
-Before the fix the click and the shortcut-plus-dialog had 10 s each. The 60 s attempt limit is
-unchanged.
+The limit is also checked against the monotonic clock right before the shortcut and for the moment
+the event was observed, because a blocked event loop runs those continuations before an overdue
+timer; past it, the shortcut is not sent and a late event is refused. Before the fix the click and
+the shortcut-plus-dialog had 10 s each. The 60 s attempt limit is unchanged.
 
 - `tests/integration/transfer.test.ts`, "native Open ordering", runs the real transfer through a
   launch seam (`tests/support/native-open.ts` patches `chromium.launch`) and records the calls: a
   `filechooser` listener, then a page round trip that starts after it and completes, then the
   shortcut. The old order (listener and key press in one tick) fails it. "native Open refuses by
   name" moves focus out of the editor on the first pointer release and expects the named refusal.
-  `tests/unit/native-trigger.test.ts` covers a wait that ends during the click, a hanging round
-  trip, a hanging shortcut and an event before the shortcut.
+  `tests/unit/native-trigger.test.ts` covers a wait that ends during the click, right after the
+  round trip or several microtasks later, a hanging round trip, a hanging shortcut, an event before
+  the shortcut, a round trip that returns after the limit (with a test clock) and an event observed
+  after it; each fails with its guard removed.
 - Attempt evidence: `00-before-open.png` (the page before the click and the shortcut; best effort, a
   failed screenshot is recorded under `diagnostics` in `terminal.json` and does not fail the attempt)
   and the page console from readiness on (`console` in `terminal.json`, at most 200 messages of 2,000
