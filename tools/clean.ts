@@ -1,5 +1,6 @@
 // npm run clean: removes generated output inside this repository, nothing else.
-// Targets: dist/, coverage/, .local/demo/. Never .local/penpot or other .local data, never spike
+// Targets: dist/, coverage/, .local/demo/, .local/native-transfer/ (native file transfer test originals).
+// Never .local/penpot or other .local data, never spike
 // output, never anything outside the repository root. Idempotent.
 // A target that is a symbolic link is removed as a link (its destination is untouched). If a
 // parent of a target (for example .local) resolves outside the root, the tool refuses.
@@ -7,7 +8,7 @@ import { lstatSync, realpathSync, rmSync, unlinkSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CLEAN_TARGETS: readonly string[] = Object.freeze(["dist", "coverage", ".local/demo"]);
+export const CLEAN_TARGETS: readonly string[] = Object.freeze(["dist", "coverage", ".local/demo", ".local/native-transfer"]);
 
 function inside(root: string, p: string): boolean {
   const rel = relative(root, p);
