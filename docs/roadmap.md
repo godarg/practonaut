@@ -365,13 +365,16 @@ are accepted whenever they are ready.
 2. **Application #2: draw.io** (L): pinned release v32.4.1, downloaded unchanged from the official
    release on request (`practonaut setup` with the draw.io option, which names the download and its
    size first; plain `setup` stays Chromium only) and checked against its size and SHA-256 before it
-   is kept (not in the npm package, never in a CI artifact), served
+   is kept (not in the npm package, never in a CI artifact or cache), served
    from local files with a strict content policy, written and read only through the official embed
    JSON protocol, an independent `.drawio` parser in the checker, a conformance suite against the
    real app. PADRs before the adapter ships: groups across frames, and whether draw.io may start
    without the Chromium sandbox on Linux (PADR-0032). The name only describes what the adapter works
-   with ("works with draw.io"; "draw.io is a trademark of JGraph Ltd; Practonaut is not
-   affiliated"), no logo, no "draw.io" in product or package names. *Acceptance:* the 16 library
+   with ("works with draw.io"; "draw.io is a registered trademark; Practonaut is not affiliated
+   with, endorsed or sponsored by draw.io Ltd or draw.io AG"), no logo, no "draw.io" in product or
+   package names. The draw.io README (read 2026-10-18) names draw.io Ltd (previously JGraph) and
+   draw.io AG as owners and asks for prior written permission to use the trademark; whether to ask
+   first is the maintainer's decision, made before any release or post names draw.io. *Acceptance:* the 16 library
    tasks and every challenge family published at the time pass with the oracle and fail with near
    misses on draw.io (three runs agree), re-checked before the release; one report shows the same
    tasks on both apps.
