@@ -42,7 +42,15 @@ assuming Excalidraw. Evidence at commit 9c6a1e9:
   a serial transaction with timeout and rollback that closes the page so late writes cannot race
   it (`:194-214`), PNG capture (`:240-245`) and SHA-256 of the export (`:25`). The launch deadline
   is only passed to Playwright as `timeout` (`:133`); a launch that ignores it is not bounded by
-  Practonaut. The spike drove draw.io through the same `launchChromium` and the same routing idea.
+  Practonaut, and the app's own start after the launch has no overall deadline. The spike drove
+  draw.io through the same `launchChromium` and the same routing idea.
+- **The routing sees only HTTP.** `context.route('**/*')` does not intercept WebSockets, nor any
+  request of a shared worker. Measured against the real Chromium of `playwright-core` 1.64.0
+  (2026-10-18, a page served from the shell's named origin, a listener on 127.0.0.1 standing in for a
+  public host, Chromium's own local-network checks off): page, frame and worker WebSockets, every
+  fetch, `importScripts` and font load of a shared worker (from a URL, `blob:` or `data:`), and
+  WebRTC's STUN packets over UDP reached the listener; none of them was recorded. The bundled
+  Excalidraw uses none of these channels, but a downloaded third-party app could.
 - **Provisioning assumes a bundled app.** PADR-0011 downloads only Chromium; PADR-0012 bundles the
   pinned Excalidraw into the npm package. The spike recommends that the user's machine downloads
   the unmodified official draw.io release, checked by SHA-256, and that Practonaut never
@@ -98,8 +106,10 @@ with what is about the app.
    `E_WORLD_INVALID`, listed in [world format](../world-format.md) §1.4 and kept equal to the code by
    a test, and they are failure codes the checker process may return. Three entry points refuse
    before any browser starts, each tested: world validation (`validate`, `pack`, every loader),
-   `practonaut serve`/`play` (the world is loaded and its adapter resolved before the Chromium check),
-   and the checker process (its world validation, then its own format table).
+   `practonaut serve`/`play`/`mcp --task` and `run` (the world is loaded and its adapter resolved in
+   the registry before the Chromium check; each refuses by name with exit 2, and the registry's own
+   lookup there is tested on its own with a registry that lacks the app), and the checker process
+   (its world validation, then its own format table).
 3. **The registry** (`src/adapters/registry.ts`) maps each adapter id to its app versions, world
    schemas, runtime kind (`bundled` | `downloaded`), read-back comparison (`full` | `live`) and
    factory. `resolveAdapter(app, schema)` refuses with the same codes. Only `excalidraw` is
@@ -122,12 +132,31 @@ with what is about the app.
    parser through it; a native format that is not the world's own is refused. A unit test keeps its
    ids equal to the registry's.
 7. **A shared browser shell** in `src/adapters/browser/` holds what is not about the app: the one
-   Chromium start (moved, PADR-0032), the bounds, a start with deadline and abort that closes the
-   browser on any start failure — the shell now bounds the launch itself and closes a browser that
-   arrives after the deadline —, fail-closed routing over named origins with a denied list, the
-   serial transaction with timeout and rollback (a timed-out or failed write closes the page and
-   rebuilds the committed scene on a fresh one), PNG capture and the SHA-256 artifact helper. The
-   Excalidraw adapter keeps read, write, projection, integrity and SVG. The native file dialog
+   Chromium start (moved, PADR-0032), the bounds, and:
+   - **Start.** The shell bounds the launch itself and closes a browser that arrives after the
+     deadline or an abort; the adapter's own start (open the app, first scene, probe) has a deadline
+     of its own (`BROWSER_BOUNDS.initialize`, 60 s: longer than the native transfer's 60-second
+     attempt, whose own deadline and evidence end a stalled transfer); any start failure closes the
+     browser.
+   - **Network boundary.** Only the named origins answer, only safe paths, only what the adapter
+     serves. Every other HTTP request of the page, its frames and its dedicated workers is aborted
+     and recorded. Every WebSocket the page or a frame opens is closed by the shell before it
+     connects, and recorded. Every served response carries a content security policy
+     (`default-src` the named origins plus `data:`/`blob:`, which carry the policy with them; inline
+     code and `eval` unchanged), so no context of the page — dedicated or shared worker, frame — can
+     fetch, connect, import a script or load a font from another host; the violations the page, a
+     frame or a dedicated worker reports go to a path of the first named origin that the shell
+     answers, and are recorded. The browser starts with WebRTC limited to proxied UDP, and there is
+     no proxy. What the boundary does **not** record: attempts inside a shared worker (blocked by
+     the policy, but the browser routes neither the request nor its report).
+     `tests/adapter/browser-shell-network.test.ts` measures each channel against the real Chromium.
+   - **Operations.** Transactions, guarded reads and the adapter's start run one at a time under a
+     timeout and an abort, which is watched before the work starts. A failed write is undone in
+     place; a timed-out, cancelled or thrown one ends its operation — every later step of it is
+     refused, wherever it resumes — closes the page and rebuilds the committed scene on a fresh one.
+   - PNG capture and the SHA-256 artifact helper.
+
+   The Excalidraw adapter keeps read, write, projection, integrity and SVG. The native file dialog
    helper in `src/evaluation/transfer.ts` moves into the shell after issue #45 is merged.
 8. **Downloaded app runtimes** (amends PADR-0011 and PADR-0012). An adapter declares how its app
    arrives. `bundled`: built from a pinned development dependency into the npm package with its
@@ -136,8 +165,8 @@ with what is about the app.
    size and SHA-256 first; never by an install script and never implicitly by `play`, `bench` or
    `mcp`; checked against the pinned size and SHA-256 before it is kept; unpacked with entry-name
    checks into the private data directory (PADR-0029); served to the adapter's page only through
-   request interception of named app paths (never `WEB-INF`/`META-INF`, no listening socket), every
-   other request aborted and recorded; never redistributed (not in the npm package, not in a CI
+   request interception of named app paths (never `WEB-INF`/`META-INF`, no listening socket), behind
+   the shell's network boundary (decision 7); never redistributed (not in the npm package, not in a CI
    artifact). Without it the adapter's mirror is unavailable: `--mirror auto` runs model-only with a
    notice that names the setup option and the size, `--mirror required` fails by name, and `doctor
    --adapter` reports the runtime per adapter. After setup everything runs offline. The draw.io
@@ -156,6 +185,11 @@ with what is about the app.
   `provenance.appVersion` is no longer defaulted in the schema (the loader fills it).
 - File names of native exports (`.excalidraw` in `run --export` and the export pair) stay
   Excalidraw's until Must 2 uses the format table's extension.
+- The Excalidraw engine page now runs under the shell's content security policy and without
+  WebRTC UDP; the conformance suite passes unchanged under it. A shared worker's blocked attempts
+  stay unrecorded; an app that needs a shared worker to reach the network cannot work in the shell.
+- A start or recovery of the mirror is bounded by the launch and start deadlines (15 s + 60 s)
+  instead of the per-call timeouts alone.
 
 ## Re-assessment triggers
 
@@ -165,3 +199,5 @@ with what is about the app.
 - A downloaded app whose licence or terms forbid local unmodified use, or whose release cannot be
   pinned by hash.
 - Community adapters outside the repository (PADR-0007's trigger).
+- A Chromium or Playwright release under which a channel of the network test reaches the listener,
+  or a new channel the routing and the policy do not cover.

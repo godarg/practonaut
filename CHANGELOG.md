@@ -16,9 +16,12 @@ All notable changes are recorded here. The format follows
   world's table of known apps, the registry and the checker's format table equal.
 - **Shared browser shell** (`src/adapters/browser/`): the one Chromium start (moved from the
   Excalidraw folder), a launch deadline the shell enforces itself (a browser that arrives late is
-  closed), fail-closed routing over named origins, transactions that roll back on a fresh page,
-  PNG capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity
-  and SVG.
+  closed) and a deadline for the app's own start, a network boundary that also closes every
+  WebSocket, puts a content security policy on every served response (so shared workers, frames and
+  workers reach no other host) and starts Chromium without WebRTC UDP — measured against the real
+  Chromium —, operations that end on timeout or abort so none of their later steps can touch the
+  page that replaced theirs, PNG capture and artifact hashes. The Excalidraw adapter keeps read,
+  write, projection, integrity and SVG.
 
 ### Changed
 
@@ -30,8 +33,9 @@ All notable changes are recorded here. The format follows
 - A world naming an application this Practonaut does not have is refused by name before anything
   starts: `E_ADAPTER_UNKNOWN`, `E_ADAPTER_VERSION_UNSUPPORTED` (known adapter, other app version)
   and `E_ADAPTER_SCHEMA_UNSUPPORTED` (adapter that does not run this world schema), at `validate`,
-  `pack`, every world load, and in the checker process — instead of `E_WORLD_INVALID` with a schema
-  message ([world format](docs/world-format.md) §1.4, which now also lists the world-content codes).
+  `pack`, every world load (`mcp --task` included, exit 2 instead of "could not start") and in the
+  checker process — instead of `E_WORLD_INVALID` with a schema message
+  ([world format](docs/world-format.md) §1.4, which now also lists the world-content codes).
   The world JSON Schemas list the allowed app values; world/2's omitted `provenance.appVersion` is
   the world's `app.versionRange`.
 - The host compares a mirror's read-back the way its adapter declares: the whole state with
