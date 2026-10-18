@@ -1,0 +1,220 @@
+{
+ "schema": "practonaut.drawio-shell-measurement/1",
+ "record": "PADR-0049",
+ "measured": "2026-10-18",
+ "pin": {
+  "tag": "v32.4.1",
+  "asset": "draw.war",
+  "bytes": 48442174,
+  "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+ },
+ "environment": {
+  "node": "v22.22.3",
+  "platform": "darwin",
+  "arch": "arm64",
+  "os": "27.0.0",
+  "cpu": "Apple M4",
+  "cores": 10,
+  "memoryBytes": 17179869184,
+  "playwrightCore": "1.64.0",
+  "chromium": "156.0.8078.4",
+  "sandbox": true,
+  "drawio": {
+   "tag": "v32.4.1",
+   "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+  }
+ },
+ "download": {
+  "source": "https://github.com/jgraph/drawio/releases/download/v32.4.1/draw.war",
+  "finalHost": "release-assets.githubusercontent.com",
+  "bytes": 48442174,
+  "seconds": 7.9
+ },
+ "archivePerStart": {
+  "entries": 3154,
+  "indexHtml": "no CSP meta element",
+  "loadedBytesByExtension": {
+   ".html": 4134,
+   ".css": 90315,
+   ".js": 20080485,
+   ".txt": 99159,
+   ".svg": 5268
+  },
+  "medianMs": {
+   "hashMs": 19.9,
+   "indexMs": 42.4,
+   "inflateMs": 44.7
+  },
+  "runs": 5
+ },
+ "coldStart": {
+  "definition": "startShell call (sink, launch, context, routing, page) -> load event of the first (empty) diagram; files read from the archive on every start",
+  "medianMs": 612.1,
+  "minMs": 609.9,
+  "maxMs": 1444.8,
+  "firstLoadMs": [
+   1444.8,
+   612.1,
+   609.9,
+   613.7,
+   611.2
+  ],
+  "initMs": [
+   1406.8,
+   579.5,
+   581.5,
+   584.7,
+   581.4
+  ],
+  "refusedPerStart": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "servedFiles": 14,
+  "servedBytes": 20279361
+ },
+ "replay": [
+  {
+   "run": 1,
+   "totals": {
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 3.1,
+    "exportMedianMs": 1
+   },
+   "wallSeconds": 19.5,
+   "startFirstLoadMs": 1179.6,
+   "peakChromiumRssBytes": 632373248,
+   "peakNodeRssBytes": 445972480,
+   "peakProcesses": 4,
+   "samples": 48,
+   "refused": 0,
+   "servedFiles": 14,
+   "servedBytes": 20279361,
+   "failures": 0,
+   "consoleErrors": 0
+  },
+  {
+   "run": 2,
+   "totals": {
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 3.2,
+    "exportMedianMs": 1
+   },
+   "wallSeconds": 19.4,
+   "startFirstLoadMs": 826.4,
+   "peakChromiumRssBytes": 619216896,
+   "peakNodeRssBytes": 451805184,
+   "peakProcesses": 4,
+   "samples": 47,
+   "refused": 0,
+   "servedFiles": 14,
+   "servedBytes": 20279361,
+   "failures": 0,
+   "consoleErrors": 0
+  },
+  {
+   "run": 3,
+   "totals": {
+    "sequences": 165,
+    "sequencesOk": 165,
+    "roundTrips": 624,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 3.4,
+    "exportMedianMs": 1.1
+   },
+   "wallSeconds": 20.6,
+   "startFirstLoadMs": 824.8,
+   "peakChromiumRssBytes": 617676800,
+   "peakNodeRssBytes": 527400960,
+   "peakProcesses": 4,
+   "samples": 49,
+   "refused": 0,
+   "servedFiles": 14,
+   "servedBytes": 20279361,
+   "failures": 0,
+   "consoleErrors": 0
+  }
+ ],
+ "replayRunsAgree": {
+  "sequences": 165,
+  "identicalStepHashChains": true
+ },
+ "probes": {
+  "idsWriteCheck": [],
+  "fileAttributes": {
+   "mxfile": [
+    "host"
+   ],
+   "diagram": [
+    "id",
+    "name"
+   ],
+   "mxGraphModel": [
+    "dx",
+    "dy",
+    "grid",
+    "gridSize",
+    "guides",
+    "tooltips",
+    "connect",
+    "arrows",
+    "fold",
+    "page",
+    "pageScale",
+    "pageWidth",
+    "pageHeight",
+    "math",
+    "shadow"
+   ]
+  },
+  "mxfileHost": "drawio.practonaut.invalid",
+  "png": {
+   "signature": true,
+   "bytes": 8531,
+   "identical": true
+  },
+  "svg": {
+   "bytes": 4464,
+   "foreignObject": 2,
+   "svgText": 4,
+   "script": false,
+   "externalHosts": [
+    "www.drawio.com"
+   ],
+   "identical": false,
+   "identicalAfterRootId": true
+  },
+  "svgWithoutWrap": {
+   "bytes": 2747,
+   "foreignObject": 0,
+   "svgText": 3,
+   "script": false,
+   "externalHosts": []
+  },
+  "refused": 0
+ }
+}
