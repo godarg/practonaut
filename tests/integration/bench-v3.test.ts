@@ -100,15 +100,40 @@ test('a preset bench writes /3 with evidenced identity, bound stdout and isolati
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('bench --recover writes /3 only: a folder whose mutation log was written by the /2 writer is refused by name', { timeout: 120_000 }, async () => {
+test('bench --recover writes /3 only: a /2 folder, a co-actor run and an artifact run are refused by name; a /3 folder recovers and verifies', { timeout: 180_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-recover-v2-'));
   try {
-    // The committed /2 folder, without its report, world and references (as a killed bench leaves it).
-    const folder = join(dir, 'bench');
-    await cp(V2_FOLDER, folder, { recursive: true });
-    for (const name of ['report.json', 'world.pnworld', 'references.json']) await rm(join(folder, name));
-    const result = spawnSync(process.execPath, [CLI, 'bench', '--agent', 'oracle', '--world', CI_WORLD, '--oracle', CI_ORACLE, '--seed-list', '1', '--repeats', '2', '--checks', '4', '--mirror', 'required', '--recover', folder], { encoding: 'utf8', env: { ...process.env, PRACTONAUT_HOME: join(dir, 'home') } });
+    const env = { ...process.env, PRACTONAUT_HOME: join(dir, 'home') };
+    const args = (seeds: string, repeats: string, mirror: string) => ['bench', '--agent', 'oracle', '--world', CI_WORLD, '--oracle', CI_ORACLE, '--seed-list', seeds, '--repeats', repeats, '--checks', '4', '--mirror', mirror];
+    // As a killed bench leaves a folder: without its report, world and references.
+    const killed = async (from: string, name: string): Promise<string> => {
+      const folder = join(dir, name); await cp(from, folder, { recursive: true });
+      for (const file of ['report.json', 'world.pnworld', 'references.json']) await rm(join(folder, file), { force: true });
+      return folder;
+    };
+    // The committed /2 folder: its mutation log has no actors.
+    let result = spawnSync(process.execPath, [CLI, ...args('1', '2', 'required'), '--recover', await killed(V2_FOLDER, 'v2')], { encoding: 'utf8', env });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /run review-and-send-s1-r1: its mutation log is not a bench\/3 log \(written by an earlier Practonaut, or changed\); recover it with the Practonaut that ran it/);
+    // A /3 bench of this Practonaut, recovered as it is, and with a co-actor record or a proxy log in it.
+    const made = spawnSync(process.execPath, [CLI, ...args('1', '2', 'off')], { encoding: 'utf8', env });
+    assert.equal(made.status, 0, made.stderr);
+    const source = join(dir, 'home', 'bench', (await readdir(join(dir, 'home', 'bench')))[0]!);
+    const coActor = await killed(source, 'co-actor'), log = join(coActor, 'review-and-send-s1-r1', 'mutations.jsonl');
+    const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as Json);
+    records[0] = { ...records[0], actor: 'co-actor', entry: 0, client: null };
+    await writeFile(log, records.map(record => JSON.stringify(record)).join('\n') + '\n');
+    result = spawnSync(process.execPath, [CLI, ...args('1', '2', 'off'), '--recover', coActor], { encoding: 'utf8', env });
+    assert.notEqual(result.status, 0); assert.match(result.stderr, /run review-and-send-s1-r1 holds co-actor records; this Practonaut does not recover co-actor runs/);
+    const proxied = await killed(source, 'artifact');
+    await writeFile(join(proxied, 'review-and-send-s1-r2', 'proxy.jsonl'), '');
+    result = spawnSync(process.execPath, [CLI, ...args('1', '2', 'off'), '--recover', proxied], { encoding: 'utf8', env });
+    assert.notEqual(result.status, 0); assert.match(result.stderr, /run review-and-send-s1-r2 is an artifact-level run \(it holds a proxy log\)/);
+    const plain = await killed(source, 'plain');
+    result = spawnSync(process.execPath, [CLI, ...args('1', '2', 'off'), '--recover', plain], { encoding: 'utf8', env });
+    assert.equal(result.status, 0, result.stderr);
+    const recovered = JSON.parse(await readFile(join(plain, 'report.json'), 'utf8')) as Json;
+    assert.deepEqual([recovered.schema, recovered.verdictLevel, recovered.recovered, recovered.runs.map((run: Json) => [run.status, run.agentActions])], ['practonaut.bench/3', 'session', true, [['completed', 2], ['completed', 2]]]);
+    assert.equal(spawnSync(process.execPath, [CLI, 'report', join(plain, 'report.json'), '--verify'], { encoding: 'utf8', env }).status, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

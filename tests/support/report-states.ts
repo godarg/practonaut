@@ -18,10 +18,13 @@ import { renderCompareHtml, renderIncomparableHtml, type CompareInput } from '..
 import { verifyBenchV3 } from '../../src/bench/verify.ts';
 import type { Language } from '../../src/bench/rates.ts';
 import { arrow, between, box, scene } from './scenes.ts';
+import { artifactReport, hash, sessionReport } from './bench-v3.ts';
 
 const AGENT = fileURLToPath(new URL('./bench-agent.ts', import.meta.url));
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const V1_REPORT = fileURLToPath(new URL('../fixtures/bench/v1/report.json', import.meta.url));
+/** The bench/2 folder the /2 writer made (oracle, ci-recipe world, mirror): a stored /2 report read through the view. */
+const V2_FOLDER = fileURLToPath(new URL('../fixtures/bench/v2/', import.meta.url));
 type Step = { act?: string; params?: Record<string, unknown>; client?: number; undo?: true; reset?: true; check?: true };
 type Script = Record<string, { clients?: string[]; print?: string[]; steps: Step[] }>;
 
@@ -175,6 +178,13 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   if (!all.good || !all.bad) throw new Error('reportStates needs the compare fixtures: fixtureBenches(folder, { compare: true })');
   const fixtures = all as Fixtures & { good: Bench; bad: Bench };
   const v1 = validateBenchReport(JSON.parse(await readFile(V1_REPORT, 'utf8')));
+  const v2 = validateBenchReport(JSON.parse(await readFile(join(V2_FOLDER, 'report.json'), 'utf8')));
+  // bench/3 (PADR-0044): an artifact-judged report (hand-built: artifact mode writes none yet), and the
+  // same tasks on two applications paired by task identity (case 1 on one side only, unequal counts).
+  const artifact = validateBenchReportV3(artifactReport({ flow: { 1: ['pass'], 2: ['absent'], 3: [null] } }));
+  const identities = (cases: number[]) => ({ T: Object.fromEntries(cases.map((value, index) => [index + 1, hash(String(value))])) });
+  const excalidraw = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [false], 4: [true], 5: [false] } }, { identities: identities([0, 1, 1, 2, 1]), worldId: 'excalidraw-library', contentHash: hash('a') }));
+  const drawio = validateBenchReportV3(sessionReport({ T: { 1: [false], 2: [true], 3: [true], 4: [true], 5: [true] } }, { identities: identities([2, 0, 0, 2, 0]), worldId: 'drawio-library', contentHash: hash('b'), adapterId: 'drawio' }));
   await verifyBenchV3(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();
   const side = (report: SessionReportV3, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
@@ -193,12 +203,16 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     // Repeats: pass^k and the instance outcome in the headline.
     { id: 'report-repeats', html: language => reportPage(fixtures.good, language) },
     { id: 'report-v1', html: language => reportPage({ report: v1, directory: null }, language) },
+    { id: 'report-v2-reverified', html: language => reportPage({ report: v2, directory: V2_FOLDER }, language, 're-verified') },
+    { id: 'report-artifact', html: language => reportPage({ report: artifact, directory: null }, language) },
     { id: 'compare-regression', html: compared(good, bad) },
     { id: 'compare-improvement', html: compared(bad, good) },
     { id: 'compare-same', html: compared(good, good) },
     { id: 'compare-unjudged', html: compared(good, unjudged) },
     { id: 'compare-single', html: compared(side(firstRepeats(fixtures.good.report), 'good-r1'), side(firstRepeats(fixtures.bad.report), 'bad-r1')) },
     { id: 'compare-incomparable', html: async language => renderIncomparableHtml(good, side(fixtures.failing.report, 'failing'), differences(fixtures.good.report, fixtures.failing.report), tokens, language) },
+    { id: 'compare-incomparable-level', html: async language => renderIncomparableHtml(good, { report: artifact, verification: 'consistency-checked', name: 'artifact' }, differences(fixtures.good.report, artifact), tokens, language) },
+    { id: 'compare-identity', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }) },
   ];
   if (fixtures.engine) {
     const engine = fixtures.engine;

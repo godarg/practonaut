@@ -11,7 +11,7 @@
 import {
   BENCH_SCHEMA_V1, BENCH_SCHEMA_V2, BENCH_SCHEMA_V3, ISOLATION_OF,
   type AgentV3, type ArtifactRunV3, type ArtifactSummary, type BenchReport, type BenchReportV1, type BenchReportV2, type BenchReportV3,
-  type BenchSummaryV2, type ForeignToolchain, type IsolationEvidence, type IsolationLevel, type RunClientV3, type RunFailure, type SessionRunV3, type VerdictLevel,
+  type BenchSummaryV2, type ForeignToolchain, type IsolationEvidence, type IsolationLevel, type RunClientV3, type RunFailure, type SessionRunV3,
 } from './report.ts';
 
 export type ReadFrom = typeof BENCH_SCHEMA_V1 | typeof BENCH_SCHEMA_V2 | typeof BENCH_SCHEMA_V3;
@@ -128,4 +128,3 @@ export const isolationOfView = (view: BenchReportView): IsolationLevel => view.a
 export const isolationBasis = (view: BenchReportView): 'kind' | 'evidence' => view.agent.kind === 'preset' && view.readFrom === BENCH_SCHEMA_V3 ? 'evidence' : 'kind';
 /** The file name of a session run's native export: named per adapter (decision 1). */
 export const nativeFileOf = (view: Pick<BenchReportView, 'environment'>): string => `native.${view.environment.app.adapterId}`;
-export const levelOf = (view: BenchReportView): VerdictLevel => view.verdictLevel;

@@ -25,7 +25,6 @@
  *    the paired identities with the same number of runs on both sides; the others are listed with both
  *    counts. Flips are differences between the two configurations, never regressions or fixes.
  */
-import { BENCH_SCHEMA_V3, ISOLATION_OF } from './report.ts';
 import { asView, isolationBasis, isolationOfView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { aggregateInstance, ALPHA, isInstanceFix, isInstanceRegression, mcnemarExact, REGRESSION_REPEATS, wilson, type InstanceAggregate } from './stats.ts';
 import type { IsolationLevel } from './report.ts';
@@ -257,6 +256,3 @@ function compareByIdentity(baseline: BenchReportView, candidate: BenchReportView
   };
 }
 
-/** A report version a reader names in words: /3, or the version the view was read from. */
-export const readFromV3 = (report: BenchReportView): boolean => report.readFrom === BENCH_SCHEMA_V3;
-export { ISOLATION_OF };
