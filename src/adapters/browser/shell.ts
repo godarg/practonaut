@@ -2,11 +2,11 @@
  * The browser shell every browser-based adapter shares (PADR-0045): what is not about the app.
  *
  * - **Start** Chromium the one way (PADR-0032) within a launch deadline the shell enforces itself; a
- *   browser that arrives after the deadline or after an abort is closed. Then a private context with
- *   fail-closed routing and a page, then the adapter's own start (open the app, first scene, probe)
- *   within its own deadline. While the shell starts, an abort settles every pending browser call at
- *   once; any start failure closes the browser and is reported as an `AdapterInitializationError`
- *   carrying the refused requests.
+ *   browser that arrives after the deadline or after an abort is closed. Then, within the same
+ *   deadline, a private context with fail-closed routing and a page, then the adapter's own start
+ *   (open the app, first scene, probe) within its own deadline. While the shell starts, an abort
+ *   settles every pending browser call at once; any start failure closes the browser and is
+ *   reported as an `AdapterInitializationError` carrying the refused requests.
  * - **Network.** Only named origins, only safe paths, only what the adapter serves. Every other HTTP
  *   request of the page, its frames and its dedicated workers is aborted and recorded
  *   (`networkAttempts`); every WebSocket the page or a frame opens is closed before it connects and
@@ -14,17 +14,23 @@
  *   security policy that limits every fetch (connections, scripts, workers, fonts, images) to the
  *   named origins; the violations the page, a frame or a dedicated worker reports are recorded too,
  *   while a shared worker's are blocked but not recorded (the browser routes neither its requests
- *   nor its reports). WebRTC may not send UDP without a proxy (there is none).
- * - **Operations** (transactions, guarded reads, the adapter's start) run one at a time, under a
- *   timeout and an abort. A write that answers with a failure is undone in place; one that times
- *   out, is cancelled or throws ends its operation — any later step of it is refused — closes its
- *   page and rebuilds the committed scene on a fresh one, so late work can never race the rollback.
+ *   nor its reports). Below the page, the browser resolves no host name and sends every connection
+ *   it opens itself (WebRTC's TURN over TCP, preconnects) to the shell's sink proxy on the loopback
+ *   interface, which forwards nothing and records the target; WebRTC may not send UDP at all.
+ * - **Operations** (transactions, guarded reads, the adapter's start) run one at a time, under one
+ *   deadline and an abort that also cover reading the committed scene. A write that answers with a
+ *   failure is undone in place; one that times out, is cancelled or throws ends its operation — any
+ *   later call it makes into the shell is refused — closes its page and rebuilds the committed
+ *   scene on a fresh one, within the start's deadline. A rebuild that fails or runs out of time
+ *   closes the shell: every later call answers `mirror_unavailable`, and the owner starts a new one
+ *   (the host's mirror recovery does).
  * - **PNG capture** and the **SHA-256 artifact** helper.
  *
  * The app's own semantics (what a scene is, how it is read, written, projected, integrity-checked
  * and rendered as SVG) stay in the adapter's folder.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createServer, type AddressInfo, type Socket } from 'node:net';
 import type { Browser, BrowserContext, LaunchOptions, Page, Route, WebSocketRoute } from 'playwright-core';
 import { sha256Hex } from '../../canonical/index.ts';
 import type { Failure } from '../../world/types.ts';
@@ -86,24 +92,27 @@ export interface SceneIO<S> {
   load(scene: S): Promise<unknown>;
 }
 export interface OperationLimits { timeoutMs: number; signal?: AbortSignal | undefined }
+/** Every member except `networkAttempts` is refused to an operation that has ended, and every
+ * member but `networkAttempts` and `close` to a closed shell (`mirror_unavailable`). */
 export interface BrowserShell {
   readonly browser: Browser;
   readonly context: BrowserContext;
-  /** The current page; a rollback replaces it. Refused to an operation that has ended. */
+  /** The current page; a rollback replaces it. */
   readonly page: Page;
-  /** Requests the shell refused, in order. */
+  /** Requests and connections the shell refused, in order. */
   networkAttempts(): string[];
-  /** Runs a browser call; while the shell starts, an abort settles it at once. Refused to an
-   * operation that has ended. */
+  /** Runs a browser call; while the shell starts, an abort settles it at once. */
   wait<T>(operation: () => Promise<T>): Promise<T>;
   /** Closes the current page, cancelling its pending work, and opens a fresh one. */
   freshPage(): Promise<Page>;
-  /** A write under a timeout and abort: a failed result is undone in place; a timeout, abort or
-   * throw ends the operation, replaces the page and rebuilds the scene read before it. */
+  /** A write under one deadline and abort (which also cover reading the scene first): a failed result
+   * is undone in place; a timeout, abort or throw ends the operation, replaces the page and rebuilds
+   * the scene read before it. A rebuild that fails closes the shell (`mirror_unavailable`). */
   transaction<S>(work: () => Promise<AdapterResult>, scene: SceneIO<S>, limits: OperationLimits): Promise<AdapterResult>;
-  /** A read-only operation under a timeout and abort; on any failure it ends, the page is replaced
-   * and the scene read before it rebuilt, then the error is rethrown. */
+  /** A read-only operation under one deadline and abort; on any failure it ends, the page is
+   * replaced and the scene read before it rebuilt (or the shell closes), then the error is rethrown. */
   guarded<S, T>(work: () => Promise<T>, scene: SceneIO<S>, limits: OperationLimits, errors: { timeout(): Error; cancel(): Error }): Promise<T>;
+  /** Closes the browser and the sink proxy; the shell answers nothing afterwards. */
   close(): Promise<void>;
 }
 
@@ -135,11 +144,43 @@ async function within<T>(work: () => Promise<T>, limits: OperationLimits, errors
   } finally { if (timer) clearTimeout(timer); if (cancel) limits.signal?.removeEventListener('abort', cancel); }
 }
 
-/** No UDP outside a proxy: WebRTC cannot reach any host (there is no proxy). */
-const LAUNCH_ARGS = ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'];
-/** Chromium within the deadline; a browser that arrives after the deadline or an abort is closed. */
-async function launchWithin(chromium: ChromiumLike, remaining: () => number, signal: AbortSignal | undefined, context: LaunchContext | undefined): Promise<Browser> {
-  const launching = launchChromium(chromium, () => ({ headless: true, timeout: remaining(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: [...LAUNCH_ARGS] }), context);
+/** The sink proxy: a listener on the loopback interface that forwards nothing. Every connection the
+ * browser opens below the page (WebRTC's TURN over TCP, preconnects, anything that bypasses the
+ * routing) is sent to it as a proxy request; it records the target it was asked for and refuses. */
+interface Sink { readonly server: string; close(): Promise<void> }
+const REQUEST_LINE = /^([A-Z]{3,10}) (\S{1,2048})/;
+async function startSink(record: (target: string) => void): Promise<Sink> {
+  const sockets = new Set<Socket>();
+  const server = createServer(socket => {
+    sockets.add(socket); socket.on('close', () => sockets.delete(socket));
+    let head = '', done = false;
+    const refuse = (target: string): void => {
+      if (done) return; done = true; record(target);
+      socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+    };
+    socket.setTimeout(2_000, () => { refuse('proxy:connection'); socket.destroy(); });
+    socket.on('data', chunk => {
+      head += chunk.toString('latin1');
+      const end = head.indexOf('\r\n');
+      if (end >= 0 || head.length > 4096) { const line = REQUEST_LINE.exec(head.slice(0, end >= 0 ? end : 4096)); refuse(line ? `proxy:${line[1]} ${line[2]}` : 'proxy:unreadable'); }
+    });
+    socket.on('end', () => refuse('proxy:connection')); socket.on('error', () => undefined);
+  });
+  server.unref();
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()); });
+  const { port } = server.address() as AddressInfo;
+  return {
+    server: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>(resolve => { for (const socket of sockets) socket.destroy(); server.close(() => resolve()); }),
+  };
+}
+/** Below the page: WebRTC may not send UDP (and proxied TCP only reaches the sink), and no host name
+ * resolves — the app's own content is routed and never resolved, so nothing it needs is lost. */
+const LAUNCH_ARGS = ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1'];
+/** Chromium within the deadline, every connection it opens itself sent to the sink (the loopback
+ * interface included); a browser that arrives after the deadline or an abort is closed. */
+async function launchWithin(chromium: ChromiumLike, remaining: () => number, signal: AbortSignal | undefined, context: LaunchContext | undefined, sink: Sink): Promise<Browser> {
+  const launching = launchChromium(chromium, () => ({ headless: true, timeout: remaining(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: [...LAUNCH_ARGS], proxy: { server: sink.server, bypass: '<-loopback>' } }), context);
   try {
     return (await within(() => launching, { timeoutMs: remaining(), signal }, { timeout: () => new BrowserDeadlineError(), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled during launch') })).browser;
   } catch (error) {
@@ -170,22 +211,29 @@ function reportedTarget(body: string | null): string {
 /**
  * Starts the shell, then runs the adapter's `initialize` (open the app, write the first scene, probe)
  * inside the same start phase, within its own deadline. Returns only a ready shell; on any failure
- * the browser is closed.
+ * the browser and the sink are closed.
  */
 export async function startShell(options: ShellOptions, initialize: (shell: BrowserShell) => Promise<void>): Promise<BrowserShell> {
   const deadline = performance.now() + (options.launchMs ?? BROWSER_BOUNDS.launch);
   const remaining = (): number => Math.max(1, deadline - performance.now());
+  const startMs = Math.max(1, options.initializeMs ?? BROWSER_BOUNDS.initialize);
   const chromium = options.chromium ?? (await bounded(import('playwright-core'), remaining())).chromium;
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
-  const browser = await launchWithin(chromium, remaining, options.signal, options.launchContext);
   const denied: string[] = [];
+  const sink = await startSink(target => { denied.push(target); });
+  let browser: Browser;
+  try { browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink); }
+  catch (error) { await sink.close(); throw error; }
   const named = Object.keys(options.origins), policy = shellPolicy(named);
   // The browser belongs to the shell before a ready adapter exists.
-  let initializing = true, pendingInitializationOperations = 0;
+  let initializing = true, pendingInitializationOperations = 0, closed = false;
   const requireStart = (): void => { if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled'); };
+  const requireOpen = (): void => { if (closed) throw new AdapterError('mirror_unavailable', 'The browser shell is closed'); };
+  /** Every shell entry point: not from an operation that has ended, not after the shell closed. */
+  const entry = (): void => { requireLive(); requireOpen(); };
   // Abort settles the owner even when the browser API reply never settles. Its loser remains observed.
   const wait = async <T>(operation: () => Promise<T>): Promise<T> => {
-    requireLive();
+    entry();
     if (!initializing) return operation();
     requireStart();
     let cancel: (() => void) | undefined;
@@ -214,41 +262,59 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
       const answer = await serve(path);
       if (!answer) throw new Error('not served');
       if (options.signal?.aborted) { await request.abort(); return; }
-      await request.fulfill({ body: answer.body, contentType: answer.contentType, headers: { 'Content-Security-Policy': policy } });
+      await request.fulfill({ body: answer.body, contentType: answer.contentType, headers: { 'Content-Security-Policy': policy, 'X-DNS-Prefetch-Control': 'off' } });
     } catch { denied.push(url.href); await request.abort(); }
   };
   // A WebSocket never connects: the shell answers it, records it and closes it.
   const socket = async (connection: WebSocketRoute): Promise<void> => { denied.push(connection.url()); await connection.close().catch(() => undefined); };
   let context: BrowserContext | undefined, page: Page | undefined;
+  const shutDown = async (): Promise<void> => { closed = true; try { await closeBrowser(browser); } finally { await sink.close(); } };
   const closeOwned = async (primaryError: unknown): Promise<never> => {
-    let cleanupError: unknown; try { await closeBrowser(browser); } catch (error) { cleanupError = error; }
+    let cleanupError: unknown; try { await shutDown(); } catch (error) { cleanupError = error; }
     initializing = false;
     throw new AdapterInitializationError(primaryError, cleanupError, denied, pendingInitializationOperations);
   };
   try {
     requireStart(); // Includes abort while the launch was pending.
+    // Every setup call shares the launch deadline: a browser that never answers cannot hold the start.
     context = await wait(() => bounded(browser.newContext({ viewport: options.viewport ?? { width: 1600, height: 1000 }, serviceWorkers: 'block' }), deadline - performance.now()));
     requireStart();
-    await wait(() => context!.route('**/*', route));
-    await wait(() => context!.routeWebSocket(() => true, socket));
+    await wait(() => bounded(context!.route('**/*', route), deadline - performance.now()));
+    await wait(() => bounded(context!.routeWebSocket(() => true, socket), deadline - performance.now()));
     requireStart();
     page = await wait(() => bounded(context!.newPage(), deadline - performance.now()));
     requireStart();
   } catch (primaryError) { return closeOwned(primaryError); }
+  const replacePage = async (): Promise<Page> => { await page!.close(); page = await context!.newPage(); return page; };
+  /** Rebuilds the committed scene on a fresh page within the start's deadline; when that fails, the
+   * page's state is unknown and the shell closes itself. */
+  const rebuild = async <S>(scene: SceneIO<S>, before: S): Promise<boolean> => {
+    try {
+      await within(async () => { await replacePage(); await scene.load(before); }, { timeoutMs: startMs }, { timeout: () => new BrowserDeadlineError(), cancel: () => new BrowserDeadlineError() });
+      return true;
+    } catch { await shutDown().catch(() => undefined); return false; }
+  };
+  const lost = (cause: unknown): string => `The committed scene could not be rebuilt after ${String(cause)}; the browser shell closed`;
   const shell: BrowserShell = {
-    browser,
-    get context() { requireLive(); return context!; },
-    get page() { requireLive(); return page!; },
+    get browser() { entry(); return browser; },
+    get context() { entry(); return context!; },
+    get page() { entry(); return page!; },
     networkAttempts: () => [...denied],
     wait,
-    freshPage: async () => { await page!.close(); page = await context!.newPage(); return page; },
+    freshPage: async () => { entry(); return replacePage(); },
     transaction: async (work, scene, limits) => {
+      entry();
       if (limits.signal?.aborted) return failure('cancelled', 'Operation cancelled before write');
-      const before = await scene.read();
-      if (limits.signal?.aborted) return failure('cancelled', 'Operation cancelled before write');
+      // One deadline for the operation: reading the committed scene counts against it too.
+      const ends = performance.now() + limits.timeoutMs, left = (): OperationLimits => ({ timeoutMs: Math.max(1, ends - performance.now()), signal: limits.signal });
+      const errors = { timeout: () => new Error('mirror_timeout'), cancel: () => new Error('cancelled') };
+      const code = (error: unknown): Failure['code'] => String(error).includes('mirror_timeout') ? 'mirror_timeout' : String(error).includes('cancelled') ? 'cancelled' : 'integrity_failed';
+      let before: Awaited<ReturnType<typeof scene.read>>;
+      // Nothing is written yet: a read that times out or is aborted leaves the scene as it was.
+      try { before = await within(scene.read, left(), errors); } catch (error) { return failure(code(error), `Committed scene not read: ${String(error)}`); }
       const operation = asOperation(work);
       try {
-        const result = await within(operation.run, limits, { timeout: () => new Error('mirror_timeout'), cancel: () => new Error('cancelled') });
+        const result = await within(operation.run, left(), errors);
         operation.end();
         if (!result.ok) await scene.write(before);
         return result;
@@ -256,23 +322,25 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
         // The operation ends first: none of its later steps may touch the page that replaces it.
         // Closing the page cancels its pending JS work before the committed scene is rebuilt.
         operation.end();
-        await shell.freshPage(); await scene.load(before);
-        return failure(String(error).includes('mirror_timeout') ? 'mirror_timeout' : String(error).includes('cancelled') ? 'cancelled' : 'integrity_failed', String(error));
+        if (!await rebuild(scene, before)) return failure('mirror_unavailable', lost(error));
+        return failure(code(error), String(error));
       } finally { operation.end(); }
     },
     guarded: async (work, scene, limits, errors) => {
-      const before = await scene.read();
+      entry();
+      const ends = performance.now() + limits.timeoutMs, left = (): OperationLimits => ({ timeoutMs: Math.max(1, ends - performance.now()), signal: limits.signal });
+      const before = await within(scene.read, left(), errors);
       const operation = asOperation(work);
-      try { return await within(operation.run, limits, errors); }
-      catch (error) { operation.end(); await shell.freshPage(); await scene.load(before); throw error; }
+      try { return await within(operation.run, left(), errors); }
+      catch (error) { operation.end(); if (!await rebuild(scene, before)) throw new AdapterError('mirror_unavailable', lost(error)); throw error; }
       finally { operation.end(); }
     },
-    close: () => closeBrowser(browser),
+    close: async () => { requireLive(); await shutDown(); },
   };
   const start = asOperation(() => initialize(shell));
   try {
     requireStart();
-    await within(start.run, { timeoutMs: Math.max(1, options.initializeMs ?? BROWSER_BOUNDS.initialize), signal: options.signal }, { timeout: () => new BrowserDeadlineError(), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled') });
+    await within(start.run, { timeoutMs: startMs, signal: options.signal }, { timeout: () => new BrowserDeadlineError(), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled') });
     requireStart();
   } catch (primaryError) { start.end(); return closeOwned(primaryError); }
   finally { start.end(); initializing = false; }

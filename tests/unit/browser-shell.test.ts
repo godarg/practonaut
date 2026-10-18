@@ -3,6 +3,7 @@
 // start, fail-closed routing, transaction rollback without a late-write race, capture and hashes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { connect } from 'node:net';
 import type { Browser, LaunchOptions } from 'playwright-core';
 import { BrowserDeadlineError } from '../../src/adapters/browser/bounded.ts';
 import { AdapterError, AdapterInitializationError, artifactOf, capturePng, serialQueue, startShell, type BrowserShell, type SceneIO, type ShellOptions } from '../../src/adapters/browser/shell.ts';
@@ -18,8 +19,10 @@ class FakePage {
 type Handler = (route: unknown) => Promise<void>;
 class FakeContext {
   pages: FakePage[] = []; handler: Handler | undefined; socketHandler: Handler | undefined; socketMatcher: ((url: URL) => boolean) | undefined;
-  async route(_pattern: string, handler: Handler): Promise<void> { this.handler = handler; }
-  async routeWebSocket(matcher: (url: URL) => boolean, handler: Handler): Promise<void> { this.socketMatcher = matcher; this.socketHandler = handler; }
+  /** A setup call that never answers, as a browser that stops replying would. */
+  hang: 'route' | 'routeWebSocket' | undefined;
+  async route(_pattern: string, handler: Handler): Promise<void> { if (this.hang === 'route') await new Promise(() => {}); this.handler = handler; }
+  async routeWebSocket(matcher: (url: URL) => boolean, handler: Handler): Promise<void> { if (this.hang === 'routeWebSocket') await new Promise(() => {}); this.socketMatcher = matcher; this.socketHandler = handler; }
   async newPage(): Promise<FakePage> { const page = new FakePage(); this.pages.push(page); return page; }
 }
 class FakeBrowser {
@@ -89,7 +92,7 @@ test('routing answers only named origins and served safe paths; everything else 
   const shell = await startShell(base(fake.chromium, { origins: { 'http://app.invalid': async path => { served.push(path); return path === '/engine.js' ? { body: 'code', contentType: 'text/javascript' } : undefined; } } }), async () => {});
   const send = async (url: string) => { const r = route(url); await fake.browser.context.handler!(r.route); return r.record; };
   const ok = await send('http://app.invalid/engine.js');
-  assert.deepEqual(ok.fulfilled, { body: 'code', contentType: 'text/javascript', headers: { 'Content-Security-Policy': POLICY } }); assert.equal(ok.aborted, 0);
+  assert.deepEqual(ok.fulfilled, { body: 'code', contentType: 'text/javascript', headers: { 'Content-Security-Policy': POLICY, 'X-DNS-Prefetch-Control': 'off' } }); assert.equal(ok.aborted, 0);
   const refused = ['https://example.com/x', 'http://app.invalid:8080/engine.js', 'http://other.invalid/engine.js', 'http://app.invalid/%2e%2e%2fsecret', 'http://app.invalid/a%20b.js', 'http://app.invalid/missing.js', 'http://app.invalid/%E0%A4%A'];
   for (const url of refused) { const r = await send(url); assert.equal(r.aborted, 1, url); assert.equal(r.fulfilled, undefined, url); }
   assert.deepEqual(shell.networkAttempts(), refused);
@@ -134,6 +137,70 @@ test('an abort is never lost: during the committed-scene read, or raised by the 
   assert.equal(hanging.ok, false); if (!hanging.ok) assert.equal(hanging.error.code, 'cancelled', 'the abort, not the later timeout');
 });
 
+test('a routing setup that never answers is bounded by the launch deadline and closes the browser', { timeout: 5_000 }, async () => {
+  for (const hang of ['route', 'routeWebSocket'] as const) {
+    const fake = fakeChromium(); fake.browser.context.hang = hang;
+    await assert.rejects(startShell(base(fake.chromium, { launchMs: 100, initializeMs: 100 }), async () => {}), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError, hang);
+    assert.equal(fake.browser.closed, 1, hang);
+  }
+});
+
+test('connections below the page go to the sink proxy, which refuses and records them; it closes with the shell', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  const shell = await startShell(base(fake.chromium), async () => {});
+  const launched = fake.calls[0]!;
+  assert.equal(launched.proxy?.bypass, '<-loopback>', 'the loopback interface is proxied too');
+  assert.ok(launched.args?.includes('--force-webrtc-ip-handling-policy=disable_non_proxied_udp'));
+  assert.ok(launched.args?.includes('--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1'));
+  const sink = new URL(launched.proxy!.server);
+  assert.equal(sink.hostname, '127.0.0.1');
+  const ask = (request: string) => new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(sink.port), '127.0.0.1', () => socket.write(request));
+    let reply = ''; socket.on('data', chunk => { reply += chunk.toString(); }); socket.on('end', () => resolve(reply)); socket.on('error', reject);
+  });
+  assert.match(await ask('CONNECT turn.example:3478 HTTP/1.1\r\nHost: turn.example:3478\r\n\r\n'), /^HTTP\/1\.1 403/);
+  assert.match(await ask('GET http://preconnect.example/ HTTP/1.1\r\n\r\n'), /^HTTP\/1\.1 403/);
+  assert.deepEqual(shell.networkAttempts(), ['proxy:CONNECT turn.example:3478', 'proxy:GET http://preconnect.example/']);
+  await shell.close();
+  await assert.rejects(ask('CONNECT x.example:1 HTTP/1.1\r\n\r\n'), 'the sink is gone with the shell');
+});
+
+test('a committed-scene read that never answers is bounded by the operation\'s deadline and its abort', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  const shell = await startShell(base(fake.chromium), async started => { (started.page as unknown as FakePage).write(['committed']); });
+  let ran = false;
+  const stuck: SceneIO<string[]> = { read: () => new Promise(() => {}), write: async () => {}, load: async () => {} };
+  const timedOut = await shell.transaction(async () => { ran = true; return ok([]); }, stuck, { timeoutMs: 30 });
+  assert.equal(timedOut.ok, false); if (!timedOut.ok) assert.equal(timedOut.error.code, 'mirror_timeout');
+  const controller = new AbortController(); setTimeout(() => controller.abort(), 20);
+  const aborted = await shell.transaction(async () => { ran = true; return ok([]); }, stuck, { timeoutMs: 1_000, signal: controller.signal });
+  assert.equal(aborted.ok, false); if (!aborted.ok) assert.equal(aborted.error.code, 'cancelled');
+  await assert.rejects(shell.guarded(async () => 'read', stuck, { timeoutMs: 30 }, { timeout: () => new AdapterError('mirror_timeout', 'late'), cancel: () => new AdapterError('cancelled', 'cancelled') }), (error: unknown) => error instanceof AdapterError && error.code === 'mirror_timeout');
+  assert.equal(ran, false, 'nothing is written without the committed scene');
+  assert.deepEqual((shell.page as unknown as FakePage).scene, ['committed'], 'and the scene is as it was');
+  assert.equal(fake.browser.context.pages.length, 1, 'no page was replaced');
+});
+
+test('a rebuild that never finishes is bounded, closes the shell, and every later call answers mirror_unavailable', { timeout: 5_000 }, async () => {
+  for (const kind of ['transaction', 'guarded'] as const) {
+    const fake = fakeChromium();
+    const shell = await startShell(base(fake.chromium, { initializeMs: 50 }), async started => { (started.page as unknown as FakePage).write(['committed']); });
+    const page = (): FakePage => fake.browser.context.pages.at(-1)!;
+    const stuckLoad: SceneIO<string[]> = { read: async () => [...page().scene], write: async s => page().write(s), load: () => new Promise(() => {}) };
+    if (kind === 'transaction') {
+      const lost = await shell.transaction(() => new Promise<AdapterResult>(() => {}), stuckLoad, { timeoutMs: 20 });
+      assert.equal(lost.ok, false, kind); if (!lost.ok) assert.equal(lost.error.code, 'mirror_unavailable', kind);
+      const after = await shell.transaction(async () => ok([]), stuckLoad, { timeoutMs: 1_000 }).catch((error: unknown) => error);
+      assert.ok(after instanceof AdapterError && after.code === 'mirror_unavailable', `${kind}: ${String(after)}`);
+    } else {
+      await assert.rejects(shell.guarded(() => new Promise(() => {}), stuckLoad, { timeoutMs: 20 }, { timeout: () => new AdapterError('mirror_timeout', 'late'), cancel: () => new AdapterError('cancelled', 'cancelled') }), (error: unknown) => error instanceof AdapterError && error.code === 'mirror_unavailable');
+    }
+    assert.ok(fake.browser.closed >= 1, `${kind}: the browser is closed`);
+    await assert.rejects(shell.wait(async () => 'x'), (error: unknown) => error instanceof AdapterError && error.code === 'mirror_unavailable', kind);
+    assert.throws(() => shell.page, (error: unknown) => error instanceof AdapterError && error.code === 'mirror_unavailable', kind);
+  }
+});
+
 test('an ended operation cannot act on the page that replaced its own', { timeout: 5_000 }, async () => {
   const fake = fakeChromium();
   const shell = await startShell(base(fake.chromium), async started => { (started.page as unknown as FakePage).write(['committed']); });
@@ -155,6 +222,24 @@ test('an ended operation cannot act on the page that replaced its own', { timeou
   await assert.rejects(shell.guarded(async () => { await gate2; try { await shell.wait(async () => 'read'); lateRead = 'ran'; } catch (error) { lateRead = error; } }, scene, { timeoutMs: 30 }, { timeout: () => new AdapterError('mirror_timeout', 'late'), cancel: () => new AdapterError('cancelled', 'cancelled') }));
   release2(); await tick(10);
   assert.ok(lateRead instanceof AdapterError, String(lateRead));
+  // Every other way back into the shell is refused to it as well: a fresh page, the browser, a new
+  // operation, closing the shell.
+  let release3!: () => void; const gate3 = new Promise<void>(resolve => { release3 = resolve; });
+  const attempts: Record<string, unknown> = {};
+  await shell.transaction(async () => {
+    await gate3;
+    for (const [name, attempt] of Object.entries({
+      freshPage: async () => { (await shell.freshPage() as unknown as FakePage).write(['late']); },
+      browser: async () => shell.browser,
+      transaction: () => shell.transaction(async () => { await scene.write(['late']); return ok([]); }, scene, { timeoutMs: 1_000 }),
+      close: () => shell.close(),
+    })) { try { await attempt(); attempts[name] = 'ran'; } catch (error) { attempts[name] = error instanceof AdapterError ? error.code : String(error); } }
+    return ok([]);
+  }, scene, { timeoutMs: 30 });
+  release3(); await tick(10);
+  assert.deepEqual(attempts, { freshPage: 'cancelled', browser: 'cancelled', transaction: 'cancelled', close: 'cancelled' });
+  assert.equal(fake.browser.closed, 0);
+  assert.deepEqual((shell.page as unknown as FakePage).scene, ['committed']);
   // Work outside any operation, and a later operation, still act normally.
   assert.equal(await shell.wait(async () => 'free'), 'free');
   assert.equal((await shell.transaction(async () => { await scene.write(['next']); return ok([]); }, scene, { timeoutMs: 1_000 })).ok, true);
