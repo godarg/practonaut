@@ -20,6 +20,16 @@ All notable changes are recorded here. The format follows
   console in its evidence; CI uploads that evidence on failure on every platform;
   `.github/workflows/native-open-repeat.yml` repeats the test by hand and fails unless it ran and
   passed; `npm run clean` removes `.local/native-transfer/` ([testing](docs/testing.md#native-open-ordering)).
+- A bench host refused only a change to another task: a variant request without a task id (a new
+  seed) or naming the run's own task (a restart outside the counted resets) was accepted, and the
+  bench neither counted nor recorded it. The session token is in a file that the agent's own MCP
+  config names, so an agent with a shell, running as the same OS user, could switch the run's
+  variant over HTTP; the judged session's seed then no longer matched the run's. Measured with a
+  stand-in command-template agent that reads the token file: before, both requests were answered
+  200 and the run ended `infra_error` (the checker rejected the session); after, both are refused
+  with `invalid_request` (400) and the run is judged at its own seed. A single-task host now refuses
+  every variant request; `practonaut`, `play`, `serve` and `mcp --task` keep every task and variant
+  ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
 
 ### Changed
 

@@ -5,7 +5,7 @@ import { connect } from "node:net";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile, lstat, readdir } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
-import { startHost, PLAYER_CSP } from "../../src/host/server.ts";
+import { startHost, PLAYER_CSP, type HostOptions } from "../../src/host/server.ts";
 import { HOST_LIMITS } from "../../src/host/limits.ts";
 import { createPracticeSession, createPracticeController, type MirrorDiagnostic, type PracticeSessionOptions } from "../../src/host/session.ts";
 import { TOKEN_HEADER, type RunningHost, type ControllerFactory, type HostView } from "../../src/host/protocol.ts";
@@ -19,12 +19,12 @@ import type { PracticeMirror } from "../../src/host/mirror.ts";
 import { solution } from "./solutions.ts";
 import { POSIX } from "../support/platform.ts";
 
-async function fixture(controllerFactory?: ControllerFactory): Promise<{ dir: string; host: RunningHost }> {
+async function fixture(controllerFactory?: ControllerFactory, extra: Pick<HostOptions, "singleTask"> = {}): Promise<{ dir: string; host: RunningHost }> {
   await mkdir(".local", { recursive: true }); const dir = await mkdtemp(resolve(".local/host-http-"));
   const assets = join(dir, "player"); await mkdir(assets);
   for (const file of ["index.html", "player.js", "player.css", "tokens.css"]) await writeFile(join(assets, file), file === "index.html" ? '<!doctype html><script src="/player.js"></script>' : "/* fixed shell */");
   const world = validateWorld(JSON.parse(await readFile("tests/fixtures/core/world.json", "utf8")));
-  const host = await startHost(world, { mirror: "off", assetDirectory: assets, tokenDirectory: join(dir, "tokens"), ...(controllerFactory ? { controllerFactory } : {}) });
+  const host = await startHost(world, { mirror: "off", assetDirectory: assets, tokenDirectory: join(dir, "tokens"), ...extra, ...(controllerFactory ? { controllerFactory } : {}) });
   return { dir, host };
 }
 async function dispose(f: { dir: string; host: RunningHost }): Promise<void> { await f.host.close(); await rm(f.dir, { recursive: true, force: true }); }
@@ -345,6 +345,35 @@ test("confirmed HTTP task switch keeps seed, confirmed variant changes case; rej
     const next = await view(f.host) as HostView; assert.equal(next.task.id, switched.task.id); assert.notEqual(next.variantId, switched.variantId); assert.notEqual(next.seed, switched.seed);
     const nextOracle = new Session(world, next.seed, next.task.id); assert.deepEqual(next.state, nextOracle.state); assert.equal(next.hash, nextOracle.hash); assert.equal(nextOracle.checkReplay().ok, true);
   } finally { await dispose(f); }
+});
+
+// A bench host (singleTask) judges the run's own task at the run's own seed. Its token is in a file
+// a same-user agent can read, so no direct HTTP request may switch the variant (a new seed) or
+// restart the task past the bench's counted reset; a Player host keeps both.
+test("a single-task host refuses every variant request over HTTP; a Player host still accepts one", async () => {
+  const world = loadWorldPackage(await readWorldPackage(await packWorld("examples/worlds/flow-diagram")));
+  const factory: ControllerFactory = async (_fixtureWorld, options) => createPracticeSession(world, { ...options, seed: 42, taskId: "T3" });
+  const bench = await fixture(factory, { singleTask: true });
+  try {
+    const before = await view(bench.host) as HostView;
+    assert.deepEqual([before.seed, before.task.id, before.tasks.map(task => task.id)], [42, "T3", ["T3"]]);
+    for (const extra of [{}, { taskId: "T3" }, { taskId: "T1" }]) {
+      const refused = await call(bench.host, "/api/variant", { method: "POST", headers: auth(bench.host), body: JSON.stringify({ expectedRevision: before.revision, confirmed: true, ...extra }) });
+      assert.equal(refused.status, 400, `${JSON.stringify(extra)}: ${refused.text.slice(0, 200)}`); assert.equal(refused.value.error?.code, "invalid_request");
+      assert.deepEqual(await view(bench.host), before, `${JSON.stringify(extra)} leaves seed, variant, task and revision as they were`);
+    }
+    // The counted way back to the start stays open.
+    const reset = await call(bench.host, "/api/reset", { method: "POST", headers: auth(bench.host), body: JSON.stringify({ expectedRevision: before.revision, confirmed: true }) });
+    assert.equal(reset.value.ok, true, reset.text); assert.equal((await view(bench.host) as HostView).seed, 42);
+  } finally { await dispose(bench); }
+  const player = await fixture(factory);
+  try {
+    const before = await view(player.host) as HostView;
+    const accepted = await call(player.host, "/api/variant", { method: "POST", headers: auth(player.host), body: JSON.stringify({ expectedRevision: before.revision, confirmed: true }) });
+    assert.equal(accepted.status, 200, accepted.text); assert.equal(accepted.value.ok, true);
+    const after = await view(player.host) as HostView;
+    assert.equal(after.task.id, "T3"); assert.notEqual(after.seed, 42); assert.notEqual(after.variantId, before.variantId);
+  } finally { await dispose(player); }
 });
 
 test("closing a session leaves no empty diagnostics file and no credential file behind", async () => {

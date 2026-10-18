@@ -69,7 +69,7 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 | POST `/api/act` | revision, `{action:{name,params}}`, optional `actor:{kind:"agent",client}` (set by the MCP bridge; absent = a person), optional `reply:"delta"` | atomic action, new view (history entry with its actor), delta, mirror confirmation and measured latency |
 | POST `/api/undo` | revision, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | last committed action removed in core and mirror |
 | POST `/api/reset` | revision, `confirmed:true`, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
-| POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed |
+| POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed; a bench host refuses every request (`invalid_request`) |
 | POST `/api/hint` | revision | next public hint, never hidden data |
 | POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict; with a check limit also `checksRemaining` |
 | GET `/api/events` | token header via fetch | SSE ready/changed/rejected/heartbeat/demonstration; never browser-supplied confirmation |
@@ -122,7 +122,11 @@ The task selector only stages a choice; Apply task sends the request. Task/varia
 existing work or opened hints require a safe confirmation dialog. Cancel and Escape preserve
 the committed state, log and hints; global undo is suppressed behind a dialog. A task-only
 change keeps the seed; New variant chooses a distinct case. The host refuses variants without
-confirmed:true, including direct API clients.
+confirmed:true, including direct API clients. A bench host (one task per host,
+[PADR-0036](adr/0036-bench-report-v2-any-world-stored-world.md)) refuses every variant request with
+`invalid_request`, whether it names another task, its own task or none: the run is judged at its
+own task and seed, its token is in a file the agent's OS user can read, and a reset is the counted
+way back to the start.
 
 The host is the only writer and serializes transactions. It replays the committed prefix into
 a candidate Session, applies the requested core action and checks coverage/replay. The adapter
