@@ -16,7 +16,7 @@ import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
 import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistration, type AdapterRegistry, type RuntimeStatus } from '../adapters/registry.ts';
 import type { AdapterSandboxPolicy } from '../adapters/browser/chromium.ts';
-import { appRuntimeMessage, appValues } from './app-runtime.ts';
+import { appRuntimeFailure, appRuntimeMessage, appValues } from './app-runtime.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { startHost } from '../host/server.ts';
@@ -123,13 +123,21 @@ export function fallbackNotice(mirror: MirrorResolution, registry: AdapterRegist
  * Starts the host with the resolved mirror. The probe launched Chromium a moment ago, but the
  * mirror's own start can still fail (a crash, a resource limit): under `auto` the session then runs
  * model-only with the same notice; under `required` it is the named `browser_start_failed` error.
+ * A downloaded app runtime that the adapter's own start finds absent or changed is reported by the
+ * runtime's code instead (`app_runtime_missing`, `app_runtime_unverified`; PADR-0049 decision 2.6).
  */
-export async function startHostWithMirror(choice: MirrorChoice, resolved: MirrorResolution, start: (mode: MirrorMode, notice: ModelOnlyNotice | undefined) => Promise<RunningHost>): Promise<{ host: RunningHost; mirror: MirrorResolution }> {
-  if (resolved.mode === 'off') return { host: await start('off', modelOnlyNotice(choice, resolved)), mirror: resolved };
+export async function startHostWithMirror(choice: MirrorChoice, resolved: MirrorResolution, start: (mode: MirrorMode, notice: ModelOnlyNotice | undefined) => Promise<RunningHost>, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<{ host: RunningHost; mirror: MirrorResolution }> {
+  if (resolved.mode === 'off') return { host: await start('off', modelOnlyNotice(choice, resolved, registry)), mirror: resolved };
   // The mirror's own start may be the first one that needed the Linux sandbox fallback.
   try { const host = await start('required', undefined); return { host, mirror: chromiumSandboxFallbackActive() ? { ...resolved, sandbox: false } : resolved }; }
   catch (error) {
     if (!(error instanceof AdapterError)) throw error;
+    const runtime = appRuntimeFailure(error, registry);
+    if (runtime) {
+      if (choice === 'required') throw new RuntimeError(runtime.code, runtime.message);
+      const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: runtime.code === 'app_runtime_missing' ? 'app-missing' : 'app-unverified', detail: (error instanceof AdapterInitializationError ? error.primaryError as Error : error).message, app: runtime.registration.id };
+      return { host: await start('off', modelOnlyNotice(choice, mirror, registry)), mirror };
+    }
     const detail = launchFailureDetail(error instanceof AdapterInitializationError ? error.primaryError : error);
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail, advice: browserAdvice() }));
     const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: 'start', detail };
@@ -188,8 +196,8 @@ export async function commandServe(args: string[], registry: AdapterRegistry = A
   // Only the example that ships with the package offers the demonstration (never a library task).
   const demonstration = options.source === BUNDLED_WORLD;
   const { host, mirror } = await startHostWithMirror(options.mirror, await resolveMirror(options.mirror, undefined, world, registry), (mode, notice) =>
-    startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, demonstration, ...(notice ? { modelOnly: notice } : {}), ...(options.taskId ? { taskId: options.taskId } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }));
-  process.stderr.write(fallbackNotice(mirror));
+    startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, demonstration, ...(notice ? { modelOnly: notice } : {}), ...(options.taskId ? { taskId: options.taskId } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }), registry);
+  process.stderr.write(fallbackNotice(mirror, registry));
   // At most one private launcher file exists; it is removed with its code's lifetime or at exit.
   let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined; let launcherTimer: ReturnType<typeof setTimeout> | undefined;
   const dropLauncher = async (): Promise<void> => { clearTimeout(launcherTimer); const old = launcher; launcher = undefined; await old?.remove().catch(() => {}); };

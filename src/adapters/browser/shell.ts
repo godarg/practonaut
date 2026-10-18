@@ -44,6 +44,12 @@ import { launchChromium, type AdapterSandboxPolicy, type LaunchContext } from '.
 /** The longest single adapter operation; a caller's timeout can only shorten it. */
 export const MAX_ADAPTER_MS = 10_000;
 export class AdapterError extends Error { readonly code: Failure['code']; constructor(code: Failure['code'], message: string) { super(message); this.code = code; } }
+/** A downloaded app runtime that is absent or no longer matches its pin when the adapter itself starts
+ * (PADR-0049 decision 2.6): the mirror is unavailable, and the CLI reports the runtime's own code. */
+export class AppRuntimeFault extends AdapterError {
+  readonly adapterId: string; readonly runtimeCode: 'app_runtime_missing' | 'app_runtime_unverified';
+  constructor(adapterId: string, runtimeCode: AppRuntimeFault['runtimeCode'], message: string) { super('mirror_unavailable', message); this.adapterId = adapterId; this.runtimeCode = runtimeCode; }
+}
 /** Preserve startup failure separately from disposal failure for the owning attempt. */
 export class AdapterInitializationError extends AdapterError {
   readonly primaryError: unknown; readonly cleanupError: unknown; readonly networkAttempts: string[];

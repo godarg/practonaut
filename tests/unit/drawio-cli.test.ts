@@ -9,7 +9,10 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fallbackNotice, modelOnlyNotice, resolveMirror, type MirrorProbes } from '../../src/cli/serve.ts';
+import { fallbackNotice, modelOnlyNotice, resolveMirror, startHostWithMirror, type MirrorProbes } from '../../src/cli/serve.ts';
+import { createDrawioAdapter } from '../../src/adapters/drawio/index.ts';
+import { AdapterInitializationError, AppRuntimeFault } from '../../src/adapters/browser/shell.ts';
+import type { RunningHost } from '../../src/host/protocol.ts';
 import { commandSetup } from '../../src/cli/setup.ts';
 import { RuntimeError } from '../../src/cli/runtime.ts';
 import { runChecks } from '../../src/cli/doctor.ts';
@@ -118,5 +121,32 @@ test('play a draw.io world with --mirror required and no runtime: app_runtime_mi
     assert.equal(result.status, 3, result.stdout + result.stderr);
     const reply = JSON.parse((result.stdout || result.stderr).trim());
     assert.equal(reply.error.code, 'app_runtime_missing'); assert.match(reply.error.message, /setup --app drawio/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the adapter\'s own start finds the runtime gone or changed: mirror_unavailable carrying the runtime code, no browser launched; the CLI reports that code', async () => {
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), 'pn-drawio-start-'));
+  try {
+    const launches: unknown[] = [];
+    const chromium = { launch: async (options: unknown) => { launches.push(options); throw new Error('no browser in this test'); } };
+    const start = (runtimePath: string) => createDrawioAdapter({ objects: {} }, {}, undefined, { runtimePath, chromium: chromium as never });
+    const fault = (code: string) => (error: unknown): boolean => error instanceof AppRuntimeFault && error.code === 'mirror_unavailable' && error.runtimeCode === code && error.adapterId === 'drawio';
+    await assert.rejects(start(join(dir, 'absent', 'draw.war')), fault('app_runtime_missing'));
+    writeFileSync(join(dir, 'draw.war'), 'not the release');
+    await assert.rejects(start(join(dir, 'draw.war')), fault('app_runtime_unverified'));
+    assert.equal(launches.length, 0, 'the runtime is checked before Chromium');
+
+    const hosts: string[] = [], notices: unknown[] = [];
+    const fake = { url: 'u' } as unknown as RunningHost;
+    for (const thrown of [new AppRuntimeFault('drawio', 'app_runtime_missing', 'the draw.io runtime is not installed'), new AdapterInitializationError(new AppRuntimeFault('drawio', 'app_runtime_unverified', 'size 12'), undefined, [])]) {
+      const failing = async (mode: 'required' | 'off', notice: unknown): Promise<RunningHost> => { hosts.push(mode); notices.push(notice); if (mode === 'required') throw thrown; return fake; };
+      const runtimeCode = thrown instanceof AppRuntimeFault ? thrown.runtimeCode : 'app_runtime_unverified';
+      await assert.rejects(startHostWithMirror('required', { mode: 'required', fallback: false }, failing), (error: unknown) => error instanceof RuntimeError && error.code === runtimeCode && /setup --app drawio/.test(error.message));
+      const auto = await startHostWithMirror('auto', { mode: 'required', fallback: false }, failing);
+      assert.deepEqual([auto.mirror.reason, auto.mirror.app], [runtimeCode === 'app_runtime_missing' ? 'app-missing' : 'app-unverified', 'drawio']);
+      assert.match(fallbackNotice(auto.mirror), /setup --app drawio/);
+    }
+    assert.deepEqual(hosts, ['required', 'required', 'off', 'required', 'required', 'off']);
+    assert.match(JSON.stringify(notices.at(-1)), /setup --app drawio/, 'the Player\'s banner names the draw.io download');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

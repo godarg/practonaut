@@ -20,7 +20,7 @@ import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
 import { inlineOptionValues } from './options.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
-import { appRuntimeMessage } from './app-runtime.ts';
+import { appRuntimeFailure, appRuntimeMessage } from './app-runtime.ts';
 export class RuntimeError extends Error {
   readonly code: string;
   constructor(code:string,message:string){super(message);this.name="RuntimeError";this.code=code;}
@@ -78,7 +78,8 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
  try{
-  if(mirror==="required")adapter=await registration.create(session.state);
+  // The adapter's own start checks the runtime again; a runtime changed since is reported by its code.
+  if(mirror==="required")adapter=await registration.create(session.state).catch((error:unknown)=>{const runtime=appRuntimeFailure(error,registry);throw runtime?new RuntimeError(runtime.code,runtime.message):error;});
   for(const input of raw){const action=input as Action;const before=session.state;const tentative=apply(session.world,before,action,{seed,prefix:session.log.map(e=>e.action)});
    if(!tentative.ok)throw new RuntimeError(tentative.error.code,tentative.error.message);
    if(adapter){const real=await adapter.apply({before,after:tentative.state,action});if(!real.ok)throw new RuntimeError(real.error.code,real.error.message);}

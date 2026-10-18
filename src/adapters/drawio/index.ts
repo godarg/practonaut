@@ -21,13 +21,13 @@ import { constraintViolation } from '../../world/constraints.ts';
 import { structuralConstraintsOf } from '../../world/apps.ts';
 import type { AdapterOptions, AdapterResult, Artifact, MirrorAdapter } from '../types.ts';
 import type { LaunchContext } from '../browser/chromium.ts';
-import { AdapterError, MAX_ADAPTER_MS, artifactOf, operationMs, serialQueue, startShell, type BrowserShell, type ChromiumLike, type EngineLifecycleProbe, type Fulfilment, type OperationLimits, type SceneIO } from '../browser/shell.ts';
+import { AdapterError, AppRuntimeFault, MAX_ADAPTER_MS, artifactOf, operationMs, serialQueue, startShell, type BrowserShell, type ChromiumLike, type EngineLifecycleProbe, type Fulfilment, type OperationLimits, type SceneIO } from '../browser/shell.ts';
 import { actionPrediction } from '../prediction.ts';
 import { openDrawioArchive } from './archive.ts';
 import { APP_ORIGIN, HOST_ORIGIN, hostPage } from './host-page.ts';
 import { DRAWIO_ALLOWLIST, DRAWIO_PIN, DRAWIO_URL_PARAMETERS } from './pin.ts';
 import { readBack, writeCheck } from './readback.ts';
-import { drawioRuntimePath, readDrawioRuntime } from './runtime.ts';
+import { DrawioRuntimeError, drawioRuntimePath, readDrawioRuntime } from './runtime.ts';
 import { cloneMemory, freshMemory, LAYER, modelXml, ROOT, writeCells, type WriterMemory, type XmlNode } from './writer.ts';
 
 export { DRAWIO_PIN } from './pin.ts';
@@ -70,8 +70,11 @@ const dataUri = (value: unknown, type: string): Buffer => {
 export async function createDrawioAdapter(initialState: State, options: AdapterOptions = {}, probe?: EngineLifecycleProbe, seams: DrawioSeams = {}): Promise<DrawioAdapter> {
   checkState(initialState);
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled');
-  // The whole archive is read, hashed and opened in memory before anything starts (decision 2.6).
-  const archive = await openDrawioArchive(await readDrawioRuntime(seams.runtimePath ?? drawioRuntimePath()), DRAWIO_ALLOWLIST);
+  // The whole archive is read, hashed and opened in memory before anything starts (decision 2.6); a
+  // runtime that fails here is the mirror unavailable, carrying the runtime's own code.
+  const archive = await (async () => openDrawioArchive(await readDrawioRuntime(seams.runtimePath ?? drawioRuntimePath()), DRAWIO_ALLOWLIST))().catch((error: unknown) => {
+    throw error instanceof DrawioRuntimeError ? new AppRuntimeFault('drawio', error.code, error.message) : error;
+  });
   const page = hostPage(DRAWIO_URL_PARAMETERS);
   const serveApp = async (path: string): Promise<Fulfilment | undefined> => {
     const name = path.slice(1), type = CONTENT_TYPES[extname(name).toLowerCase()];
