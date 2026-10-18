@@ -14,6 +14,7 @@ import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
 import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
+import { resolveAdapter } from '../adapters/registry.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { startHost } from '../host/server.ts';
@@ -124,7 +125,11 @@ export function modelOnlyNotice(choice: MirrorChoice, mirror: MirrorResolution):
 
 async function loadSource(source: string): Promise<World> {
   const input = await stat(source).catch(() => { throw new RuntimeError('usage', cliText('worldMissing', { path: source })); });
-  return loadWorldPackage(input.isDirectory() ? await readWorldPackage(await packWorld(source)) : await readWorldPackageFile(source));
+  const world = loadWorldPackage(input.isDirectory() ? await readWorldPackage(await packWorld(source)) : await readWorldPackageFile(source));
+  // The world's app needs an adapter in the registry; refused by name before any browser check or
+  // start (PADR-0045). `play`, `serve` and `mcp --task` load their world here.
+  resolveAdapter(world.app, world.schema);
+  return world;
 }
 
 /** A world path (directory or package) or a library task (`excalidraw/<id>` or `<id>`); an existing path wins.

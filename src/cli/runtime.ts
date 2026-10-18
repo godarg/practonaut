@@ -9,7 +9,7 @@ import { readWorldPackageFile, readArchiveFile } from "../package/index.ts";
 import { parseJsonEntry } from "../package/json.ts";
 import { loadWorldPackage } from "../world/index.ts";
 import { Session, apply } from "../core/index.ts";
-import { createExcalidrawAdapter } from "../adapters/excalidraw/index.ts";
+import { resolveAdapter } from "../adapters/registry.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
@@ -59,6 +59,8 @@ export async function commandRun(args:string[]):Promise<number>{
  const {path,flags}=options(args,["--seed","--actions","--task","--state-out","--export","--mirror"]);
  if(!flags["--seed"]||!flags["--actions"])throw new RuntimeError("usage",cliText("runUsage"));
  const world=loadWorldPackage(await readWorldPackageFile(path));const seed=integer(flags["--seed"]);
+ // The adapter comes from the registry by the world's app, refused by name before any browser starts (PADR-0045).
+ const registration=resolveAdapter(world.app,world.schema);
  const taskId=flags["--task"]??world.tasks[0]!.id;
  const session=new Session(world,seed,taskId);const initialHash=session.hash;
  const bytes=await readArchiveFile(flags["--actions"]);if(bytes.length>4*1024*1024)throw new RuntimeError("invalid_argument",cliText("actionsSize"));
@@ -72,7 +74,7 @@ export async function commandRun(args:string[]):Promise<number>{
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
  try{
-  if(mirror==="required")adapter=await createExcalidrawAdapter(session.state);
+  if(mirror==="required")adapter=await registration.create(session.state);
   for(const input of raw){const action=input as Action;const before=session.state;const tentative=apply(session.world,before,action,{seed,prefix:session.log.map(e=>e.action)});
    if(!tentative.ok)throw new RuntimeError(tentative.error.code,tentative.error.message);
    if(adapter){const real=await adapter.apply({before,after:tentative.state,action});if(!real.ok)throw new RuntimeError(real.error.code,real.error.message);}

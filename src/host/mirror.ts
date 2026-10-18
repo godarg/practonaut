@@ -1,8 +1,7 @@
-import { createExcalidrawAdapter } from '../adapters/excalidraw/index.ts';
-import type { ExcalidrawAdapter, EngineLifecycleProbe } from '../adapters/excalidraw/index.ts';
-import type { AdapterResult, Transition } from '../adapters/types.ts';
-import type { State } from '../world/types.ts';
-import { isDeepStrictEqual } from 'node:util';
+import { EXCALIDRAW_APP, readBackAgrees, resolveAdapter, type ReadBackComparison } from '../adapters/registry.ts';
+import type { EngineLifecycleProbe } from '../adapters/browser/shell.ts';
+import type { AdapterResult, MirrorAdapter, Transition } from '../adapters/types.ts';
+import type { State, World } from '../world/types.ts';
 import type {TransactionContext} from './protocol.ts';
 
 /** Target is 2 s per ordinary step; deadline is 5 s for slow offline hardware. */
@@ -20,22 +19,34 @@ export interface PracticeMirror {
   exportPicture?(context?:TransactionContext):Promise<string>;
   recover(state: State): Promise<void>;
   close(): Promise<void>;
+  /** What the host compares with this mirror's read-back (PADR-0045): `full` (tombstones included)
+   * when absent, `live` for an app that keeps no deleted objects. */
+  readonly readBack?: ReadBackComparison;
 }
-export type MirrorFactory = (state: State) => Promise<PracticeMirror>;
+/** What a mirror needs to know about its world: the app it names and the world schema. */
+export type MirrorWorld = Pick<World, 'app' | 'schema'>;
+/** Creates the mirror for a world's app; the adapter comes from the registry (PADR-0045). */
+export type MirrorFactory = (state: State, world: MirrorWorld) => Promise<PracticeMirror>;
 export class MirrorFault extends Error {
   readonly code: 'mirror_timeout' | 'mirror_unavailable';
   constructor(code: MirrorFault['code'], message: string) { super(message); this.code = code; }
 }
-/** Production mirror and test probe share the same lifecycle; the probe controls a real process. */
-export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe): Promise<PracticeMirror> {
-  let adapter: ExcalidrawAdapter | undefined = await createExcalidrawAdapter(initial, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
+/** The Excalidraw world a test probe mirrors when it names none. */
+const PROBE_WORLD: MirrorWorld = { app: { ...EXCALIDRAW_APP, fontFamilies: [3], excludedAttributes: {} }, schema: 'practonaut.world/2' };
+/** Production mirror and test probe share the same lifecycle; the probe controls a real process.
+ * The adapter is resolved through the registry before anything starts: a world naming an app this
+ * Practonaut does not have is refused by name (`E_ADAPTER_*`), and no browser is launched. */
+export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe, world: MirrorWorld = PROBE_WORLD): Promise<PracticeMirror> {
+  const registration = resolveAdapter(world.app, world.schema);
+  const agrees = (readBack: State, expected: State): boolean => readBackAgrees(registration.readBack, readBack, expected);
+  let adapter: MirrorAdapter | undefined = await registration.create(initial, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
   let interrupted = false, closed = false;
   let lifecycle: Promise<unknown> = Promise.resolve();
   const serial = <T>(operation: () => Promise<T>): Promise<T> => {
     const pending = lifecycle.then(operation, operation); lifecycle = pending.catch(() => undefined); return pending;
   };
   const unavailable = (): MirrorFault => new MirrorFault('mirror_unavailable', closed ? 'Mirror closed' : 'Mirror is unavailable');
-  const bounded = async <T>(operation: (engine: ExcalidrawAdapter,remaining:number) => Promise<T>,context?:TransactionContext): Promise<T> => {
+  const bounded = async <T>(operation: (engine: MirrorAdapter,remaining:number) => Promise<T>,context?:TransactionContext): Promise<T> => {
     if (closed || !adapter) throw unavailable();
     const remaining=Math.min(MIRROR_DEADLINE_MS,context?context.deadline-performance.now():MIRROR_DEADLINE_MS);
     if(remaining<=0)throw new MirrorFault('mirror_timeout','Mirror deadline reached');
@@ -56,6 +67,7 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
   };
   const dispose = async (): Promise<void> => { const old = adapter; adapter = undefined; if (old) await old.terminate(); };
   return {
+    readBack: registration.readBack,
     apply: (transition,context) => bounded((engine,remaining) => engine.apply(transition, { timeoutMs: remaining }),context),
     replace: (state,context) => bounded((engine,remaining) => engine.restoreState(state, { timeoutMs: remaining }),context),
     snapshot: context => bounded(engine => engine.snapshot(),context),
@@ -68,15 +80,15 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
         if (interrupted || !adapter) {
           await dispose(); // Destroy late writes before another browser exists.
           if (closed) throw unavailable();
-          const replacement = await createExcalidrawAdapter(state, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
+          const replacement = await registration.create(state, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
           // Close can happen during Chromium startup. The replacement must be killed before publication.
           if (closed) { await replacement.terminate(); throw unavailable(); }
           adapter = replacement; interrupted = false;
         } else {
           const restored = await bounded(engine => engine.restoreState(state, { timeoutMs: MIRROR_DEADLINE_MS }));
-          if (!restored.ok || !isDeepStrictEqual(restored.state, state)) throw new MirrorFault('mirror_unavailable', 'Mirror rollback failed');
+          if (!restored.ok || !agrees(restored.state, state)) throw new MirrorFault('mirror_unavailable', 'Mirror rollback failed');
         }
-        if (!isDeepStrictEqual(await bounded(engine => engine.snapshot()), state)) throw new MirrorFault('mirror_unavailable', 'Mirror recovery read-back differs');
+        if (!agrees(await bounded(engine => engine.snapshot()), state)) throw new MirrorFault('mirror_unavailable', 'Mirror recovery read-back differs');
       } catch (error) { interrupted = true; await dispose(); throw error; }
     }),
     close: async () => {
@@ -86,4 +98,4 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
     },
   };
 }
-export const createPracticeMirror: MirrorFactory = initial => createProductionMirror(initial);
+export const createPracticeMirror: MirrorFactory = (initial, world) => createProductionMirror(initial, undefined, world);
