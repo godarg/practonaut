@@ -20,7 +20,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isBenchReportV2, type BenchReport } from './report.ts';
+import type { BenchReportView, ViewRun } from './view.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
 import { headline, instanceOutcome, type Verification } from './render.ts';
@@ -196,43 +196,46 @@ function column(blocks: readonly Block[], gap: number, x: number, top: number, r
 
 interface Fact { kind: 'confirmed' | 'open'; text: string }
 /** The evidence of a report, in words: verification, mirror, isolation, model, runs without a verdict, interruption. */
-function facts(report: BenchReport, verification: Verification, language: Language): Fact[] {
+function facts(report: BenchReportView, verification: Verification, language: Language): Fact[] {
   const t = TEXT[language], out: Fact[] = [];
-  // Only a re-verified report confirms what it says about the mirror and the isolation; otherwise
-  // these are claims of the file, with the same words and the open mark.
+  // Only a re-verified report confirms what it says about the level, the mirror and the isolation;
+  // otherwise these are claims of the file, with the same words and the open mark.
   const confirmed = verification === 're-verified' ? 'confirmed' : 'open';
   out.push(verification === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
-  out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
-  const isolation = isBenchReportV2(report) ? report.agent.isolation : null;
+  // The verdict level, also for a session report (PADR-0044 decision 1).
+  out.push({ kind: confirmed, text: report.verdictLevel === 'session' ? t.cardLevelSession : t.cardLevelArtifact });
+  if (report.verdictLevel === 'session') out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
+  if (report.toolchain.kind === 'foreign-mcp') out.push({ kind: 'open', text: t.cardNoSandbox });
+  const isolation = report.agent.isolation;
   out.push(isolation === 'builtin-baseline' ? { kind: confirmed, text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: confirmed, text: t.cardIsolationPreset }
     : isolation === 'template-unrestricted' ? { kind: 'open', text: t.cardIsolationTemplate } : { kind: 'open', text: t.cardIsolationUnrecorded });
   if (report.agent.kind !== 'builtin') {
     const model = report.agent.model;
     out.push({ kind: 'open', text: model === null ? t.cardModelNone : fill(language, report.agent.modelSource === 'command-output' ? t.cardModelCommand : t.cardModelClient, { model }) });
   }
-  const unjudged = report.runs.filter(run => run.checker === null).length;
+  const unjudged = (report.runs as readonly ViewRun[]).filter(run => run.checker === null).length;
   if (unjudged) out.push({ kind: 'open', text: fill(language, t.cardUnjudged, { n: unjudged }) });
   if (report.interrupted) out.push({ kind: 'open', text: fill(language, t.cardInterrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }) });
   return out;
 }
 /** The headline numbers in one unit, the instance the interval is over: with one run per instance
  * "16/16 passed … over 16 instances (one run each)", with repeats "10/12 instances passed" and the runs. */
-function result(report: BenchReport, language: Language): { fraction: string; words: string; interval: string; runs: string | null } {
+function result(report: BenchReportView, language: Language): { fraction: string; words: string; interval: string; runs: string | null } {
   const t = TEXT[language], instances = instanceOutcome(report.runs), s = report.summary;
   const interval = intervalPercent(instances.passed, instances.instances);
   const intervalText = fill(language, instances.repeated ? t.interval : t.cardIntervalOnce, { low: interval.low, high: interval.high, instances: fill(language, t.instanceCount, { n: instances.instances }) });
   if (!instances.repeated) return { fraction: rateText(s.passed, s.runs, language), words: t.cardWordsPassed, interval: intervalText, runs: null };
   return { fraction: rateText(instances.passed, instances.instances, language), words: fill(language, t.cardWordsInstances, { n: instances.instances }), interval: intervalText, runs: rateText(s.passed, s.runs, language) };
 }
-const worldLine = (report: BenchReport, t: Words, language: Language): string => {
-  const world = isBenchReportV2(report) ? report.environment.world : { worldId: report.environment.library.worldId, version: report.environment.library.version, source: 'library' as const };
+const worldLine = (report: BenchReportView, t: Words, language: Language): string => {
+  const world = report.environment.world;
   return fill(language, world.source === 'library' ? t.cardWorldLibrary : t.cardWorldOwn, { world: world.worldId, version: world.version });
 };
 /** The accessible name: the report's whole header line, as the terminal prints it. */
-const accessibleName = (report: BenchReport, language: Language, verification: Verification): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
+const accessibleName = (report: BenchReportView, language: Language, verification: Verification): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
 
 /** The card of a report in one theme: an SVG of 1280 × 640 px. */
-export function renderCard(report: BenchReport, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderCard(report: BenchReportView, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
   const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
   const m = (className: string): Metrics => metricsOf(className, tokens, all);
   const space = (step: number): number => numeric(`--pn-space-${step}`, tokens);
@@ -245,7 +248,7 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
   let y = padY + eyebrow.leading + space(2);
   parts.push(paragraph('card-title', wrap(report.agent.name, contentWidth, title, 1), padX, y, title));
   y += title.leading;
-  if (isBenchReportV2(report) && report.label !== undefined) { parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label)); y += label.leading; }
+  if (report.label !== undefined) { parts.push(paragraph('card-label', wrap(`${t.label}: ${report.label}`, contentWidth, label, 1), padX, y, label)); y += label.leading; }
   y += space(3);
   parts.push(`<line class="card-divider" x1="${padX}" y1="${num(y)}" x2="${right}" y2="${num(y)}"/>`);
   const top = y + space(3);
@@ -304,15 +307,16 @@ export function renderCard(report: BenchReport, tokensCss: string, theme: Theme,
 }
 
 /** The badge: one line in a chip, light, and dark where the reader's system prefers it. */
-export function renderBadge(report: BenchReport, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderBadge(report: BenchReportView, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
   const t = TEXT[language], themes = tokenThemes(tokensCss), tokens = themes.light, all = rules();
   const metrics = metricsOf('badge-text', tokens, all), name = { ...metrics, bold: true };
   const instances = instanceOutcome(report.runs), interval = intervalPercent(instances.passed, instances.instances);
   const fraction = instances.repeated ? fill(language, t.badgeInstances, { fraction: rateText(instances.passed, instances.instances, language) }) : fill(language, t.headlinePassed, { fraction: rateText(report.summary.passed, report.summary.runs, language) });
-  const isolation = isBenchReportV2(report) ? { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation] : t.badgeUnrecorded;
-  const unjudged = report.runs.filter(run => run.checker === null).length;
-  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), verification === 're-verified' ? t.badgeReverified : t.badgeConsistency, isolation,
-    ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
+  const isolation = report.agent.isolation === null ? t.badgeUnrecorded : { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation];
+  const unjudged = (report.runs as readonly ViewRun[]).filter(run => run.checker === null).length;
+  const level = report.verdictLevel === 'session' ? t.badgeLevelSession : t.badgeLevelArtifact;
+  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), level, verification === 're-verified' ? t.badgeReverified : t.badgeConsistency, isolation,
+    ...(report.toolchain.kind === 'foreign-mcp' ? [t.badgeNoSandbox] : []), ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
   const rest = ` · ${parts.join(' · ')}`;
   const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);
   // The text is held to its width by textLength, so it fits its chip in any font. That width sits

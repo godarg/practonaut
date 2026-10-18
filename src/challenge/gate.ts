@@ -9,7 +9,7 @@
  * result or the Markdown.
  */
 import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
-import type { BenchReportV2, BenchRunV2 } from '../bench/report.ts';
+import type { GateBenchReport as BenchReportV2, GateBenchRun as BenchRunV2 } from '../bench/report.ts';
 import { BUDGET_EXHAUSTED, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, orderOf, unattestedRuns, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
 import { generatorId, type Family } from './families.ts';
 import { taskIdOf } from './build.ts';

@@ -83,7 +83,7 @@ test('a consistent /2 report validates; every inconsistent /2 field is refused',
   refused(value => { value.settings.seeds = [2, 1_000_000_000]; }, /does not match practonaut\.bench\/2: settings\.seeds\.1/);
   refused(value => { (value as unknown as Record<string, unknown>).label = ''; }, /does not match practonaut\.bench\/2: label/);
   refused(value => { (value.environment.world.package as { path: string }).path = '../elsewhere.pnworld'; }, /does not match practonaut\.bench\/2: environment\.world\.package\.path/);
-  refused(value => { (value as unknown as Record<string, unknown>).schema = 'practonaut.bench/3'; }, /report does not match practonaut\.bench\/1 or practonaut\.bench\/2/);
+  refused(value => { (value as unknown as Record<string, unknown>).schema = 'practonaut.bench/4'; }, /report does not match practonaut\.bench\/1, practonaut\.bench\/2, practonaut\.bench\/3/);
 });
 
 test('bench/2 run evidence (PADR-0039): picture, trace, mutation log, client timing and client figures follow their rules', () => {

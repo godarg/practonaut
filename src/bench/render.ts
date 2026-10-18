@@ -14,7 +14,8 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { isBenchReportV2, type BenchReport, type BenchRun } from './report.ts';
+import type { VerdictLevel } from './report.ts';
+import type { ArtifactReportView, BenchReportView, SessionReportView, ViewArtifactRun, ViewRun, ViewSessionRun } from './view.ts';
 import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
@@ -87,25 +88,39 @@ export function firstSentence(text: string): string {
 
 /** Instances (task × seed) and how many passed: at least half of all their runs passed; a run that
  * was not judged counts as not passed (PADR-0039 B.1). */
-export function instanceOutcome(runs: readonly BenchRun[]): { passed: number; instances: number; repeated: boolean } {
+export function instanceOutcome(runs: ReadonlyArray<{ taskId: string; seed: number; checker: unknown; pass: boolean }>): { passed: number; instances: number; repeated: boolean } {
   const byInstance = new Map<string, Array<boolean | null>>();
   for (const run of runs) { const key = `${run.taskId}\u0000${run.seed}`; byInstance.set(key, [...(byInstance.get(key) ?? []), run.checker === null ? null : run.pass]); }
   const outcomes = [...byInstance.values()];
   return { passed: outcomes.filter(repeats => aggregateInstance(repeats).outcome === 'pass').length, instances: outcomes.length, repeated: outcomes.some(repeats => repeats.length > 1) };
 }
 
-function isolationText(report: BenchReport, t: Words): string {
-  if (!isBenchReportV2(report)) return t.isolationUnrecorded;
+function isolationText(report: BenchReportView, t: Words): string {
+  if (report.agent.isolation === null) return t.isolationUnrecorded;
   return { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[report.agent.isolation];
 }
-function worldText(report: BenchReport, t: Words): string {
-  if (!isBenchReportV2(report)) return `${report.environment.library.worldId} ${report.environment.library.version}`;
+/** A /1 report named the bundled library without storing a world (no package): id and version only. */
+function worldText(report: BenchReportView, t: Words): string {
   const world = report.environment.world;
+  if (world.package === null) return `${world.worldId} ${world.version}`;
   return `${world.worldId} ${world.version} (${world.source === 'library' ? t.worldLibrary : t.worldOwn})`;
+}
+/** The verdict level in words (PADR-0044 decision 1): named on every surface, also for session reports. */
+export const levelText = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifact;
+/** Applications by adapter id, as their own names spell them; another adapter shows its id. */
+const APP_NAMES: Readonly<Record<string, string>> = Object.freeze({ excalidraw: 'Excalidraw', drawio: 'draw.io' });
+export const appName = (adapterId: string): string => APP_NAMES[adapterId] ?? adapterId;
+/** A foreign MCP server's code runs as the same OS user, without a sandbox (PADR-0043 decision 8): every surface says so. */
+export const noSandbox = (report: Pick<BenchReportView, 'toolchain'>, language: Language): string[] => report.toolchain.kind === 'foreign-mcp' ? [TEXT[language].cardNoSandbox] : [];
+/** The toolchain in words: Practonaut's own tools (by name, when recorded), or the foreign server and its reading rules. */
+export function toolchainText(report: BenchReportView, language: Language): string {
+  const t = TEXT[language], toolchain = report.toolchain;
+  if (toolchain.kind === 'foreign-mcp') return fill(language, t.toolchainForeign, { server: toolchain.server.name, version: toolchain.server.version, id: toolchain.id, rules: `${toolchain.rules.format} ${toolchain.rules.version}` });
+  return toolchain.tools === null ? t.toolchainPractonautUnrecorded : fill(language, t.toolchainPractonaut, { tools: toolchain.tools.join(', ') });
 }
 
 /** The result half of the header line: fractions and the interval (PADR-0039 B.1). */
-export function headlineResult(report: BenchReport, language: Language): string[] {
+export function headlineResult(report: BenchReportView, language: Language): string[] {
   const t = TEXT[language], s = report.summary, instances = instanceOutcome(report.runs);
   const parts = instances.repeated
     ? [fill(language, t.headlineRuns, { fraction: rateText(s.passed, s.runs, language) }), fill(language, t.headlineInstances, { fraction: rateText(instances.passed, instances.instances, language) })]
@@ -116,20 +131,22 @@ export function headlineResult(report: BenchReport, language: Language): string[
   } else parts.push(t.intervalNone);
   return parts;
 }
-/** The provenance half: verification, mirror, isolation and the self-reported model. */
-export function provenance(report: BenchReport, language: Language, verification: Verification): string[] {
+/** The provenance half: verdict level, verification, mirror (session level), isolation, a foreign
+ * server's missing sandbox, and the self-reported model. */
+export function provenance(report: BenchReportView, language: Language, verification: Verification): string[] {
   const t = TEXT[language];
-  const parts = [verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff, isolationText(report, t)];
+  const mirror = report.verdictLevel === 'session' ? [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff] : [];
+  const parts = [levelText(report.verdictLevel, language), verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, ...mirror, isolationText(report, t), ...noSandbox(report, language)];
   if (report.agent.kind !== 'builtin') parts.push(modelHeadline(report, language));
   return parts;
 }
 /** The whole header line (terminal): result, interval, verification, mirror, isolation, model. */
-export function headline(report: BenchReport, language: Language, verification: Verification): string[] {
+export function headline(report: BenchReportView, language: Language, verification: Verification): string[] {
   return [...headlineResult(report, language), ...provenance(report, language, verification)];
 }
 /** The reported model with where it came from (never verified): the preset client's own init event,
  * or an init line in a command template's output. */
-export function modelHeadline(report: BenchReport, language: Language): string {
+export function modelHeadline(report: Pick<BenchReportView, 'agent'>, language: Language): string {
   const t = TEXT[language], model = report.agent.model;
   if (model === null) return t.modelNone;
   if (report.agent.modelSource === 'client-attested') return fill(language, t.modelSelfClient, { model });
@@ -147,41 +164,41 @@ export function commandLine(command: readonly string[]): string {
 }
 /** Task limits (PADR-0040), a setting of the bench: a task's own, from the stored world, and the
  * session's --checks. */
-function limitFacts(report: BenchReport, t: Words, language: Language): Array<[label: string, value: string]> {
-  if (!isBenchReportV2(report)) return [];
+function limitFacts(report: BenchReportView, t: Words, language: Language): Array<[label: string, value: string]> {
   const facts: Array<[string, string]> = [], limits = report.environment.world.limits ?? [];
   if (limits.length) facts.push([t.taskLimits, limits.map(entry => `${entry.taskId}: ${[...(entry.actions !== undefined ? [fill(language, t.limitActions, { n: entry.actions })] : []), ...(entry.checks !== undefined ? [fill(language, t.limitChecks, { n: entry.checks })] : [])].join(', ')}`).join('; ')]);
   if (report.settings.checks !== undefined) facts.push([t.checksSetting, String(report.settings.checks)]);
   return facts;
 }
 /** bench/2 facts that are identifiers rather than findings: shown under Technical details. */
-function technicalFacts(report: BenchReport, t: Words): Array<[label: string, value: string]> {
+function technicalFacts(report: BenchReportView, t: Words): Array<[label: string, value: string]> {
   const facts: Array<[string, string]> = [];
   if (report.agent.command.length) facts.push([t.commandLabel, commandLine(report.agent.command)]);
-  if (!isBenchReportV2(report)) { facts.push([t.worldContentHash, report.environment.library.contentHash]); return facts; }
   facts.push([t.worldContentHash, report.environment.world.contentHash]);
   const generated = report.environment.world.generated;
   if (generated.length) facts.push([t.generated, generated.map(entry => `${entry.taskId} (${entry.id} ${entry.version}, seed ${entry.seed})`).join(', ')]);
   if (report.agent.apiKeySource !== null) facts.push([t.apiKeySource, report.agent.apiKeySource]);
-  if (report.agent.keptEnv.length) facts.push([t.keptEnv, report.agent.keptEnv.join(', ')]);
+  if (report.agent.keptEnv?.length) facts.push([t.keptEnv, report.agent.keptEnv.join(', ')]);
   return facts;
 }
-const sampleLine = (report: BenchReport, language: Language): string => {
+const sampleLine = (report: BenchReportView, language: Language): string => {
   const t = TEXT[language];
   return `n = ${[fill(language, t.runCount, { n: report.summary.runs }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' · ')}`;
 };
-const planLine = (report: BenchReport, language: Language): string => {
-  const t = TEXT[language];
-  return fill(language, t.tasksSeeds, { plan: [fill(language, t.taskCount, { n: report.settings.tasks.length }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' × '), timeout: report.settings.timeoutSeconds, actions: report.settings.maxActions });
+const planLine = (report: BenchReportView, language: Language): string => {
+  const t = TEXT[language], plan = [fill(language, t.taskCount, { n: report.settings.tasks.length }), fill(language, t.seedCount, { n: report.settings.seeds.length }), fill(language, t.repeatCount, { n: report.settings.repeats })].join(' × ');
+  // settings.maxActions caps the agent's calls that reach the session, or at artifact level the proxy's forwarded tool calls (decision 1).
+  return report.verdictLevel === 'artifact' ? fill(language, t.tasksSeedsArtifact, { plan, timeout: report.settings.timeoutSeconds, calls: report.settings.maxActions })
+    : fill(language, t.tasksSeeds, { plan, timeout: report.settings.timeoutSeconds, actions: report.settings.maxActions });
 };
 const fixed = (value: number | null, digits: number, language: Language): string => value === null ? '—' : number(value, digits, language);
 const seconds = (ms: number | null, language: Language): string => ms === null ? '—' : `${number(ms / 1000, 1, language)} s`;
 /** Tasks whose reference is a proven minimal solution (PADR-0040); none for bench/1. */
-const minimalTasks = (report: BenchReport): ReadonlySet<string> => new Set(isBenchReportV2(report) ? (report.references?.tasks ?? []).filter(task => task.minimal === true).map(task => task.taskId) : []);
-const referenceCell = (report: BenchReport, taskId: string, value: number | null, t: Words): string => value === null ? t.noReference : minimalTasks(report).has(taskId) ? `${value} (${t.minimal})` : String(value);
+const minimalTasks = (report: BenchReportView): ReadonlySet<string> => new Set(report.references === 'not-recorded' ? [] : (report.references?.tasks ?? []).filter(task => task.minimal === true).map(task => task.taskId));
+const referenceCell = (report: BenchReportView, taskId: string, value: number | null, t: Words): string => value === null ? t.noReference : minimalTasks(report).has(taskId) ? `${value} (${t.minimal})` : String(value);
 /** Efficiency only where a validated reference exists; otherwise "no reference". It is "vs minimal
  * length" only when every referenced task's reference is proven minimal, else "vs reference length". */
-function efficiencyText(report: BenchReport, language: Language): { label: string; direction: string; value: string; detail?: string } {
+function efficiencyText(report: SessionReportView, language: Language): { label: string; direction: string; value: string; detail?: string } {
   const t = TEXT[language], tasks = report.summary.byTask, referenced = tasks.filter(task => task.referenceActions !== null), minimal = minimalTasks(report);
   const proven = referenced.filter(task => minimal.has(task.taskId)).length, all = referenced.length > 0 && proven === referenced.length;
   const label = all ? t.efficiencyMinimal : t.efficiency, direction = all ? t.efficiencyMinimalDirection : t.efficiencyDirection;
@@ -191,21 +208,20 @@ function efficiencyText(report: BenchReport, language: Language): { label: strin
   return { label, direction, value, ...(details.length ? { detail: details.join(', ') } : {}) };
 }
 /** pass^k for k = repeats: the instances where all k repeats passed, of all instances (null with one repeat). */
-function allRepeatsCount(report: BenchReport): { all: number; instances: number } | null {
+function allRepeatsCount(report: BenchReportView): { all: number; instances: number } | null {
   const k = report.settings.repeats;
   if (k < 2) return null;
-  const instances = new Map<string, BenchRun[]>();
+  const instances = new Map<string, ViewRun[]>();
   for (const run of report.runs) { const key = `${run.taskId}\u0000${run.seed}`; instances.set(key, [...(instances.get(key) ?? []), run]); }
   return { all: [...instances.values()].filter(runs => runs.length === k && runs.every(run => run.pass)).length, instances: instances.size };
 }
-function allRepeats(report: BenchReport, language: Language): string | null {
+function allRepeats(report: BenchReportView, language: Language): string | null {
   const count = allRepeatsCount(report);
   return count === null ? null : fill(language, TEXT[language].passHatAll, { k: report.settings.repeats, fraction: rateText(count.all, count.instances, language) });
 }
 /** Tokens, turns and cost summed over the runs whose client reported them (self-reported). */
-function clientTotals(report: BenchReport, language: Language): string | null {
-  if (!isBenchReportV2(report)) return null;
-  const t = TEXT[language], runs = report.runs.flatMap(run => run.client ? [run.client] : []);
+function clientTotals(report: BenchReportView, language: Language): string | null {
+  const t = TEXT[language], runs = (report.runs as readonly ViewRun[]).flatMap(run => run.client ? [run.client] : []);
   if (!runs.length) return null;
   const parts: string[] = [];
   const tokens = runs.flatMap(client => client.tokens ? [client.tokens] : []);
@@ -217,9 +233,9 @@ function clientTotals(report: BenchReport, language: Language): string | null {
   return parts.length ? `${fill(language, t.clientTotals, { parts: parts.join(' · ') })}.` : null;
 }
 /** Failed runs first, each group in plan order. */
-const failuresFirst = (runs: readonly BenchRun[]): BenchRun[] => [...runs.filter(run => !run.pass), ...runs.filter(run => run.pass)];
+const failuresFirst = <R extends { pass: boolean }>(runs: readonly R[]): R[] => [...runs.filter(run => !run.pass), ...runs.filter(run => run.pass)];
 /** How the agent's run ended, in words (the code is under Technical details). */
-export const statusWords = (run: BenchRun, t: Words): string => ({ completed: t.statusCompleted, timeout: t.statusTimeout, agent_failed: t.statusAgentFailed, infra_error: t.statusInfra })[run.status];
+export const statusWords = (run: Pick<ViewRun, 'status'>, t: Words): string => ({ completed: t.statusCompleted, timeout: t.statusTimeout, agent_failed: t.statusAgentFailed, infra_error: t.statusInfra })[run.status];
 const historyText = (history: ConditionDetail['history'], language: Language): string => {
   const t = TEXT[language];
   switch (history.kind) {
@@ -231,9 +247,9 @@ const historyText = (history: ConditionDetail['history'], language: Language): s
   }
 };
 const codeText = (code: string, t: Words): string => (t as unknown as Record<string, string>)[`code_${code}`] ?? '';
-export const errorClassesOf = (run: BenchRun): string[] => [...new Set([...(run.checker?.session.errorClasses ?? []), ...(run.checker?.native?.errorClasses ?? [])])];
+export const errorClassesOf = (run: ViewRun): string[] => run.verdictLevel === 'artifact' ? [...(run.checker?.artifact.errorClasses ?? [])] : [...new Set([...(run.checker?.session.errorClasses ?? []), ...(run.checker?.native?.errorClasses ?? [])])];
 /** An error class's explanation: the run's stored checker output, else the bundled library's. */
-function explanationOf(run: BenchRun, id: string, detail: RunDetail | undefined, details: ReportDetails | undefined, language: Language): string | null {
+function explanationOf(run: Pick<ViewRun, 'taskId' | 'seed'>, id: string, detail: RunDetail | undefined, details: ReportDetails | undefined, language: Language): string | null {
   const stored = detail?.errors.find(error => error.id === id)?.explanation ?? details?.explanations.get(explanationKey(run.taskId, run.seed, id));
   return stored ? stored[language] : null;
 }
@@ -241,7 +257,7 @@ function explanationOf(run: BenchRun, id: string, detail: RunDetail | undefined,
 /** Why a run ended as it did, each state by name with its reason (PADR-0039 B.3): one item, one colon.
  * `code` (an action as it was called) follows `why` and precedes `tail`, shown as code. */
 export interface State { name: string; why: string; code?: string; tail?: string; list?: string[] }
-export function runStates(run: BenchRun, detail: RunDetail | undefined, details: ReportDetails | undefined, report: BenchReport, language: Language): State[] {
+export function runStates(run: ViewSessionRun, detail: RunDetail | undefined, details: ReportDetails | undefined, report: SessionReportView, language: Language): State[] {
   const t = TEXT[language], states: State[] = [];
   if (run.status === 'timeout') states.push({ name: t.stateTimeout, why: fill(language, t.stateTimeoutWhy, { timeout: report.settings.timeoutSeconds }) });
   if (run.status === 'agent_failed') states.push({ name: t.stateAgentFailed, why: run.agentExitCode === null ? t.stateAgentNoStart : fill(language, t.stateAgentFailedWhy, { code: run.agentExitCode }) });
@@ -264,13 +280,14 @@ export function runStates(run: BenchRun, detail: RunDetail | undefined, details:
   return states;
 }
 
-export function renderTable(report: BenchReport, language: Language = 'en', details?: ReportDetails, verification: Verification = 'consistency-checked'): string {
+export function renderTable(report: BenchReportView, language: Language = 'en', details?: ReportDetails, verification: Verification = 'consistency-checked'): string {
+  if (report.verdictLevel === 'artifact') return renderArtifactTable(report, language, verification);
   const t = TEXT[language], s = report.summary, lines: string[] = [];
   lines.push(`${t.title}  ${shown(report.agent.name)}`);
   // The header line (PADR-0039 B.1): fraction, interval, verification, mirror, isolation, model.
   lines.push(shown(headline(report, language, verification).join(' · ')));
-  if (isBenchReportV2(report) && report.label !== undefined) lines.push(`${t.label}: ${shown(report.label)}`);
-  if (isBenchReportV2(report)) lines.push(shown(`${t.world}: ${worldText(report, t)}`));
+  if (report.label !== undefined) lines.push(`${t.label}: ${shown(report.label)}`);
+  if (report.environment.world.package !== null) lines.push(shown(`${t.world}: ${worldText(report, t)}`));
   for (const [label, value] of [...limitFacts(report, t, language), ...technicalFacts(report, t).filter(([label]) => label !== t.commandLabel)]) lines.push(shown(`${label}: ${value}`));
   lines.push(sampleLine(report, language));
   if (report.interrupted) lines.push(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
@@ -344,7 +361,7 @@ ${body}
 
 const result = (pass: boolean, t: Words): string => `<span class="result ${pass ? 'pass' : 'fail'}">${statusIcon(pass ? 'pass' : 'fail')}${esc(pass ? t.pass : t.fail)}</span>`;
 /** A run's result: pass, fail, or — when the checker gave no verdict — the unknown mark, counted as not passed. */
-const runResult = (run: BenchRun, t: Words): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
+const runResult = (run: Pick<ViewRun, 'checker' | 'pass'>, t: Words): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
 const figure = (label: string, value: string, detail?: string): string => `<div class="figure"><dt>${esc(label)}</dt><dd>${esc(value)}</dd>${detail ? `<dd class="detail">${esc(detail)}</dd>` : ''}</div>`;
 /** A "Technical details" disclosure holding label/value pairs (identifiers, codes, hashes). */
 function technical(t: Words, facts: ReadonlyArray<[string, string]>): string {
@@ -378,11 +395,11 @@ export function objectLines(objects: readonly BoardObject[], language: Language)
   });
 }
 
-function boardHtml(detail: RunDetail, report: BenchReport, language: Language): string {
+function boardHtml(detail: RunDetail, report: SessionReportView, language: Language): string {
   const t = TEXT[language], picture = detail.picture;
   const quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
   const reason = picture?.kind === 'schematic' ? { 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason] : '';
-  const caption = picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.excalidraw })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`;
+  const caption = picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.app.version })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`;
   const list = (title: string, items: string[]): string => `<p class="legend-title">${esc(title)}</p><ul class="legend">${items.map(item => `<li>${prose(item)}</li>`).join('')}</ul>`;
   // A picture wider than the column scrolls inside its frame; a faded edge and a line say so. When the
   // first difference from the target lies in the right half, both frames open at that end (F3).
@@ -431,8 +448,8 @@ function callsHtml(detail: RunDetail, language: Language): string {
   return `${lines.map(line => `<p class="meta">${esc(line)}</p>`).join('')}<p class="note">${esc(t.callsNote)}</p>`;
 }
 
-function clientHtml(run: BenchRun, language: Language): string {
-  if (!('client' in run) || !run.client) return '';
+function clientHtml(run: ViewRun, language: Language): string {
+  if (!run.client) return '';
   const t = TEXT[language], client = run.client, parts: string[] = [];
   if (client.model) parts.push(fill(language, t.clientModel, { model: client.model }));
   if (client.turns !== null) parts.push(fill(language, t.turnsPart, { n: client.turns }));
@@ -442,9 +459,9 @@ function clientHtml(run: BenchRun, language: Language): string {
 }
 
 /** A run card is open when the run failed or its agent did not complete normally (F15). */
-const opensByDefault = (run: BenchRun): boolean => !run.pass || run.status !== 'completed';
+const opensByDefault = (run: Pick<ViewRun, 'pass' | 'status'>): boolean => !run.pass || run.status !== 'completed';
 
-function runHtml(run: BenchRun, report: BenchReport, details: ReportDetails | undefined, language: Language): string {
+function runHtml(run: ViewSessionRun, report: SessionReportView, details: ReportDetails | undefined, language: Language): string {
   const t = TEXT[language], detail = details?.runs.get(run.id);
   const states = runStates(run, detail, details, report, language);
   const summary = `<span class="run-title">${runResult(run, t)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span><span class="run-meta">${esc([fill(language, t.actionCount, { n: run.actions }), statusWords(run, t)].join(' · '))}</span>`;
@@ -458,9 +475,10 @@ function runHtml(run: BenchRun, report: BenchReport, details: ReportDetails | un
   } else parts.push(`<p class="note">${esc(t.cardNoFolder)}</p>`);
   parts.push(clientHtml(run, language));
   // Identifiers and codes: under Technical details, never in the normal path.
-  const facts: Array<[string, string]> = [[t.runId, run.id], [t.statusCode, run.status]];
+  const facts: Array<[string, string]> = [[t.runId, run.id], [t.levelLabel, levelText(run.verdictLevel, language)], [t.statusCode, run.status]];
   if (run.agentExitCode !== null) facts.push([t.exitCode, String(run.agentExitCode)]);
   if (run.note) facts.push([t.runNote, run.note]);
+  if (run.failure && run.failure !== 'not-recorded') facts.push([t.failureReason, failureText(run.failure)]);
   if (detail?.rejected.length) facts.push([t.hostCodes, detail.rejected.map(([code, count]) => `${code} ×${count}`).join(', ')]);
   if (detail?.calls?.codes.length) facts.push([t.callCodes, detail.calls.codes.map(([code, count]) => `${code} ×${count}`).join(', ')]);
   if (detail?.traceError) facts.push([t.traceCode, detail.traceError]);
@@ -469,7 +487,8 @@ function runHtml(run: BenchRun, report: BenchReport, details: ReportDetails | un
   return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary>${summary}</summary><div class="run-body">${parts.join('')}</div></details>`;
 }
 
-export function renderHtml(report: BenchReport, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+export function renderHtml(report: BenchReportView, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+  if (report.verdictLevel === 'artifact') return renderArtifactHtml(report, tokensCss, language, verification);
   const t: Words = TEXT[language], s = report.summary, e = report.environment;
   const passHat = allRepeats(report, language), repeated = allRepeatsCount(report), efficiency = efficiencyText(report, language);
   const cards = [
@@ -485,7 +504,7 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
   // Result first, so a stacked row on a phone leads with it (F2); error classes wrap.
   const runRows = ordered.map(run => [runResult(run, t), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
   const ended = report.runs.filter(run => run.status !== 'completed');
-  const endedList = (['agent_failed', 'timeout', 'infra_error'] as const).flatMap(status => { const count = ended.filter(run => run.status === status).length; return count ? [`${count} ${statusWords({ status } as BenchRun, t)}`] : []; });
+  const endedList = (['agent_failed', 'timeout', 'infra_error'] as const).flatMap(status => { const count = ended.filter(run => run.status === status).length; return count ? [`${count} ${statusWords({ status }, t)}`] : []; });
   const folderReason = details === undefined || details.folder === 'missing' ? t.folderMissing : details.folder === 'world-changed' ? t.folderWorldChanged : details.folder === 'world-unreadable' ? t.folderWorldUnreadable : null;
   const partial = folderReason ? banner('unknown', t.partialTitle, `<p>${esc(folderReason)} ${esc(t.partialShown)}</p><p>${esc(t.partialFix)} <code>${esc(t.partialCommand)}</code></p>`) : '';
   const facts = [...provenance(report, language, verification), report.createdAt.slice(0, 10)];
@@ -498,7 +517,7 @@ export function renderHtml(report: BenchReport, tokensCss: string, language: Lan
 <h1>${esc(report.agent.name)}</h1>
 <p class="headline">${esc(headlineResult(report, language).join(' · '))}</p>
 ${chips(t.provenance, facts)}
-${isBenchReportV2(report) && report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
+${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
 ${ended.length ? `<p class="meta">${esc(fill(language, t.endedNote, { n: ended.length, list: endedList.join(', ') }))} <a href="#run-${esc(ended[0]!.id)}">${esc(fill(language, t.endedLink, { n: ended.length }))}</a></p>\n` : ''}${jump}</header>
 ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }, { text: t.actions, numeric: true }, { text: t.reference, numeric: true }, { text: efficiency.label, numeric: true }], taskRows)}</section>
@@ -507,11 +526,97 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
 <dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
-<dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? (isBenchReportV2(report) ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
+<dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
+<dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
 <dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
-${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(`Practonaut ${e.practonaut} · Excalidraw ${e.excalidraw} · Node ${e.node} · ${e.os.platform} ${e.os.release} ${e.os.arch}`)}</dd>
+${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
 </dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(t.selfReported)}</p></section>`;
+  return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
+}
+
+/** A run's failure as identifiers (Technical details): reason, the parser and the client's own code. */
+const failureText = (failure: NonNullable<Exclude<ViewRun['failure'], 'not-recorded'>>): string =>
+  [failure.reason, ...(failure.parser ? [failure.parser] : []), ...(failure.code ? [failure.code] : []), `beforeModelWork=${failure.beforeModelWork === null ? 'unknown' : String(failure.beforeModelWork)}`].join(' · ');
+/** Practonaut, the application the runs used (or whose conversion the reading rules follow), Node and the OS. */
+const environmentLine = (report: BenchReportView): string => {
+  const e = report.environment;
+  return `Practonaut ${e.practonaut} · ${appName(e.app.adapterId)} ${e.app.version} · Node ${e.node} · ${e.os.platform} ${e.os.release} ${e.os.arch}`;
+};
+const judgedFileText = (run: ViewArtifactRun, t: Words): string => run.checker === null ? t.none : { read: t.resultRead, absent: t.resultAbsent, unreadable: t.resultUnreadable }[run.checker.result];
+
+/** An artifact-judged report in the terminal (PADR-0044 decision 1): no session, so no action figures,
+ * trajectory or board; the proxy's forwarded calls, the judged file of each run, and the missing sandbox. */
+function renderArtifactTable(report: ArtifactReportView, language: Language, verification: Verification): string {
+  const t = TEXT[language], s = report.summary, lines: string[] = [];
+  lines.push(`${t.title}  ${shown(report.agent.name)}`, shown(headline(report, language, verification).join(' · ')));
+  if (report.label !== undefined) lines.push(`${t.label}: ${shown(report.label)}`);
+  lines.push(shown(`${t.world}: ${worldText(report, t)}`), shown(`${t.toolchain}: ${toolchainText(report, language)}`));
+  for (const [label, value] of technicalFacts(report, t).filter(([label]) => label !== t.commandLabel)) lines.push(shown(`${label}: ${value}`));
+  lines.push(sampleLine(report, language));
+  if (report.interrupted) lines.push(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }));
+  lines.push(planLine(report, language), t.noSandbox, '');
+  if (s.infraErrors) lines.push(fill(language, t.infraIncluded, { n: s.infraErrors }));
+  const repeats = allRepeats(report, language);
+  if (repeats) lines.push(repeats);
+  lines.push(`${fill(language, t.proxyCallsTotal, { n: s.proxyCalls })}   ${t.wall} ${seconds(s.meanWallMs, language)}`, '');
+  const header = [t.task, t.runs, t.passed], rows = s.byTask.map(task => [shown(task.taskId), String(task.runs), rateText(task.passed, task.runs, language)]);
+  const widths = header.map((head, column) => Math.max(head.length, ...rows.map(row => row[column]!.length)));
+  const format = (row: string[]): string => row.map((cell, column) => column === 0 ? cell.padEnd(widths[column]!) : cell.padStart(widths[column]!)).join('  ');
+  lines.push(format(header), widths.map(width => '─'.repeat(width)).join('  '), ...rows.map(format));
+  const failed = report.runs.filter(run => !run.pass);
+  if (failed.length) {
+    lines.push('', fill(language, t.failuresHead, { n: failed.length, runs: fill(language, t.runCount, { n: s.runs }) }));
+    for (const run of failed.slice(0, 20)) lines.push(`${run.checker === null ? '?' : '✗'} ${shown(run.id)}  ${run.checker === null ? t.noVerdictCounted : `${statusWords(run, t)} · ${t.judgedFile}: ${judgedFileText(run, t)}`}`);
+    if (failed.length > 20) lines.push(fill(language, t.moreFailures, { n: failed.length - 20 }));
+  }
+  return lines.join('\n') + '\n';
+}
+
+/** An artifact-judged report as one static page: header with the level and the missing sandbox, the
+ * summary without action figures, by task, the runs with the file each was judged on, the settings. */
+function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, language: Language, verification: Verification): string {
+  const t: Words = TEXT[language], s = report.summary;
+  const passHat = allRepeats(report, language), repeated = allRepeatsCount(report);
+  const cards = [
+    figure(t.passAt1, rateText(s.passed, s.runs, language), [fill(language, t.passedOf, { runs: fill(language, t.runCount, { n: s.runs }) }), ...(s.infraErrors ? [fill(language, t.infraIncluded, { n: s.infraErrors })] : [])].join(' · ')),
+    ...(passHat && repeated ? [figure(fill(language, t.passHat, { k: report.settings.repeats }), rateText(repeated.all, repeated.instances, language), passHat)] : []),
+    figure(t.proxyCalls, String(s.proxyCalls)), figure(t.wall, seconds(s.meanWallMs, language)),
+  ];
+  const ordered = failuresFirst(report.runs);
+  const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language))]);
+  const resultOf = (run: ViewArtifactRun): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
+  const runRows = ordered.map(run => [resultOf(run), `<code>${esc(run.taskId)}</code>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), esc(judgedFileText(run, t)), String(run.proxy.calls), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
+  const runFacts = ordered.map(run => {
+    const facts: Array<[string, string]> = [[t.runId, run.id], [t.levelLabel, levelText(run.verdictLevel, language)], [t.statusCode, run.status]];
+    if (run.note) facts.push([t.runNote, run.note]);
+    if (run.failure && run.failure !== 'not-recorded') facts.push([t.failureReason, failureText(run.failure)]);
+    return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary><span class="run-title">${resultOf(run)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span></summary><div class="run-body"><p class="note">${esc(t.artifactBoardNote)}</p>${clientHtml(run, language)}${technical(t, facts)}</div></details>`;
+  });
+  const kind = { builtin: t.kindBuiltin, preset: t.kindPreset, command: t.kindCommand }[report.agent.kind];
+  const body = `<header>
+<p class="eyebrow">${esc(t.title)}</p>
+<h1>${esc(report.agent.name)}</h1>
+<p class="headline">${esc(headlineResult(report, language).join(' · '))}</p>
+${chips(t.provenance, [...provenance(report, language, verification), report.createdAt.slice(0, 10)])}
+${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
+</header>
+${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
+<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n5'}">${cards.join('')}</dl></section>
+<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows)}</section>
+<section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
+<section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${runFacts.join('')}</section>
+<section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
+<dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
+<dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
+<dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
+<dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
+<dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
+<dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
+<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

@@ -14,8 +14,8 @@ import { checkInProcess } from '../cli/runtime.ts';
 import { packWorld } from '../package/index.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
-import { validateBenchReport, isBenchReportV2, BENCH_REFERENCES_FILE, type BenchReportV2 } from '../bench/report.ts';
-import { verifyBenchV2 } from '../bench/verify.ts';
+import { validateBenchReport, isBenchReportV2, isSessionReportV3, BENCH_REFERENCES_FILE, type BenchReportV2 } from '../bench/report.ts';
+import { verifyBenchV2, verifyBenchV3 } from '../bench/verify.ts';
 import { readLogHead } from '../bench/evidence.ts';
 import { clientInit } from '../bench/agents.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
@@ -143,8 +143,10 @@ export async function verifySet(dir: string, seeds: readonly number[] = [1]): Pr
  * judged session of each judged run (verified above), for the development digest. */
 async function verifiedReport(path: string, sessions = false): Promise<GateReport> {
   const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
-  if (!isBenchReportV2(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report; the gate needs practonaut.bench/2`);
-  await verifyBenchV2(report, dirname(path), libraryWorld);
+  // The 0.2.0 gate reads /2 and session-level /3 reports (bench writes /3 since PADR-0044); P1 restricts 0.3.0 rounds to /3.
+  if (!isBenchReportV2(report) && !isSessionReportV3(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report${report.schema === 'practonaut.bench/3' ? ' at artifact level' : ''}; the gate needs practonaut.bench/2 or a session-level practonaut.bench/3 report`);
+  if (isBenchReportV2(report)) await verifyBenchV2(report, dirname(path), libraryWorld);
+  else await verifyBenchV3(report, dirname(path), libraryWorld);
   const read = new Map<string, DigestSession>();
   if (sessions) for (const run of report.runs) {
     if (!run.artifacts) continue;

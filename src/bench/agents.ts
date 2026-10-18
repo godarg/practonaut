@@ -5,7 +5,8 @@
  */
 import { homedir } from 'node:os';
 import { BUILTIN_AGENTS, type BuiltinAgent } from './baselines.ts';
-import { API_KEY_SOURCE, CLIENT_VERSION, MODEL_ID } from './report.ts';
+import { API_KEY_SOURCE, CLIENT_VERSION, IDENTIFIER, MODEL_ID, type BillingClass, type EvidenceSource } from './report.ts';
+import { CLAUDE_CODE_STREAM } from './parsers.ts';
 export { spawnable, windowsResolve } from '../platform/spawnable.ts';
 
 export class AgentTemplateError extends Error {
@@ -26,6 +27,51 @@ export const AGENT_PRESETS: Readonly<Record<string, readonly string[]>> = Object
 export type AgentSpec =
   | { kind: 'builtin'; name: BuiltinAgent; command: [] }
   | { kind: 'preset' | 'command'; name: string; command: string[] };
+
+/** What Practonaut knows about each shipped preset's client (PADR-0044 decisions 5 and 6). */
+export interface PresetInfo {
+  /** The client program the preset starts. */
+  client: string;
+  /** The versioned parser that reads its stdout. */
+  parser: string;
+  /** The client's model variable the preset names, read from the environment the client starts with. */
+  modelVariable: string | null;
+  /** The model's vendor from a model id; null: the preset has no mapping for it. */
+  vendorOf: (model: string) => string | null;
+  /** How the client names an MCP server's tool. */
+  toolName: (server: string, tool: string) => string;
+}
+export const PRESET_INFO: Readonly<Record<string, PresetInfo>> = Object.freeze({
+  'claude-code': Object.freeze({ client: 'claude-code', parser: CLAUDE_CODE_STREAM, modelVariable: 'ANTHROPIC_MODEL', vendorOf: (model: string) => /^claude-/.test(model) ? 'anthropic' : null, toolName: (server: string, tool: string) => `mcp__${server}__${tool}` }),
+});
+/** A command template's output is read with the stream-json parser (it may write such lines or not). */
+export const TEMPLATE_PARSER = CLAUDE_CODE_STREAM;
+
+type Evidenced = { value: string | null; source: EvidenceSource };
+const NOT_KNOWN: Evidenced = Object.freeze({ value: null, source: 'none' });
+/** The billing class a preset was set up for, before the start (decision 5): API billing when a
+ * provider key or switch it withholds is kept by name, else the client's own login. A template's
+ * class is unknown; a built-in has none. */
+export function requestedBilling(spec: AgentSpec, keepEnv: readonly string[] = []): { class: BillingClass; source: 'preset-requested' | 'none' } {
+  if (spec.kind !== 'preset') return { class: 'unknown', source: 'none' };
+  return { class: keepEnv.some(name => withheldFromPreset(name)) ? 'api-key' : 'subscription', source: 'preset-requested' };
+}
+/** The preset's model variable as the client got it (the environment it is started with), or none. */
+export function requestedModelOf(spec: AgentSpec, env: NodeJS.ProcessEnv): Evidenced {
+  const info = spec.kind === 'preset' ? PRESET_INFO[spec.name] : undefined, value = info?.modelVariable ? env[info.modelVariable] : undefined;
+  return typeof value === 'string' && MODEL_ID.test(value) ? { value, source: 'preset-requested' } : { ...NOT_KNOWN };
+}
+/** The model's vendor from the preset's mapping: of the attested model first, else of the requested one. */
+export function vendorOf(spec: AgentSpec, attested: string | null, requested: Evidenced): Evidenced {
+  const info = spec.kind === 'preset' ? PRESET_INFO[spec.name] : undefined;
+  if (!info) return { ...NOT_KNOWN };
+  const fromAttested = attested === null ? null : info.vendorOf(attested.replace(/\[.*\]$/, ''));
+  if (fromAttested && IDENTIFIER.test(fromAttested)) return { value: fromAttested, source: 'client-attested' };
+  const fromRequested = requested.value === null ? null : info.vendorOf(requested.value);
+  return fromRequested && IDENTIFIER.test(fromRequested) ? { value: fromRequested, source: 'preset-requested' } : { ...NOT_KNOWN };
+}
+/** The client program a preset starts; a template's program is unknown. */
+export const clientOf = (spec: AgentSpec): Evidenced => spec.kind === 'preset' && PRESET_INFO[spec.name] ? { value: PRESET_INFO[spec.name]!.client, source: 'preset-requested' } : { ...NOT_KNOWN };
 
 /** Exact names a preset withholds besides every `*_API_KEY`, `*_AUTH_TOKEN` and `CLAUDE_CODE_USE_*`:
  * credentials and headers through which Claude Code authenticates other than with its login

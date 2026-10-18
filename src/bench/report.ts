@@ -1,12 +1,13 @@
 /**
- * The bench reports `practonaut.bench/1` and `practonaut.bench/2`: their schemas (sources of
- * `schemas/bench.v1.json` and `schemas/bench.v2.json`), the aggregation and the validators. A report
- * is data: `report` and every consumer accept it only after `validateBenchReport`, which re-derives
- * every pass and every aggregate from the recorded checker verdicts. A pass without an independent
- * verdict, or a summary that the runs do not produce, is rejected, whatever the file claims.
+ * The bench reports `practonaut.bench/1`, `/2` and `/3`: their schemas (sources of
+ * `schemas/bench.v1.json`, `bench.v2.json` and `bench.v3.json`), the aggregation and the validators.
+ * A report is data: `report` and every consumer accept it only after `validateBenchReport`, which
+ * re-derives every pass and every aggregate from the recorded checker verdicts. A pass without an
+ * independent verdict, or a summary that the runs do not produce, is rejected, whatever the file claims.
  *
- * `bench` writes /2 (PADR-0036); /1 reports from 0.1.0 are read and validated by their own rules,
- * unchanged.
+ * `bench` writes /3 (PADR-0044); /1 reports from 0.1.0 and /2 reports from 0.2.0 are read and
+ * validated by their own rules, unchanged. Consumers read every version through the read-only view
+ * of `view.ts`.
  */
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
@@ -15,10 +16,11 @@ import { cliText } from '../cli/messages.ts';
 
 export const BENCH_SCHEMA_V1 = 'practonaut.bench/1';
 export const BENCH_SCHEMA_V2 = 'practonaut.bench/2';
+export const BENCH_SCHEMA_V3 = 'practonaut.bench/3';
 /** The version `bench` writes. */
-export const BENCH_SCHEMA = BENCH_SCHEMA_V2;
+export const BENCH_SCHEMA = BENCH_SCHEMA_V3;
 
-/** Named refusals: an inconsistent or re-judged-differently report, and for /2 a stored world,
+/** Named refusals: an inconsistent or re-judged-differently report, and for /2 and /3 a stored world,
  * artifact or reference that does not match what the report binds. */
 export type BenchErrorCode = 'bench_report_invalid' | 'bench_world_changed' | 'bench_artifact_changed' | 'bench_reference_invalid';
 export class BenchReportError extends Error {
@@ -247,7 +249,184 @@ export const BenchReportSchemaV2 = z.strictObject({
   summary: BenchSummarySchemaV2,
 });
 export type BenchReportV2 = z.infer<typeof BenchReportSchemaV2>;
-export type BenchReport = BenchReportV1 | BenchReportV2;
+
+// ---- practonaut.bench/3 (PADR-0044) ----
+
+/** An identifier, never free text (parsers, toolchains, clients, vendors, setting names). */
+export const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,63}$/;
+/** A tool name as a client lists it; a name that does not fit is evidence of a tool outside. */
+export const TOOL_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
+/** The most tool names a run keeps; a longer list is evidence of a tool outside. */
+export const MAX_TOOL_NAMES = 256;
+/** A client's or server's own failure identifier: an HTTP status, an event subtype; never free text. */
+export const FAILURE_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
+const identifier = z.string().regex(IDENTIFIER);
+const toolName = z.string().regex(TOOL_NAME);
+const semverPin = z.string().regex(/^\d{1,6}\.\d{1,6}\.\d{1,6}$/);
+export const VERDICT_LEVELS = ['session', 'artifact'] as const;
+export type VerdictLevel = typeof VERDICT_LEVELS[number];
+export const BILLING_CLASSES = ['subscription', 'api-key', 'local', 'unknown'] as const;
+export type BillingClass = typeof BILLING_CLASSES[number];
+/** Where a value comes from; a value is never shown stronger than its source (PADR-0044 decision 5). */
+export const EVIDENCE_SOURCES = ['client-attested', 'preset-requested', 'command-output', 'none'] as const;
+export type EvidenceSource = typeof EVIDENCE_SOURCES[number];
+export const ISOLATION_EVIDENCE = ['by-kind', 'tools-within-servers', 'tool-outside-servers', 'no-evidence'] as const;
+export type IsolationEvidence = typeof ISOLATION_EVIDENCE[number];
+/** Why a run was not judged (decision 9); only `usage_limit` and `auth` can ever be budget-exempt. */
+export const FAILURE_REASONS = ['usage_limit', 'auth', 'api_error', 'server_error', 'no_tool_call', 'evidence_incomplete', 'interrupted', 'runner'] as const;
+export type FailureReason = typeof FAILURE_REASONS[number];
+/** The reasons a client's parser classifies; every other reason is the runner's own (parser null). */
+export const PARSER_REASONS: ReadonlySet<FailureReason> = new Set(['usage_limit', 'auth', 'api_error']);
+/** `apiKeySource` as /3 stores it: a value from the parser's fixed list, `other` for anything else. */
+export const API_KEY_SOURCES = ['none', 'ANTHROPIC_API_KEY', 'apiKeyHelper', '/login managed key', 'other'] as const;
+
+const evidenced = <T extends z.ZodString>(value: T) => z.strictObject({ value: value.nullable(), source: z.enum(EVIDENCE_SOURCES) });
+const IsolationLevelSchema = z.enum([ISOLATION_OF.builtin, ISOLATION_OF.preset, ISOLATION_OF.command]);
+const RunIsolationSchema = z.strictObject({ level: IsolationLevelSchema, evidence: z.enum(ISOLATION_EVIDENCE) });
+/** `agent.stdout` bound by hash, read as a whole stream; null: the runner could not read it. */
+const StdoutSchema = z.strictObject({ sha256, bytes: count });
+const RunFailureSchema = z.strictObject({
+  reason: z.enum(FAILURE_REASONS),
+  /** The versioned parser that classified it; null for the runner's own reasons. */
+  parser: identifier.nullable(),
+  code: z.string().regex(FAILURE_CODE).nullable(),
+  /** As the client's parser decides; null when unknown. */
+  beforeModelWork: z.boolean().nullable(),
+});
+export type RunFailure = z.infer<typeof RunFailureSchema>;
+const RunClientSchemaV3 = z.strictObject({
+  ...RunClientSchema.shape,
+  /** The versioned parser that read the run's bound stdout (for example `claude-code-stream/1`). */
+  parser: identifier,
+  /** The tools the client offered the model, as it lists them; names that do not fit or beyond the
+   * first 256 are counted in `omitted`, which is itself evidence of a tool outside. */
+  tools: z.strictObject({ names: z.array(toolName).max(MAX_TOOL_NAMES), omitted: count }).optional(),
+  /** The billing class the parser derives after the run; `via` names the statement it read (a fixed
+   * identifier per parser, never a value from the output). */
+  billing: z.strictObject({ class: z.enum(BILLING_CLASSES), source: z.enum(['client-attested', 'preset-requested']), via: identifier }).optional(),
+});
+export type RunClientV3 = z.infer<typeof RunClientSchemaV3>;
+const runBaseV3 = {
+  id: BenchRunSchemaV2.shape.id, taskId, seed, repeat: BenchRunSchemaV1.shape.repeat,
+  status: z.enum(RunStatus), pass: z.boolean(),
+  referenceActions: BenchRunSchemaV2.shape.referenceActions, wallMs: count, agentExitCode: z.number().int().nullable(), note: text(256).optional(),
+  /** The run's isolation and its evidence (decision 6). */
+  isolation: RunIsolationSchema,
+  /** Present (possibly null) exactly for external runs (decision 5). */
+  stdout: StdoutSchema.nullable().optional(),
+  /** Exactly for `infra_error` runs (decision 9). */
+  failure: RunFailureSchema.optional(),
+  client: RunClientSchemaV3.optional(),
+};
+export const SessionRunSchemaV3 = z.strictObject({
+  verdictLevel: z.literal('session'),
+  ...runBaseV3,
+  actions: count, acceptedActions: count, rejectedActions: count, undos: count, resets: count,
+  toolCalls: ToolCallsSchema,
+  checker: BenchRunSchemaV2.shape.checker,
+  /** As /2; the native export's file is named per adapter (`native.<adapterId>`). */
+  artifacts: BenchRunSchemaV2.shape.artifacts,
+  logs: RunLogsSchema.optional(),
+  /** The agent's actions in the final history (decision 7); equals `actions` without a co-actor. */
+  agentActions: count,
+  coActor: z.strictObject({ planned: count, fired: count, accepted: count, rejected: count }).optional(),
+});
+export type SessionRunV3 = z.infer<typeof SessionRunSchemaV3>;
+export const ArtifactRunSchemaV3 = z.strictObject({
+  verdictLevel: z.literal('artifact'),
+  ...runBaseV3,
+  /** The separate checker's verdict on the judged file and what was judged (decision 1). */
+  checker: z.strictObject({ artifact: VerdictSchema, result: z.enum(['read', 'absent', 'unreadable']) }).nullable(),
+  /** From a complete proxy log: `initialize` requests, forwarded `tools/call`, refusals. */
+  proxy: z.strictObject({ starts: count, calls: count, refused: count }),
+  artifacts: z.strictObject({ start: sha256, result: sha256.nullable(), reading: sha256, checker: sha256 }).optional(),
+  proxyLog: z.strictObject({ sha256, entries: count }).nullable(),
+});
+export type ArtifactRunV3 = z.infer<typeof ArtifactRunSchemaV3>;
+export const ArtifactSummarySchema = z.strictObject({
+  runs: count, passed: count, judged: count, infraErrors: count, passAt1: ratio,
+  passHatK: summaryShape.passHatK, meanWallMs: z.number().nonnegative().nullable(),
+  /** `tools/call` requests the proxy forwarded, over every run. */
+  proxyCalls: count,
+  byTask: z.array(z.strictObject({ taskId, runs: count, passed: count, passAt1: ratio })).max(1000),
+});
+export type ArtifactSummary = z.infer<typeof ArtifactSummarySchema>;
+export const PractonautToolchainSchema = z.strictObject({
+  kind: z.literal('practonaut'), id: z.literal('practonaut'),
+  /** The tool names Practonaut's bridge advertised (every run of a bench starts the same bridge). */
+  tools: z.array(toolName).min(1).max(MAX_TOOL_NAMES),
+});
+/** A URL without credentials, query or fragment. */
+const SOURCE_URL = /^https:\/\/[A-Za-z0-9.-]{1,253}(?::\d{1,5})?(?:\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$/;
+export const ForeignToolchainSchema = z.strictObject({
+  kind: z.literal('foreign-mcp'),
+  /** The toolchain part of a unit name (PADR-0042 decision 1), e.g. `excalidraw-mcp-0.3.2`. */
+  id: identifier,
+  server: z.strictObject({ name: identifier, version: semverPin, source: z.string().max(512).regex(SOURCE_URL), archiveSha256: sha256 }),
+  proxy: z.strictObject({ name: identifier }),
+  startDelivery: z.enum(['server-store', 'prompt', 'file']),
+  locator: z.strictObject({ field: z.string().min(1).max(128).regex(/^[A-Za-z0-9_.[\]-]+$/), select: z.enum(['last-ok', 'first-ok']) }),
+  rules: z.strictObject({ format: identifier, version: semverPin }),
+  allowlist: z.array(z.strictObject({ tool: toolName, effect: z.enum(['run-store', 'file', 'network']) })).min(1).max(MAX_TOOL_NAMES),
+});
+export type ForeignToolchain = z.infer<typeof ForeignToolchainSchema>;
+const AgentSchemaV3 = z.strictObject({
+  ...BenchReportSchemaV2.shape.agent.shape,
+  /** As /2, from the first run that reports one; stored from the parser's fixed list, else `other`. */
+  apiKeySource: z.enum(API_KEY_SOURCES).nullable(),
+  /** The model's vendor from the preset's mapping of the requested or attested model id. */
+  vendor: evidenced(identifier),
+  /** The client program the preset starts. */
+  client: evidenced(identifier),
+  /** The first run's client version that reports one. */
+  clientVersion: evidenced(z.string().regex(CLIENT_VERSION)),
+  /** The value of the preset's model switch or variable as the client got it. */
+  requestedModel: evidenced(z.string().regex(MODEL_ID)),
+  /** Behaviour-changing client settings as the preset requested them. */
+  settings: z.array(z.strictObject({ name: identifier, value: identifier })).max(64),
+  /** The billing class the preset was set up for, before the start. */
+  billing: z.strictObject({ class: z.enum(BILLING_CLASSES), source: z.enum(['preset-requested', 'none']) }),
+});
+export type AgentV3 = z.infer<typeof AgentSchemaV3>;
+export const BenchReportSchemaV3 = z.strictObject({
+  schema: z.literal(BENCH_SCHEMA_V3),
+  createdAt: z.iso.datetime(),
+  label: BenchReportSchemaV2.shape.label,
+  /** One verdict level per report, repeated on every run (decision 1). */
+  verdictLevel: z.enum(VERDICT_LEVELS),
+  environment: z.strictObject({
+    practonaut: text(64), node: text(64), os,
+    /** The world's adapter and the pinned application version (decision 2). */
+    app: z.strictObject({ adapterId: identifier, version: text(64) }),
+    /** Session level only. */
+    mirror: z.enum(['required', 'off']).optional(),
+    world: z.strictObject({
+      ...BenchReportSchemaV2.shape.environment.shape.world.shape,
+      /** SHA-256 of the canonical JSON of each benched task's co-actor schedule (decision 7). */
+      scenarios: z.array(z.strictObject({ taskId, schedule: sha256 })).max(1000).optional(),
+    }),
+  }),
+  toolchain: z.discriminatedUnion('kind', [PractonautToolchainSchema, ForeignToolchainSchema]),
+  /** One entry per instance with at least one run, in plan order (decision 3). */
+  instances: z.array(z.strictObject({ taskId, seed, identity: sha256 })).min(1).max(100_000),
+  agent: AgentSchemaV3,
+  settings: BenchReportSchemaV2.shape.settings,
+  references: BenchReportSchemaV2.shape.references,
+  runs: z.array(z.discriminatedUnion('verdictLevel', [SessionRunSchemaV3, ArtifactRunSchemaV3])).min(1).max(100_000),
+  recovered: BenchReportSchemaV2.shape.recovered,
+  interrupted: BenchReportSchemaV2.shape.interrupted,
+  summary: z.union([BenchSummarySchemaV2, ArtifactSummarySchema]),
+});
+export type BenchReportV3 = z.infer<typeof BenchReportSchemaV3>;
+export type BenchRunV3 = BenchReportV3['runs'][number];
+/** A validated /3 report at session level: its runs, summary and toolchain are the session level's. */
+export type SessionReportV3 = Omit<BenchReportV3, 'verdictLevel' | 'runs' | 'summary' | 'toolchain'> & { verdictLevel: 'session'; runs: SessionRunV3[]; summary: BenchSummaryV2; toolchain: z.infer<typeof PractonautToolchainSchema> };
+/** What the 0.2.0 challenge gate reads: a /2 report or a session-level /3 report, whose runs keep every /2 field (P1 restricts 0.3.0 rounds to /3). */
+export type GateBenchReport = BenchReportV2 | SessionReportV3;
+export type GateBenchRun = BenchRunV2 | SessionRunV3;
+export const isSessionReportV3 = (report: { schema: string; verdictLevel?: string }): report is SessionReportV3 => report.schema === BENCH_SCHEMA_V3 && report.verdictLevel === 'session';
+export type BenchReport = BenchReportV1 | BenchReportV2 | BenchReportV3;
+/** Runs of the /1 and /2 shape (and the session runs of /3, which keep every /2 field). */
 export type BenchRun = BenchRunV1 | BenchRunV2;
 
 const round = (value: number): number => Math.round(value * 10_000) / 10_000;
@@ -279,32 +458,53 @@ export function derivedPass(run: Pick<BenchRun, 'checker'>, mirror: 'required' |
   return run.checker.session.passed && (run.checker.native?.passed ?? true);
 }
 
-/** Aggregates over every run. Efficiency only counts passed runs whose task has a reference. */
-export function summarize(runs: readonly BenchRunV1[], repeats: number): BenchSummaryV1;
-export function summarize(runs: readonly BenchRunV2[], repeats: number): BenchSummaryV2;
-export function summarize(runs: readonly BenchRun[], repeats: number): BenchSummaryV1 | BenchSummaryV2 {
-  const judged = runs.filter(run => run.checker !== null), passed = runs.filter(run => run.pass);
+/** pass^k over the instances (task × seed) of `runs`, for k = 1 … repeats. */
+const passHatKs = (runs: ReadonlyArray<{ taskId: string; seed: number; pass: boolean }>, repeats: number): Array<{ k: number; value: number }> => {
   const instances = new Map<string, { n: number; c: number }>();
   for (const run of runs) {
     const key = `${run.taskId}\u0000${run.seed}`, entry = instances.get(key) ?? { n: 0, c: 0 };
     entry.n++; if (run.pass) entry.c++; instances.set(key, entry);
   }
-  const efficiency = (list: readonly BenchRun[]): number | null => mean(list.flatMap(run => run.pass && run.actions > 0 && run.referenceActions !== null ? [run.referenceActions / run.actions] : []));
+  return Array.from({ length: repeats }, (_, index) => ({ k: index + 1, value: passHatK([...instances.values()], index + 1) }));
+};
+/** Aggregates over every run. Efficiency only counts passed runs whose task has a reference. Mean
+ * actions and efficiency count `actionsOf(run)`: the final history's actions (/1, /2), the agent's
+ * own (/3, decision 7: equal without a co-actor). */
+export function summarize(runs: readonly BenchRunV1[], repeats: number): BenchSummaryV1;
+export function summarize(runs: readonly BenchRunV2[], repeats: number): BenchSummaryV2;
+export function summarize(runs: readonly SessionRunV3[], repeats: number, actionsOf: (run: SessionRunV3) => number): BenchSummaryV2;
+export function summarize<R extends BenchRun | SessionRunV3>(runs: readonly R[], repeats: number, actionsOf: (run: R) => number = run => run.actions): BenchSummaryV1 | BenchSummaryV2 {
+  const judged = runs.filter(run => run.checker !== null), passed = runs.filter(run => run.pass);
+  const efficiency = (list: readonly R[]): number | null => mean(list.flatMap(run => run.pass && actionsOf(run) > 0 && run.referenceActions !== null ? [run.referenceActions / actionsOf(run)] : []));
   const taskIds = [...new Set(runs.map(run => run.taskId))];
   return {
     runs: runs.length, passed: passed.length, judged: judged.length, infraErrors: runs.filter(run => run.status === 'infra_error').length,
     // Every run is in the denominator: a run that could not be judged (infra_error) is not passed.
     passAt1: runs.length ? round(passed.length / runs.length) : 0,
-    passHatK: Array.from({ length: repeats }, (_, index) => ({ k: index + 1, value: passHatK([...instances.values()], index + 1) })),
-    meanActions: mean(judged.map(run => run.actions)), meanActionsPassed: mean(passed.map(run => run.actions)),
+    passHatK: passHatKs(runs, repeats),
+    meanActions: mean(judged.map(actionsOf)), meanActionsPassed: mean(passed.map(actionsOf)),
     efficiencyVsReference: efficiency(runs), meanWallMs: mean(runs.map(run => run.wallMs)),
     rejectedActions: runs.reduce((sum, run) => sum + run.rejectedActions, 0), undos: runs.reduce((sum, run) => sum + run.undos, 0),
     resets: runs.reduce((sum, run) => sum + run.resets, 0), toolCalls: runs.reduce((sum, run) => sum + run.toolCalls.total, 0),
     byTask: taskIds.map(taskId => {
       const list = runs.filter(run => run.taskId === taskId), ok = list.filter(run => run.pass);
-      return { taskId, runs: list.length, passed: ok.length, passAt1: round(ok.length / list.length), meanActions: mean(list.filter(run => run.checker !== null).map(run => run.actions)), referenceActions: list[0]!.referenceActions, efficiency: efficiency(list) };
+      return { taskId, runs: list.length, passed: ok.length, passAt1: round(ok.length / list.length), meanActions: mean(list.filter(run => run.checker !== null).map(actionsOf)), referenceActions: list[0]!.referenceActions, efficiency: efficiency(list) };
     }),
   } as BenchSummaryV1 | BenchSummaryV2;
+}
+/** The summary of an artifact-level report: no action figures, the proxy's forwarded calls (decision 1). */
+export function summarizeArtifact(runs: readonly ArtifactRunV3[], repeats: number): ArtifactSummary {
+  const passed = runs.filter(run => run.pass), taskIds = [...new Set(runs.map(run => run.taskId))];
+  return {
+    runs: runs.length, passed: passed.length, judged: runs.filter(run => run.checker !== null).length, infraErrors: runs.filter(run => run.status === 'infra_error').length,
+    passAt1: runs.length ? round(passed.length / runs.length) : 0, passHatK: passHatKs(runs, repeats), meanWallMs: mean(runs.map(run => run.wallMs)),
+    proxyCalls: runs.reduce((sum, run) => sum + run.proxy.calls, 0),
+    byTask: taskIds.map(taskId => { const list = runs.filter(run => run.taskId === taskId), ok = list.filter(run => run.pass).length; return { taskId, runs: list.length, passed: ok, passAt1: round(ok / list.length) }; }),
+  };
+}
+/** The artifact level's pass rule (decision 1): a readable result that the separate checker passed. */
+export function derivedArtifactPass(run: Pick<ArtifactRunV3, 'checker'>): boolean {
+  return run.checker !== null && run.checker.result === 'read' && run.checker.artifact.passed;
 }
 
 function schemaIssue(error: z.ZodError, schema: string): BenchReportError {
@@ -313,7 +513,7 @@ function schemaIssue(error: z.ZodError, schema: string): BenchReportError {
 }
 
 /** The rules /1 and /2 share: the plan, every run's verdicts and counters, and the summary. */
-function checkRuns(report: BenchReport): void {
+function checkRuns(report: BenchReportV1 | BenchReportV2): void {
   const mirror = report.environment.mirror;
   // The plan is checked arithmetically and never expanded: settings may name up to 1000 tasks ×
   // 1000 seeds × 1000 repeats, which must not become 10^9 keys in memory.
@@ -424,11 +624,208 @@ function checkRunEvidence(report: BenchReportV2, run: BenchRunV2, fail: (message
   if (run.client && (kind === 'builtin' || run.client.source !== (kind === 'preset' ? 'client-attested' : 'command-output'))) fail(cliText('benchReportClient', { id: run.id, kind }));
 }
 
-/** Reads either version by its `schema` field; anything else is refused naming both. */
+/** The isolation a preset earns from its runs' evidence (decision 6): `tool-restricted-preset` only
+ * when at least one run shows its tools within its servers, every judged run does, and no run shows a
+ * tool outside; otherwise "template: not restricted". Built-ins and templates keep their kind's level. */
+export function presetIsolation(kind: AgentV3['kind'], runs: ReadonlyArray<{ checker: unknown; isolation: { evidence: string } }>): IsolationLevel {
+  if (kind !== 'preset') return ISOLATION_OF[kind];
+  const within = (run: { isolation: { evidence: string } }): boolean => run.isolation.evidence === 'tools-within-servers';
+  return runs.some(within) && runs.every(run => run.checker === null || within(run)) && !runs.some(run => run.isolation.evidence === 'tool-outside-servers') ? ISOLATION_OF.preset : ISOLATION_OF.command;
+}
+
+/** The /3 agent rules (decisions 5 and 6): each value with a source its kind allows, a value null
+ * exactly when its source is `none`, billing requested only by a preset, isolation from the runs. */
+function checkAgentV3(report: BenchReportV3, fail: (message: string) => never): void {
+  const agent = report.agent, kind = agent.kind;
+  const field = (name: string): never => fail(cliText('benchReportAgentField', { kind, field: name }));
+  if ((agent.model === null) !== (agent.modelSource === 'none')) fail(cliText('benchReportModelSource'));
+  if (kind === 'builtin' && agent.command.length) field('command');
+  if (kind === 'builtin' && agent.apiKeySource !== null) field('apiKeySource');
+  if (agent.modelSource === 'client-attested' && kind !== 'preset') field('modelSource');
+  if (agent.modelSource === 'command-output' && kind !== 'command') field('modelSource');
+  if (agent.keptEnv.length && kind !== 'preset') field('keptEnv');
+  if (new Set(agent.keptEnv).size !== agent.keptEnv.length) field('keptEnv');
+  for (const name of ['vendor', 'client', 'clientVersion', 'requestedModel'] as const) {
+    const { value, source } = agent[name];
+    if ((value === null) !== (source === 'none')) field(name);
+    if ((source === 'client-attested' || source === 'preset-requested') && kind !== 'preset') field(name);
+    if (source === 'command-output' && kind !== 'command') field(name);
+  }
+  if (agent.settings.length && kind !== 'preset') field('settings');
+  if (new Set(agent.settings.map(setting => setting.name)).size !== agent.settings.length) field('settings');
+  if ((agent.billing.source === 'preset-requested') !== (kind === 'preset') || (agent.billing.source === 'none' && agent.billing.class !== 'unknown')) field('billing');
+  const expected = presetIsolation(kind, report.runs);
+  if (agent.isolation !== expected) fail(cliText('benchReportIsolation', { kind, expected, given: agent.isolation }));
+}
+
+/** One /3 run's level-independent rules: isolation and its evidence, the stdout binding, the client
+ * block, and the failure (decisions 5, 6 and 9). */
+function checkRunBaseV3(report: BenchReportV3, run: BenchRunV3, fail: (message: string) => never): void {
+  const kind = report.agent.kind, external = kind !== 'builtin', why = (rule: string): never => fail(cliText('benchReportRunRule', { id: run.id, rule }));
+  if (run.verdictLevel !== report.verdictLevel) fail(cliText('benchReportRunLevel', { id: run.id, given: run.verdictLevel, expected: report.verdictLevel }));
+  // Isolation: by kind for built-ins and templates; a preset's from its own evidence.
+  const { level, evidence } = run.isolation;
+  if (kind === 'preset' ? evidence === 'by-kind' || level !== (evidence === 'tools-within-servers' ? ISOLATION_OF.preset : ISOLATION_OF.command) : evidence !== 'by-kind' || level !== ISOLATION_OF[kind])
+    fail(cliText('benchReportRunIsolation', { id: run.id, level, evidence, kind }));
+  // The stdout binding: present exactly for external runs; null means nothing was derived from it.
+  if (external !== (run.stdout !== undefined)) why('stdout');
+  if (run.stdout === null && (run.client !== undefined || (kind === 'preset' && evidence !== 'no-evidence'))) why('stdout');
+  if (run.client) {
+    if (!external || run.client.source !== (kind === 'preset' ? 'client-attested' : 'command-output')) fail(cliText('benchReportClient', { id: run.id, kind }));
+    if (kind !== 'preset' && (run.client.tools !== undefined || run.client.billing !== undefined)) why('client');
+  } else if (external && run.stdout) why('client.parser');
+  // A preset's evidence of tools within its servers rests on the tools its client listed.
+  if (evidence === 'tools-within-servers' && (!run.client?.tools || run.client.tools.omitted > 0 || !run.client.tools.names.length)) why('isolation');
+  if ((run.status === 'infra_error') !== (run.failure !== undefined)) why('failure');
+  if (run.failure) {
+    const { reason, parser, beforeModelWork } = run.failure;
+    if ((parser !== null) !== PARSER_REASONS.has(reason)) why('failure.parser');
+    if (parser !== null && !run.stdout) why('failure.parser');
+    if (beforeModelWork === true && parser === null) why('failure.beforeModelWork');
+  }
+  if ((run.checker === null) !== (run.status === 'infra_error')) fail(cliText('benchReportRunRule', { id: run.id, rule: 'checker' }));
+  if ((run.checker !== null) !== (run.artifacts !== undefined)) fail(cliText('benchReportArtifacts', { id: run.id }));
+}
+
+/** A /3 session run (decision 1 and 7): every /2 rule, the agent's own action count, the co-actor. */
+function checkSessionRunV3(report: BenchReportV3, run: SessionRunV3, scheduled: ReadonlySet<string>, fail: (message: string) => never): void {
+  const why = (rule: string): never => fail(cliText('benchReportRunRule', { id: run.id, rule }));
+  const mirror = report.environment.mirror!;
+  if (run.checker && mirror === 'required' && run.checker.native === null) fail(`run ${run.id} lacks the native-export verdict a mirrored run requires`);
+  if (run.checker && mirror === 'off' && run.checker.native !== null) fail(`run ${run.id} claims a native-export verdict without a mirror`);
+  if (run.pass !== derivedPass(run, mirror)) fail(`run ${run.id} claims pass=${run.pass}, but its checker verdicts give pass=${derivedPass(run, mirror)}`);
+  if (run.toolCalls.total !== run.toolCalls.observe + run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check) fail(`run ${run.id} tool-call total does not add up`);
+  if (run.toolCalls.act !== run.acceptedActions + run.rejectedActions) fail(`run ${run.id}: act calls must equal accepted plus rejected actions`);
+  if (run.artifacts && (run.artifacts.native === null) !== (run.checker?.native === null)) fail(`run ${run.id}: native-export artifact and native verdict must appear together`);
+  // Decision 7: the agent's actions in the final history; a co-actor's accepted actions make up the rest.
+  if (run.agentActions > run.acceptedActions) fail(cliText('benchReportAgentActions', { id: run.id }));
+  if (run.coActor === undefined ? run.agentActions !== run.actions : run.actions < run.agentActions || run.actions - run.agentActions > run.coActor.accepted) fail(cliText('benchReportAgentActions', { id: run.id }));
+  if (run.coActor) {
+    if (!scheduled.has(run.taskId)) why('coActor');
+    if (run.coActor.fired !== run.coActor.accepted + run.coActor.rejected || run.coActor.fired > run.coActor.planned) why('coActor');
+  } else if (scheduled.has(run.taskId)) why('coActor');
+  if (run.failure?.reason === 'server_error') why('failure.reason');
+  if (run.failure?.reason === 'evidence_incomplete' && !run.coActor) why('failure.reason');
+  if (run.failure?.reason === 'no_tool_call' && run.toolCalls.total !== 0) why('failure.reason');
+  const artifacts = run.artifacts, kind = report.agent.kind;
+  if (artifacts?.board !== undefined && artifacts.board !== null && mirror === 'off') fail(cliText('benchReportBoard', { id: run.id }));
+  if (artifacts?.traceError !== undefined && artifacts.trace !== null) fail(cliText('benchReportTraceError', { id: run.id }));
+  if (artifacts?.trace === null && artifacts.traceError === undefined) fail(cliText('benchReportTraceError', { id: run.id }));
+  if (typeof artifacts?.trace === 'string' && !run.logs) fail(cliText('benchReportTraceWithoutLog', { id: run.id }));
+  if (run.logs) {
+    const calls = run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check + (run.coActor?.fired ?? 0);
+    if (run.logs.mutations.entries + run.logs.mutations.omitted !== calls) fail(cliText('benchReportMutations', { id: run.id, entries: run.logs.mutations.entries + run.logs.mutations.omitted, calls }));
+    if (run.logs.calls?.clientTiming && kind !== 'builtin') fail(cliText('benchReportClientTiming', { id: run.id }));
+  }
+}
+
+/** A /3 artifact run (decision 1): judged on the stored result or the start file, from a complete proxy log. */
+function checkArtifactRunV3(report: BenchReportV3, run: ArtifactRunV3, fail: (message: string) => never): void {
+  const why = (rule: string): never => fail(cliText('benchReportRunRule', { id: run.id, rule }));
+  if (run.pass !== derivedArtifactPass(run)) fail(`run ${run.id} claims pass=${run.pass}, but its checker verdict gives pass=${derivedArtifactPass(run)}`);
+  if (run.artifacts && run.checker && (run.artifacts.result === null) !== (run.checker.result === 'absent')) why('artifacts.result');
+  if (run.checker !== null && run.proxyLog === null) why('proxyLog');
+  if (run.proxy.calls > report.settings.maxActions) why('proxy.calls');
+  if (run.failure?.reason === 'no_tool_call' && (run.proxy.starts !== 0 || run.proxy.calls !== 0)) why('failure.reason');
+  if (run.failure?.reason === 'evidence_incomplete' && run.proxyLog !== null && run.checker !== null) why('failure.reason');
+}
+
+/** The /3 rules (PADR-0044): the plan and the summary as /1 and /2, one verdict level and the
+ * toolchain of that level, the agent's evidenced identity, the instances of the runs, and per run the
+ * rules of its level. */
+export function validateBenchReportV3(raw: unknown): BenchReportV3 {
+  const parsed = BenchReportSchemaV3.safeParse(raw);
+  if (!parsed.success) throw schemaIssue(parsed.error, BENCH_SCHEMA_V3);
+  const report = parsed.data, fail = (message: string): never => { throw new BenchReportError(message); };
+  const level = report.verdictLevel, levelField = (name: string): never => fail(cliText('benchReportLevelField', { level, field: name }));
+  const planned = new Set(report.settings.tasks), folded = new Map<string, string>();
+  for (const task of report.settings.tasks) {
+    const other = folded.get(task.toLowerCase());
+    if (other !== undefined && other !== task) fail(cliText('benchReportTaskCase', { a: other, b: task }));
+    folded.set(task.toLowerCase(), task);
+  }
+  // One level per report, and what that level has and has not (decision 1).
+  if (report.toolchain.kind !== (level === 'session' ? 'practonaut' : 'foreign-mcp')) levelField('toolchain');
+  if (report.toolchain.kind === 'practonaut' && new Set(report.toolchain.tools).size !== report.toolchain.tools.length) levelField('toolchain.tools');
+  if (report.toolchain.kind === 'foreign-mcp' && new Set(report.toolchain.allowlist.map(entry => entry.tool)).size !== report.toolchain.allowlist.length) levelField('toolchain.allowlist');
+  const world = report.environment.world;
+  if (level === 'session' && report.environment.mirror === undefined) levelField('environment.mirror');
+  if (level === 'artifact') {
+    if (report.environment.mirror !== undefined) levelField('environment.mirror');
+    if (report.settings.mirror !== 'off') levelField('settings.mirror');
+    if (report.settings.checks !== undefined) levelField('settings.checks');
+    if (world.limits !== undefined) levelField('environment.world.limits');
+    if (world.scenarios !== undefined) levelField('environment.world.scenarios');
+  }
+  const scheduled = new Set<string>();
+  for (const entry of world.scenarios ?? []) {
+    if (!planned.has(entry.taskId) || scheduled.has(entry.taskId)) fail(cliText('benchReportGenerated', { task: entry.taskId }));
+    scheduled.add(entry.taskId);
+  }
+  checkAgentV3(report, fail);
+  const references = new Map<string, number>();
+  for (const entry of report.references?.tasks ?? []) {
+    if (!planned.has(entry.taskId) || references.has(entry.taskId)) fail(cliText('benchReportReferenceTask', { task: entry.taskId }));
+    if (entry.source !== (world.source === 'library' ? 'library' : 'oracle-file')) fail(cliText('benchReportReferenceSource', { source: entry.source, world: world.source }));
+    references.set(entry.taskId, entry.actions);
+  }
+  if (world.source === 'library') for (const task of report.settings.tasks) if (!references.has(task)) fail(cliText('benchReportLibraryReference', { task }));
+  const generated = new Set<string>();
+  for (const entry of world.generated) {
+    if (!planned.has(entry.taskId) || generated.has(entry.taskId)) fail(cliText('benchReportGenerated', { task: entry.taskId }));
+    generated.add(entry.taskId);
+  }
+  checkPlanV3(report, fail);
+  for (const run of report.runs) {
+    const expected = `${run.taskId}-s${run.seed}-r${run.repeat}`;
+    if (run.id !== expected) fail(cliText('benchReportRunId', { id: run.id, expected }));
+    const reference = references.get(run.taskId) ?? null;
+    if (run.referenceActions !== reference) fail(cliText('benchReportRunReference', { id: run.id, given: String(run.referenceActions), expected: String(reference) }));
+    checkRunBaseV3(report, run, fail);
+    if (run.verdictLevel === 'session') checkSessionRunV3(report, run, scheduled, fail);
+    else checkArtifactRunV3(report, run, fail);
+  }
+  // The instances are exactly the runs' task-and-seed pairs, in plan order (decision 3).
+  const order = report.settings.tasks.flatMap(task => report.settings.seeds.map(value => `${task}\u0000${value}`));
+  const ran = new Set(report.runs.map(run => `${run.taskId}\u0000${run.seed}`));
+  const listed = report.instances.map(entry => `${entry.taskId}\u0000${entry.seed}`);
+  if (!isDeepStrictEqual(listed, order.filter(key => ran.has(key)))) fail(cliText('benchReportInstances'));
+  const summary = level === 'session'
+    ? summarize(report.runs as SessionRunV3[], report.settings.repeats, run => run.agentActions)
+    : summarizeArtifact(report.runs as ArtifactRunV3[], report.settings.repeats);
+  if (!isDeepStrictEqual(summary, report.summary)) fail('summary does not follow from the runs');
+  return report;
+}
+
+/** The plan rules /1, /2 and /3 share: planned runs, interruption, unique ids, one reference length per task. */
+function checkPlanV3(report: BenchReportV3, fail: (message: string) => never): void {
+  const planned = report.settings.tasks.length * report.settings.seeds.length * report.settings.repeats;
+  if (report.interrupted) {
+    if (report.interrupted.plannedRuns !== planned || report.runs.length >= planned) fail(`interrupted report holds ${report.runs.length} runs, but its settings plan ${planned}`);
+    const stopped = report.interrupted.stopped, last = report.runs.at(-1)!;
+    if (stopped && (stopped.run !== last.id || last.status !== 'infra_error' || stopped.remaining[0] !== last.taskId || stopped.remaining.some(task => !report.settings.tasks.includes(task))))
+      fail(`the report says it stopped at run ${stopped.run}, which is not its last run, an infra_error, with the tasks it names to resume`);
+  } else if (planned !== report.runs.length) fail(`report has ${report.runs.length} runs, but its settings plan ${planned}`);
+  const tasks = new Set<string>(report.settings.tasks), seeds = new Set<number>(report.settings.seeds);
+  if (tasks.size !== report.settings.tasks.length || seeds.size !== report.settings.seeds.length) fail('settings name a task or seed twice');
+  const seen = new Set<string>(), ids = new Set<string>(), reference = new Map<string, number | null>();
+  for (const run of report.runs) {
+    if ((reference.has(run.taskId) ? reference.get(run.taskId) : run.referenceActions) !== run.referenceActions) fail(`run ${run.id} names another reference length for ${run.taskId}`);
+    reference.set(run.taskId, run.referenceActions);
+    const key = `${run.taskId}\u0000${run.seed}\u0000${run.repeat}`;
+    if (!tasks.has(run.taskId) || !seeds.has(run.seed) || run.repeat > report.settings.repeats || seen.has(key)) fail(`run ${run.id} is not one of the planned task × seed × repeat runs, or appears twice`);
+    if (ids.has(run.id)) fail(`run id ${run.id} appears twice`);
+    seen.add(key); ids.add(run.id);
+  }
+}
+
+/** Reads every version by its `schema` field; anything else is refused naming them. */
 export function validateBenchReport(raw: unknown): BenchReport {
   const schema = raw !== null && typeof raw === 'object' ? (raw as { schema?: unknown }).schema : undefined;
   if (schema === BENCH_SCHEMA_V1) return validateBenchReportV1(raw);
   if (schema === BENCH_SCHEMA_V2) return validateBenchReportV2(raw);
-  throw new BenchReportError(cliText('benchReportSchemaUnknown', { first: BENCH_SCHEMA_V1, second: BENCH_SCHEMA_V2 }));
+  if (schema === BENCH_SCHEMA_V3) return validateBenchReportV3(raw);
+  throw new BenchReportError(cliText('benchReportSchemaUnknown', { schemas: [BENCH_SCHEMA_V1, BENCH_SCHEMA_V2, BENCH_SCHEMA_V3].join(', ') }));
 }
 export const isBenchReportV2 = (report: BenchReport): report is BenchReportV2 => report.schema === BENCH_SCHEMA_V2;
+export const isBenchReportV3 = (report: BenchReport): report is BenchReportV3 => report.schema === BENCH_SCHEMA_V3;

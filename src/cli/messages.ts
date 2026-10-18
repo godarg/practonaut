@@ -396,8 +396,8 @@ export const CLI_CATALOG = {
     "de": "Die Basis mit den Einstellungen des Kandidaten erneut benchen"
   },
   "compareHintAgentKind": {
-    "en": "The isolation level follows from the agent kind: oracle and random compare only with a built-in, the claude-code preset only with itself, a command template only with a command template. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings",
-    "de": "Die Isolationsstufe folgt aus der Art des Agenten: oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, die Voreinstellung claude-code nur mit sich selbst, eine Befehlsvorlage nur mit einer Befehlsvorlage. Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen"
+    "en": "The isolation level follows from the agent kind for a built-in or a command template, and for a preset from its runs' evidence (tool-restricted only when its client listed exactly Practonaut's tools): oracle and random compare only with a built-in, a tool-restricted preset only with itself, a command template only with a command template or an unrestricted preset. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings",
+    "de": "Die Isolationsstufe folgt bei einer eingebauten Vergleichsbasis und einer Befehlsvorlage aus der Art des Agenten, bei einer Voreinstellung aus dem Nachweis ihrer Läufe (eingeschränkt nur, wenn ihr Client genau die Werkzeuge von Practonaut nannte): oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, eine eingeschränkte Voreinstellung nur mit sich selbst, eine Befehlsvorlage nur mit einer Befehlsvorlage oder einer nicht eingeschränkten Voreinstellung. Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen"
   },
   "compareDifference": {
     "en": "{field} differs ({baseline} on the baseline, {candidate} on the candidate)",
@@ -422,6 +422,42 @@ export const CLI_CATALOG = {
   "compareField_isolation": {
     "en": "the isolation level",
     "de": "die Isolationsstufe"
+  },
+  "compareField_verdictLevel": {
+    "en": "the verdict level",
+    "de": "die Bewertungsstufe"
+  },
+  "compareField_checks": {
+    "en": "the checks per run (--checks)",
+    "de": "die Prüfungen je Lauf (--checks)"
+  },
+  "compareField_rules": {
+    "en": "the reading-rules version",
+    "de": "die Version der Leseregeln"
+  },
+  "compareLevel_session": {
+    "en": "session verdict",
+    "de": "Sitzungsurteil"
+  },
+  "compareLevel_artifact": {
+    "en": "artifact-judged, end-state only, no Practonaut history",
+    "de": "nach Artefakt bewertet, nur Endzustand, ohne Practonaut-Verlauf"
+  },
+  "compareHintLevel": {
+    "en": "Runs of different verdict levels are never paired (PADR-0043 decision 1): compare reports of one level",
+    "de": "Läufe verschiedener Bewertungsstufen werden nie gepaart (PADR-0043 Entscheidung 1): Berichte einer Stufe vergleichen"
+  },
+  "compareHintGate": {
+    "en": "A regression gate compares one world with itself under one reading of results; compare without --fail-on-regression to see the two configurations side by side",
+    "de": "Eine Regressionsschranke vergleicht eine Welt mit sich selbst, gelesen nach denselben Regeln; ohne --fail-on-regression vergleichen, um die beiden Konfigurationen nebeneinander zu sehen"
+  },
+  "reportParsersNotShipped": {
+    "en": "not re-derived: values read by the parser {parsers}, which this Practonaut does not ship; the gate and the release ledger treat them as not attested\n",
+    "de": "nicht nachgerechnet: Werte, die der Parser {parsers} gelesen hat, den dieses Practonaut nicht mitliefert; Schranke und Freigabe-Ledger behandeln sie als nicht bestätigt\n"
+  },
+  "reportPresetUnchecked": {
+    "en": "the preset's name and command were not checked: the report was made with Practonaut {version}\n",
+    "de": "Name und Befehl der Voreinstellung wurden nicht geprüft: der Bericht entstand mit Practonaut {version}\n"
   },
   "compareIncomplete": {
     "en": "the candidate is incomplete: {n} {n:instance is|instances are} missing, cut short or {n:holds|hold} a run that was not judged ({list}); a missing verdict could hide a regression. Bench the candidate again",
@@ -592,8 +628,32 @@ export const CLI_CATALOG = {
     "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} erreicht sie das Ziel nicht"
   },
   "benchReportSchemaUnknown": {
-    "en": "report does not match {first} or {second}: its schema field names neither",
-    "de": "der Bericht passt weder zu {first} noch zu {second}: sein Feld schema nennt keines von beiden"
+    "en": "report does not match {schemas}: its schema field names none of them",
+    "de": "der Bericht passt zu keinem von {schemas}: sein Feld schema nennt keines davon"
+  },
+  "benchReportRunLevel": {
+    "en": "run {id} has verdict level {given}; the report's is {expected}, and a report holds runs of one level",
+    "de": "der Lauf {id} hat die Bewertungsstufe {given}; die des Berichts ist {expected}, und ein Bericht enthält Läufe einer Stufe"
+  },
+  "benchReportLevelField": {
+    "en": "a report at verdict level {level} cannot have this {field}",
+    "de": "ein Bericht der Bewertungsstufe {level} kann dieses Feld {field} nicht haben"
+  },
+  "benchReportRunRule": {
+    "en": "run {id}: its {rule} does not follow the bench/3 rules (PADR-0044)",
+    "de": "Lauf {id}: das Feld {rule} folgt nicht den Regeln von bench/3 (PADR-0044)"
+  },
+  "benchReportRunIsolation": {
+    "en": "run {id}: isolation {level} with evidence {evidence} does not fit an agent of kind {kind}",
+    "de": "Lauf {id}: die Isolation {level} mit dem Nachweis {evidence} passt nicht zu einem Agenten der Art {kind}"
+  },
+  "benchReportAgentActions": {
+    "en": "run {id}: the agent's own actions in the final history do not fit its accepted actions, the final history and the co-actor's accepted actions",
+    "de": "Lauf {id}: die eigenen Aktionen des Agenten im Endverlauf passen nicht zu seinen angenommenen Aktionen, zum Endverlauf und zu den angenommenen Aktionen des Mitspielers"
+  },
+  "benchReportInstances": {
+    "en": "the report's instances are not exactly the task-and-seed pairs of its runs, in plan order",
+    "de": "die Instanzen des Berichts sind nicht genau die Paare aus Aufgabe und Seed seiner Läufe, in der Reihenfolge des Plans"
   },
   "benchReportTaskCase": {
     "en": "settings name tasks {a} and {b}, which differ only in case",
@@ -674,6 +734,30 @@ export const CLI_CATALOG = {
   "benchReportArtifacts": {
     "en": "run {id}: a judged run binds its artifacts and a run that was not judged binds none",
     "de": "Lauf {id}: ein bewerteter Lauf bindet seine Artefakte, ein nicht bewerteter keine"
+  },
+  "verifyCoActor": {
+    "en": "run {run} holds co-actor records; this Practonaut does not re-verify co-actor runs (their schedule checks come with the scenario record)",
+    "de": "Lauf {run} enthält Einträge eines Mitspielers; dieses Practonaut prüft Läufe mit Mitspieler nicht nach (ihre Ablaufprüfung kommt mit dem Szenario-Record)"
+  },
+  "verifyClientValue": {
+    "en": "run {run}: its {field} is not what the parser reads from the run's bound stdout",
+    "de": "Lauf {run}: das Feld {field} ist nicht das, was der Parser aus der gebundenen Standardausgabe des Laufs liest"
+  },
+  "verifyArtifactLevel": {
+    "en": "this Practonaut does not re-verify artifact-judged reports yet (their re-verification comes with the first reading rules); the report is consistency-checked only",
+    "de": "dieses Practonaut prüft nach Artefakt bewertete Berichte noch nicht nach (das kommt mit den ersten Leseregeln); der Bericht ist nur auf Stimmigkeit geprüft"
+  },
+  "verifyWorldApp": {
+    "en": "the report names application adapter {given}; the stored world is for {stored}",
+    "de": "der Bericht nennt den Anwendungsadapter {given}; die gespeicherte Welt ist für {stored}"
+  },
+  "verifyIdentity": {
+    "en": "the task identity of {task} with seed {seed} is not the one the stored world gives",
+    "de": "die Aufgabenidentität von {task} mit Seed {seed} ist nicht die, die die gespeicherte Welt ergibt"
+  },
+  "verifyPreset": {
+    "en": "the report names preset {name} with a command this Practonaut does not ship for it",
+    "de": "der Bericht nennt die Voreinstellung {name} mit einem Befehl, den dieses Practonaut dafür nicht mitliefert"
   },
   "verifyWorldMissing": {
     "en": "the stored world {file} is missing or unreadable in the bench folder (if the report was moved without its folder, point --runs at the bench folder)",
