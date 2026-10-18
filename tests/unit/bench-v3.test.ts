@@ -33,7 +33,7 @@ test('a consistent /3 report validates at either level; one level per report, it
   assert.equal(validateBenchReport(session).schema, 'practonaut.bench/3');
   assert.equal(validateBenchReportV3(artifact).verdictLevel, 'artifact');
   // A run of the other level, the other toolchain, or the other summary.
-  refused(sessionReport({ T: { 1: [true] } }, { change: value => { (value.runs[0] as Mutable<SessionRunV3> & { verdictLevel: string }).verdictLevel = 'artifact'; } }), /does not match practonaut\.bench\/3|verdict level/);
+  refused(sessionReport({ T: { 1: [true] } }, { change: value => { (value.runs[0] as unknown as { verdictLevel: string }).verdictLevel = 'artifact'; } }), /does not match practonaut\.bench\/3|verdict level/);
   refused(sessionReport({ T: { 1: [true] } }, { change: value => { value.toolchain = artifactReport().toolchain; } }), /toolchain/);
   refused(artifactReport(undefined, value => { value.environment = { ...value.environment, mirror: 'off' }; }), /environment\.mirror/);
   refused(artifactReport(undefined, value => { value.settings = { ...value.settings, checks: 3 }; }), /settings\.checks/);

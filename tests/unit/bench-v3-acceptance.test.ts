@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { summarize, validateBenchReport, validateBenchReportV1, validateBenchReportV2, validateBenchReportV3, type BenchReportV1, type BenchReportV2 } from '../../src/bench/report.ts';
-import { toView } from '../../src/bench/view.ts';
+import { isSessionView, toView } from '../../src/bench/view.ts';
 import { verifyBenchArtifacts, verifyBenchV2 } from '../../src/bench/verify.ts';
 import { libraryWorld } from '../../src/bench/run.ts';
 import { compareReports, CompareError } from '../../src/bench/compare.ts';
@@ -127,6 +127,7 @@ test('the view states by hand what the old formats fix, derive and did not recor
   assert.equal(v2.runs.some(run => 'stdout' in run || 'failure' in run), false);
   const v1 = toView(validateBenchReport(json('tests/fixtures/bench/v1/report.json')));
   assert.equal(v1.readFrom, 'practonaut.bench/1');
+  assert.ok(isSessionView(v1));
   assert.deepEqual(v1.environment.world, { source: 'library', worldId: 'excalidraw-library', version: '1.1.0', contentHash: '6f46bc08e6a612235d29a0aa06eed3324952ad16897b0b042fc4e08ca80c33da', package: null, generated: [] });
   assert.deepEqual([v1.agent.isolation, v1.agent.keptEnv, v1.references], [null, null, 'not-recorded']);
   assert.deepEqual(v1.runs.map(run => [run.id, run.agentActions, run.isolation]), [
