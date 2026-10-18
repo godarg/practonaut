@@ -167,7 +167,7 @@ async function start(): Promise<void> {
     await app.close();
   }
   const { chromium } = await import('playwright-core');
-  const { launchChromium } = await import('../../src/adapters/excalidraw/chromium.ts');
+  const { launchChromium } = await import('../../src/adapters/browser/chromium.ts');
   const { browser } = await launchChromium(chromium, () => ({ headless: true, timeout: 30_000 }));
   const warm: Array<Record<string, unknown>> = [];
   try {
@@ -258,7 +258,7 @@ async function negative(): Promise<void> {
     { id: 'malformed-xml', xml: '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="s1" value="A"', intended: { s1: step('s1', 'A') } },
   ];
   const { chromium } = await import('playwright-core');
-  const { launchChromium } = await import('../../src/adapters/excalidraw/chromium.ts');
+  const { launchChromium } = await import('../../src/adapters/browser/chromium.ts');
   const { browser } = await launchChromium(chromium, () => ({ headless: true, timeout: 30_000 }));
   const results: Array<Record<string, unknown>> = [];
   const baseline = MODEL(STEP('base', 'previous diagram'));
@@ -299,7 +299,7 @@ async function negative(): Promise<void> {
 /** Final state of every reference (drawn case): three fresh pages each; raw XML and projection compared. */
 async function stability(): Promise<void> {
   const { chromium } = await import('playwright-core');
-  const { launchChromium } = await import('../../src/adapters/excalidraw/chromium.ts');
+  const { launchChromium } = await import('../../src/adapters/browser/chromium.ts');
   const { browser } = await launchChromium(chromium, () => ({ headless: true, timeout: 30_000 }));
   const results: Array<Record<string, unknown>> = [];
   try {

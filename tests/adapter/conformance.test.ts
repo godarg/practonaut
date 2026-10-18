@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { Browser } from 'playwright-core';
 import { stateHash } from '../../src/canonical/index.ts';
-import { createExcalidrawAdapter, renderCheck } from '../../src/adapters/excalidraw/index.ts';
+import { renderCheck } from '../../src/adapters/excalidraw/index.ts';
+import { EXCALIDRAW_APP, resolveAdapter } from '../../src/adapters/registry.ts';
 import type { Action, State } from '../../src/world/types.ts';
 export const base: State = { objects: {
   f:{id:'f',type:'frame',deleted:false,name:'Flow'},
@@ -16,7 +17,7 @@ export const base: State = { objects: {
 const evidence: Array<{ repetition:number; case:string; state:State; hash:string; render?:Awaited<ReturnType<typeof renderCheck>> }> = [];
 test('all seven actions and rule effects conform 3 times to the real pinned engine', { timeout: 120000 }, async () => {
   for (let repetition = 1; repetition <= 3; repetition++) {
-    const adapter = await createExcalidrawAdapter(base);
+    const adapter = await resolveAdapter(EXCALIDRAW_APP, 'practonaut.world/1').create(base);
     try {
       await mkdir('.local/adapter',{recursive:true});
       let before = structuredClone(base);
@@ -57,7 +58,7 @@ test('all seven actions and rule effects conform 3 times to the real pinned engi
     } finally { await adapter.close(); }
     // Production capability path: updateScene-only deletion must detach both incident arrows,
     // independently of the separate UI-Delete measurement above.
-    const apiDeleteAdapter=await createExcalidrawAdapter(base);
+    const apiDeleteAdapter=await resolveAdapter(EXCALIDRAW_APP,'practonaut.world/1').create(base);
     try {
       const after=structuredClone(base);after.objects.b!.deleted=true;
       const ab=after.objects.ab,bc=after.objects.bc;
@@ -80,7 +81,7 @@ test('all seven actions and rule effects conform 3 times to the real pinned engi
 });
 test('wrong prediction, invalid binding, unmodeled action, timeout and cancellation reject atomically', {timeout:30000}, async()=>{
   let browser:Browser|undefined;
-  const adapter=await createExcalidrawAdapter(base,{}, {ready:current=>{browser=current;}});
+  const adapter=await resolveAdapter(EXCALIDRAW_APP,'practonaut.world/1').create(base,{}, {ready:current=>{browser=current;}});
   const currentPage=()=>browser!.contexts()[0]!.pages()[0]!;
   // Suspend the real process response after a genuine write, rather than assuming
   // that a fast successful action must still be running after an arbitrary 1–5 ms.
@@ -131,7 +132,7 @@ test('SVG words shared by different labels are associated by native group geomet
   for(const [id,label] of [['a','Anfrage annehmen'],['b','Anfrage freigeben'],['c','Anfrage ablegen']] as const) {
     const step=state.objects[id];if(step?.type==='step')step.label=label;
   }
-  const adapter=await createExcalidrawAdapter(state);
+  const adapter=await resolveAdapter(EXCALIDRAW_APP,'practonaut.world/1').create(state);
   try {
     const artifact=await adapter.exportArtifact(), report=await renderCheck(artifact);
     assert.equal(report.ok,true,JSON.stringify(report));
@@ -150,8 +151,8 @@ test('source adapter finds its engine relative to its module, independent of cal
   try {
     await mkdir(resolve(scratch,'.local/engine'),{recursive:true});
     await writeFile(resolve(scratch,'.local/engine/engine.js'),'throw new Error("cwd engine must never be read")');
-    const moduleURL=new URL('../../src/adapters/excalidraw/index.ts',import.meta.url).href;
-    const script=`import{createExcalidrawAdapter}from${JSON.stringify(moduleURL)};const adapter=await createExcalidrawAdapter(${JSON.stringify(base)});try{console.log(JSON.stringify(await adapter.snapshot()))}finally{await adapter.close()}`;
+    const moduleURL=new URL('../../src/adapters/registry.ts',import.meta.url).href;
+    const script=`import{EXCALIDRAW_APP,resolveAdapter}from${JSON.stringify(moduleURL)};const adapter=await resolveAdapter(EXCALIDRAW_APP,'practonaut.world/1').create(${JSON.stringify(base)});try{console.log(JSON.stringify(await adapter.snapshot()))}finally{await adapter.close()}`;
     const run=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:scratch,encoding:'utf8',timeout:20000});
     assert.equal(run.status,0,run.stderr);assert.deepEqual(JSON.parse(run.stdout),base);
   }finally{await rm(scratch,{recursive:true,force:true});}

@@ -3,6 +3,7 @@ import { ACTION_NAMES, V2_ACTION_NAMES, SHAPES, STROKE_COLORS, FILL_COLORS, type
 import { RUNTIME_LIMITS } from "./limits.ts";
 import { preflightJson, preflightPredicate, WorldError } from "./preflight.ts";
 import { isDisplayText } from './display-text.ts';
+import { adapterIdsFor, appVersionsFor, checkWorldApp, type AdapterId, type AppVersion } from "./apps.ts";
 
 export { WorldError } from "./preflight.ts";
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
@@ -67,10 +68,14 @@ const parameter = z.strictObject({ type: z.enum(["string", "integer", "id", "end
 const semver = z.string().max(128).regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
 const source = z.string().min(1).max(4096);
 const sourceHash = z.string().regex(/^[a-f0-9]{64}$/);
+/** The known applications and versions per schema (PADR-0045); a world naming another one is
+ * refused by name before this schema runs (`checkWorldApp`). */
+const appIdV1 = z.enum(adapterIdsFor("practonaut.world/1") as [AdapterId, ...AdapterId[]]), appVersionV1 = z.enum(appVersionsFor("practonaut.world/1") as [AppVersion, ...AppVersion[]]);
+const appIdV2 = z.enum(adapterIdsFor("practonaut.world/2") as [AdapterId, ...AdapterId[]]), appVersionV2 = z.enum(appVersionsFor("practonaut.world/2") as [AppVersion, ...AppVersion[]]);
 const privateSource = z.strictObject({ owner: name, reconstructionAuthor: name, authorization: z.strictObject({ reference: source, sha256: sourceHash, scope: name }), sources: z.array(z.strictObject({ reference: source, sha256: sourceHash })).min(1).max(16) });
 export const WorldSchema = z.strictObject({
   schema: z.literal("practonaut.world/1"), id: id.regex(/^[a-z0-9][a-z0-9-]*$/), version: semver,
-  app: z.strictObject({ adapterId: z.literal("excalidraw"), versionRange: z.literal("0.18.1"), fontFamilies: z.array(integer.min(1).max(100)).min(1).max(32), excludedAttributes: z.record(id, source) }),
+  app: z.strictObject({ adapterId: appIdV1, versionRange: appVersionV1, fontFamilies: z.array(integer.min(1).max(100)).min(1).max(32), excludedAttributes: z.record(id, source) }),
   units: z.record(id, source),
   objectTypes: z.array(z.strictObject({ type: objType, attributes: z.record(id, z.enum(["string", "integer", "id", "nullable-id", "boolean"])) })).min(1).max(3),
   initialState: StateSchema,
@@ -78,7 +83,7 @@ export const WorldSchema = z.strictObject({
   rules: z.array(z.strictObject({ id, action: z.enum(ACTION_NAMES), status: z.literal("confirmed"), preconditions: z.array(PredicateSchema).max(128), effects: z.array(z.enum(["create_step", "set_label", "set_position", "create_arrow", "set_endpoint", "clear_endpoint", "disconnect_arrow", "tombstone_step", "detach_incident_arrows"])).min(1).max(8), evidence: z.array(z.strictObject({ run: source, case: source, sha256: z.string().regex(/^[a-f0-9]{64}$/) })).min(1).max(128) })).min(1).max(128),
   tasks: z.array(TaskSchema).min(1).max(128),
   variants: z.strictObject({ generator: z.literal("finite-seeded-v1"), cases: z.array(z.strictObject({ id, labels: z.record(objectId, text), insertPosition: integer.min(0).max(9999), layoutOffset: z.strictObject({ x: integer, y: integer }) })).min(1).max(256) }),
-  provenance: z.strictObject({ authors: z.array(name).min(1).max(128), adapterVersion: name, appVersion: z.literal("0.18.1"), compileToolVersion: name, recordings: z.array(id).max(128), privateSource: privateSource.optional(), coalescingVersion: name.optional() }),
+  provenance: z.strictObject({ authors: z.array(name).min(1).max(128), adapterVersion: name, appVersion: appVersionV1, compileToolVersion: name, recordings: z.array(id).max(128), privateSource: privateSource.optional(), coalescingVersion: name.optional() }),
   rights: z.strictObject({ license: z.enum(["CC0-1.0", "LicenseRef-Private"]), assets: z.array(z.strictObject({ path: source, source, license: source })).max(255), recordings: z.array(z.strictObject({ id, source, license: source, consent: source })).max(128) }),
 });
 
@@ -137,7 +142,7 @@ export const RuleSchemaV2 = z.strictObject({ id, action: z.enum(V2_ACTION_NAMES)
 /** world/2: additive format. Optional parts get explicit defaults, so a validated world re-validates unchanged. */
 export const WorldSchemaV2 = z.strictObject({
   schema: z.literal("practonaut.world/2"), id: id.regex(/^[a-z0-9][a-z0-9-]*$/), version: semver,
-  app: z.strictObject({ adapterId: z.literal("excalidraw"), versionRange: z.literal("0.18.1"), fontFamilies: z.array(integer.min(1).max(100)).min(1).max(32).default([3]), excludedAttributes: z.record(id, source).default({}) }),
+  app: z.strictObject({ adapterId: appIdV2, versionRange: appVersionV2, fontFamilies: z.array(integer.min(1).max(100)).min(1).max(32).default([3]), excludedAttributes: z.record(id, source).default({}) }),
   units: z.record(id, source).default({}),
   objectTypes: z.array(z.strictObject({ type: objType, attributes: z.record(id, z.enum(["string", "integer", "id", "nullable-id", "boolean"])) })).min(1).max(3).default([{ type: "frame", attributes: {} }, { type: "step", attributes: {} }, { type: "arrow", attributes: {} }]),
   initialState: StateSchemaV2.default({ objects: {} }),
@@ -145,7 +150,8 @@ export const WorldSchemaV2 = z.strictObject({
   rules: z.array(RuleSchemaV2).max(128).default([]),
   tasks: z.array(TaskSchemaV2).min(1).max(128),
   variants: z.strictObject({ generator: z.literal("finite-seeded-v1"), cases: z.array(z.strictObject({ id, labels: z.record(objectId, text).default({}), params: z.record(objectId, z.union([text, integer])).default({}), layoutOffset: z.strictObject({ x: integer, y: integer }).default({ x: 0, y: 0 }) })).min(1).max(256) }).default({ generator: "finite-seeded-v1", cases: [{ id: "default", labels: {}, params: {}, layoutOffset: { x: 0, y: 0 } }] }),
-  provenance: z.strictObject({ authors: z.array(name).min(1).max(128), adapterVersion: name.default("1.0.0"), appVersion: z.literal("0.18.1").default("0.18.1"), compileToolVersion: name.default("0.0.0"), recordings: z.array(id).max(128).default([]), privateSource: privateSource.optional(), coalescingVersion: name.optional() }),
+  // An omitted appVersion is the world's app.versionRange, filled in by validateWorld (PADR-0045).
+  provenance: z.strictObject({ authors: z.array(name).min(1).max(128), adapterVersion: name.default("1.0.0"), appVersion: appVersionV2.optional(), compileToolVersion: name.default("0.0.0"), recordings: z.array(id).max(128).default([]), privateSource: privateSource.optional(), coalescingVersion: name.optional() }),
   rights: z.strictObject({ license: z.enum(["CC0-1.0", "LicenseRef-Private"]), assets: z.array(z.strictObject({ path: source, source, license: source })).max(255).default([]), recordings: z.array(z.strictObject({ id, source, license: source, consent: source })).max(128).default([]) }),
 });
 
@@ -242,9 +248,16 @@ export function validateWorld(raw: unknown): World {
     if (!Array.isArray(item) && "op" in item) { preflightPredicate(item); continue; }
     stack.push(...Object.values(item));
   }
+  // An application this Practonaut does not have is refused by name before the schema runs.
+  checkWorldApp(raw);
   const v2 = !!raw && typeof raw === "object" && (raw as { schema?: unknown }).schema === "practonaut.world/2";
   const w = (v2 ? parse(WorldSchemaV2, raw) : parse(WorldSchema, raw)) as World;
   const era: Era = v2 ? 2 : 1;
+  if (v2) {
+    // Filled in the key order a schema default would give.
+    const { authors, adapterVersion, appVersion, ...rest } = w.provenance;
+    w.provenance = { authors, adapterVersion, appVersion: appVersion ?? w.app.versionRange, ...rest };
+  }
   // A private marker is a non-grant. Source roles are explicit; they never deduce consent.
   const declaredPrivate = w.rights.license === 'LicenseRef-Private';
   if (declaredPrivate !== Boolean(w.provenance.privateSource)) throw new WorldError('private rights and explicit private source must appear together');

@@ -24,7 +24,7 @@ import { CheckerError } from '../checker/index.ts';
 import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
-import { BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
+import { BROWSER_BOUNDS } from '../adapters/browser/bounded.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string;
   /** Test seam: how the demonstration waits before each step (real timers when absent; the CLI never sets it). */

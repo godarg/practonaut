@@ -472,7 +472,7 @@ async function writeT09Moments(directory:string,moments:T09RawMoment[],budget:T0
 async function heldAuthorRetryFixture(language:'en'|'de',trace:any,moments:T09RawMoment[],budget:T09Budget){
  const {mkdtemp,rm,realpath}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{startHost}=await import('../../../src/host/server.ts'),{validateWorld}=await import('../../../src/world/schema.ts'),{TOKEN_HEADER}=await import('../../../src/host/protocol.ts');
  let directory:string|undefined;const constructors=new Set<Promise<unknown>>();let closeStarted=false,closeTask:Promise<void>|undefined,instrumentalReleased=false,instrumentalReleaseAt:number|undefined;
- const {closeBrowser}=await import('../../../src/adapters/excalidraw/bounded.ts');
+ const {closeBrowser}=await import('../../../src/adapters/browser/bounded.ts');
  let host:Awaited<ReturnType<typeof startHost>>|undefined,browser:Browser|undefined,page:Page|undefined,holdEnabled=false,authorHeld=false,heldRequest:object|undefined,releaseAuthor:()=>void=()=>{},observeHoldTimer:ReturnType<typeof setTimeout>|undefined,observeAbortTimer:ReturnType<typeof setTimeout>|undefined;
  let holdResolve:()=>void=()=>{},holdReject:(error:Error)=>void=()=>{},abortResolve:()=>void=()=>{},abortReject:(error:Error)=>void=()=>{},holdResolved=false,abortResolved=false,closed=false,nativeAbortObserved=false;
  const pending=new Set<Promise<void>>(),holdReached=new Promise<void>((resolve,reject)=>{holdResolve=resolve;holdReject=reject;}),abortReached=new Promise<void>((resolve,reject)=>{abortResolve=resolve;abortReject=reject;});void holdReached.catch(()=>{});void abortReached.catch(()=>{});

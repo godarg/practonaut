@@ -1,6 +1,6 @@
-import type { Action, Failure, State } from "../world/types.ts";
+import type { Action, AdapterId, AppVersion, Failure, State } from "../world/types.ts";
 export interface AdapterDescription {
-  id: "excalidraw"; appVersion: "0.18.1"; adapterVersion: string;
+  id: AdapterId; appVersion: AppVersion; adapterVersion: string;
   capabilities: Array<"describe" | "snapshot" | "apply" | "exportArtifact" | "importArtifact">;
   fontFamilies: number[]; excludedAttributes: Record<string, string>;
 }
@@ -15,4 +15,16 @@ export interface ApplicationAdapter {
   exportArtifact(options?: AdapterOptions): Promise<Artifact>;
   importArtifact(native: string, options?: AdapterOptions): Promise<AdapterResult>;
   close(): Promise<void>;
+}
+/** What the host-side live mirror needs beyond PADR-0007 (PADR-0011, PADR-0045); every adapter in
+ * the registry provides it. */
+export interface MirrorAdapter extends ApplicationAdapter {
+  /** Requests the app's page made that the adapter refused, in order. */
+  networkAttempts(): string[];
+  /** Host-only resynchronisation, always checked against real read-back. */
+  restoreState(state: State, options?: AdapterOptions): Promise<AdapterResult>;
+  /** The current scene as PNG, rendered by the real app. */
+  renderPng(): Promise<Uint8Array>;
+  /** Cancel pending browser work before recovery; deliberately bypasses the write queue. */
+  terminate(): Promise<void>;
 }

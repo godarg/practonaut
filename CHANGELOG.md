@@ -6,6 +6,53 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Adapter registry** (PADR-0045, proposed; roadmap 0.3.0 Must 1): adapters are chosen by the
+  world's `app.adapterId` through `src/adapters/registry.ts` (app versions, world schemas, runtime
+  kind `bundled` or `downloaded`, read-back comparison, factory); only Excalidraw 0.18.1 is
+  registered. The live mirror, `practonaut run`, `play`, `serve` and `mcp --task` resolve their
+  adapter there; the checker reads exports through its own format table. A unit test keeps the
+  world's table of known apps, the registry and the checker's format table equal.
+- **Shared browser shell** (`src/adapters/browser/`): the one Chromium start (moved from the
+  Excalidraw folder), a launch deadline the shell enforces itself (a browser that arrives late is
+  closed) that also bounds the routing setup, and a deadline for the app's own start; a network
+  boundary that also closes every WebSocket, puts a content security policy on every served
+  response (so shared workers, frames and workers reach no other host), starts Chromium without
+  WebRTC UDP, without host resolution and behind a sink proxy on 127.0.0.1 that refuses every
+  connection the browser opens itself (TURN over TCP, preconnects) and reads and records nothing, so
+  another local process gains nothing by connecting — measured against the real Chromium —;
+  operations with one deadline that covers reading the committed scene, that end on timeout or abort
+  so none of their later calls into the shell is answered, and whose undo and rollback are bounded
+  too (a rollback that fails closes the shell, and the host's mirror starts a new one); PNG
+  capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity and
+  SVG.
+
+### Changed
+
+- Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
+  Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
+  tier); headroom is sought per family and toolchain and in new family types, each behind a
+  pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
+  to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
+- A world naming an application this Practonaut does not have is refused by name before anything
+  starts: `E_ADAPTER_UNKNOWN`, `E_ADAPTER_VERSION_UNSUPPORTED` (known adapter, other app version)
+  and `E_ADAPTER_SCHEMA_UNSUPPORTED` (adapter that does not run this world schema), at `validate`,
+  `pack`, every world load (`mcp --task` included, exit 2 instead of "could not start") and in the
+  checker process — instead of `E_WORLD_INVALID` with a schema message
+  ([world format](docs/world-format.md) §1.4, which now also lists the world-content codes).
+  The world JSON Schemas list the allowed app values; world/2's omitted `provenance.appVersion` is
+  the world's `app.versionRange`.
+- The host compares a mirror's read-back the way its adapter declares: the whole state with
+  tombstones (Excalidraw, unchanged) or live objects only for an app that keeps no deleted objects.
+- The checker request's `format` option accepts `session` or the world adapter's native format id
+  (today `excalidraw`, as before); another app's format is refused.
+- Proposed decision record for the spatial-layout family (PADR-0047): six bounded layout operators
+  (no overlap, aligned, evenly spaced, inside a named canvas, arrows that do not cross, arrows clear of
+  steps) judged on step boxes and on straight lines between step centres, with a cost bound per
+  clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
+  the `challenge-layout` generator. No behaviour changes yet.
+
 ### Fixed
 
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
@@ -35,19 +82,6 @@ All notable changes are recorded here. The format follows
   logged, and the demonstration and editor routes do not exist there. A single-task host now refuses
   every variant and hint request; `practonaut`, `play`, `serve` and `mcp --task` keep every task,
   variant and hint ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
-
-### Changed
-
-- Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
-  Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
-  tier); headroom is sought per family and toolchain and in new family types, each behind a
-  pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
-  to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
-- Proposed decision record for the spatial-layout family (PADR-0047): six bounded layout operators
-  (no overlap, aligned, evenly spaced, inside a named canvas, arrows that do not cross, arrows clear of
-  steps) judged on step boxes and on straight lines between step centres, with a cost bound per
-  clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
-  the `challenge-layout` generator. No behaviour changes yet.
 
 ## [0.2.0] - 2026-10-16
 
