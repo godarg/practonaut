@@ -223,8 +223,8 @@ result: it can find a route, never show that none exists. (4) "template: not res
      an endpoint that is not loopback (`bench_endpoint_not_loopback`); `--endpoint` for any other
      agent (`bench_endpoint_not_applicable`); a model id outside
      `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$` (`bench_model_invalid`); `--keep-env` of a name
-     decision 2 or 3 forbids
-     (`bench_keep_env_forbidden`); a configuration value the writers of decision 4 refuse
+     decision 2 forbids, and any `--keep-env` for a local preset (`bench_keep_env_forbidden`); a
+     configuration value the writers of decision 4 refuse
      (`bench_client_config_unencodable`); and the probe failures of decision 9.
    - **Loopback.** The endpoint is parsed with the WHATWG URL parser (`new URL`, as Node implements
      it). It must have the scheme `http:` or `https:`, no user name, password, query or fragment, and
@@ -257,7 +257,9 @@ result: it can find a route, never show that none exists. (4) "template: not res
      the ChatGPT login); the preset has no API-key mode — API billing through Codex is a command
      template. ChatGPT plans can draw paid credits or spend against a spending cap before Codex
      reports a usage limit; `subscription` therefore does not mean "no charge", and the
-     documentation says so.
+     documentation says so. That Codex refuses a stored API-key login under
+     `forced_login_method="chatgpt"` is its documented behaviour, not measured in 0.3.0: the type
+     probe shows that the key is known, not that it acts.
    - **Arguments** (every `-c` value through decision 4's encoder): `codex exec --json --ephemeral
      --skip-git-repo-check --ignore-user-config --ignore-rules --strict-config -s read-only`, the
      login settings, `approval_policy="never"`, `model_provider="openai"`,
@@ -302,9 +304,14 @@ result: it can find a route, never show that none exists. (4) "template: not res
      `XDG_STATE_HOME`, `XDG_CACHE_HOME` below the run's client folder `<run folder>/client/` (a
      sibling of `agent/`, outside the agent's working directory), `NO_PROXY` and `no_proxy` set to
      the loopback addresses, `GIT_CEILING_DIRECTORIES` set to the run folder, and `PRACTONAUT_HOME`
-     as today. `--keep-env` may add a name only when neither PADR-0034's rule nor decision 2's names
-     nor the suffixes `_KEY`, `_TOKEN`, `_SECRET`, `_PASSWORD` and `_CREDENTIALS` match it, nor a
-     name the preset sets (`bench_keep_env_forbidden`).
+     as today. **`--keep-env` is refused for the local presets** (`bench_keep_env_forbidden`): the
+     allowlist is the whole environment. A filter by name pattern is not enough, because client
+     configuration and credentials also enter through names no pattern catches —
+     `OPENCODE_CONFIG_CONTENT` is merged after `OPENCODE_CONFIG` and can give the
+     `practonaut-loopback` entry a remote `baseURL` and an `apiKey` under the same name;
+     `OPENCODE_CONFIG_DIR` adds a writable configuration folder with its own install;
+     `OPENCODE_AUTH_CONTENT`, `OPENCODE_PERMISSION` and `CODEX_*` do the like. A user who needs
+     another variable runs the client as a command template, reported as such.
    - **`codex-oss`.** `CODEX_HOME` is `<run folder>/client/codex-home/`, empty before the run. The
      arguments and probes are those of decision 2 without the login settings and with its own
      provider in place of `openai`: `model_providers.practonaut-loopback={name="Practonaut
@@ -490,7 +497,10 @@ result: it can find a route, never show that none exists. (4) "template: not res
     **What they show is Practonaut's side** — which arguments, variables and files it hands over,
     and how it reads what comes back — not how the real clients behave; the later capture shows
     that. Tests, each failing without its mechanism: the prompt arrives once; no withheld or
-    forbidden name arrives and `--keep-env` of one is refused; `forced_login_method="chatgpt"` is
+    forbidden name arrives and `--keep-env` of one is refused; with a local preset, `--keep-env
+    OPENCODE_CONFIG_CONTENT`, `OPENCODE_CONFIG_DIR`, `OPENCODE_AUTH_CONTENT` and a harmless name
+    alike are refused before the stand-in starts, and a planted `OPENCODE_CONFIG_CONTENT` in the
+    caller's environment does not reach it; `forced_login_method="chatgpt"` is
     passed; a type probe that passes silently refuses the preset; a read-back that differs refuses
     it; an unexpected entry in the Codex home (`.env`, `AGENTS.md`, `config.toml`) refuses it, and a
     symbolic-link `auth.json` too; a shim that fails under the run's `HOME` gives
@@ -540,7 +550,7 @@ interface PresetDefinition {
   needs: { model: boolean; endpoint: boolean };
   environment:
     | { mode: 'withhold'; prefixes: string[]; suffixes: string[]; names: string[]; except: string[]; keepForbidden: string[] }
-    | { mode: 'allowlist'; names: string[]; prefixes: string[]; keepForbiddenSuffixes: string[] };
+    | { mode: 'allowlist'; names: string[]; prefixes: string[]; keepEnv: 'refused' };
   prompt: 'stdin' | 'argv';
   ceiling: 'tool-restricted-preset' | 'template-unrestricted';
   probes(run: RunContext): Probe[];             // decision 9; each with argv, expectation and refusal code
@@ -636,7 +646,7 @@ for 0.3.0 (Context); this revision applies it and every other finding that still
 | opus-13 [minor] JSON writer keys | adopted | D4: recursive refusal of braces in keys and values |
 | opus-14 [minor] TOML encoder sentence about Gemini policies | adopted | Sentence dropped; D12 keeps room for the policy files without naming a writer |
 | opus-15 [minor] `client-attested` label for a preset-requested URL | adopted | Moot under scope 3: no local attestation; the label is not used for an endpoint |
-| opus-16 [minor] `--keep-env` undefined for new presets | adopted | D2 and D3: forbidden names and suffixes, `bench_keep_env_forbidden` |
+| opus-16 [minor] `--keep-env` undefined for new presets | adopted | D2: forbidden names; D3: refused for local presets (after the re-review); `bench_keep_env_forbidden` |
 | opus-17 [minor] endpoint parsing | adopted | D1: WHATWG parser, serialised host checked, `href` passed on, `localhost` refused |
 | opus-18 [minor] stand-ins circular | adopted | D10: stand-ins show Practonaut's side only; client behaviour waits for the later capture |
 | opus gap: cloud-delivered Codex configuration | adopted | D3 "Not covered" |
@@ -665,7 +675,7 @@ for 0.3.0 (Context); this revision applies it and every other finding that still
 | gemini-3 [major] capture network contradiction | adopted | Scope 4; D8; D9 |
 | gemini-4 [major] a server that is down burns budget | adopted with change | D3: counted (scope 3), but a local bench stops at its first `infra_error`, so a down server costs one run |
 | gemini-5 [major] unvalidated session id | adopted | D6: id shape checked; otherwise no export |
-| gemini-6 [major] `--keep-env` brings cloud keys into local presets | adopted | D3: forbidden names and suffixes |
+| gemini-6 [major] `--keep-env` brings cloud keys into local presets | adopted | D3: `--keep-env` refused for local presets (after the re-review) |
 | gemini-7 [minor] `opencode-local` in shape A | adopted | D7: no new preset is gate-eligible; shape B |
 | gemini-8 [minor] Windows escaping of `-c` | adopted | D2: read-back on every platform; D4: Windows spawn arguments tested |
 | gemini-9 [minor] shared Codex home pollution | adopted with change | D2: checked before every run and refused on unexpected entries; nothing deleted |
@@ -675,3 +685,18 @@ for 0.3.0 (Context); this revision applies it and every other finding that still
 | gemini gap 4: rollout clean-up and thread-id collisions | adopted | Per-run `CODEX_HOME` (D3) holds one session; D6 resolves the file by the stdout's thread id inside that folder |
 
 Counts over the 52 rows: adopted 47, adopted with change 3, refuted 2.
+
+## Re-review (2026-10-18)
+
+Codex `gpt-6.1-sol` re-reviewed the revision (static, no client started). It confirmed the earlier
+blockers resolved by the scope decision — no capture; local runs `unknown` and counted; version-0
+parsers give `beforeModelWork: null`; client records ground neither billing nor isolation; the
+Codex hardening; the new presets outside the gate — and found no remaining path to a run that is
+wrongly not counted. One major remained.
+
+| Finding | Disposition | Where, or why not |
+|---|---|---|
+| codex-r1 [major] `--keep-env OPENCODE_CONFIG_CONTENT` (or `OPENCODE_CONFIG_DIR`) redirects `opencode-local` to a paid API under the same provider name | adopted | D3: `--keep-env` refused for local presets, the allowlist is the whole environment; D10: stand-in tests of the refusal and of a planted `OPENCODE_CONFIG_CONTENT` |
+| codex-r gap: the Codex login guard is not confirmed by real client behaviour; unknown versions only named on stderr | adopted with change | D2 states that the refusal of a stored API-key login is documented, not measured; an unknown version stays a named warning for users' own runs (the project makes none), and the probes and home check still apply |
+
+Counts over the 2 rows: adopted 1, adopted with change 1.
