@@ -65,7 +65,7 @@ test('the registry refuses an unknown adapter, an unknown version and an unsuppo
   let created = 0;
   const create = async (): Promise<never> => { created++; throw new Error('must not start'); };
   // Test-only stub: an adapter that runs world/2 only, as draw.io does.
-  const stubbed: AdapterRegistry = { ...ADAPTER_REGISTRY, stub: { id: 'excalidraw', appVersions: ['1.0.0'] as never, schemas: ['practonaut.world/2'], runtime: 'downloaded', readBack: 'live', create } };
+  const stubbed: AdapterRegistry = { ...ADAPTER_REGISTRY, stub: { id: 'excalidraw', appVersions: ['1.0.0'] as never, schemas: ['practonaut.world/2'], runtime: 'downloaded', readBack: 'live', sandbox: 'required', create } };
   assert.throws(() => resolveAdapter({ adapterId: 'bpmnjs', versionRange: '18.0.0' }, 'practonaut.world/2', stubbed), code('E_ADAPTER_UNKNOWN'));
   assert.throws(() => resolveAdapter({ adapterId: 'bpmnjs', versionRange: '18.0.0' }, 'practonaut.world/2'), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_UNKNOWN' && /"bpmnjs"/.test(error.message));
   assert.throws(() => resolveAdapter({ adapterId: 'excalidraw', versionRange: '0.19.0' }, 'practonaut.world/1'), code('E_ADAPTER_VERSION_UNSUPPORTED'));

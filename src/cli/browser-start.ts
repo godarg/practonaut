@@ -5,7 +5,7 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import { launchChromium } from '../adapters/browser/chromium.ts';
+import { launchChromium, type AdapterSandboxPolicy } from '../adapters/browser/chromium.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
 
@@ -23,10 +23,11 @@ export function launchFailureDetail(error: unknown): string {
   return safeText(telling).slice(0, 240);
 }
 
-export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS): Promise<StartResult> {
+export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS, policy: AdapterSandboxPolicy = 'linux-fallback'): Promise<StartResult> {
   try {
     const { chromium } = await import('playwright-core');
-    const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
+    // Started exactly as the adapter's mirror will start: under its sandbox policy (PADR-0049 decision 7).
+    const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { sandbox: policy });
     await browser.close().catch(() => {});
     return { ok: true, sandbox };
   } catch (error) { return { ok: false, detail: launchFailureDetail(error) }; }

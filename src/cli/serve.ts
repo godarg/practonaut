@@ -14,7 +14,9 @@ import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
 import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
-import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from '../adapters/registry.ts';
+import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistration, type AdapterRegistry, type RuntimeStatus } from '../adapters/registry.ts';
+import type { AdapterSandboxPolicy } from '../adapters/browser/chromium.ts';
+import { appRuntimeMessage, appValues } from './app-runtime.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { startHost } from '../host/server.ts';
@@ -64,23 +66,43 @@ export function parseServeArguments(given: string[]): ServeArguments {
   return { source: source ?? BUNDLED_WORLD, seed, mirror, open, requireOffline, ...(taskId ? { taskId } : {}), ...(checks !== undefined ? { checks } : {}) };
 }
 
-/** `sandbox: false` marks a mirror whose Chromium runs without its sandbox (Linux fallback, PADR-0032). */
-export interface MirrorResolution { mode: MirrorMode; fallback: boolean; reason?: 'missing' | 'start'; detail?: string; sandbox?: boolean }
-export interface MirrorProbes { installed(): Promise<boolean>; starts(): Promise<StartResult> }
-const defaultProbes: MirrorProbes = { installed: async () => (await chromiumCheck(false)).ok, starts: () => chromiumStarts() };
+/** `sandbox: false` marks a mirror whose Chromium runs without its sandbox (Linux fallback, PADR-0032).
+ * `app-missing` and `app-unverified` name a downloaded app runtime that is absent or does not match its
+ * pin (PADR-0049 decision 1.3); `app` is then the adapter. */
+export interface MirrorResolution { mode: MirrorMode; fallback: boolean; reason?: 'missing' | 'start' | 'app-missing' | 'app-unverified'; detail?: string; sandbox?: boolean; app?: string }
+export interface MirrorProbes {
+  installed(): Promise<boolean>;
+  starts(policy?: AdapterSandboxPolicy): Promise<StartResult>;
+  /** A downloaded runtime's check under the data home; absent probes use the registry's own. */
+  runtime?(registration: AdapterRegistration): Promise<RuntimeStatus>;
+}
+const defaultProbes: MirrorProbes = { installed: async () => (await chromiumCheck(false)).ok, starts: policy => chromiumStarts(undefined, policy) };
+/** The world's adapter and what its mirror needs; Excalidraw when a caller names no world. */
+export type MirrorApp = Pick<World, 'app' | 'schema'>;
+const EXCALIDRAW_WORLD: MirrorApp = { app: { adapterId: 'excalidraw', versionRange: '0.18.1', fontFamilies: [3], excludedAttributes: {} }, schema: 'practonaut.world/2' };
 
 /**
  * `auto` mirrors when the Playwright Chromium is installed and actually starts, and otherwise runs
  * model-only with a message saying why. `required` refuses with a named error instead:
  * `browser_runtime_missing` (not installed) or `browser_start_failed` (installed, does not start).
  */
-export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes = defaultProbes): Promise<MirrorResolution> {
+export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes = defaultProbes, world: MirrorApp = EXCALIDRAW_WORLD, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<MirrorResolution> {
   if (choice === 'off') return { mode: 'off', fallback: false };
+  const registration = resolveAdapter(world.app, world.schema, registry);
+  // A downloaded runtime is checked first, before any browser check or start (PADR-0049 decision 1.3).
+  if (registration.runtime === 'downloaded') {
+    const status = await (probes.runtime ? probes.runtime(registration) : registration.runtimeStatus!((await resolvedDataPaths()).home));
+    if (!status.ok) {
+      if (choice === 'required') throw new RuntimeError(status.code, appRuntimeMessage(registration, status));
+      return { mode: 'off', fallback: true, reason: status.code === 'app_runtime_missing' ? 'app-missing' : 'app-unverified', detail: status.detail, app: registration.id };
+    }
+  }
   if (!await probes.installed()) {
     if (choice === 'required') throw new RuntimeError('browser_runtime_missing', cliText('browserRuntimeMissing', headlessShellDownload()));
     return { mode: 'off', fallback: true, reason: 'missing' };
   }
-  const started = await probes.starts();
+  // Started under the adapter's sandbox policy: draw.io never without the sandbox (PADR-0049 decision 7).
+  const started = await probes.starts(registration.sandbox);
   if (!started.ok) {
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail: started.detail, advice: browserAdvice() }));
     return { mode: 'off', fallback: true, reason: 'start', detail: started.detail };
@@ -89,8 +111,11 @@ export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes =
 }
 
 /** The stderr notice for a model-only fallback. */
-export function fallbackNotice(mirror: MirrorResolution): string {
+export function fallbackNotice(mirror: MirrorResolution, registry: AdapterRegistry = ADAPTER_REGISTRY): string {
   if (!mirror.fallback) return mirror.mode === 'required' && mirror.sandbox === false ? cliText('sandboxFallbackNotice') : '';
+  const registration = mirror.app !== undefined && Object.hasOwn(registry, mirror.app) ? registry[mirror.app]! : undefined;
+  if (registration && mirror.reason === 'app-missing') return cliText('mirrorAppFallback', appValues(registration));
+  if (registration && mirror.reason === 'app-unverified') return cliText('mirrorAppUnverifiedFallback', { ...appValues(registration), detail: safeText(mirror.detail ?? '') });
   return mirror.reason === 'start' ? cliText('mirrorStartFallback', { detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback', headlessShellDownload());
 }
 
@@ -115,10 +140,13 @@ export async function startHostWithMirror(choice: MirrorChoice, resolved: Mirror
 /** What the Player's banner says about a model-only session and how to get the real engine: the
  * download (`setup`, named with its size), a check of a Chromium that did not start, or the switch
  * that was chosen. Suggested commands are in the form the user started the CLI. */
-export function modelOnlyNotice(choice: MirrorChoice, mirror: MirrorResolution): ModelOnlyNotice | undefined {
+export function modelOnlyNotice(choice: MirrorChoice, mirror: MirrorResolution, registry: AdapterRegistry = ADAPTER_REGISTRY): ModelOnlyNotice | undefined {
   if (mirror.mode !== 'off') return undefined;
   if (choice === 'off') return { reason: 'off' };
   if (mirror.reason === 'start') return { reason: 'start', command: `${invocationName()} doctor --adapter` };
+  // A downloaded app runtime that is absent or damaged: its own setup option and download size.
+  const registration = mirror.app !== undefined && Object.hasOwn(registry, mirror.app) ? registry[mirror.app]! : undefined;
+  if (registration?.download && (mirror.reason === 'app-missing' || mirror.reason === 'app-unverified')) return { reason: 'missing', command: `${invocationName()} setup --app ${registration.id}`, download: { name: registration.download.name, megabytes: Math.round(registration.download.bytes / 1_000_000) } };
   const download = headlessShellDownload();
   return { reason: 'missing', command: `${invocationName()} setup`, download: { name: download.name, megabytes: download.size } };
 }
@@ -159,7 +187,7 @@ export async function commandServe(args: string[], registry: AdapterRegistry = A
   const paths = await resolvedDataPaths();
   // Only the example that ships with the package offers the demonstration (never a library task).
   const demonstration = options.source === BUNDLED_WORLD;
-  const { host, mirror } = await startHostWithMirror(options.mirror, await resolveMirror(options.mirror), (mode, notice) =>
+  const { host, mirror } = await startHostWithMirror(options.mirror, await resolveMirror(options.mirror, undefined, world, registry), (mode, notice) =>
     startHost(world, { seed: options.seed, mirror: mode, requireOffline: options.requireOffline, phase3: true, tokenDirectory: paths.host, localDirectory: paths.home, demonstration, ...(notice ? { modelOnly: notice } : {}), ...(options.taskId ? { taskId: options.taskId } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }));
   process.stderr.write(fallbackNotice(mirror));
   // At most one private launcher file exists; it is removed with its code's lifetime or at exit.

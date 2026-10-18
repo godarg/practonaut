@@ -29,5 +29,10 @@ export const DRAWIO_ALLOWLIST = Object.freeze([
   'resources/dia.txt', 'images/github-logo.svg',
 ] as const);
 
+/** Platforms with a recorded product conformance run (PADR-0049 decision 8.7). `doctor --adapter`
+ * says that the draw.io mirror is not yet verified on any other. A platform is added only with its
+ * committed conformance summary. */
+export const DRAWIO_CONFORMANCE_PLATFORMS: readonly NodeJS.Platform[] = Object.freeze([]);
+
 /** Documented URL parameters only: the spike's set plus `lang=en`, which pins the served files. */
 export const DRAWIO_URL_PARAMETERS = 'embed=1&proto=json&configure=1&stealth=1&lockdown=1&pwa=0&plugins=0&math=0&gapi=0&od=0&tr=0&gh=0&gl=0&drafts=0&splash=0&sync=none&lang=en';

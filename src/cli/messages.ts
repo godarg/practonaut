@@ -280,8 +280,8 @@ export const CLI_CATALOG = {
     "de": "--client benötigt einen absoluten Pfad"
   },
   "setupHelp": {
-    "en": "Usage: {cli} setup\nExplicitly download the Chromium headless shell for the real Excalidraw mirror, or reuse Playwright's cache.\n",
-    "de": "Verwendung: {cli} setup\nChromium Headless Shell für die echte Excalidraw-Spiegelung ausdrücklich herunterladen oder Playwrights Cache verwenden.\n"
+    "en": "Usage: {cli} setup [--app drawio [--from <file>]]\nExplicitly download the Chromium headless shell for the real mirror, or reuse Playwright's cache.\n--app drawio also downloads the pinned, unmodified draw.io release (about 48 MB, opt-in) or checks a copy given with --from, and keeps it only when its size and SHA-256 match.\n",
+    "de": "Verwendung: {cli} setup [--app drawio [--from <Datei>]]\nChromium Headless Shell für die echte Spiegelung ausdrücklich herunterladen oder Playwrights Cache verwenden.\n--app drawio lädt zusätzlich das gepinnte, unveränderte draw.io-Release (etwa 48 MB, nur auf Wunsch) oder prüft eine mit --from übergebene Kopie und behält es nur, wenn Größe und SHA-256 stimmen.\n"
   },
   "setupUsage": {
     "en": "{cli} setup takes no arguments.\n",
@@ -302,6 +302,98 @@ export const CLI_CATALOG = {
   "setupDone": {
     "en": "setup: Chromium provisioning completed. Runtime may now operate offline.\n",
     "de": "setup: Chromium bereitgestellt. Die Laufzeit kann nun offline arbeiten.\n"
+  },
+  "setupAppUsage": {
+    "en": "{cli} setup takes no arguments, or --app drawio [--from <file>].\n",
+    "de": "{cli} setup nimmt keine Argumente an, oder --app drawio [--from <Datei>].\n"
+  },
+  "setupAppStart": {
+    "en": "setup: {app} {version}: the unmodified official release {asset}, {bytes} bytes, SHA-256 {hash}, from {source}. It is kept only when size and SHA-256 match. Practonaut never redistributes it.\n{notice}\n",
+    "de": "setup: {app} {version}: das unveränderte offizielle Release {asset}, {bytes} Bytes, SHA-256 {hash}, von {source}. Es wird nur behalten, wenn Größe und SHA-256 stimmen. Practonaut verbreitet es nie weiter.\n{notice}\n"
+  },
+  "setupAppFrom": {
+    "en": "setup: checking {path} against {app} {version}: {bytes} bytes, SHA-256 {hash}.\n{notice}\n",
+    "de": "setup: prüfe {path} gegen {app} {version}: {bytes} Bytes, SHA-256 {hash}.\n{notice}\n"
+  },
+  "setupAppNotice": {
+    "en": "draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.",
+    "de": "draw.io ist eine eingetragene Marke; Practonaut ist mit draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert."
+  },
+  "setupAppSandbox": {
+    "en": "setup: Chromium does not start with its sandbox on this system ({detail}). {app} never starts without it, so {app} sessions run model-only here until that is fixed. The download continues.\n{advice}",
+    "de": "setup: Chromium startet auf diesem System nicht mit Sandbox ({detail}). {app} startet nie ohne sie, daher laufen {app}-Sitzungen hier nur im Modell, bis das behoben ist. Der Download geht weiter.\n{advice}"
+  },
+  "setupAppDone": {
+    "en": "setup: {app} {version} is ready in {path} ({bytes} bytes, verified). Practice with {app} now runs offline; nothing is fetched at runtime.\n",
+    "de": "setup: {app} {version} liegt bereit in {path} ({bytes} Bytes, geprüft). Üben mit {app} läuft nun offline; zur Laufzeit wird nichts geladen.\n"
+  },
+  "setupAppAlready": {
+    "en": "setup: {app} {version} is already kept in {path} and matches the pin; nothing was fetched.\n",
+    "de": "setup: {app} {version} liegt schon in {path} und stimmt mit dem Pin überein; nichts wurde geladen.\n"
+  },
+  "setupAppReplaced": {
+    "en": "setup: the file kept in {path} did not match the pin and was replaced by the verified download.\n",
+    "de": "setup: Die in {path} abgelegte Datei stimmte nicht mit dem Pin überein und wurde durch den geprüften Download ersetzt.\n"
+  },
+  "appDownloadFailed": {
+    "en": "setup: the {app} download stopped ({reason}): {detail}. Nothing was kept. Retry later, or download {source} yourself and run {cli} setup --app {id} --from <file>.",
+    "de": "setup: Der {app}-Download wurde abgebrochen ({reason}): {detail}. Nichts wurde behalten. Später erneut versuchen, oder {source} selbst laden und {cli} setup --app {id} --from <Datei> ausführen."
+  },
+  "appDownloadMismatch": {
+    "en": "setup: the file is not the pinned {app} release ({reason}): expected {expectedBytes} bytes and SHA-256 {expectedHash}, got {actualBytes} bytes and SHA-256 {actualHash}. Nothing was kept.",
+    "de": "setup: Die Datei ist nicht das gepinnte {app}-Release ({reason}): erwartet {expectedBytes} Bytes und SHA-256 {expectedHash}, erhalten {actualBytes} Bytes und SHA-256 {actualHash}. Nichts wurde behalten."
+  },
+  "appInstallBusy": {
+    "en": "setup: another setup of {app} {version} is running. Wait for it to finish, then retry.",
+    "de": "setup: Eine andere Einrichtung von {app} {version} läuft. Warten, bis sie fertig ist, dann erneut versuchen."
+  },
+  "appRuntimeMissing": {
+    "en": "{app} is not installed, but this command needs its real mirror. Run {cli} setup --app {id} once (an explicit download: {name}, {bytes} bytes), then retry, or use --mirror off for a model-only session.",
+    "de": "{app} ist nicht installiert, dieser Befehl braucht aber die echte Spiegelung. Einmal {cli} setup --app {id} ausführen (ausdrücklicher Download: {name}, {bytes} Bytes) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
+  },
+  "appRuntimeUnverified": {
+    "en": "The kept {app} release does not match the pin ({detail}). Run {cli} setup --app {id} again, or use --mirror off for a model-only session.",
+    "de": "Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}). {cli} setup --app {id} erneut ausführen, oder --mirror off für eine reine Modellsitzung."
+  },
+  "mirrorAppFallback": {
+    "en": "practonaut: {app} is not installed, so this session runs model-only: actions are not mirrored into the real {app} and results are never practice evidence. Run {cli} setup --app {id} once to enable the mirror (one download: {name}, about {size} MB).\n",
+    "de": "practonaut: {app} ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte {app} gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup --app {id} ausführen, um die Spiegelung einzuschalten (ein Download: {name}, etwa {size} MB).\n"
+  },
+  "mirrorAppUnverifiedFallback": {
+    "en": "practonaut: the kept {app} release does not match the pin ({detail}), so this session runs model-only. Run {cli} setup --app {id} again to replace it.\n",
+    "de": "practonaut: Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}), daher läuft diese Sitzung nur im Modell. {cli} setup --app {id} erneut ausführen, um es zu ersetzen.\n"
+  },
+  "appRuntimeName": {
+    "en": "{app} runtime",
+    "de": "{app}-Laufzeit"
+  },
+  "appRuntimeOk": {
+    "en": "installed and verified ({bytes} bytes)",
+    "de": "installiert und geprüft ({bytes} Bytes)"
+  },
+  "appRuntimeAbsent": {
+    "en": "not installed — optional; {cli} setup --app {id} downloads it ({bytes} bytes)",
+    "de": "nicht installiert — optional; {cli} setup --app {id} lädt es ({bytes} Bytes)"
+  },
+  "appRuntimeBad": {
+    "en": "does not match the pin ({detail}) — {cli} setup --app {id} replaces it",
+    "de": "stimmt nicht mit dem Pin überein ({detail}) — {cli} setup --app {id} ersetzt es"
+  },
+  "appStartName": {
+    "en": "{app} chromium start (sandbox required)",
+    "de": "{app}-Chromium-Start (Sandbox nötig)"
+  },
+  "appStarts": {
+    "en": "starts with the sandbox",
+    "de": "startet mit Sandbox"
+  },
+  "appStartFails": {
+    "en": "does not start with the sandbox ({detail}); {app} sessions run model-only here",
+    "de": "startet nicht mit Sandbox ({detail}); {app}-Sitzungen laufen hier nur im Modell"
+  },
+  "appUnverifiedPlatform": {
+    "en": "; its mirror is not yet verified on this platform by a recorded conformance run",
+    "de": "; die Spiegelung ist auf dieser Plattform noch durch keinen festgehaltenen Konformitätslauf geprüft"
   },
   "mcpInput": {
     "en": "Practonaut MCP: protocol input rejected\n",

@@ -39,7 +39,7 @@ import { sha256Hex } from '../../canonical/index.ts';
 import type { Failure } from '../../world/types.ts';
 import type { AdapterResult, Artifact } from '../types.ts';
 import { BROWSER_BOUNDS, BrowserDeadlineError, bounded, closeBrowser } from './bounded.ts';
-import { launchChromium, type LaunchContext } from './chromium.ts';
+import { launchChromium, type AdapterSandboxPolicy, type LaunchContext } from './chromium.ts';
 
 /** The longest single adapter operation; a caller's timeout can only shorten it. */
 export const MAX_ADAPTER_MS = 10_000;
@@ -85,6 +85,8 @@ export interface ShellOptions {
   viewport?: { width: number; height: number };
   /** Test seams: a fake Playwright, shorter launch and start deadlines, a launch context (platform, env). */
   chromium?: ChromiumLike; launchMs?: number; initializeMs?: number; launchContext?: LaunchContext;
+  /** The adapter's sandbox policy (PADR-0049 decision 7); `linux-fallback` when absent. */
+  sandbox?: AdapterSandboxPolicy;
 }
 /** How the adapter reads and writes its committed scene, for rollback. */
 export interface SceneIO<S> {
@@ -237,7 +239,8 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const denied: string[] = [];
   const sink = await startSink();
   let browser: Browser;
-  try { browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink); }
+  const launchContext: LaunchContext | undefined = options.sandbox === 'required' ? { ...options.launchContext, sandbox: 'required' } : options.launchContext;
+  try { browser = await launchWithin(chromium, remaining, options.signal, launchContext, sink); }
   catch (error) { await sink.close(); throw error; }
   const named = Object.keys(options.origins), policy = shellPolicy(named);
   // The browser belongs to the shell before a ready adapter exists.

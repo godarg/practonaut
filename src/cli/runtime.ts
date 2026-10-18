@@ -19,6 +19,8 @@ import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
 import { inlineOptionValues } from './options.ts';
+import { resolvedDataPaths } from '../platform/paths.ts';
+import { appRuntimeMessage } from './app-runtime.ts';
 export class RuntimeError extends Error {
   readonly code: string;
   constructor(code:string,message:string){super(message);this.name="RuntimeError";this.code=code;}
@@ -68,8 +70,10 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  const mirror=flags["--mirror"]??"required";if(mirror!=="required"&&mirror!=="off")throw new RuntimeError("usage",cliText("mirrorUsage"));
  if(flags["--export"]&&mirror==="off")throw new RuntimeError("usage",cliText("nativeExport"));
  if(mirror==='required'){
+  // A downloaded app runtime is checked first, before any browser check or start (PADR-0049 decision 1.3).
+  if(registration.runtime==='downloaded'){const status=await registration.runtimeStatus!((await resolvedDataPaths()).home);if(!status.ok)throw new RuntimeError(status.code,appRuntimeMessage(registration,status));}
   if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', headlessShellDownload()));
-  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
+  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];

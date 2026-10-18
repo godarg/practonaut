@@ -160,7 +160,7 @@ export async function commandBench(args: string[]): Promise<number> {
   // World, tasks and references are settled (and an own oracle checked) before anything starts.
   const prepared = await prepareBench(options, agent);
   if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
-  const mirror = await resolveMirror(options.mirror);
+  const mirror = await resolveMirror(options.mirror, undefined, prepared.world.world);
   process.stderr.write(fallbackNotice(mirror));
   // Seeds that pick the same variant would inflate n without a board of their own: said, not refused.
   const notice = seedVariantNotice(prepared.world.world, prepared.tasks, options.seeds);

@@ -5,17 +5,26 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { lstat, readdir } from 'node:fs/promises';
 import { HEADLESS_SHELL, headlessShellMegabytes } from './chromium-download.ts';
+import type { SetupSeams } from './setup-app.ts';
 
-/** Explicit provisioning only: installing Practonaut never invokes this command. */
-export async function commandSetup(args: string[]): Promise<number> {
+/** Explicit provisioning only: installing Practonaut never invokes this command. Plain `setup`
+ * installs only Chromium; `setup --app drawio [--from <file>]` also downloads (or takes) the pinned
+ * draw.io release, which is never fetched any other way (PADR-0049 decision 2). */
+export async function commandSetup(args: string[], seams: SetupSeams = {}): Promise<number> {
   if (args.length === 1 && args[0] === '--help') {
     process.stdout.write(cliText("setupHelp"));
     return 0;
   }
-  if (args.length !== 0) {
-    process.stderr.write(cliText("setupUsage"));
-    return 1;
-  }
+  if (args.length === 0) return setupChromium();
+  const app = args[0] === '--app' ? args[1] : undefined;
+  const from = args.length === 4 && args[2] === '--from' ? args[3] : undefined;
+  if (app !== 'drawio' || (args.length !== 2 && from === undefined)) { process.stderr.write(cliText('setupAppUsage')); return 1; }
+  // Only `--app` loads the app download: plain setup keeps its small set of modules.
+  const { setupDrawio } = await import('./setup-app.ts');
+  return setupDrawio(from, { chromium: setupChromium, ...seams });
+}
+
+export async function setupChromium(): Promise<number> {
   const require = createRequire(import.meta.url);
   let cli: string;
   try { cli = join(dirname(require.resolve('playwright-core/package.json')), 'cli.js'); }
