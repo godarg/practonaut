@@ -8,11 +8,13 @@
  *   once; any start failure closes the browser and is reported as an `AdapterInitializationError`
  *   carrying the refused requests.
  * - **Network.** Only named origins, only safe paths, only what the adapter serves. Every other HTTP
- *   request of the page and its dedicated workers is aborted and recorded (`networkAttempts`); every
- *   WebSocket is closed before it connects and recorded. Channels the route cannot see are blocked:
- *   every served response carries a content security policy that limits connections and workers to
- *   the named origins (violations the page or a dedicated worker reports are recorded too), so shared
- *   workers cannot reach anything else; WebRTC may not send UDP without a proxy (there is none).
+ *   request of the page, its frames and its dedicated workers is aborted and recorded
+ *   (`networkAttempts`); every WebSocket the page or a frame opens is closed before it connects and
+ *   recorded. Channels the route cannot see are blocked: every served response carries a content
+ *   security policy that limits every fetch (connections, scripts, workers, fonts, images) to the
+ *   named origins; the violations the page, a frame or a dedicated worker reports are recorded too,
+ *   while a shared worker's are blocked but not recorded (the browser routes neither its requests
+ *   nor its reports). WebRTC may not send UDP without a proxy (there is none).
  * - **Operations** (transactions, guarded reads, the adapter's start) run one at a time, under a
  *   timeout and an abort. A write that answers with a failure is undone in place; one that times
  *   out, is cancelled or throws ends its operation — any later step of it is refused — closes its
