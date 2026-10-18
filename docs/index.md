@@ -53,6 +53,7 @@
 · [0042](adr/0042-gate-for-families-on-toolchains.md) The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget (proposed).
 · [0043](adr/0043-artifact-judged-verdict-level.md) Artifact mode: an "artifact-judged" verdict level for results made with foreign tools (proposed).
 · [0044](adr/0044-bench-report-v3.md) Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity (proposed).
+· [0046](adr/0046-vendor-neutral-presets.md) Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream (proposed).
 
 [Archive](adr/archive/README.md): [0009](adr/archive/0009-release-and-publication.md) · [0021](adr/archive/0021-supported-unsealed-evaluation.md) · [0027](adr/archive/0027-private-player-bootstrap-handoff.md).
 
