@@ -13,6 +13,11 @@ All notable changes are recorded here. The format follows
   tier); headroom is sought per family and toolchain and in new family types, each behind a
   pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
   to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
+- Proposed decision record for the spatial-layout family (PADR-0047): six bounded layout operators
+  (no overlap, aligned, evenly spaced, inside a named canvas, arrows that do not cross, arrows clear of
+  steps) judged on step boxes and on straight lines between step centres, with a cost bound per
+  clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
+  the `challenge-layout` generator. No behaviour changes yet.
 
 ## [0.2.0] - 2026-10-16
 
