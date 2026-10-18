@@ -116,6 +116,7 @@ export function countingController(inner: PracticeController, counters: RunCount
       recorder?.record({ op: 'check', client: null, outcome: reply.ok ? 'accepted' : 'rejected', ...(reply.ok ? {} : { code: reply.error.code }), position: () => { const now = inner.view(); return { step: now.step, revision: now.revision }; } });
       return reply;
     },
+    // Nothing to count: the bench host is single-task and refuses every variant and hint request.
     variant: (request, context) => inner.variant(request, context),
     hint: (request, context) => inner.hint(request, context),
     png: context => inner.png(context),
@@ -346,8 +347,9 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     let outcome: AgentOutcome; let checker: SessionRunV3['checker'] = null; let artifacts: SessionRunV3['artifacts']; let wallMs = 0; let finalActions = 0;
     let evidence: ClientEvidence | undefined; let logs: SessionRunV3['logs']; let logsTried = false;
     try {
-      // A bench host publishes only the run's own task (and refuses a change to another one), without
-      // task-list facts: no reference length of any task is the agent's to see.
+      // A bench host publishes only the run's own task (and refuses every task or variant change, so
+      // the judged session keeps the run's seed, and every hint, which nothing here would count),
+      // without task-list facts: no reference length of any task is the agent's to see.
       host = await startHost(world, { seed: item.seed, taskId: item.taskId, mirror: options.mirror, singleTask: true, taskInfo: {}, tokenDirectory: join(home, 'host'), controllerFactory: factory, ...(options.checks !== undefined ? { checks: options.checks } : {}) });
       // The agent gets the attach-mode bridge: origin and token-file path, never the token value.
       // The bridge's call log goes into the run folder, outside the agent's own folder (PADR-0039).

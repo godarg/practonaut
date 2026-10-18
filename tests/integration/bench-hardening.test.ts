@@ -1,6 +1,7 @@
 // Bench hardening: what `report --verify` re-derives (reference length, final history, library
 // content), and that an agent cannot turn its own failure into an unjudged run by leaving files
-// under the judged artifacts' names.
+// under the judged artifacts' names or by asking its host for another variant, and that it gets
+// no help (a hint) that nothing in the run would count.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -61,6 +62,26 @@ test('a bench agent sees no reference length of any task, even in a full observe
     // and no other task of the world.
     assert.deepEqual(tasks.map(task => task.id), ['connect']);
     for (const task of tasks) assert.deepEqual(Object.keys(task).sort(), ['id', 'title'], JSON.stringify(task));
+  } finally { delete process.env.PN_TEST_AGENT_STATE; await rm(state, { recursive: true, force: true }); }
+});
+
+test('an agent that asks the host directly over HTTP gets no new variant, no uncounted restart and no hint', { timeout: 120_000 }, async () => {
+  const state = await mkdtemp(join(tmpdir(), 'pn-bench-direct-'));
+  process.env.PN_TEST_AGENT_STATE = state;
+  try {
+    const bench = await runBench({ ...base, agent: command('direct'), tasks: ['connect'] });
+    // The agent read its token file and reached the host: every request is refused by name, and the
+    // view it observed afterwards has the run's seed and no opened hint.
+    const seen = JSON.parse(await readFile(join(state, 'direct.json'), 'utf8')) as { seed: number; replies: Array<{ route: string; status: number; code: string | null }>; after: { seed: number; revision: number; hintsOpened: number; hints: number } };
+    assert.equal(seen.seed, 1, 'the agent observed the run\'s own seed');
+    assert.deepEqual(seen.replies, [{ route: '/api/variant', status: 400, code: 'invalid_request' }, { route: '/api/variant', status: 400, code: 'invalid_request' }, { route: '/api/hint', status: 400, code: 'invalid_request' }]);
+    assert.deepEqual(seen.after, { seed: 1, revision: 0, hintsOpened: 0, hints: 0 });
+    // The judged session is the run's own task at the run's own seed (base.seeds), and no restart
+    // happened outside the counted resets.
+    const run = bench.report!.runs[0]!;
+    const session = JSON.parse(await readFile(join(bench.directory, run.id, 'session.json'), 'utf8')) as { seed: number; taskId: string };
+    assert.deepEqual([session.seed, session.taskId], [base.seeds[0], 'connect']);
+    assert.deepEqual([run.status, run.pass, run.resets, run.toolCalls.reset], ['completed', true, 0, 0], run.note);
   } finally { delete process.env.PN_TEST_AGENT_STATE; await rm(state, { recursive: true, force: true }); }
 });
 
