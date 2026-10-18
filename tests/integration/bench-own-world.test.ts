@@ -1,4 +1,4 @@
-// practonaut.bench/2 end to end (PADR-0036): a task made with `tasks from-scenes` is benched with
+// The stored-world bench report end to end (practonaut.bench/2, PADR-0036; written as /3 since PADR-0044): a task made with `tasks from-scenes` is benched with
 // --world and --oracle, the bench folder is moved and re-verified there against the world stored in
 // it; a changed stored world, artifact or reference fails by name; the oracle sidecar never reaches
 // the agent; a command template keeps the model its output reports; a stored bench/1 report is read
@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { arrow, between, box, scene } from '../support/scenes.ts';
 import { libraryWorld } from '../../src/bench/run.ts';
 import { worldContentHash, worldFromPackage } from '../../src/bench/world.ts';
+import { taskIdentity } from '../../src/bench/identity.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
@@ -62,7 +63,7 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     assert.match(bench.stderr, /world my-task 1\.0\.0 \(your own\), 1 of 1 benched task has a validated reference/);
     const folder = await newBench(before);
     const report = await json(join(folder, 'report.json'));
-    assert.equal(report.schema, 'practonaut.bench/2');
+    assert.equal(report.schema, 'practonaut.bench/3');
     assert.equal(report.label, 'Own task «1»');
     assert.deepEqual([report.environment.world.source, report.environment.world.worldId, report.environment.world.package.path, report.environment.mirror], ['own', 'my-task', 'world.pnworld', 'required']);
     assert.equal(report.environment.world.package.sha256, sha256(await readFile(join(folder, 'world.pnworld'))));
@@ -139,7 +140,10 @@ test('an authored task is benched with its oracle and the real mirror; the moved
     const limitedWorldInto = async (copy: string, value: Json): Promise<void> => {
       const bytes = await readFile(join(dir, 'limited.pnworld')); await writeFile(join(copy, 'world.pnworld'), bytes);
       value.environment.world.package.sha256 = sha256(bytes);
-      value.environment.world.contentHash = worldContentHash(await worldFromPackage(bytes));
+      const forged = await worldFromPackage(bytes);
+      value.environment.world.contentHash = worldContentHash(forged);
+      // Limits are part of a task's identity (PADR-0044 decision 3): the forgery re-derives those too.
+      value.instances = value.instances.map((entry: { taskId: string; seed: number }) => ({ ...entry, identity: taskIdentity(forged, entry.taskId, entry.seed) }));
     };
     // The report names no limits, the stored world has one: refused as a changed world.
     refused(await changed(limitedWorldInto), 'bench_world_changed', /the stored world's task limits differ from those the report names/);
@@ -329,8 +333,11 @@ test('task limits are verified from the host\'s own records: undone actions, und
       const bytes = await readFile(join(dir, `${name}.pnworld`)); await writeFile(join(copy, 'world.pnworld'), bytes);
       const value = await json(join(copy, 'report.json'));
       value.environment.world.package.sha256 = sha256(bytes);
-      value.environment.world.contentHash = worldContentHash(await worldFromPackage(bytes));
+      const limitedWorld = await worldFromPackage(bytes);
+      value.environment.world.contentHash = worldContentHash(limitedWorld);
       value.environment.world.limits = [{ taskId: 'my-task', ...limits }];
+      // Limits are part of a task's identity (PADR-0044 decision 3): the forgery re-derives those too.
+      value.instances = value.instances.map((entry: { taskId: string; seed: number }) => ({ ...entry, identity: taskIdentity(limitedWorld, entry.taskId, entry.seed) }));
       await writeFile(join(copy, 'report.json'), JSON.stringify(value));
       assert.equal(cli('report', join(copy, 'report.json')).status, 0, 'the forged report is consistent');
       return cli('report', join(copy, 'report.json'), '--verify');

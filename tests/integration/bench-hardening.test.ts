@@ -44,7 +44,7 @@ test('report --verify re-derives the reference length, the final history and the
   // Fewer actions than the session's history holds.
   const longest = report.runs.reduce((a, b) => (b.actions > a.actions ? b : a));
   assert.ok(longest.actions >= 2, 'a task whose reference needs at least two actions');
-  const actions = await forge('actions', value => { value.runs.find(run => run.id === longest.id)!.actions = 1; });
+  const actions = await forge('actions', value => { const run = value.runs.find(run => run.id === longest.id)!; run.actions = 1; run.agentActions = 1; });
   assert.equal(actions.status, 2); assert.match(actions.stderr, /the report counts 1 actions; the session's final history holds \d+/);
   // Same library id and version, other content: the stored world says otherwise.
   const content = await forge('content', value => { value.environment.world.contentHash = 'f'.repeat(64); });

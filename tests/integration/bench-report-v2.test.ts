@@ -98,11 +98,11 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.ok(connect.includes('Codes of refused actions precondition_failed ×1'), 'the code is still there for whoever looks for it');
   // Model-only and consistency-checked: the result and interval in the headline, the provenance as chips.
   const header = plain(failing.slice(0, failing.indexOf('</header>')));
-  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances consistency-checked, not re-verified model only \(no mirror\) template: tools not restricted by Practonaut model pn-script-model \(self-reported, from the command output\) \d{4}-\d{2}-\d{2}/);
+  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances session verdict consistency-checked, not re-verified model only \(no mirror\) template: tools not restricted by Practonaut model pn-script-model \(self-reported, from the command output\) \d{4}-\d{2}-\d{2}/);
   assert.equal((failing.match(/pn-script-model \(self-reported/g) ?? []).length, 1, 'the model is named once');
   assert.ok(runText(failing, 'restyle-flow-s1-r1').includes('Schematic of the judged state, not the real Excalidraw. The bench ran model only (no mirror).'), 'model-only picture');
   assert.ok(plain(failing).includes('consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)'));
-  assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances re-verified from the artifacts model only/);
+  assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances session verdict re-verified from the artifacts model only/);
   assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 6 s, the run’s time limit; the board it left was judged.'), 'timeout');
   const unjudgedPage = await reportPage(fixtures.unjudged, 'en'), unjudged = runText(unjudgedPage, 'connect-s1-r1');
   assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score.'), 'unjudged');
@@ -127,7 +127,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   for (const name of ['Rechnungseingangsprüfung', 'Zahlungsfreigabeverfahrensdokumentation', 'Kreditorenstammdatenänderungsantragsprüfung']) assert.ok(germanRun.includes(name), name);
   assert.ok(germanRun.includes('Kein Beispielziel Diese Aufgabe hat keine geprüfte Referenz.'), 'no example target');
   assert.equal(/class="no-picture"|stroke-dasharray|dashed/.test(german.slice(german.indexOf('<body>'))), false, 'no dashed box for a missing target');
-  assert.match(plain(german), /0\/1 bestanden · 95-%-Intervall 0–80 % über 1 Instanz auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
+  assert.match(plain(german), /0\/1 bestanden · 95-%-Intervall 0–80 % über 1 Instanz Sitzungsurteil auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
   // Without its bench folder: one banner says what is missing, what still shows and how to fix it;
   // every card says in a line what it cannot show, and error classes keep their explanation (the
   // report's world is the bundled library).
@@ -244,7 +244,7 @@ test('CLI: report renders details from the bench folder, --runs names it without
   const path = join(fixtures.failing.directory, 'report.json'), html = join(dir, 'failing.html');
   const rendered = spawnSync(process.execPath, [CLI, 'report', path, '--html', html], { encoding: 'utf8' });
   assert.equal(rendered.status, 0, rendered.stderr);
-  assert.match(rendered.stdout, /^0\/6 passed · 95 % interval 0–40 % over 6 instances · consistency-checked, not re-verified/m);
+  assert.match(rendered.stdout, /^0\/6 passed · 95 % interval 0–40 % over 6 instances · session verdict · consistency-checked, not re-verified/m);
   assert.match(rendered.stdout, /^Failures \(6 of 6 runs\)$/m);
   const moved = spawnSync(process.execPath, [CLI, '--lang', 'de', 'report', path, '--runs', fixtures.failing.directory], { encoding: 'utf8' });
   assert.equal(moved.status, 0, moved.stderr); assert.match(moved.stdout, /Fehlerklasse extra-arrow: Es gibt mehr Pfeile als im Ziel \(1\)/);
