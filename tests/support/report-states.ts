@@ -12,7 +12,7 @@ import { resolveAgent } from '../../src/bench/agents.ts';
 import { ownBenchWorld } from '../../src/bench/world.ts';
 import { summarize, validateBenchReport, validateBenchReportV3, type BenchReport, type SessionReportV3 } from '../../src/bench/report.ts';
 import { loadReportDetails } from '../../src/bench/details.ts';
-import { detailWords, readTokensCss, renderHtml, renderTable, type Verification } from '../../src/bench/render.ts';
+import { detailWords, readTokensCss, renderHtml, renderTable, type VerificationInput } from '../../src/bench/render.ts';
 import { compareReports, differences } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderIncomparableHtml, type CompareInput } from '../../src/bench/render-compare.ts';
 import { verifyBenchV3 } from '../../src/bench/verify.ts';
@@ -142,7 +142,7 @@ export async function fixtureBenches(folder: string, options: { mirror?: boolean
 }
 
 /** The HTML page of a bench report, with its run details from `folder` (null: none). */
-export async function reportPage(bench: { report: BenchReport; directory: string | null }, language: Language, verification: Verification = 'consistency-checked'): Promise<string> {
+export async function reportPage(bench: { report: BenchReport; directory: string | null }, language: Language, verification: VerificationInput = 'consistency-checked'): Promise<string> {
   const details = await loadReportDetails(bench.report, bench.directory, detailWords(language));
   return renderHtml(bench.report, await readTokensCss(), language, verification, details);
 }
@@ -184,6 +184,14 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   const artifact = validateBenchReportV3(artifactReport({ flow: { 1: ['pass'], 2: ['absent'], 3: [null] } }));
   const identities = (cases: number[]) => ({ T: Object.fromEntries(cases.map((value, index) => [index + 1, hash(String(value))])) });
   const excalidraw = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [false], 4: [true], 5: [false] } }, { identities: identities([0, 1, 1, 2, 1]), worldId: 'excalidraw-library', contentHash: hash('a') }));
+  // A preset report whose client values a newer Practonaut's parser read (not re-derived here), and a
+  // candidate whose identity-paired runs were all unjudged; the gate's refusal of an identity pair.
+  const claimed = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [false] } }, { change: value => {
+    value.agent = { ...value.agent, kind: 'preset', name: 'claude-code', command: ['claude'], isolation: 'tool-restricted-preset', modelSource: 'client-attested', model: 'claude-haiku-5-5', billing: { class: 'subscription', source: 'preset-requested' } };
+    for (const run of value.runs as Array<Record<string, unknown>>) { run.isolation = { level: 'tool-restricted-preset', evidence: 'tools-within-servers' }; run.client = { source: 'client-attested', model: 'claude-haiku-5-5', turns: null, costUsd: null, tokens: null, parser: 'claude-code-stream/2', tools: { names: ['mcp__practonaut__act'], omitted: 0 } }; }
+  } }));
+  const claims = { level: 're-verified' as const, notRederived: ['claude-code-stream/2'], preset: 'not-checked' as const };
+  const unjudgedCandidate = validateBenchReportV3(sessionReport({ T: { 1: [null], 2: [null] } }, { identities: { T: { 1: hash('0'), 2: hash('2') } }, worldId: 'drawio-library', contentHash: hash('b'), adapterId: 'drawio' }));
   const drawio = validateBenchReportV3(sessionReport({ T: { 1: [false], 2: [true], 3: [true], 4: [true], 5: [true] } }, { identities: identities([2, 0, 0, 2, 0]), worldId: 'drawio-library', contentHash: hash('b'), adapterId: 'drawio' }));
   await verifyBenchV3(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();
@@ -205,6 +213,7 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     { id: 'report-v1', html: language => reportPage({ report: v1, directory: null }, language) },
     { id: 'report-v2-reverified', html: language => reportPage({ report: v2, directory: V2_FOLDER }, language, 're-verified') },
     { id: 'report-artifact', html: language => reportPage({ report: artifact, directory: null }, language) },
+    { id: 'report-claims', html: language => reportPage({ report: claimed, directory: null }, language, claims) },
     { id: 'compare-regression', html: compared(good, bad) },
     { id: 'compare-improvement', html: compared(bad, good) },
     { id: 'compare-same', html: compared(good, good) },
@@ -213,6 +222,8 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     { id: 'compare-incomparable', html: async language => renderIncomparableHtml(good, side(fixtures.failing.report, 'failing'), differences(fixtures.good.report, fixtures.failing.report), tokens, language) },
     { id: 'compare-incomparable-level', html: async language => renderIncomparableHtml(good, { report: artifact, verification: 'consistency-checked', name: 'artifact' }, differences(fixtures.good.report, artifact), tokens, language) },
     { id: 'compare-identity', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }) },
+    { id: 'compare-identity-unjudged', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: unjudgedCandidate, verification: 'consistency-checked', name: 'drawio' }) },
+    { id: 'compare-incomparable-gate', html: async language => renderIncomparableHtml({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }, differences(excalidraw, drawio, { regressionGate: true }), tokens, language, { regressionGate: true }) },
   ];
   if (fixtures.engine) {
     const engine = fixtures.engine;
