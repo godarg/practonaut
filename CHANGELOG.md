@@ -16,12 +16,16 @@ All notable changes are recorded here. The format follows
   world's table of known apps, the registry and the checker's format table equal.
 - **Shared browser shell** (`src/adapters/browser/`): the one Chromium start (moved from the
   Excalidraw folder), a launch deadline the shell enforces itself (a browser that arrives late is
-  closed) and a deadline for the app's own start, a network boundary that also closes every
-  WebSocket, puts a content security policy on every served response (so shared workers, frames and
-  workers reach no other host) and starts Chromium without WebRTC UDP — measured against the real
-  Chromium —, operations that end on timeout or abort so none of their later steps can touch the
-  page that replaced theirs, PNG capture and artifact hashes. The Excalidraw adapter keeps read,
-  write, projection, integrity and SVG.
+  closed) that also bounds the routing setup, and a deadline for the app's own start; a network
+  boundary that also closes every WebSocket, puts a content security policy on every served
+  response (so shared workers, frames and workers reach no other host), starts Chromium without
+  WebRTC UDP, without host resolution and behind a sink proxy on 127.0.0.1 that refuses and records
+  every connection the browser opens itself (TURN over TCP, preconnects) — measured against the real
+  Chromium —; operations with one deadline that covers reading the committed scene, that end on
+  timeout or abort so none of their later calls into the shell is answered, and whose rollback is
+  bounded too (a rollback that fails closes the shell, and the host's mirror starts a new one); PNG
+  capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity and
+  SVG.
 
 ### Changed
 

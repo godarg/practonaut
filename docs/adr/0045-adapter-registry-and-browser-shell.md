@@ -49,8 +49,15 @@ assuming Excalidraw. Evidence at commit 9c6a1e9:
   (2026-10-18, a page served from the shell's named origin, a listener on 127.0.0.1 standing in for a
   public host, Chromium's own local-network checks off): page, frame and worker WebSockets, every
   fetch, `importScripts` and font load of a shared worker (from a URL, `blob:` or `data:`), and
-  WebRTC's STUN packets over UDP reached the listener; none of them was recorded. The bundled
-  Excalidraw uses none of these channels, but a downloaded third-party app could.
+  WebRTC's STUN packets over UDP reached the listener; none of them was recorded. With WebRTC
+  limited to proxied UDP, TURN over TCP (to an address or a host name) still connected to it
+  directly. `<link rel="preconnect">` and `rel="dns-prefetch"` hints and anchor host names caused no
+  connection and no host resolution in Chromium's net log — also on a plain Playwright page served by
+  a real HTTP server, so the headless shell that Practonaut starts does not act on these hints at
+  all. The bundled Excalidraw uses none of these channels, but a downloaded third-party app could.
+- **Time.** The routing setup (`context.route`, `routeWebSocket`), the read of the committed scene
+  before a write and the rebuild after a failed one were awaited without a deadline; a browser that
+  stopped answering there held the start, the operation and the adapter's serial queue for good.
 - **Provisioning assumes a bundled app.** PADR-0011 downloads only Chromium; PADR-0012 bundles the
   pinned Excalidraw into the npm package. The spike recommends that the user's machine downloads
   the unmodified official draw.io release, checked by SHA-256, and that Practonaut never
@@ -146,14 +153,31 @@ with what is about the app.
      code and `eval` unchanged), so no context of the page — dedicated or shared worker, frame — can
      fetch, connect, import a script or load a font from another host; the violations the page, a
      frame or a dedicated worker reports go to a path of the first named origin that the shell
-     answers, and are recorded. The browser starts with WebRTC limited to proxied UDP, and there is
-     no proxy. What the boundary does **not** record: attempts inside a shared worker (blocked by
-     the policy, but the browser routes neither the request nor its report).
-     `tests/adapter/browser-shell-network.test.ts` measures each channel against the real Chromium.
-   - **Operations.** Transactions, guarded reads and the adapter's start run one at a time under a
-     timeout and an abort, which is watched before the work starts. A failed write is undone in
-     place; a timed-out, cancelled or thrown one ends its operation — every later step of it is
-     refused, wherever it resumes — closes the page and rebuilds the committed scene on a fresh one.
+     answers, and are recorded. Below the page, the browser starts with WebRTC limited to proxied
+     UDP and with a proxy that is the shell's **sink**: a listener on the loopback interface (bound
+     to 127.0.0.1, a free port, closed with the shell) that forwards nothing, answers every request
+     with 403 and records the target it was asked for (`proxy:CONNECT host:port`). The loopback
+     interface is proxied too, so a page cannot reach local services this way either. Every
+     connection the browser opens itself therefore ends at the sink: TURN over TCP (measured, by
+     address and by host name, which is not resolved), a preconnect, and the violation reports of a
+     shared worker, which the routing cannot see — so a shared worker's blocked attempts now show up
+     as `proxy:POST …/policy-report`. In addition the browser resolves no host name
+     (`--host-resolver-rules`, all names not found; routed content is never resolved) and every
+     served document turns DNS prefetching off (`X-DNS-Prefetch-Control: off`); neither has an effect
+     that can be measured in the headless shell, which acts on no prefetch or preconnect hint, so
+     both stay as a second line in case a later Chromium does. `tests/adapter/browser-shell-network.test.ts`
+     measures each channel against the real Chromium, including the net log for the hinted names.
+   - **Operations and time.** The routing setup shares the launch deadline. Transactions and guarded
+     reads have one deadline and one abort, watched before the work starts, that also cover reading
+     the committed scene: a read that does not return fails the operation (`mirror_timeout` or
+     `cancelled`) with nothing written. A failed write is undone in place; a timed-out, cancelled or
+     thrown one ends its operation — every later call it makes into the shell (page, browser,
+     context, fresh page, a new operation, closing the shell) is refused, wherever it resumes —
+     closes the page and rebuilds the committed scene on a fresh one within the start's deadline. A
+     rebuild that fails or runs out of time leaves the page in an unknown state: the shell closes its
+     browser and its sink, the operation answers `mirror_unavailable`, and so does every later call.
+     The host's mirror then replaces the adapter instead of restoring into it (its read-back after the
+     failure fails, which marks the adapter interrupted in `src/host/mirror.ts`).
    - PNG capture and the SHA-256 artifact helper.
 
    The Excalidraw adapter keeps read, write, projection, integrity and SVG. The native file dialog
@@ -165,7 +189,7 @@ with what is about the app.
    size and SHA-256 first; never by an install script and never implicitly by `play`, `bench` or
    `mcp`; checked against the pinned size and SHA-256 before it is kept; unpacked with entry-name
    checks into the private data directory (PADR-0029); served to the adapter's page only through
-   request interception of named app paths (never `WEB-INF`/`META-INF`, no listening socket), behind
+   request interception of named app paths (never `WEB-INF`/`META-INF`; no listener serves the app), behind
    the shell's network boundary (decision 7); never redistributed (not in the npm package, not in a CI
    artifact). Without it the adapter's mirror is unavailable: `--mirror auto` runs model-only with a
    notice that names the setup option and the size, `--mirror required` fails by name, and `doctor
@@ -186,10 +210,14 @@ with what is about the app.
 - File names of native exports (`.excalidraw` in `run --export` and the export pair) stay
   Excalidraw's until Must 2 uses the format table's extension.
 - The Excalidraw engine page now runs under the shell's content security policy and without
-  WebRTC UDP; the conformance suite passes unchanged under it. A shared worker's blocked attempts
-  stay unrecorded; an app that needs a shared worker to reach the network cannot work in the shell.
+  WebRTC UDP, behind the sink proxy and without host resolution; the conformance suite passes
+  unchanged under it and records no attempt (no browser-internal traffic reaches the sink). An app
+  that needs any network beyond its named origins cannot work in the shell.
 - A start or recovery of the mirror is bounded by the launch and start deadlines (15 s + 60 s)
-  instead of the per-call timeouts alone.
+  instead of the per-call timeouts alone; an operation is bounded by its own limit plus, after a
+  failure, the start's deadline for the rebuild.
+- The shell opens one listening socket per running browser: the sink, on 127.0.0.1 only, which
+  serves nothing. The app itself is still served without any listener (PADR-0012).
 
 ## Re-assessment triggers
 
