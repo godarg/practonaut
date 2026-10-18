@@ -6,6 +6,20 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Adapter registry** (PADR-0045, proposed; roadmap 0.3.0 Must 1): adapters are chosen by the
+  world's `app.adapterId` through `src/adapters/registry.ts` (app versions, world schemas, runtime
+  kind `bundled` or `downloaded`, read-back comparison, factory); only Excalidraw 0.18.1 is
+  registered. The live mirror, `practonaut run`, `play`, `serve` and `mcp --task` resolve their
+  adapter there; the checker reads exports through its own format table. A unit test keeps the
+  world's table of known apps, the registry and the checker's format table equal.
+- **Shared browser shell** (`src/adapters/browser/`): the one Chromium start (moved from the
+  Excalidraw folder), a launch deadline the shell enforces itself (a browser that arrives late is
+  closed), fail-closed routing over named origins, transactions that roll back on a fresh page,
+  PNG capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity
+  and SVG.
+
 ### Changed
 
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
@@ -13,6 +27,17 @@ All notable changes are recorded here. The format follows
   tier); headroom is sought per family and toolchain and in new family types, each behind a
   pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
   to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
+- A world naming an application this Practonaut does not have is refused by name before anything
+  starts: `E_ADAPTER_UNKNOWN`, `E_ADAPTER_VERSION_UNSUPPORTED` (known adapter, other app version)
+  and `E_ADAPTER_SCHEMA_UNSUPPORTED` (adapter that does not run this world schema), at `validate`,
+  `pack`, every world load, and in the checker process — instead of `E_WORLD_INVALID` with a schema
+  message ([world format](docs/world-format.md) §1.4, which now also lists the world-content codes).
+  The world JSON Schemas list the allowed app values; world/2's omitted `provenance.appVersion` is
+  the world's `app.versionRange`.
+- The host compares a mirror's read-back the way its adapter declares: the whole state with
+  tombstones (Excalidraw, unchanged) or live objects only for an app that keeps no deleted objects.
+- The checker request's `format` option accepts `session` or the world adapter's native format id
+  (today `excalidraw`, as before); another app's format is refused.
 
 ## [0.2.0] - 2026-10-16
 

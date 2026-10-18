@@ -22,6 +22,10 @@ The contract is `ApplicationAdapter` in `src/adapters/types.ts`:
 | `importArtifact(native)` | Load a native file and return its projected state, or a named failure. |
 | `close()` | Release the app and every child process. |
 
+The host's live mirror needs four more capabilities, `MirrorAdapter` in the same file:
+`restoreState` (resynchronise, checked by read-back), `renderPng`, `terminate` (cancel pending
+browser work before recovery) and `networkAttempts` (requests the app made that were refused).
+
 Every long operation honours a timeout and an `AbortSignal` and leaves the session unchanged when
 it fails. Recording (optional capability) starts only on an explicit request, groups app events at
 gesture boundaries, maps them to semantic events on the declared set and reports everything else
@@ -45,18 +49,24 @@ app). `npm run test:adapter` runs the Excalidraw suite headless and offline afte
 
 ## 3. What a second application touches
 
-The code is written for one adapter. A second one is a reviewed change across these places,
-each with tests:
+Adapters are chosen by the world's `app.adapterId` through one registry
+([PADR-0045](adr/0045-adapter-registry-and-browser-shell.md)). Three tables name them, and
+`tests/unit/adapter-registry.test.ts` fails until they agree: the applications a world may name
+(`src/world/apps.ts`), the registry (`src/adapters/registry.ts`) and the checker's format table
+(`src/checker/formats.ts`). A world naming anything else is refused by name before anything starts
+(`E_ADAPTER_UNKNOWN`, `E_ADAPTER_VERSION_UNSUPPORTED`, `E_ADAPTER_SCHEMA_UNSUPPORTED`;
+[world format](world-format.md) §1.4). A second application is a reviewed change across these
+places, each with tests:
 
 | Place | Today | For a second app |
 |---|---|---|
-| `src/adapters/types.ts` | `id: "excalidraw"`, `appVersion: "0.18.1"` literals | widen to a union of known adapters |
-| `src/adapters/<app>/` | Excalidraw adapter, engine build, recorder | new folder implementing `ApplicationAdapter`; pinned app version; bundled assets with license texts |
-| `src/world/schema.ts` | `app.adapterId` is the literal `"excalidraw"` | accept the new id and its version range (new world schema minor or major, see [world format](world-format.md)) |
-| `src/host/mirror.ts` | creates the Excalidraw adapter | choose the adapter from the world's `app.adapterId` |
-| `src/checker/` | parses `.excalidraw` exports (`excalidraw.ts`, `scene.ts`) | an export parser for the new native format, written independently of the adapter |
+| `src/world/apps.ts` | `excalidraw` at `0.18.1`, for world/1 and world/2 | the adapter id, its pinned app versions and the world schemas it runs; the world JSON Schemas follow (`npm run schema:write`) |
+| `src/adapters/registry.ts` | `excalidraw`: bundled runtime, `full` read-back, `createExcalidrawAdapter` | an entry with versions, schemas, runtime kind (`bundled` in the npm package, or `downloaded` unmodified by an explicit setup step), read-back comparison (`full` if the app keeps deleted objects, `live` if not) and factory |
+| `src/adapters/browser/` | the shared shell: one Chromium start, launch deadline and abort, fail-closed routing over named origins, transactions that roll back on a fresh page, PNG capture, artifact hashes | reuse it; only what is about the app goes into the adapter's folder |
+| `src/adapters/<app>/` | Excalidraw: read, write, projection, integrity, SVG, engine build, recorder | new folder implementing `MirrorAdapter`; pinned app version; bundled assets with license texts, or the download rule of PADR-0045 |
+| `src/checker/formats.ts` | `excalidraw`: the strict parser for world/1 exports, the tolerant scene parser for world/2 | an export parser for the new native format, written independently of the adapter |
 | `src/core`, `src/world` | diagram actions (steps, arrows, frames, styles) | the new app's actions, each with a replay test and an independently derived golden hash |
-| `tools/build-engine.ts` | builds the offline Excalidraw bundle | a reproducible offline build of the new app, if it runs in the browser |
+| `tools/build-engine.ts` | builds the offline Excalidraw bundle | a reproducible offline build of the new app, if it is bundled |
 | `tasks/<app>/` | Excalidraw task library | a small task library with reference solutions and near misses |
 
 The deterministic core never learns about the app: it only sees semantic state and actions.
@@ -77,6 +87,11 @@ The checker must keep parsing exports itself; it may not import the adapter or t
 
 ## 5. Excalidraw specifics
 
+- Registered as `excalidraw` at `0.18.1` for world/1 and world/2, bundled in the npm package
+  (PADR-0012). The folder keeps what is about Excalidraw — read, write, projection, integrity and
+  SVG; starting Chromium, routing, transactions and capture come from the shared browser shell.
+- Excalidraw keeps deleted elements (`isDeleted`), so the adapter declares `full` read-back: the
+  host compares tombstones too, not only live objects.
 - Arrow relations come from `startBinding`/`endBinding`; `boundElements` is a cache. The integrity
   check fails a write when a binding points to a missing element or when the adapter's own write
   leaves a stale back-reference. Stale back-references produced by the real UI are normalised on
