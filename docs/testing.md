@@ -146,6 +146,18 @@ changed: the 8 s bound, the tests' assertions. A close that must survive this ne
 the browser after the graceful bound, which Playwright's API does not offer for a launched browser;
 it is a decision of its own.
 
+A slow close must not hide the failure it cleans up after. Every path that closes a browser (or a
+mirror, session or host holding one) after a failure does so within the same close bound and keeps
+the original failure, with the close's failure as its non-enumerable `closeError`
+(`closeAfterFailure` and `withClose` in `src/adapters/browser/bounded.ts`).
+`tests/unit/close-keeps-error.test.ts` (session admission, mirror recovery in a session, a failed
+rollback, a replacement started after close, the author practice host's reply budget, the render
+check, the report card; Node's mock clock) and `tests/integration/close-keeps-error.test.ts` (the
+host start's author store, listener and editor listener, `practonaut run`, the native transfer
+export; real time, 8 s each) give each path a stand-in close that never settles. Run on the previous code, every one of them
+failed (the call never settled, or the close's error replaced the original), except the author
+practice host's, whose check was inline there and is a function of its own now.
+
 - `npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0]
   [--beside <file>] [--require-pass]` (opt-in) runs each of the two tests unchanged in its own
   `node --test` process, `--runs` times, with the preload `tests/support/host-deadline-seam.ts`

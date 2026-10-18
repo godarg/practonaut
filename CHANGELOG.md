@@ -62,6 +62,15 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- A browser close after a failure no longer replaces that failure (issue #64). When a session or
+  host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
+  an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
+  or a render check or report card fails, the close that follows runs within the close bound
+  (graceful 3 s + forced 5 s) and the caller gets the original failure, with the close's failure kept
+  next to it as `closeError`. Before, a close that failed replaced it (a native transfer export
+  reported "Browser close exceeded its deadline" instead of its own error), and a close that never
+  finished held these paths forever (a failed host start then never removed its credential).
+
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
   #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
   renderer throttled 20x, 28 of 30 Opens lost their file dialog before the change and 0 of 30 after;

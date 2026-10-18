@@ -9,6 +9,7 @@
  */
 import type { Browser, LaunchOptions } from 'playwright-core';
 import { launchChromium } from '../adapters/browser/chromium.ts';
+import { closeBrowser, withClose } from '../adapters/browser/bounded.ts';
 import { CARD_SIZE } from './card.ts';
 
 /** Never resolved: the request is answered by the route below before anything reaches a network. */
@@ -28,13 +29,13 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
     const pngs: Buffer[] = [];
     for (const svg of svgs) {
       const context = await browser.newContext({ viewport: { ...CARD_SIZE }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: 'block', reducedMotion: 'reduce' });
-      try {
+      await withClose(async () => {
         await context.route('**/*', route => route.request().url() === CARD_URL ? route.fulfill({ status: 200, contentType: 'image/svg+xml; charset=utf-8', body: svg }) : route.abort('blockedbyclient'));
         const page = await context.newPage();
         await page.goto(CARD_URL, { waitUntil: 'load', timeout: timeoutMs });
         pngs.push(await page.screenshot({ type: 'png', clip: { x: 0, y: 0, ...CARD_SIZE }, animations: 'disabled', caret: 'hide', timeout: timeoutMs }));
-      } finally { await context.close(); }
+      }, () => context.close());
     }
     return { pngs, sandbox };
-  } finally { await browser.close().catch(() => {}); }
+  } finally { await closeBrowser(browser).catch(() => {}); }
 }

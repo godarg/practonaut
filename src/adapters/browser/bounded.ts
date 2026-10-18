@@ -18,10 +18,43 @@ export async function bounded<T>(promise: Promise<T>, ms: number, operation?: Br
   try { return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new BrowserDeadlineError(operation, limit)), limit); })]); }
   finally { clearTimeout(timer); }
 }
+/** The close budget of a browser (graceful + forced), and the bound of every close that cleans up
+ * after a failure. */
+export const CLOSE_BOUND_MS = BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced;
 /** Playwright's close within graceful + forced. Playwright's `browser.close()` returns once Chromium
  * has exited and Playwright has removed its temporary profile. A close that does not finish in time
  * fails with `BrowserDeadlineError` (operation `close`) and goes on in the background: nothing ends
  * the browser before this process exits, when Playwright's own exit handler kills what is left. */
 export async function closeBrowser(browser: { close(): Promise<void> }): Promise<void> {
-  await bounded(browser.close(), BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced, 'close');
+  await bounded(browser.close(), CLOSE_BOUND_MS, 'close');
+}
+/** A close (of a browser, or of what holds one) within the close bound; a throw counts as a failure. */
+const closeWithin = (close: () => Promise<unknown> | undefined): Promise<unknown> => bounded(Promise.resolve().then(close), CLOSE_BOUND_MS, 'close');
+/**
+ * Closes after `failure` without replacing it (issue #64): `close` runs within the close bound, and
+ * this never throws. A close that fails or runs out of time (`BrowserDeadlineError`, operation
+ * `close`) is kept next to the failure as its `closeError`, as `AdapterInitializationError` keeps its
+ * `cleanupError`: not enumerable, so a reply or a log that serialises the failure is unchanged, and
+ * never over an earlier one. A failure that is not an extensible object cannot carry it. Returns
+ * `failure` for the caller to rethrow: `throw await closeAfterFailure(error, () => adapter.close())`.
+ */
+export async function closeAfterFailure<E>(failure: E, close: () => Promise<unknown> | undefined): Promise<E> {
+  try { await closeWithin(close); }
+  catch (closeError) {
+    const holder = failure as unknown;
+    if (((typeof holder === 'object' && holder !== null) || typeof holder === 'function') && Object.isExtensible(holder) && !Object.hasOwn(holder, 'closeError'))
+      Object.defineProperty(holder, 'closeError', { value: closeError, configurable: true, writable: true, enumerable: false });
+  }
+  return failure;
+}
+/**
+ * Runs `work`, then `close` within the close bound. When `work` fails, its failure is what the caller
+ * gets, with a failed close next to it (`closeAfterFailure`); when it succeeds, a close that fails or
+ * runs out of time fails the call.
+ */
+export async function withClose<T>(work: () => Promise<T>, close: () => Promise<unknown> | undefined): Promise<T> {
+  let value: T;
+  try { value = await work(); } catch (failure) { throw await closeAfterFailure(failure, close); }
+  await closeWithin(close);
+  return value;
 }

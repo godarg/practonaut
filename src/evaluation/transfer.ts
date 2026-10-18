@@ -9,7 +9,7 @@ import type { Page } from 'playwright-core';
 import type { Action, State } from '../world/types.ts';
 import type { ExcalidrawAdapter } from '../adapters/excalidraw/index.ts';
 import { createExcalidrawAdapter, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
-import { bounded, BROWSER_BOUNDS } from '../adapters/browser/bounded.ts';
+import { bounded, BROWSER_BOUNDS, withClose } from '../adapters/browser/bounded.ts';
 import { parseExcalidraw } from '../checker/excalidraw.ts';
 import { RuntimeError } from '../cli/runtime.ts';
 import { openNativeFileChooser } from './native-trigger.ts';
@@ -24,7 +24,8 @@ export async function exportAgentSolution(initial: State, input: unknown): Promi
   if (!frame) throw new RuntimeError('transfer_invalid', 'Transfer start requires a frame');
   const adapter = await createExcalidrawAdapter(initial); let state = structuredClone(initial);
   const commit = async (action: Action, next: State): Promise<void> => { const result = await adapter.apply({ before: state, after: next, action }); if (!result.ok) throw new RuntimeError('transfer_invalid', 'Real editor rejected the agent solution'); state = await adapter.snapshot(); };
-  try {
+  // The browser closes within its bound; a failed close never replaces the export's own failure (issue #64).
+  return withClose(async (): Promise<TransferExport> => {
     for (let index = 0; index < solution.steps.length; index++) { const step = solution.steps[index]!, id = `transfer-step-${index}`;
       const next = structuredClone(state); next.objects[id] = { id, type: 'step', frameId: frame.id, label: step.label, x: step.x, y: step.y, width: 180, height: 100, fontFamily: 3, deleted: false };
       await commit({ name: 'add_step', params: { frameId: frame.id, label: step.label, x: step.x, y: step.y, width: 180, height: 100, fontFamily: 3 } }, next);
@@ -35,7 +36,7 @@ export async function exportAgentSolution(initial: State, input: unknown): Promi
       next.objects[id] = { id, type: 'arrow', frameId: frame.id, from, to, deleted: false }; await commit({ name: 'connect', params: { frameId: frame.id, from, to } }, next);
     }
     const artifact = await adapter.exportArtifact(); return { native: artifact.native, svg: artifact.svg, state: parseExcalidraw(artifact.native), networkAttempts: adapter.networkAttempts() };
-  } finally { await adapter.close(); }
+  }, () => adapter.close());
 }
 async function drawStep(page: Page, x: number, y: number, label: string): Promise<void> {
   await page.keyboard.press('Escape'); await page.keyboard.press('r'); await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 180, y + 100, { steps: 8 }); await page.mouse.up();
@@ -46,14 +47,14 @@ async function drawStep(page: Page, x: number, y: number, label: string): Promis
 /** Explicit scripted human. Draws with actual pointer/keyboard input in the pinned editor. */
 export async function exportScriptedHuman(initial: State): Promise<TransferExport> {
   let page: Page | undefined; const adapter: ExcalidrawAdapter = await createExcalidrawAdapter(initial, {}, { ready(_browser, value) { page = value; } });
-  try {
+  return withClose(async (): Promise<TransferExport> => {
     if (!page) throw new RuntimeError('transfer_invalid', 'Real editor is unavailable');
     await page.locator('.excalidraw').first().click({ position: { x: 1300, y: 800 } });
     await drawStep(page, 300, 300, 'Review'); await drawStep(page, 750, 300, 'Archive');
     await page.keyboard.press('a'); await page.mouse.move(480, 350); await page.mouse.down(); await page.mouse.move(750, 350, { steps: 12 }); await page.mouse.up(); await page.keyboard.press('Escape');
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const artifact = await adapter.exportArtifact(); return { native: artifact.native, svg: artifact.svg, state: parseExcalidraw(artifact.native), networkAttempts: adapter.networkAttempts() };
-  } finally { await adapter.close(); }
+  }, () => adapter.close());
 }
 
 export const NATIVE_TRANSFER_WALL_MS = 60_000;
