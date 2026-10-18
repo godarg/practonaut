@@ -1,7 +1,8 @@
 # PADR-0041 — Headroom where agents fail, and the first checkpoint after the 0.3.0 launch
 
-Status: accepted 2026-10-18 · Date: 2026-10-18 · Maintainer decisions D1, D2 (in part) and D9 of
-2026-10-17; wording reviewed independently before acceptance (pull request "0.3.0 plan") · Amends
+Status: accepted on the merge of the "0.3.0 plan" pull request · Date: 2026-10-18 · Records maintainer
+decisions D1 and D9 of 2026-10-17; wording reviewed by a fresh Claude reader, OpenAI Codex
+`gpt-6.1-sol` and Google `gemini-3.8-flash` before the merge · Amends
 [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) (vision §5 and §7, the
 roadmap's zero-family branch and first checkpoint)
 
@@ -14,9 +15,9 @@ roadmap's zero-family branch and first checkpoint)
   instances in every family, Haiku 26 of 26 except `tight-budget` (24 of 26)
   ([gate reports](../benchmarks/challenge/README.md)). On Practonaut's own surface the goal is a
   complete public specification, the semantic actions map one to one onto it, every reply is
-  compact and confirmed, and `check_result` answers with the unmet conditions. That surface is
-  built to be easy to act on correctly, which is what a tool should be, and it leaves current
-  models little to get wrong.
+  compact and confirmed, and `check_result` answers with the unmet conditions. Our hypothesis, not
+  a measured cause: that surface is built to be easy to act on correctly, which is what a tool
+  should be, and leaves current models little to get wrong. Only difficulties up to 3 were tried.
 - **PADR-0033 named this case.** Its re-assessment trigger is "no challenge family passes the gate
   after two ladder rounds", and the roadmap's zero-family branch says what happens then. A second
   round of harder variants of the same five families would cost about 87 model runs each (0.2.0 had
@@ -72,7 +73,7 @@ roadmap's zero-family branch and first checkpoint)
    draw.io are built.
 4. **A pre-probe before every gate.** A unit enters a gate round only after a pre-probe of its
    strongest configuration passes between 10 % and 80 % of its instances. Pre-probe size, the
-   ladder, the gate pair and the budget per round are fixed by
+   ladder, the gate pair, the preregistered units and the budget per round are fixed by
    [PADR-0042](0042-gate-for-families-on-toolchains.md) before any run.
 5. **First checkpoint.** At least one external project within six weeks after the 0.3.0 launch
    (the maintainer's first public announcement of Practonaut), at the latest 2027-04-30. Later
@@ -94,6 +95,8 @@ roadmap's zero-family branch and first checkpoint)
 
 ## Re-assessment triggers
 
+- The first three pre-probes all fall outside 10–80 %: stop, raise the difficulty through new
+  generator versions before probing further, and report.
 - No unit passes its pre-probe, or no unit that entered a gate passes it, by the 0.3.0 release:
   report it, and re-assess the headroom bet with the maintainer before 0.4.0.
 - A foreign server's terms, licence or format make artifact-mode runs impossible.
