@@ -4,8 +4,11 @@ Status: proposed · Date: 2026-10-18 · Roadmap 0.3.0, strand P3 (issue #46) · 
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) and
 [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) (bench/2, frozen since 0.2.0);
 carries the verdict level of [PADR-0043](0043-artifact-judged-verdict-level.md) and the run facts the
-gate of [PADR-0042](0042-gate-for-families-on-toolchains.md) reads · To be accepted after an
-independent review of this record; the change that implements it (P3b) follows that review
+gate of [PADR-0042](0042-gate-for-families-on-toolchains.md) reads · Revised after three
+independent reviews on 2026-10-18 (a multi-lens Claude Opus review with an adversarial check per
+finding, OpenAI Codex `gpt-6.1-sol`, Google `gemini-3.8-flash`; disposition at the end) · To be
+accepted after the coordinator's check of this revision; the change that implements it (P3b)
+follows
 
 ## Context
 
@@ -20,33 +23,50 @@ P3). What /2 assumes, read in the code:
   history (`src/bench/verify.ts:74`). An artifact-mode run has no Practonaut session at all
   (PADR-0043 decision 1).
 - **One application by name.** The environment records `excalidraw: <version>`
-  (`src/bench/report.ts:192`, written at `src/bench/run.ts:450`); the world schema still has
+  (`src/bench/report.ts:192`, written at `src/bench/run.ts:450`), the native export is always
+  `native.excalidraw` (`src/bench/run.ts:142`), and the world schema still has
   `app.adapterId: "excalidraw"` as a literal (`src/world/schema.ts:140`), which Must 1 widens.
+- **Variant selection depends on the world's name.** A seed selects a variant case by hashing the
+  world's id and version with the seed (`src/world/variant.ts:6-8`). The same tasks in a world with
+  another id or version get other variants for the same seeds: for the library's three cases and
+  seeds 1–5, cases 0, 1, 1, 2, 1 as `excalidraw-library` 1.1.0 and 2, 0, 0, 2, 0 under the id
+  `drawio-library` (measured by the review and again for this revision with `src/canonical`). Seeds
+  that share a case give one board twice; `bench` already says so (`seeds_share_variant`,
+  `src/cli/messages.ts:523`).
 - **Isolation from the kind of agent.** `ISOLATION_OF` maps built-in, preset and template to the
   three levels (`src/bench/report.ts:132`) and the validator refuses any other pairing
   (`src/bench/report.ts:374`). A preset for a client whose shell or file tools cannot be removed
   (PADR-0042 decision 5) would be labelled "tool-restricted" by kind alone.
 - **One client's identity.** The model, `apiKeySource` and client version come only from Claude
-  Code's `system/init` event (`src/bench/agents.ts:107-122`); there is no requested model, no client
-  or vendor field, and `apiKeySource` is Claude Code's own field. A 0.3.0 declaration names each
-  ladder agent's client, requested model, attestation and billing (PADR-0042 decision 3).
+  Code's `system/init` event (`src/bench/agents.ts:107-122`), and the report takes them from the
+  first run whose init names either a model or a key source (`src/bench/run.ts:356`); there is no
+  requested model, no client or vendor field, and `apiKeySource` is Claude Code's own field. A 0.3.0
+  declaration names each ladder agent's client, requested model, attestation and billing (PADR-0042
+  decision 3).
 - **One actor.** The validator requires `actions ≤ acceptedActions` (`src/bench/report.ts:345`) and
   mutation-log entries equal to the agent's counted calls (`src/bench/report.ts:420-421`);
-  `--verify` counts a task's limits from every mutation record (`src/bench/verify.ts:110-126`) and
-  the log against the agent's counters (`src/bench/verify.ts:147-150`). The host knows the actors
-  `human`, `agent` and the host-only `demonstration` (`src/host/protocol.ts:44`); the judged
-  session's history carries no actor (`src/world/types.ts:100-101`). A person editing mid-run
-  (item 4) breaks every one of these rules.
+  `--verify` checks a task's action limit against the final history and every mutation record
+  (`src/bench/verify.ts:110-126`) and the log against the agent's counters
+  (`src/bench/verify.ts:147-150`), counting records by operation only (`src/bench/evidence.ts:175-178`);
+  the recorder drops any record past its line cap (`src/bench/evidence.ts:150`). The host knows the
+  actors `human`, `agent` and the host-only `demonstration` (`src/host/protocol.ts:44`); the judged
+  session's history carries no actor (`src/world/types.ts:100-101`), and an undo removes the last
+  history entry whoever made it (`src/core/session.ts:98-105`). A person editing mid-run (item 4)
+  breaks these rules.
 - **Infrastructure errors read from note text.** The client's failure classes come from Claude
   Code's stream (`src/bench/evidence.ts:197-253`); the gate recognises a run "rejected by the
   client" by matching the run's note with a regular expression (`src/challenge/gate.ts:46-52`).
 - **Pairing within one world.** `compare` refuses two reports whose world content hashes differ
-  (`src/bench/compare.ts:43`), so the same tasks on Excalidraw and on draw.io cannot be paired. The
-  development digest of a gate round hashes a session's state hash and action log
-  (`src/challenge/declaration.ts:87-97`), which an artifact run does not have.
+  (`src/bench/compare.ts:43`) or whose task and seed sets differ (`src/bench/compare.ts:44-47`), so
+  the same tasks on Excalidraw and on draw.io cannot be paired. The development digest of a gate
+  round hashes a session's state hash and action log (`src/challenge/declaration.ts:87-97`), which an
+  artifact run does not have.
+- **What verification shows.** `report --verify` shows that the artifacts on disk give the report's
+  verdicts, not that they came from the agent the report names: "whoever can write the run
+  directory can replace them; there is no signature" (`src/bench/verify.ts:30-32`).
 
-The bring-your-own-tools spike adds three facts the format must carry: Claude Code's init event
-lists the tools it offers the model ("the agent saw exactly the two allowed tools (`init.tools`)",
+The bring-your-own-tools spike adds three facts: Claude Code's init event lists the tools it offers
+the model ("the agent saw exactly the two allowed tools (`init.tools`)",
 [spike report](../../spikes/byo-tools/REPORT.md) line 20); the result of the official Excalidraw MCP
 server is found through the server's own reply (`structuredContent.checkpointId`, lines 59 and 76);
 and the server's stored format needs named reading rules (lines 67-75).
@@ -72,11 +92,11 @@ bound to one application (`app.adapterId`) and a bench stores one world; a headl
 applications would pool them. (2) *One application per report; the same tasks on both applications
 are shown by `compare`, which pairs instances by task identity* (chosen).
 
-**Task identity.** (1) *The world content hash.* Differs with the application block, provenance,
-behaviour rules and prompts, so it never matches across applications. (2) *The task id.* A name, not
-content: two worlds may use one id for different tasks. (3) *A hash of the instance's formal content
-— start state, goal, limits, schedule and generator parameters — after the seed's variant is
-applied* (chosen).
+**Pairing the same tasks across worlds.** (1) *The world content hash.* Differs with the application
+block, provenance, behaviour rules and prompts, so it never matches across applications. (2) *The
+task id and the seed.* Names, not content, and the seed selects another variant in a world with
+another name (`src/world/variant.ts:6-8`). (3) *A hash of the instance's formal content, with
+variant selection keyed by an application-free task set, paired as a multiset* (chosen).
 
 **Agent identity.** (1) *Move /2's model fields into a new block.* Every /2 report would differ from
 its /3 reading in fields that mean the same thing. (2) *Keep /2's fields with their meaning and add
@@ -88,62 +108,104 @@ same as "not restricted". (3) *Keep the three values; a preset earns "tool-restr
 own runs' evidence* (chosen).
 
 **Counting with a co-actor.** (1) *Count every action.* The agent's figures and its budget would
-include the person's edits. (2) *Agent-only counters, a co-actor block, and the actor on every
-mutation record* (chosen).
+include the person's edits. (2) *Agent-only counters, the actor on every mutation record, every
+co-actor record matched to its schedule entry* (chosen).
 
-**What an artifact run contributes to a round's digest.** (1) *The stored file's byte hash.*
-PADR-0040 keeps byte hashes out of the digest: re-spacing a file would redraw the held-out seeds
-for free. (2) *The proxy's call log.* `--verify` checks it by hash only, so an edit plus a new hash
-would redraw them for free too. (3) *The checker's reading of the stored result, which `--verify`
-re-derives* (chosen).
+**What an artifact run contributes to a round's digest.** (1) *The checker's reading of the stored
+result.* It depends on reading-rules code, and its diagnostic lists (skipped pseudo-elements,
+unmodeled values) change with verdict-neutral edits: an added `cameraUpdate` moves the seeds for
+free (Codex review, finding 1). (2) *The proxy's call log.* Bound by hash only; an edit and a new
+hash move the seeds for free. (3) *The stored result's bytes, anchored when the run ends in the
+release ledger, read under a rules version the round's declaration fixes* (chosen): an edit after
+the run no longer matches its ledger record.
 
 **Old reports.** (1) *A converter that writes /3 files.* A converted file would look like a native
-/3 report and claim evidence nobody recorded. (2) *A read-only view of every version in the /3
-shape, nothing written to disk* (chosen).
+/3 report and claim evidence nobody recorded. (2) *A read-only view with explicit "not recorded"
+states, nothing written to disk* (chosen).
 
 **Schema ownership during parallel work.** (1) *Every strand edits `report.ts` as it needs.* Four
 strands adding required fields in parallel conflict, and a field decided twice means two things.
-(2) *One owner at a time; only optional additions until the release* (chosen).
+(2) *One holder at a time; only additive changes until the release* (chosen).
 
 ## Decision (proposed)
 
 1. **Verdict level.** Every /3 report has `verdictLevel: "session" | "artifact"`, and every run
    repeats it; the validator refuses a run whose level is not the report's.
-   - A **session** run keeps every /2 run field with its /2 meaning (verdicts on the session and,
-     with the mirror, the native export; `session.json`, `native.excalidraw`, `checker.json`,
-     logs, trace and board), plus the fields of decisions 5–9.
+   - A **session** run keeps every /2 run field with its /2 meaning, plus the fields of decisions
+     5–9. Its native export is named per adapter (`native.excalidraw`, `native.drawio`, …), as
+     `environment.app.adapterId` gives it.
    - An **artifact** run has no Practonaut session and no Practonaut action count. Its verdict is
-     `checker: { artifact }` — the separate checker's verdict on the stored result as read by the
-     toolchain's reading rules (`end-state-only`, counter-probes first, unmodeled values failing the
-     clauses that need them, PADR-0043 decisions 2–5) — or null when not judged. Its pass is that
-     verdict's `passed`; there is no mirror, so `environment.mirror` is absent at this level. Its
-     judged artifacts, bound by SHA-256 and present exactly when it was judged: the delivered start
-     file and the stored result (fixed names per source format, for example `start.json` and
-     `result.json` for `excalidraw-mcp`; the report records hashes, never a path, as in /2),
-     `reading.json` (the checker's reading: rules format and version, judged state, skipped
-     pseudo-elements by kind, unmodeled attributes and values) and `checker.json` (the verdict with
-     the rules version). Its evidence: `proxy.jsonl` and `agent.stdout` (decisions 4 and 5).
+     `checker: { artifact, result }`: `artifact` is the separate checker's verdict
+     (`end-state-only`, counter-probes first, unmodeled values failing the clauses that need them,
+     PADR-0043 decisions 2–5), and `result` says what was judged — `read` (the stored result),
+     `absent` (no server reply named a result, or the named file does not exist) or `unreadable`
+     (the reading rules refuse the file as a whole). For `absent` and `unreadable` the checker judges
+     the delivered start file instead, which fails by the unchanged-start counter-probe (PADR-0043
+     decision 5): an agent that leaves no readable result has failed, it has not met an
+     infrastructure error.
+   - **When an artifact run is judged.** A run whose client ended (completed, failed or timed out)
+     is judged, also without a readable result. It is `infra_error` only when (a) the client's
+     shipped parser classifies a usage limit, a login or billing error or an API error in the run's
+     bound stdout; (b) the runner-side proxy records a failure of the foreign server (it did not
+     start, it exited, or it answered a forwarded call with an error the toolchain definition's
+     shipped classification attributes to the server); (c) the proxy saw nothing at all — no
+     `initialize` — and the client did not complete, which is an agent that never started its tools,
+     the artifact-level counterpart of /2's "without a single tool call" (PADR-0043 decision 7); or
+     (d) the run was interrupted or the runner itself failed.
+   - **Result and start files.** The runner writes the delivered start file and hashes it before
+     the client starts. It takes the result's locator from the server's own reply, as the toolchain
+     definition names the field (decision 4), never from the agent's stream; the locator value must
+     be an identifier without a path separator, and it is resolved only inside the run's own server
+     store, to a regular file, without following a link. Judged artifacts, bound by SHA-256 and
+     present exactly when the run was judged: the start file, the result (null when `absent`),
+     `reading.json` (canonical JSON: the checker's reading of the judged file — rules format and
+     version, judged state, skipped pseudo-elements by kind, unmodeled attributes and values, and
+     for `unreadable` the result's refusal code) and `checker.json` (the verdict with the rules
+     version). File names are fixed per source format (for example `start.json` and `result.json`
+     for `excalidraw-mcp`); the report records hashes, never a path, as in /2.
+   - **What does not apply at artifact level.** No mirror: `environment.mirror` is absent and
+     `settings.mirror` is `off`. No task limits and no `--checks`: `bench` refuses, before the first
+     run, an artifact bench of a task with `limits`, and the validator refuses an artifact report
+     whose world records limits or whose settings carry `checks` (a foreign server knows no
+     Practonaut limits, PADR-0041 decision 2). No co-actor (decision 7). References and
+     `referenceActions` stay as in /2: the oracle baseline plays the reference through the server
+     (PADR-0043 decision 6), and the report shows the reference length, but no efficiency is
+     computed. `settings.prompt` holds the runner's prompt template, which it renders per instance with the
+     task and the toolchain's reading rules (PADR-0043 decision 4); the prompt is not world content,
+     so the same world serves every toolchain.
+   - **Validator.** The shared rules of `checkRuns` stay for both levels: the plan, interruption,
+     unique run ids, planned task, seed and repeat, one reference length per task, the summary
+     re-derived from the runs. Then per run: `checker === null` exactly when `status` is
+     `infra_error`, and `failure` (decision 9) exactly then; `artifacts` exactly when judged;
+     `pass === derivedPass(run)`. **Session level:** every other /2 rule, with decision 7's changes.
+     **Artifact level:** `artifacts.result === null` exactly when `checker.result` is `absent`;
+     `proxy.calls ≤ settings.maxActions`; `failure.reason: no_tool_call` only with `proxy.starts`
+     and `proxy.calls` zero; the absences listed above; no `toolCalls`, action counters, `logs`
+     (mutations, calls, trace, board) or `coActor` (the schema has none).
+   - **Derived pass.** Session: as /2 (`src/bench/report.ts:276-280`). Artifact:
+     `checker !== null && checker.result === "read" && checker.artifact.passed`.
    - **`report --verify` of an artifact report** checks, in order, with a named code and exit 2 on
      the first difference: the stored world and the references as for /2 (PADR-0036 decision 6);
-     every artifact and log against its hash (`bench_artifact_changed`); that this Practonaut's
-     checker ships the report's reading-rules version (`bench_rules_unknown`; the checker keeps
-     every reading-rules version a released Practonaut wrote into a report, and never changes one
-     once released); then per judged run (`bench_report_invalid`): the start file, read by the same
-     rules, equals the instance's start state on the declared attributes (PADR-0043 decision 5);
-     the result, read again, gives the stored reading; the checker, run again on that reading in a
-     separate process, gives the stored checker output and the run's verdict; the proxy log gives
-     the run's proxy counts.
+     every artifact, the proxy log and every stdout against its hash (`bench_artifact_changed`); that
+     this Practonaut ships the report's toolchain definition and the block equals it
+     (`bench_toolchain_unknown`, decision 4); for every run that binds a proxy log, judged or not, the
+     proxy counts and the locator line re-derived from the log; then per judged run
+     (`bench_report_invalid`): the start file, read by the same rules, equals the instance's start
+     state on the declared attributes (PADR-0043 decision 5); the judged file, read again, gives the
+     stored reading; the checker, run again on it in a separate process, gives the stored checker
+     output and the run's verdict; the run's isolation recomputed (decision 6).
    - **Summaries.** A session report keeps /2's summary. An artifact report has a summary without
-     action figures (no mean actions, no efficiency: the agent's own changes are not Practonaut
-     actions) and with the proxy's calls instead.
+     action figures (no mean actions, no efficiency) and with the proxy's forwarded calls.
    - **`compare`** refuses a pair of different levels with `compare_incomparable`, naming the field
-     `verdictLevel` with both values in words ("session verdict" and "artifact-judged, end-state only, no
-     Practonaut history") and the reason: runs of different verdict levels are never paired
-     (PADR-0043 decision 1). Showing the same tasks at both levels side by side is not a comparison;
-     no command of 0.3.0 draws it.
+     `verdictLevel` with both values in words ("session verdict" and "artifact-judged, end-state
+     only, no Practonaut history") and the reason: runs of different verdict levels are never paired
+     (PADR-0043 decision 1).
    - **Every surface names the level**, also for session reports: the report header and each run
      record, the card, the badge, the JUnit properties (`practonaut.verdictLevel`) and the compare
-     page.
+     page. Every surface of a `foreign-mcp` toolchain also says that the foreign server's code runs as
+     the same OS user, without a sandbox (PADR-0043 decision 8). The board of an artifact run is a
+     schematic of the judged state from `reading.json`, labelled as the checker's reading, with its
+     unmodeled attributes listed.
    - `settings.maxActions` keeps its name and is the outer cap per run at both levels: at session
      level the agent's act, undo and reset calls that reach the session (as /2), at artifact level
      the `tools/call` requests the proxy forwards. The output names the unit.
@@ -152,48 +214,75 @@ strands adding required fields in parallel conflict, and a field decided twice m
    the world's `app.adapterId`, and the pinned application version the adapter ran (session) or
    whose own conversion the reading rules are conformance-tested against (artifact, PADR-0043
    decision 2). `--verify` requires `adapterId` to be the stored world's `app.adapterId`
-   (`bench_world_changed`). **A report holds runs of one application**: it follows from one stored
-   world per bench folder.
-   "One report shows the same tasks on both apps" (roadmap item 2) is `practonaut compare` of the
-   two reports at the same verdict level, which pairs their instances by task identity
-   (decision 3), names each side's application in its column and draws no figure that pools them.
-   Its flips are listed as differences between the applications, never as instance regressions, and
-   `--fail-on-regression` refuses such a pair (`compare_incomparable`, field `application`): a
-   regression gate compares one application with itself.
+   (`bench_world_changed`), and anchors a library bench to the library this Practonaut ships for
+   that adapter. **A report holds runs of one application**: it follows from one stored world per
+   bench folder. "One report shows the same tasks on both apps" (roadmap item 2) is
+   `practonaut compare` of the two reports at the same verdict level, paired by task identity
+   (decision 3).
 
-3. **Application-independent task identity.** Per instance (task × seed):
-
-   `identity = SHA-256(canonicalJson({ identity: "practonaut.task-identity/1", start, goal,
-   limits, scenario, generatedBy }))` with `canonicalJson` and `sha256Hex` of `src/canonical`, over
-   the validated world (defaults applied) and the task as `generateVariant(world, seed)`
-   materialises it:
-   - `start`: the task's start state (its own `initialState`, else the world's), with the seed's
-     variant applied (labels, parameters, layout offset);
-   - `goal`: the task's goal predicate, with the variant applied;
-   - `limits`: the task's `limits`, or null;
-   - `scenario`: the task's co-actor schedule (item 4), or null. This record requires the schedule
-     to be task content, like `limits` (PADR-0040 decision 4), so the world's content hash and the
-     identity bind it and the stored world keeps it with the runs (the roadmap's "schedule stored
-     with the run"); the scenario record decides its shape and what the agent sees of it;
-   - `generatedBy`: `{ id, version, seed, parameters }`, or null.
-
-   Not hashed: the world's id, version, `app` block and provenance; its actions, behaviour rules and
-   unselected variants (they describe the toolchain and the application); titles, prompts, hints,
-   condition texts and error classes (an artifact-mode prompt lists the reading rules, PADR-0043
-   decision 4; error classes explain a verdict, never decide it); the task id and the seed number
-   (names, not content). The identity assumes the judged state model is shared by every adapter
-   (Must 1); an adapter that needs its own attributes in the state gives other identities, which is
-   correct.
-
-   The report lists `instances: [{ taskId, seed, identity }]`, one entry per instance that has at
-   least one run, in plan order; the validator requires exactly the runs' instances; `--verify`
-   re-derives every identity from the stored world (`bench_world_changed`). **`compare`** pairs by
-   task and seed when the world content hashes are equal, as in /2. When they differ, the pair is
-   comparable only if the applications differ, both reports list identities, no identity appears
-   twice on a side and both sides hold the same set of identities; instances are then paired by
-   identity. Otherwise the `world` difference stands as in /2: within one application a different
-   world is a different benchmark, however equal its identities, because prompts and the action
-   model may differ.
+3. **Task identity and pairing across worlds.**
+   - **Variant selection independent of the application.** World/2 gains an optional,
+     application-free task-set key `taskSet: { id, version }` (same patterns as the world's id and
+     version, no default). Variant selection hashes `{ world: { id, version }, seed }` with the task
+     set's id and version when the key is present and with the world's own otherwise. The code
+     hashes the version as well as the id (`src/world/variant.ts:6-8`), so the default must be both:
+     a default of the id alone would move the variants of every existing world. Without the key nothing
+     changes — no world's canonical JSON, content hash or variant choice, and no stored /2 report.
+     Two worlds of one task set on two applications carry the same key and the same variant cases in
+     the same order; an existing world needs no change, because a new world can name it (its id and
+     version) as its task set.
+   - **Identity.** Per instance (task × bench seed): `identity = SHA-256(canonicalJson({ identity:
+     "practonaut.task-identity/1", task }))` with `canonicalJson` and `sha256Hex` of `src/canonical`.
+     `task` is the task as `generateVariant(world, seed)` materialises it from the validated world,
+     projected by an explicit exclusion list: `initialState` is replaced by the resolved start state
+     (the task's own, else the world's); `errorClasses` is reduced to the list of their `when`
+     predicates, in order; `id`, `title`, `prompt`, `hints`, `conditionTexts` and the error classes'
+     ids and explanations are removed. Every other task field is hashed — the goal, `limits`,
+     `generatedBy`, the co-actor schedule of decision 7, and any field a later record adds — so a
+     new field is included by default (another identity is safer than a false pair). Reasons: the
+     texts reach the agent but the toolchain and the application shape them (an artifact-mode prompt
+     lists the reading rules); the `when` predicates spend the same per-task predicate budget as the
+     goal and can decide whether a verdict exists (`src/checker/index.ts:66-91`); `generatedBy` is
+     the instance's provenance, on which the gate's units and seeds rest, so instances pair only
+     when the same generator version and seed made them. Not hashed: the world's id, version,
+     `taskSet`, `app` block and provenance, its actions, behaviour rules and unselected variants,
+     the task id and the bench (variant) seed. The judged state carries no application's rendering
+     attributes — shapes and colours are named values, plus geometry, frame and group
+     (`src/world/schema.ts:52-56`) — and Must 1 keeps it shared by every adapter. The identity
+     version is frozen with /3. A record that adds a task or state field says whether the identity
+     includes it, and adds it as an optional field without a default, so existing worlds keep their
+     canonical JSON and every stored report keeps verifying.
+   - **Stored.** The report lists `instances: [{ taskId, seed, identity }]`, one entry per instance
+     that has at least one run, in plan order; the validator requires exactly the runs' instances;
+     `--verify` re-derives every identity from the stored world (`bench_world_changed`).
+   - **`compare` within one world** (equal content hashes) pairs by task and seed, as /2 and
+     PADR-0039 C.2 define the instance. When several task-and-seed instances share one identity
+     (seeds that select one variant), the page names a caveat with the number of distinct identities.
+   - **`compare` across worlds** (content hashes differ) pairs by identity when both reports are at
+     the same verdict level, both list identities, and their applications or their toolchains
+     differ. The pairing is a multiset: every run of one identity on a side — whatever its task id,
+     seed or repeat — aggregates into one outcome for that side, which passes when at least half of
+     all those runs passed, a run without a verdict counting as not passed (PADR-0039 C.2). Duplicate
+     identities never refuse a pair. The paired instances are the identities on both sides; an
+     identity on one side only is listed as "not compared", with its side, task ids and seeds, and
+     left out of every statistic, as /2 lists a missing instance (`src/bench/compare.ts:119`); with
+     none on both sides the verdict is "nothing to compare". The grid rule (the same task ids and
+     seeds, `src/bench/compare.ts:44-47`) does not apply: the identity sets replace it. Rows are named
+     by each side's task ids and seeds. Wilson intervals and McNemar count paired identities. Flips
+     are listed as differences between the two configurations, and the page says that titles,
+     prompts, hints, actions and behaviour rules are not compared and may differ. Identities are the
+     reports' claims unless `--verify` re-derived them, which the page shows like the verification
+     status today. `--fail-on-regression` refuses an identity-paired comparison
+     (`compare_incomparable`, field `world`): a regression gate compares one world with itself.
+     A test pairs two worlds with different ids and the same task set, three variant cases each,
+     over seeds 1–5, and shows every instance paired; without the task-set key it shows them unpaired.
+   - Otherwise the `world` difference stands, as in /2.
+   - A hand-made side-by-side table of one task set at both levels (P7) matches instances by identity
+     in the same way and follows PADR-0043 decision 1: each column names its level, no combined
+     figure, no test across levels.
+   - The bench's own check limit joins the comparability fields: two reports with different
+     `settings.checks` are refused (`compare_incomparable`, field `checks`), as different
+     `maxActions` are.
 
 4. **Toolchain record.** Every report has `toolchain`. Session level: `{ kind: "practonaut", id:
    "practonaut" }` (Practonaut's own actions over MCP, at the version `environment.practonaut`).
@@ -202,156 +291,282 @@ strands adding required fields in parallel conflict, and a field decided twice m
    (where the archive came from: a URL without credentials or query) and the archive's SHA-256;
    `proxy.name`, the MCP server name the client sees; `startDelivery` — `server-store` (written into
    the server's own store and named in the prompt), `prompt` (inline) or `file` (in the agent's
-   working directory); `locator`, the field of the server's own reply that named the result (for
-   example `structuredContent.checkpointId`), never the agent's stream (PADR-0043 decision 7);
-   `rules`, the checker's reading-rules format and version; `allowlist`, every tool the proxy
-   passes with its effect as measured during conformance for this pinned version: `run-store`
-   (only the run's own store), `file` or `network`. Each artifact run counts what the proxy saw —
-   `starts` (`initialize`), `calls` (forwarded `tools/call`), `refused` (a tool not on the allowlist)
-   and calls per tool — from `proxy.jsonl`, which Practonaut's proxy writes (one line per request:
-   sequence, method, tool, outcome, result bytes, time; never the arguments) and the report binds
-   by hash. A difference in toolchain id or rules version between two reports of one world is a
-   caveat `compare` names, not a refusal: the toolchain is what such a comparison tests.
+   working directory); `locator`, the field of the server's reply that names the result and the
+   selection rule (for example the last successful `create_view`'s `structuredContent.checkpointId`);
+   `rules`, the checker's reading-rules format and semantic version; `allowlist`, every tool the
+   proxy passes, with its effect: `run-store` (only the run's own store), `file` or `network`.
+   - **Anchored to a shipped definition.** Practonaut ships each toolchain definition as data —
+     id, server version and archive SHA-256, locator, rules, allowlist with effects, and the
+     application version the rules were tested against — keyed by id and rules version. A
+     definition, with its reading rules and their conformance fixtures, is frozen from its first use
+     in a committed report or declaration: a changed reading needs a new rules version, and the
+     fixtures with their expected readings run as behaviour tests in `npm test`. `bench` writes the
+     shipped definition; `--verify` refuses a block this Practonaut does not ship or that differs
+     from it (`bench_toolchain_unknown`), and `environment.app.version` must be the definition's.
+     Isolation at artifact level reads the effects from the shipped definition only (decision 6).
+   - **The proxy counts on the runner's side.** The stdio proxy the client starts only forwards to
+     a runner-side endpoint, as the bridge forwards to the host. That endpoint starts the pinned
+     server, applies the allowlist and `maxActions`, takes the locator, counts, and the runner writes
+     `proxy.jsonl` after the agent has ended. One line per request: sequence, MCP method, tool, the
+     outcome (`forwarded`, `refused-allowlist`, `refused-budget`, `invalid`), for a forwarded call
+     its result (`ok` or `error`), result bytes and time, and on the reply that named the result the
+     locator value; never the arguments. Forwarded calls are never omitted; refusals beyond 100 of
+     each kind and other requests beyond the log's line cap are counted in `omitted`. Each artifact
+     run carries `proxy: { starts, calls, refused, omitted }` (`starts`: `initialize` requests;
+     `calls`: forwarded `tools/call`; `refused`: both refusal kinds). `--verify` re-derives them, and
+     checks that exactly the line the selection rule picks names the stored result.
+   - A difference in toolchain id between two reports of one world is a caveat `compare` names, not a
+     refusal: the toolchain is what such a comparison tests. A difference in rules version is a
+     caveat too, and `--fail-on-regression` refuses it (`compare_incomparable`, field `rules`): a
+     regression must come from the agent or the toolchain, not from the judge.
 
-5. **Agent identity.** /2's agent fields keep their names and meaning: `kind`, `name`, `command`,
-   `model` with `modelSource` (the reported model: the first run that reports one), `apiKeySource`
-   and `keptEnv`. Beside them, each with its value and its evidence source:
-   - `vendor` (the model's vendor, an identifier the preset's record fixes), `client` (the client
-     program the preset starts, such as `claude-code`), `clientVersion` (the first run that reports
-     one; each run's own stays in `runs[].client.version`, as in /2) and `requestedModel` (the model
-     Practonaut passed through the preset's documented model switch — an option, or an environment
-     variable the preset names, such as `ANTHROPIC_MODEL` —, null when the client's default runs);
-   - `settings`: client settings that change behaviour (a reasoning level and similar) as the
-     preset requested them; each run's `client.settings` holds what the client itself states;
-   - per run, `client.credential`: which statement was read (`via`, a fixed identifier per parser,
-     such as `claude-code:init.apiKeySource` or a client's own login-status command), its value, and
-     the billing class the parser derives — `api-key`, `subscription`, `local` (only when the
-     client's own output names the loopback endpoint, PADR-0042 decision 5) or `unknown`, which the
-     release ledger counts as a subscription run (PADR-0042 decision 4).
+5. **Agent identity.** /2's agent fields keep their names and meaning — `kind`, `name`, `command`,
+   `model` with `modelSource`, `apiKeySource`, `keptEnv` — with two changes for /3 writers: `model`
+   is the reported model of the first run that reports a model, and `apiKeySource` the value of the
+   first run that reports one, each on its own (/2 took both from the first run that reported
+   either, `src/bench/run.ts:356`; the view keeps a /2 report's stored values); and `apiKeySource` is
+   stored only as a value from the parser's fixed list, `other` for anything else. Beside them, each
+   with its value and its evidence source:
+   - `vendor`: the model's vendor, from the preset's mapping of the requested or attested model id
+     (for example `claude-…` → `anthropic`); `none` when the preset has no mapping, as for a local
+     model. Readers: the report's agent line and PADR-0042 decision 5's "another vendor's model";
+   - `client`: the client program the preset starts, such as `claude-code`;
+   - `clientVersion`: the first run that reports one; each run's own stays in `runs[].client.version`;
+   - `requestedModel`: the value of the preset's model switch as the client got it — an option
+     Practonaut set, or the client's model variable the preset names (such as `ANTHROPIC_MODEL`),
+     read from the environment the client was started with; null when no switch or variable
+     reached the client. Which endpoint and model variables a preset withholds stays PADR-0034's and
+     P4's;
+   - `settings`: behaviour-changing client settings (a reasoning level and similar) as the preset
+     requested them. Readers: `compare` names a caveat when they differ, and the gate requires them
+     equal per agent within a round;
+   - `billing`, before the start: the class the preset was set up for, which the release ledger
+     records when the run takes its entry (PADR-0042 decision 4) — `local` when the preset
+     configures a loopback endpoint, `api-key` when it keeps a provider key by name, `subscription`
+     when it runs on the client's own login, `unknown` for a template;
+   - per run, `client.billing`, after the run: `{ class, source, via }` — the class the preset's
+     parser derives, its source, and `via`, the fixed identifier of the statement it read (for
+     example `claude-code/1:init.apiKeySource`, or for a local preset the endpoint in the client's
+     output). The source is re-derivable from the run's bound stdout (`client-attested`) or the
+     preset's own recorded configuration (`preset-requested`). The report never holds the statement
+     itself, no output of a login-status command, and no account name, e-mail address, organisation
+     or key fragment.
+   - **Counting rule** for the release ledger: a model run counts against the 800 unless both its
+     requested and its observed class are `local`; `api-key`, `subscription` and `unknown` count
+     (maintainer decision of 2026-10-18: the project's Claude runs use an API key under the
+     Commercial Terms and count as subscription runs for D4); built-in runs never count. `local`
+     shows how the client was configured (its own output names the loopback endpoint), not that a
+     local model answered.
 
-   Evidence sources: `client-attested` (a shipped preset client's own structured output in the
-   run's `agent.stdout`), `preset-requested` (Practonaut's own record of what a shipped preset
-   started or asked for, before the client started), `command-output` (a line in a command
-   template's output; which program printed it is unknown), `none` (a value is null exactly then).
-   The validator allows `client-attested` and `preset-requested` only for a preset and
-   `command-output` only for a template, as /2 does for `modelSource`. `agent.stdout` of every
-   external run is bound by SHA-256 (`logs.stdout`), and `--verify` re-derives every
-   client-attested or command-output value from it with the preset's parser, as it does for the
-   model today (`src/bench/verify.ts:130-136`). The parsers and each preset's values are the presets
-   strand's (P4, whose record refines PADR-0034); this record fixes the fields and their sources. A
-   gate pair needs `modelSource: "client-attested"` (PADR-0042 decision 6); that is the gate's rule.
+   Evidence sources: `client-attested` (a shipped preset client's own structured output in the run's
+   bound stdout), `preset-requested` (Practonaut's own record of what a shipped preset started or
+   asked for, before the client started), `command-output` (a line in a command template's output;
+   which program printed it is unknown), `none` (a value is null exactly then). The validator allows
+   `client-attested` and `preset-requested` only for a preset and `command-output` only for a
+   template, as /2 does for `modelSource`, and a `preset` only with a preset name this Practonaut
+   knows; `--verify` checks `command` against that preset's argument list when the report's
+   Practonaut version is its own, and otherwise says that it did not.
+   - **Stdout binding.** Every external run (preset or template) has `stdout: { sha256, bytes } |
+     null`, a run field of its own, outside `logs`. Null means the runner could not read
+     `agent.stdout`; then every value derived from it is absent or `none`: no `client` block,
+     isolation evidence `no-evidence`, no failure parser, observed billing `unknown`. The validator
+     refuses any of these values without a binding. The runner and `--verify` hash the whole file as
+     a stream, whatever its size (`bytes` shows the cost), and the parsers read only the bounded
+     parts the runner reads (the init event in the first 64 KiB, the result event in the last
+     256 KiB, failure events in the first 16 MiB).
+   - **Parsers are versioned** (`claude-code-stream/1`). `--verify` re-derives every client-attested
+     or command-output value with the named parser. When this Practonaut does not ship that parser,
+     it says that the values were not re-derived, and the gate and the ledger treat them as not
+     attested (`none`, billing `unknown`, no exemption).
+   - **What this shows.** As in /2, `--verify` shows that the folder's files agree with the report,
+     not who wrote them (`src/bench/verify.ts:30-32`). The run-end ledger record of decision 8 is what
+     ties a gate run's stdout and judged artifacts to the moment the run ended.
+   - The parsers and each preset's values are the presets strand's (P4, whose record refines
+     PADR-0034); this record fixes the fields, their sources and the counting rule. A gate pair needs
+     `modelSource: "client-attested"` (PADR-0042 decision 6).
 
 6. **Isolation from evidence.** The three values and their wording stay. A built-in is
    `builtin-baseline` (Practonaut's own code; no client to restrict) and a command template is
-   `template-unrestricted` (its output names no program). A **preset** is `tool-restricted-preset`
-   only when every judged run carries evidence in its own stream that every tool the client offers
-   the model belongs to the run's MCP server — `practonaut` at session level, the proxy at artifact
-   level, where every allowlisted tool must also have the effect `run-store` (PADR-0043 decision 8)
-   — and no run, judged or not, shows another tool. Otherwise it is `template-unrestricted`, shown
-   "template: not restricted" with the reason (no evidence, or the tool outside). The evidence lives
-   per run: `client.tools`, the offered tool names as the client lists them (for Claude Code the
-   `tools` array of `system/init`; at most 256 names, a longer list is never evidence of
-   restriction), and `isolation: { level, evidence }` with `evidence` one of `by-kind` (built-ins
-   and templates only), `tools-within-servers`, `tool-outside-servers`, `no-evidence`.
-   `report --verify` checks the stdout's hash, re-reads the offered tools with the preset's parser,
-   recomputes each run's level and the report's, and refuses a difference
-   (`bench_report_invalid`).
+   `template-unrestricted` (its output names no program); both carry the evidence `by-kind`. A
+   **preset** is `tool-restricted-preset` only when at least one run carries the evidence
+   `tools-within-servers`, every judged run carries it, and no run, judged or not, shows another
+   tool; otherwise it is `template-unrestricted`, shown "template: not restricted" with the reason
+   (`no-evidence` or `tool-outside-servers`).
+   - **Membership** is exact: every tool name the client lists equals, after the preset's documented
+     naming (Claude Code: `mcp__<server>__<tool>`), a tool the run's own server advertised in that
+     run — the bridge's tool list at session level, the shipped definition's allowlist at artifact
+     level — and the client's listed MCP servers are exactly the run's server. At artifact level
+     every allowlisted tool must also have the effect `run-store` in the shipped definition
+     (PADR-0043 decision 8). A name that does not fit the bounded pattern, or a list longer than 256
+     names, is evidence of a tool outside.
+   - **A preset whose client offers any file or shell tool never earns "tool-restricted"**, whatever
+     its stream says: such a tool can rewrite the run's stdout before the runner hashes it.
+   - The evidence lives per run: `client.tools` (the offered names as the client lists them) and
+     `isolation: { level, evidence }`. `--verify` checks the stdout's hash, re-reads the offered tools
+     with the preset's parser, recomputes each run's level and the report's, and refuses a difference
+     (`bench_report_invalid`). For the shipped preset the review measured, on 200 stored `agent.stdout`
+     files of 0.2.0 runs (local, not in the repository; not re-measured here), that Claude Code
+     2.1.299, 2.1.300 and 2.1.301 list exactly the seven `mcp__practonaut__` tools.
 
 7. **Co-actor.** At session level only (PADR-0042 decision 1 refuses the co-actor family on foreign
-   toolchains; the validator refuses `coActor` on an artifact run):
-   - every /3 mutation record carries `actor: "agent" | "co-actor"`; the co-actor is host-only, like
-     the demonstration, and no request can claim it; its records have `client: null`. A /2 log is
-     read with the /2 record schema, every record the agent's;
-   - `acceptedActions`, `rejectedActions`, `undos`, `resets` and `toolCalls` count the agent only;
-     `settings.maxActions` caps the agent's calls only; a task's action limit is counted from the
-     agent's records only (roadmap item 4: "human actions do not use the agent's budget");
-   - `runs[].coActor`, present exactly when the task has a schedule: `schedule` (the SHA-256 of the
-     canonical JSON of the schedule the host ran, the task's scenario of decision 3), `planned`,
-     `fired`, `accepted`, `rejected`;
-   - `runs[].agentActions`: the agent's actions in the final history, derived by replaying the
-     mutation log with its actors as the trace does, and equal to `actions` without a co-actor;
-   - validator: `toolCalls.act = acceptedActions + rejectedActions` stays; `actions ≤
-     acceptedActions` (`src/bench/report.ts:345`) becomes `actions ≤ acceptedActions +
-     coActor.accepted`, with `agentActions ≤ min(actions, acceptedActions)`; mutation entries plus
-     omitted (`src/bench/report.ts:420-421`) equal the agent's act, undo, reset and check calls plus
-     `coActor.fired` (co-actor records are never omitted); `fired = accepted + rejected ≤ planned`;
-   - `--verify`: limits from the agent's records (`src/bench/verify.ts:123-125`); the agent's
-     records against the agent's counters and the co-actor's against `coActor`
-     (`src/bench/verify.ts:147-150`); `agentActions` re-derived from the replay;
-   - efficiency, mean actions and mean actions when passed use `agentActions`; the summary fields
+   toolchains; the validator refuses co-actor fields at artifact level).
+   - **The schedule is bound like `limits`.** It is task content (decision 3), so it is public like
+     `limits`: an agent with file tools can read it, and what the MCP view shows of it is the
+     scenario record's decision; a hidden part would amend this record. The report lists
+     `environment.world.scenarios: [{ taskId, schedule }]` (the SHA-256 of the canonical JSON of each
+     benched task's schedule, as the stored world states it), which `--verify` compares with the
+     stored world (`bench_world_changed`). A run carries `coActor: { planned, fired, accepted,
+     rejected }` exactly when its task is listed there; `--verify` re-derives `planned` from the
+     schedule as the run's seed materialises it.
+   - **Records.** Every /3 mutation record carries `actor: "agent" | "co-actor"`, and a co-actor
+     record also `entry`, the index of its schedule entry, and `client: null`. The co-actor is
+     host-only, like the demonstration; no request can claim it. A /2 log is read with the /2 record
+     schema, every record the agent's. `--verify` re-materialises the schedule from the stored world
+     and the seed and checks every co-actor record against its entry — its operation and action, and
+     its position against the entry's trigger as the scenario record defines triggers; entries fire
+     in schedule order, each at most once per attempt (once in the run unless the scenario record
+     lets the schedule fire again after a reset); a co-actor record that matches no entry refuses
+     (`bench_report_invalid`). This is PADR-0042's `verifySchedule`.
+   - **A complete log.** The /3 recorder never omits an accepted act, undo or reset (they are bounded
+     by `maxActions`, at most 10 000) nor any co-actor record (bounded by the schedule); past the
+     line cap only check records and budget refusals are counted instead of kept, so the replay is
+     always complete. A co-actor run whose mutation log cannot be written is `infra_error`
+     (`runner`, never exempt), and `--verify` refuses a co-actor run without its complete log.
+   - **Counting.** `acceptedActions`, `rejectedActions`, `undos`, `resets` and `toolCalls` count the
+     agent only, as `mutationCounts` does per actor (`src/bench/evidence.ts:175-178` gains the
+     actor); `settings.maxActions` caps the agent's calls only; a task's action limit is counted from
+     the agent's records only (roadmap item 4: "human actions do not use the agent's budget").
+     `runs[].agentActions` is the number of the agent's actions in the final history, derived by
+     replaying the log with its actors as the trace does.
+   - **Undo and reset.** The session's undo removes the last history entry, whoever made it
+     (`src/core/session.ts:98-105`). An accepted undo is the agent's: it counts in the agent's
+     `undos` and uses one change of its budget. A co-actor action it removes stays counted in
+     `coActor.accepted` and leaves the final history, so `actions − agentActions` shrinks; a reset
+     removes the co-actor's actions in the same way. Whether the host lets the agent undo or reset
+     away the person's edits, and whether the schedule fires again after a reset, is the scenario
+     record's; a refused undo is a rejected record of the agent.
+   - **Validator.** `toolCalls.act = acceptedActions + rejectedActions` stays (agent only);
+     `agentActions ≤ acceptedActions`; without `coActor`, `agentActions = actions`; with it,
+     `0 ≤ actions − agentActions ≤ coActor.accepted` — together these replace
+     `actions ≤ acceptedActions` (`src/bench/report.ts:345`). Mutation entries plus omitted equal the
+     agent's act, undo, reset and check calls plus `coActor.fired` (replaces
+     `src/bench/report.ts:420-421`); `fired = accepted + rejected ≤ planned`; co-actor records only
+     in runs with `coActor`.
+   - **`--verify`.** `src/bench/verify.ts:116` compares `agentActions`, not `actions`, with the task's
+     action limit (an early bound); `src/bench/verify.ts:123-125` counts the limit from the agent's
+     records; `src/bench/verify.ts:147-150` checks the agent's records against the agent's counters
+     and the co-actor's against `coActor`; `agentActions` is re-derived from the replay; the schedule
+     is matched as above.
+   - Efficiency, mean actions and mean actions when passed use `agentActions`; the summary fields
      keep their names, and a report without a co-actor gives the same values as under /2.
 
-8. **Inputs of a round's development digest.** P1's digest is `practonaut.challenge-development/2`
-   (0.2.0 declarations keep /1). Each development run contributes `verdictLevel`, `toolchain` (its
-   id), `model` (reported), `taskId`, `seed`, `identity` (decision 3) and `pass`, and then:
-   - **session:** `hash`, the judged session's state hash, and `log`, the canonical JSON of its
-     action log (as /1; with a co-actor the log holds its actions and the identity holds the
-     schedule);
-   - **artifact:** `rules` (format and version) and `reading`, the SHA-256 of the canonical JSON of
-     the checker's reading of the stored result (judged state, skipped and unmodeled lists), which
-     `--verify` re-derives from the result.
-
-   Never part of it: the stored result's byte hash, the proxy log, the client's figures, the status
-   (PADR-0040: nothing an operator can change for free moves the held-out seeds). The unit enters
-   the seed derivation through P1 (PADR-0042 decision 1).
+8. **Inputs of a round's development digest.** No held-out seed moves without a new run that
+   counts.
+   - **Fixed by the declaration.** A 0.3.0 declaration (PADR-0042 decision 3) also names, per unit,
+     the verdict level, the toolchain (id, server version and archive SHA-256) and, at artifact
+     level, the reading rules (format and version), fixed before the first pre-probe run. The gate
+     refuses any development, pre-probe or held-out run whose report names another toolchain or
+     rules version.
+   - **Anchored when the run ends.** When a run ends, the runner adds to its entry in the release
+     ledger (PADR-0042 decision 4) the SHA-256 of the run's judged artifact — `session.json`, or the
+     stored result — and of its stdout. `declare` and `gate` refuse a run whose report binds other
+     hashes than its ledger record. The ledger is append-only and hash-chained, and its committed
+     copy must hold every local entry, so rewriting it shows in git history.
+   - **Digest `practonaut.challenge-development/2`** (0.2.0 declarations keep /1). Per development
+     run: `model` (reported), `taskId`, `seed`, `pass`, and then at session level `hash` (the judged
+     session's state hash) and `log` (the canonical JSON of its action log), as /1; at artifact
+     level `result`, the SHA-256 of the stored result's bytes as its ledger record anchors it (null
+     when `absent`). Runs are sorted by model, then task id, then seed, comparing strings by UTF-16
+     code units as `canonicalJson` sorts keys, never by a locale.
+   - **Not in it:** the verdict level, the toolchain and the identity (the declaration and the
+     development world fix them), the checker's reading and its diagnostic lists, the proxy log, the
+     client's figures and the status. A result's byte hash is safe here although PADR-0040 kept byte
+     hashes out: a re-spaced or edited result no longer matches its ledger record and is refused
+     instead of drawing new seeds, and the digest does not depend on reading-rules code.
+   - **How an edited `result.json` is caught:** an edit alone fails `--verify`
+     (`bench_artifact_changed`); an edit with a matching report fails `declare` and `gate` against
+     the run's ledger record; an edit of the ledger breaks its chain or differs from its committed
+     copy. The unit enters the seed derivation through P1 (PADR-0042 decision 1).
 
 9. **Infrastructure errors per client.** An `infra_error` run (as /2: not judged, counted as not
    passed) carries `failure`: `reason` — `usage_limit`, `auth`, `api_error` (from the client's
-   parser), `no_tool_call`, `interrupted` or `runner`; `parser`, the fixed identifier of the
-   client's parser (null for the runner's own reasons); `code`, the client's own identifier where it
-   gives one (an HTTP status, an event subtype; letters, digits and `_.:-`, at most 64 characters),
-   never its free text; and `beforeModelWork` — true or false as the client's parser decides, null
-   when unknown, which counts against the budget (PADR-0042 decision 4). The note keeps its fixed
-   words. The gate reads `failure`, not the note (`src/challenge/gate.ts:46-52`). "No tool call"
-   means, at session level, no host call (the bridge's start-up read counts, as in /2) and, at
-   artifact level, nothing the proxy saw (its `initialize` counts the same way): an agent that never
-   started the foreign server (PADR-0043 decision 7). `--verify` re-derives `failure` from the bound
-   stdout when this Practonaut ships the named parser, and otherwise says that it could not.
+   parser), `server_error` (artifact level, from the proxy and the toolchain definition),
+   `no_tool_call`, `interrupted` or `runner`; `parser`, the versioned identifier of the parser that
+   classified it (null for the runner's own reasons); `code`, the client's or server's own identifier
+   where it gives one (an HTTP status, an event subtype; letters, digits and `_.:-`, at most 64
+   characters), never free text; and `beforeModelWork` — true or false as the client's parser
+   decides, null when unknown. The note keeps its fixed words; the gate reads `failure`, not the
+   note (`src/challenge/gate.ts:46-52`). "No tool call" means, at session level, no host call (the
+   bridge's start-up read counts, as in /2) and, at artifact level, nothing the proxy saw (decision 1,
+   case c).
+   - **Budget exemption** (PADR-0040's runs rejected by the client, PADR-0042 decision 4). A run
+     counts against no budget only when all of these hold: `beforeModelWork` is true; `parser` is a
+     parser this Practonaut ships and `--verify` re-derived `failure` from the bound stdout;
+     Practonaut's own counters show no model work (session level: no act, undo, reset or check, at
+     most the bridge's start-up read; artifact level: no forwarded `tools/call`); and the client's
+     tokens are zero or not reported. The validator refuses `beforeModelWork: true` with
+     `parser: null`. An unknown parser, a missing binding or an unknown answer counts.
 
 10. **Freezing, reading /1 and /2, migration.**
     - From the change that implements this record, `bench` writes /3 only. `report`, `report
       --verify`, `compare`, `--junit`, `--card` and `--badge` read /1, /2 and /3; /1 and /2 are
-      validated and re-verified by their own rules, unchanged (PADR-0036 decision 7, PADR-0039).
-      `schemas/bench.v3.json` is generated from the zod source like v1 and v2
-      (`tools/schemas.ts:16`).
-    - Until 0.3.0 is released, optional fields may be added to /3 under decision 11; then /3 is
-      frozen and a later change needs /4.
-    - **No converter.** Every consumer reads a report through one read-only view in the /3 shape
-      with `readFrom` naming the source version. A field whose path exists in both the source schema
-      and /3 is copied unchanged. Moved: /2's `environment.excalidraw` becomes `environment.app`
-      (`adapterId: "excalidraw"`); /1's `environment.library` becomes `environment.world` (source
-      `library`, no package, no generated instances). New fields get the facts the old format fixes
-      (`verdictLevel: "session"`, toolchain `practonaut`, isolation evidence `by-kind`) or values
-      derived from recorded fields (`agentActions = actions`, `clientVersion` from the first run's
-      `client.version` with that block's source), and otherwise "not recorded" (`source: "none"`,
-      `failure` absent, `instances` null unless the bench folder is read and the identities are
-      computed from its stored world). The view never infers evidence. `compare` names a caveat
-      when one side's isolation is by kind and the other's by evidence.
-    - **Measuring P3's acceptance line** (P3b): before the writer changes, a real /2 bench folder
-      written by the 0.2.0 writer (built-in oracle on a small fixture world, with every artifact and
-      log) is committed as a fixture beside `tests/fixtures/bench/v1/`. For it and for every
-      committed /1 and /2 report: validated by its own rules, re-verified where its folder exists;
-      the view equals the source on every path both schemas define, the paths enumerated by walking
-      the two zod schemas, not from a hand-written list; and `compare` of a session report with an
-      artifact report refuses, naming `verdictLevel` and the reason.
+      validated and re-verified by their own rules, unchanged (PADR-0036 decision 7, PADR-0039);
+      re-verifying a /1 report still ends with the first change of the bundled library.
+      `schemas/bench.v3.json` is generated from the zod source like v1 and v2 (`tools/schemas.ts:16`).
+    - Until 0.3.0 is released, /3 changes only additively under decision 11; then /3 is frozen and a
+      later change needs /4.
+    - **No converter.** Every consumer reads a report through one read-only view, typed on its own
+      (sketch below) with `readFrom` naming the source version; it is never written to disk and the
+      /3 validator never runs on it. Unchanged leaf values are copied. Moved: /1's and /2's
+      `environment.excalidraw` becomes `environment.app` (`adapterId: "excalidraw"`); /1's
+      `environment.library` becomes `environment.world` (source `library`, `package: null`, no
+      generated instances, no limits). Facts the old format fixes: `verdictLevel: "session"`,
+      toolchain `practonaut`. Derived: `agentActions = actions`; a /2 run's `client.version` gives
+      `clientVersion` with that block's source, never hash-bound. Not recorded, and said so: the
+      other new agent fields (`source: "none"`, billing `unknown`); /1 isolation (the report, card
+      and badge keep showing "not recorded"); a /2 preset's isolation, which is `by-kind` and allowed
+      only in a view; `failure` on /2 `infra_error` runs (their note is shown as today); `stdout`;
+      /1 `references`; `instances` unless the bench folder is read and the identities are computed
+      from its stored world. The gate and the release ledger accept only
+      `readFrom: practonaut.bench/3`. `compare` names a caveat when one side's isolation rests on
+      the kind and the other's on evidence.
+    - **Measuring P3's acceptance line** (P3b). Before the writer changes, a real /2 bench folder
+      written by the 0.2.0 writer (the built-in oracle on a small fixture world, with every artifact
+      and log) is committed as a fixture beside `tests/fixtures/bench/v1/`. For it and for every
+      committed /1 and /2 report: validated by its own rules; re-verified where its folder exists,
+      while `docs/benchmarks/example-report.json` and `tests/fixtures/ci-recipe/baseline.json` have
+      none and are consistency-checked only. The view's equality is checked on leaf values: every
+      leaf path of the source, enumerated from the committed `schemas/bench.v1.json` and
+      `schemas/bench.v2.json` (not from the /3 code), either appears in the view with an equal value
+      or is listed in a hand-written table of moved and derived fields, whose target values the
+      test states by hand. `compare` of a session report with an artifact report refuses, naming
+      `verdictLevel` and the reason; and the two-world pairing test of decision 3 runs.
+    - The roadmap's P3 acceptance line ("a stored `/2` report rewritten as `/3`") reads "a stored
+      `/2` report read as `/3` through the view" once this record is accepted.
     - **Migration note:** a "/2 → /3" section in `docs/benchmarks/README.md` §5 (new, moved and
       unchanged fields; old reports stay readable and verifiable; nothing to convert) and the
       release notes of 0.3.0, as vision §9 requires.
 
-11. **Who owns the schema** (a process rule for the coordinator).
-    - P3b lands first: the whole /3 zod schema with every required field of this record, the
-      validator rules, the view, `--verify` and `compare` for both levels, `schemas/bench.v3.json`,
-      and the runner writing /3 at session level (values it cannot know yet as `none` or absent).
-      The artifact and co-actor parts are tested with hand-written report fixtures until their
-      writers exist. No other strand changes `src/bench/report.ts` before P3b is merged.
-    - After that, one strand at a time holds `src/bench/report.ts` and `schemas/bench.v3.json`; the
+11. **Who holds the schema** (a process rule for the coordinator).
+    - **P3b lands first**: the whole /3 zod schema and validator for both levels,
+      `schemas/bench.v3.json`, the view, `--verify` at session level without the co-actor checks,
+      `compare` (levels, identity pairing, the new comparability fields), the task-set key in world/2
+      and in variant selection with its test and the world-format documentation, the runner writing
+      /3 at session level (values it cannot know yet as `none` or absent), and `bench --recover`
+      writing /3 at session level and refusing co-actor runs, artifact runs and folders whose logs
+      predate /3. Artifact-level `--verify`, its runner and its recovery land with the first reading
+      rule (the artifact strand); the co-actor checks of `--verify` and their recovery land with the
+      scenario record (item 4). No other strand changes `src/bench/report.ts` before P3b is merged.
+    - **Then one holder at a time** for `src/bench/report.ts`, `schemas/bench.v3.json` and the
+      run-folder record schemas in `src/bench/evidence.ts` (mutation and proxy records); the
       coordinator names the holder. A change there is small — the schema, its validator rule and
       test, the regenerated schema, the benchmarks README — and is merged, rebased on current main,
-      before the next one starts. Writers (runner, artifact mode, co-actor host, presets, gate)
-      live outside it and proceed in parallel against the merged schema.
-    - Until 0.3.0 ships, only optional fields and new values of the fields this record types as
-      identifiers (format, parser, client, vendor, `via`) are added; a new required field, a rename
-      or a changed meaning amends this record first.
+      before the next one starts. Code that writes or re-derives the format (runner, proxy,
+      `verify.ts`, `compare.ts`, parsers, gate) is merged as ordinary changes against the merged
+      schema.
+    - **Until 0.3.0 ships**, the holder may add optional fields and new values of the enumerations
+      this record defines (an additive change); a new required field, a rename, a removed value or a
+      changed meaning amends this record first.
 
 ### Schema sketch
 
@@ -360,21 +575,30 @@ keeps its /2 name, type and meaning (`schemas/bench.v2.json`), and a type named 
 shape, unchanged.
 
 ```ts
-type Sha256 = string;   // /^[a-f0-9]{64}$/
-type Id = string;       // an identifier, never free text: /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$/
-type Count = number;    // a non-negative safe integer
+type Sha256 = string;        // /^[a-f0-9]{64}$/
+type Id = string;            // an identifier, never free text: /^[A-Za-z0-9][A-Za-z0-9_.:@\/-]{0,63}$/
+type LocatorValue = string;  // no path separator: /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
+type McpMethod = string;     // an MCP method name: /^[a-z][A-Za-z]{0,31}(?:\/[a-z][A-Za-z]{0,31}){0,3}$/
+type ToolName = string;      // /^[A-Za-z0-9_.:-]{1,128}$/; a name that does not fit is a tool outside
+type SemVer = string;        // /^\d{1,6}\.\d{1,6}\.\d{1,6}$/
+type Count = number;         // a non-negative safe integer
 
 /** Where a value comes from; a value is never shown stronger than its source. */
 type EvidenceSource =
-  | 'client-attested'   // a shipped preset client's own structured output, in the run's bound agent.stdout
+  | 'client-attested'   // a shipped preset client's own structured output, in the run's bound stdout
   | 'preset-requested'  // Practonaut's own record of what a shipped preset started or asked for
   | 'command-output'    // a line in a command template's output; which program printed it is unknown
   | 'none';
-interface Evidenced { value: string | null; source: EvidenceSource }  // value null exactly when 'none'
+interface Evidenced { value: string | null; source: EvidenceSource }  // null exactly when 'none'; a model
+                                                                     // matches /2's MODEL_ID, other values Id
 
 type VerdictLevel = 'session' | 'artifact';
 type IsolationLevel = 'builtin-baseline' | 'tool-restricted-preset' | 'template-unrestricted'; // values as /2
+type BillingClass = 'subscription' | 'api-key' | 'local' | 'unknown';
 interface Verdict { passed: boolean; errorClasses: string[] }                                     // as /2
+
+/** World/2 gains one optional field (decision 3); absent, nothing changes. */
+interface WorldV2Addition { taskSet?: { id: string; version: SemVer } }
 
 interface BenchReportV3 {
   schema: 'practonaut.bench/3';
@@ -384,12 +608,12 @@ interface BenchReportV3 {
     practonaut: string; node: string; os: { platform: string; release: string; arch: string };  // as /2
     app: { adapterId: Id; version: string };                 // decision 2; replaces /2 `excalidraw`
     mirror?: 'required' | 'off';                             // as /2; session level only
-    world: BenchWorldV2;                                     // as /2: source, id, version, hashes, generated, limits
+    world: BenchWorldV2 & { scenarios?: Array<{ taskId: string; schedule: Sha256 }> };  // decision 7
   };
   toolchain: PractonautToolchain | ForeignToolchain;         // decision 4; by verdictLevel
   instances: Array<{ taskId: string; seed: number; identity: Sha256 }>;  // decision 3
   agent: AgentV3;                                            // decisions 5, 6
-  settings: BenchSettingsV2;                                 // as /2; maxActions per level (decision 1)
+  settings: BenchSettingsV2;                                 // as /2; artifact: mirror 'off', no checks
   references: BenchReferencesV2 | null;                      // as /2
   runs: Array<SessionRun | ArtifactRun>;                     // each run's verdictLevel is the report's
   recovered?: true; interrupted?: BenchInterruptedV2;        // as /2
@@ -397,25 +621,27 @@ interface BenchReportV3 {
 }
 
 interface PractonautToolchain { kind: 'practonaut'; id: 'practonaut' }
-interface ForeignToolchain {
+interface ForeignToolchain {                                 // equal to a shipped definition (decision 4)
   kind: 'foreign-mcp';
   id: Id;                                                    // e.g. 'excalidraw-mcp-0.3.2'
-  server: { name: string; version: string; source: string; archiveSha256: Sha256 };
+  server: { name: Id; version: SemVer; source: string /* URL, no credentials or query, ≤ 512 */; archiveSha256: Sha256 };
   proxy: { name: Id };
   startDelivery: 'server-store' | 'prompt' | 'file';
-  locator: { from: 'server-reply'; field: string };          // e.g. 'structuredContent.checkpointId'
-  rules: { format: Id; version: string };                    // e.g. { format: 'excalidraw-mcp', version: '1.0.0' }
-  allowlist: Array<{ tool: Id; effect: 'run-store' | 'file' | 'network' }>;
+  locator: { field: string /* ≤ 128 */; select: 'last-ok' | 'first-ok' };
+  rules: { format: Id; version: SemVer };
+  allowlist: Array<{ tool: ToolName; effect: 'run-store' | 'file' | 'network' }>;
 }
 
 interface AgentV3 {
   kind: 'builtin' | 'preset' | 'command'; name: string; command: string[];   // as /2
-  isolation: IsolationLevel;                                 // values as /2; from the runs' evidence (decision 6)
-  model: string | null;                                      // as /2: the reported model
+  isolation: IsolationLevel;                                 // values as /2; from the runs' evidence
+  model: string | null;                                      // as /2; first run that reports a model
   modelSource: 'client-attested' | 'command-output' | 'none';                 // as /2
-  apiKeySource: string | null; keptEnv: string[];                             // as /2
+  apiKeySource: string | null;                               // as /2; first run that reports one; parser's list or 'other'
+  keptEnv: string[];                                         // as /2
   vendor: Evidenced; client: Evidenced; clientVersion: Evidenced; requestedModel: Evidenced;
-  settings: Array<{ name: Id; value: string }>;              // as the preset requested them
+  settings: Array<{ name: Id; value: Id }>;                  // as the preset requested them
+  billing: { class: BillingClass; source: 'preset-requested' | 'none' };      // before the start
 }
 
 interface RunBase {
@@ -425,39 +651,41 @@ interface RunBase {
   pass: boolean;                                                              // derived (decision 1)
   referenceActions: number | null; wallMs: Count; agentExitCode: number | null; note?: string;  // as /2
   isolation: { level: IsolationLevel; evidence: 'by-kind' | 'tools-within-servers' | 'tool-outside-servers' | 'no-evidence' };
+  stdout?: { sha256: Sha256; bytes: Count } | null;          // present for every external run (decision 5)
   failure?: RunFailure;                                      // exactly when status is 'infra_error'
-  client?: RunClientV3;                                      // external agents, as /2
+  client?: RunClientV3;                                      // external runs with a bound stdout
 }
 interface RunClientV3 {
   source: 'client-attested' | 'command-output';              // as /2
-  model: string | null; turns: Count | null; costUsd: number | null;          // as /2
+  model: string | null; turns: Count | null; costUsd: number | null;          // as /2, client-stated
   tokens: { input: Count; output: Count; cacheRead: Count; cacheCreation: Count } | null;  // as /2
   version?: string | null;                                   // as /2
-  settings?: Array<{ name: Id; value: string }>;             // as the client states them
-  tools?: { names: string[]; omitted: Count };               // offered tools as the client lists them, ≤ 256
-  credential?: { via: Id; value: string | null; billing: 'api-key' | 'subscription' | 'local' | 'unknown' };
+  tools?: { names: ToolName[] /* ≤ 256 */; omitted: Count };  // offered tools as the client lists them
+  billing?: { class: BillingClass; source: 'client-attested' | 'preset-requested'; via: Id };
 }
 interface RunFailure {
-  reason: 'usage_limit' | 'auth' | 'api_error' | 'no_tool_call' | 'interrupted' | 'runner';
-  parser: Id | null; code: Id | null; beforeModelWork: boolean | null;
+  reason: 'usage_limit' | 'auth' | 'api_error' | 'server_error' | 'no_tool_call' | 'interrupted' | 'runner';
+  parser: Id | null;                                         // versioned, e.g. 'claude-code-stream/1'
+  code: string | null;                                       // /^[A-Za-z0-9_.:-]{1,64}$/, never free text
+  beforeModelWork: boolean | null;
 }
 
 interface SessionRun extends RunBase {
   verdictLevel: 'session';
-  actions: Count; acceptedActions: Count; rejectedActions: Count; undos: Count; resets: Count;  // as /2; agent-only
+  actions: Count; acceptedActions: Count; rejectedActions: Count; undos: Count; resets: Count;  // as /2; agent only
   toolCalls: { observe: Count; act: Count; undo: Count; reset: Count; check: Count; total: Count };  // as /2
   checker: { session: Verdict; native: Verdict | null } | null;               // as /2
-  artifacts?: BenchRunArtifactsV2;                           // as /2: session, native, checker, trace, board
-  logs?: BenchRunLogsV2 & { stdout?: { sha256: Sha256; bytes: Count } };      // as /2, plus agent.stdout
+  artifacts?: BenchRunArtifactsV2;                           // as /2; native file named per adapter
+  logs?: BenchRunLogsV2;                                     // as /2
   agentActions: Count;                                       // decision 7
-  coActor?: { schedule: Sha256; planned: Count; fired: Count; accepted: Count; rejected: Count };
+  coActor?: { planned: Count; fired: Count; accepted: Count; rejected: Count };
 }
 interface ArtifactRun extends RunBase {
   verdictLevel: 'artifact';
-  checker: { artifact: Verdict } | null;
-  proxy: { starts: Count; calls: Count; refused: Count; byTool: Array<{ tool: Id; calls: Count }> };
-  artifacts?: { start: Sha256; result: Sha256; reading: Sha256; checker: Sha256 };  // exactly when judged
-  logs?: { proxy: { sha256: Sha256; entries: Count; omitted: Count } | null; stdout?: { sha256: Sha256; bytes: Count } };
+  checker: { artifact: Verdict; result: 'read' | 'absent' | 'unreadable' } | null;
+  proxy: { starts: Count; calls: Count; refused: Count; omitted: Count };
+  artifacts?: { start: Sha256; result: Sha256 | null; reading: Sha256; checker: Sha256 };  // exactly when judged
+  proxyLog: { sha256: Sha256; entries: Count } | null;
 }
 
 type SessionSummary = BenchSummaryV2;   // as /2; mean actions and efficiency over agentActions
@@ -468,56 +696,194 @@ interface ArtifactSummary {
   byTask: Array<{ taskId: string; runs: Count; passed: Count; passAt1: number }>;
 }
 
-/** mutations.jsonl (session level): /2's record and the actor. */
-type MutationRecordV3 = MutationRecordV2 & { actor: 'agent' | 'co-actor' };
-/** proxy.jsonl (artifact level), written by Practonaut's proxy: one line per request, never its arguments. */
+/** mutations.jsonl (session level): /2's record, the actor, and for the co-actor its schedule entry. */
+type MutationRecordV3 = MutationRecordV2 & ({ actor: 'agent' } | { actor: 'co-actor'; entry: Count; client: null });
+/** proxy.jsonl (artifact level), written by the runner after the agent ended; never the arguments. */
 interface ProxyRecord {
-  seq: Count; method: Id; tool: Id | null;
-  outcome: 'forwarded' | 'refused' | 'error'; resultBytes: Count; ms: number;
+  seq: Count; method: McpMethod; tool: ToolName | null;
+  outcome: 'forwarded' | 'refused-allowlist' | 'refused-budget' | 'invalid';
+  result: 'ok' | 'error' | null;                             // forwarded calls only
+  resultBytes: Count; ms: number;
+  locator?: LocatorValue;                                    // on the reply that named a result
 }
 
 /** A development run in a 0.3.0 round's digest (decision 8). */
-type DigestRunV2 = { toolchain: Id; model: string; taskId: string; seed: number; identity: Sha256; pass: boolean }
-  & ({ verdictLevel: 'session'; hash: Sha256; log: string }
-   | { verdictLevel: 'artifact'; rules: string; reading: Sha256 });
+type DigestRunV2 = { model: string; taskId: string; seed: number; pass: boolean }
+  & ({ hash: Sha256; log: string } | { result: Sha256 | null });
 
 /** What every consumer reads (decision 10); /1 and /2 are mapped in memory, never rewritten. */
-type BenchReportView = Omit<BenchReportV3, 'schema' | 'instances'> & {
+interface BenchReportView {
   readFrom: 'practonaut.bench/1' | 'practonaut.bench/2' | 'practonaut.bench/3';
-  instances: BenchReportV3['instances'] | null;
-};
+  verdictLevel: VerdictLevel;                                // /1, /2: 'session'
+  environment: Omit<BenchReportV3['environment'], 'world'> & {
+    world: Omit<BenchWorldV2, 'package'> & { package: BenchWorldV2['package'] | null };  // /1: null
+  };
+  toolchain: BenchReportV3['toolchain'];                     // /1, /2: practonaut
+  instances: BenchReportV3['instances'] | null;              // null: not recorded
+  agent: Omit<AgentV3, 'isolation'> & { isolation: IsolationLevel | null };   // /1: null, not recorded
+  references: BenchReferencesV2 | null | 'not-recorded';     // /1: 'not-recorded'
+  settings: BenchSettingsV2; summary: SessionSummary | ArtifactSummary;
+  runs: Array<(SessionRun | ArtifactRun) & {
+    isolation: { level: IsolationLevel | null; evidence: RunBase['isolation']['evidence'] | 'not-recorded' };
+    failure?: RunFailure | 'not-recorded';                   // /2 infra_error runs: 'not-recorded'
+  }>;
+}
 ```
 
 ## Consequences
 
-- P3b changes `src/bench/report.ts` (the /3 schema, its validator and the view),
-  `src/bench/verify.ts`, `src/bench/compare.ts`, `src/bench/evidence.ts` (the actor, `failure`),
-  `src/bench/run.ts` (writes /3), the renderers (`render.ts`, `junit.ts`, `card.ts`: level,
-  application and toolchain on every surface; the environment line reads `environment.app`) and
-  `tools/schemas.ts`. P1 reads /3 for 0.3.0 rounds: the level and toolchain for the unit, the agent
-  identity for the ladder, `failure` for runs rejected by the client, `client.credential.billing`
-  for the release ledger, digest /2.
-- A session bench folder gains no file; `agent.stdout` of external runs becomes bound by hash, so
-  `--verify` reads each stdout once more in full to hash it. An artifact run keeps its start file,
-  result, reading, checker output, proxy log and stdout.
-- The `claude-code` preset keeps "tool-restricted" because its stream lists its tools; a preset
-  whose client does not list them is shown "template: not restricted" and cannot be a ladder agent
-  beyond the pair (PADR-0042 decision 5). A /2 report keeps the level its kind gave it.
-- `compare` refuses more pairs (mixed levels, a cross-application pair under
-  `--fail-on-regression`) and pairs some it refused before (the same instances on two
-  applications); the caveats grow by toolchain, reading rules, client version, report version and
-  isolation basis.
-- The checker keeps every released reading-rules version: a maintenance cost, the price of
-  verifying old artifact reports with a later Practonaut.
-- The co-actor's schedule is task content, so the scenario record (item 4) must place it there.
+- P3b changes `src/bench/report.ts` (the /3 schema, the split validator, the view),
+  `src/bench/verify.ts`, `src/bench/compare.ts` (levels, identity pairing, the `checks` field, and
+  `agentKindDiffers` with its advice text, which now name the isolation basis), `src/bench/evidence.ts`
+  (the actor, `mutationCounts` per actor, the cap rule, `failure`), `src/bench/run.ts` (writes /3;
+  `recoverBench`), the renderers (`render.ts`, `details.ts`, `junit.ts`, `card.ts`: level,
+  application, toolchain, the no-sandbox line), `src/world/schema.ts` and `src/world/variant.ts`
+  (the task-set key, under `.claude/rules/deterministic-core.md`), `docs/world-format.md` and
+  `tools/schemas.ts`. P1 reads only `readFrom: practonaut.bench/3` for 0.3.0 rounds: the level and
+  toolchain for the unit, the agent identity for the ladder, `failure` and its exemption rule,
+  `agent.billing` and `client.billing` for the release ledger, the run-end ledger anchor, digest /2.
+- External runs bind their stdout, so `--verify` hashes each stdout in full once more. An artifact
+  run keeps its start file, result, reading, checker output, proxy log and stdout.
+- The `claude-code` preset keeps "tool-restricted" (decision 6). A preset whose client does not list
+  its tools, or offers a file or shell tool, is shown "template: not restricted" and cannot be a
+  ladder agent beyond the pair (PADR-0042 decision 5). A /2 report keeps the level its kind gave it.
+- `compare` refuses more pairs (mixed levels; `--fail-on-regression` on an identity-paired pair or
+  across reading-rules versions; different `checks`) and pairs some it refused before (the same task
+  set on two applications or toolchains); the caveats grow by toolchain, reading rules, client
+  version, client settings, report version, isolation basis and shared identities within one world.
+- The checker keeps every reading-rules version and toolchain definition from its first committed
+  use: a maintenance cost, the price of verifying an artifact report with a later Practonaut, as
+  /2 does for a session report (PADR-0036).
+- The co-actor's schedule is public task content, so the scenario record (item 4) must place it
+  there and define the triggers that `--verify` checks.
+- Tokens and cost stay the client's own statements, as in /2 (PADR-0039 A.5); the release ledger
+  counts runs, so no budget figure depends on them, and P4 may add an optional reasoning-token count
+  where its client reports one.
 - Roadmap item 2's "one report shows the same tasks on both apps" is delivered as a `compare` page
-  of two reports, under this record's reading of that line.
+  of two reports whose worlds share a task set; the draw.io library world names the Excalidraw
+  library as its task set, or both name a new one.
 
 ## Re-assessment triggers
 
 A preset client whose stream does not list the tools it offers, or lists them in another form; a
 foreign toolchain whose result is not one local file, or needs more than one locator; a request to
 bench two applications or two verdict levels in one bench; an adapter whose judged state needs
-application-specific attributes; a reading-rules version that cannot be kept for old reports; two
-tasks with the same identity in one world; a co-actor that checks or has its own budget; the first
-change /3 needs after the 0.3.0 release.
+application-specific attributes; a reading-rules version or toolchain definition that cannot be kept
+for old reports; a new task or state field (the identity's exclusion list); a co-actor that checks or
+has its own budget, or a schedule that must stay hidden; the first change /3 needs after the 0.3.0
+release.
+
+## Review (2026-10-18)
+
+Three independent reviews of the first draft: a multi-lens Claude Opus review whose findings each
+had an adversarial check (ids `code-…`, `security-…`, `gate-…`, `needs-…`; severity after the check
+in brackets), OpenAI Codex `gpt-6.1-sol` (`codex-1` … `codex-12`, and its gaps) and Google
+`gemini-3.8-flash` (`gemini-1` … `gemini-7`, and its gaps). The coordinator decided the points where
+they converge (A–I); this revision applies them. Decision A said the task-set key defaults to "the
+world id"; the code hashes the version too (`src/world/variant.ts:6-8`), so the key and its default
+are id and version.
+
+| Finding | Disposition | Where, or why not |
+|---|---|---|
+| code-01 [blocker] | adopted with change | D3: task-set key (id and version) for variant selection, multiset pairing, grid rule replaced, missing identities listed; two-world test (coordinator A) |
+| code-02 [minor] | adopted | D7: `verify.ts:116` compares `agentActions` |
+| code-03 [minor] | adopted | D7: `agentActions = actions` without a co-actor; `actions − agentActions ≤ coActor.accepted` |
+| code-04 [minor] | adopted | D7: recorder never omits accepted or co-actor records; complete log required |
+| code-05 [minor] | adopted with change | D7: `environment.world.scenarios` bound like `limits`; `planned` re-derived; per-run hash dropped |
+| code-06 [minor] | adopted | D10: leaf paths from the committed v1 and v2 schemas, hand-written move table, folderless reports consistency-checked only |
+| code-07 [refuted, minor parts] | adopted with change | Rounds re-verify on their own branch with one Practonaut (PADR-0040), as the check showed; D4 freezes definitions on first committed use; D5 treats an unshipped parser as not attested |
+| code-08 [major] | adopted | D5: `stdout` per run, required for external runs, outside `logs`; absent means none; streamed hash |
+| code-09 [refuted] | refuted | The check measured 200 stored claude-code stdouts (Claude Code 2.1.299–2.1.301): exactly the seven `mcp__practonaut__` tools; cited in D6 |
+| code-10 [minor] | adopted | D3: new world and task fields optional without defaults; the task-set key follows it |
+| code-11 | adopted | D10 and the view type: `package: null`, not-recorded states, the /1 `excalidraw` move named |
+| code-12 | adopted | D10: /1 isolation stays "not recorded"; gate and ledger read /3 only |
+| code-13 | adopted | D5: model and `apiKeySource` each from the first run that reports it; the view keeps stored values |
+| code-14 | adopted | D1, D4: proxy counts for every run, split refusals, `calls ≤ maxActions`, failure tied to counts, no mirror, checks or limits at artifact level |
+| code-15 | adopted | Sketch: `McpMethod` allows `/` |
+| code-16 | adopted | Consequences: `agentKindDiffers` and its advice name the isolation basis |
+| code-17 | adopted | D11: `recoverBench` in P3b; refuses co-actor, artifact and pre-/3 folders until their strands |
+| code-18 | adopted | D1, D2: native file per adapter; library anchor per adapter |
+| code-19 | adopted | D6: at least one run with evidence |
+| security-1 [major] | adopted | D5: no statement text; billing class, source and `via` only (coordinator D) |
+| security-2 [minor] | adopted with change | D6: a client with a file or shell tool never earns "tool-restricted"; D8 anchors stdout at run end; no pipe capture |
+| security-3 [minor] | adopted with change | D5: preset name known, argv checked when the report's Practonaut is this one, origin limit restated |
+| security-4 [minor] | adopted | D9: exemption needs a shipped, re-derived parser, own counters and zero tokens; `parser: null` refused (coordinator H) |
+| security-5 [major] | adopted | D1: judged on the start file when the result is absent or unreadable (coordinator C) |
+| security-6 [minor] | adopted | D1: limited tasks and `--checks` refused at artifact level |
+| security-7 [minor] | adopted | D7: every co-actor record matched to its schedule entry |
+| security-8 [minor] | adopted | D4: shipped toolchain definitions, `bench_toolchain_unknown`, effects only from the definition |
+| security-9 [minor] | adopted with change | D5: `requestedModel` is the switch or variable as the client got it; withholding endpoint variables stays PADR-0034's and P4's |
+| security-10 [minor] | adopted with change | D5: counting rule per class (coordinator E); `local` not renamed (PADR-0042 decision 5's word), stated as configuration evidence |
+| security-11 [minor] | adopted | D5: billing has a source, re-derivable from stdout or the preset's configuration |
+| security-12 [minor] | adopted | D4: frozen on first committed use; conformance fixtures as behaviour tests |
+| security-13 [minor] | adopted with change | D8: run-end ledger anchor; reading lists out of the digest |
+| security-14 [minor] | adopted | D6: exact names from the run's own server; listed servers exactly the run's |
+| security-15 | adopted | D5, D6 |
+| security-16 | adopted with change | D3: identities shown as claims unless re-verified; a fixed caveat that texts and actions are not compared, no second hash |
+| security-17 | adopted with change | D4: `bench` writes the shipped definition; D8: one rules version per round; `--fail-on-regression` refuses a rules change; semantic-version pattern; P1 reads /3 only |
+| security-18 | adopted | D4: runner-side counting endpoint; `proxy.jsonl` written after the agent ended |
+| security-19 | adopted | D1, D4: locator an identifier, resolved inside the run's store, no link followed; start file written and hashed before the client starts |
+| security-20 | adopted | Sketch: bounded patterns; a tool name that does not fit is a tool outside |
+| security-21 | adopted with change | D7: the schedule is public like `limits`; a hidden part would amend this record |
+| gate-1 [blocker] | adopted with change | As code-01 |
+| gate-2 [minor] | adopted with change | D3: within one world /2 pairing stays (documented, `messages.ts:523`); caveat with the number of distinct identities |
+| gate-3 [major] | adopted | D8: toolchain and rules fixed in the declaration; gate refuses others (coordinator B) |
+| gate-4 [minor] | adopted with change | D8: guarantee stated; run-end ledger anchor instead of committing pre-probe folders |
+| gate-5 [minor] | adopted with change | D3: identity pairing when applications or toolchains differ; flips "between the two configurations"; D1: artifact prompt in `settings.prompt` |
+| gate-6 [refuted] | refuted | PADR-0043 allows a side-by-side view without requiring a tool; D3 adds that P7 matches by identity |
+| gate-7 [minor] | adopted | D3: exclusion-list projection, version frozen with /3, rule for new fields, trigger |
+| gate-8 | adopted | D3: "bench (variant) seed"; `generatedBy` kept as provenance, with the reason |
+| gate-9 | adopted | D3: error classes' `when` predicates hashed |
+| gate-10 | adopted | D3: `checks` is a comparability field |
+| gate-11 | adopted | D8: UTF-16 code-unit order, no locale |
+| needs-ownership-covers-one-file [minor] | adopted with change | D11: holder also covers the run-folder record schemas; re-deriving code merges normally |
+| needs-closed-enums-frozen [minor] | adopted | D11: additive enumeration values through the holder; single-value `locator.from` dropped |
+| needs-p3b-artifact-verify-premature [minor] | adopted | D11: artifact `--verify` lands with the first reading rule |
+| needs-billing-api-key-count [minor] | adopted | D5: counting rule |
+| needs-billing-requested-and-ledger-link [minor] | adopted with change | D5: `agent.billing` before the start; the ledger names bench folder and run (P1); no report field for it |
+| needs-credential-outside-bound-stdout [major] | adopted | D5: no login-status output; source re-derivable or the class is `unknown` |
+| needs-locator-value-per-run [minor] | adopted with change | D4: the locator value on its proxy line, checked by `--verify`; no new report field |
+| needs-coactor-schedule-not-verified [minor] | adopted | D7 |
+| needs-toolchain-compare-same-app [minor] | adopted | D1: the artifact prompt is the runner's, not world content |
+| needs-cut-rules-kept-forever [refuted] | refuted | /2 promises verification with a later Practonaut (PADR-0036); keeping definitions is its artifact-level counterpart; the cost is named |
+| needs-gate-reads-view | adopted | D10 |
+| needs-cut-coactor-hash | adopted with change | D7: per-run hash dropped; scenarios listed per task; `planned` re-derived |
+| needs-cut-digest-extras | adopted | D8 |
+| needs-cut-unread-proxy-fields | adopted | `byTool` and `locator.from` dropped |
+| needs-session-fields-at-artifact-level | adopted | D1 |
+| needs-native-name-per-adapter | adopted | D1 |
+| needs-compare-grid-cross-app | adopted | D3 |
+| needs-settings-no-reader | adopted with change | D5: requested settings with readers (compare caveat, gate equality); reported settings dropped |
+| needs-no-sandbox-statement | adopted | D1 |
+| needs-artifact-picture | adopted | D1: schematic from `reading.json`; `details.ts` in Consequences |
+| needs-vendor-local-presets | adopted with change | D5: vendor from the preset's model mapping, `none` for local presets |
+| needs-acceptance-line-reinterpreted | adopted with change | D10: the roadmap line changes when this record is accepted |
+| codex-1 (blocker) | adopted | D8 (coordinator B) |
+| codex-2 (major) | adopted | D7 |
+| codex-3 (major) | adopted | D7 |
+| codex-4 (major) | adopted | D4 |
+| codex-5 (major) | adopted | D9 (coordinator H) |
+| codex-6 (major) | adopted | Sketch: `McpMethod` |
+| codex-7 (major) | adopted | D4: forwarded calls never omitted; forwarding and result separate |
+| codex-8 (major) | adopted | D10: own view type, leaf equality, moved and derived fields tested by hand |
+| codex-9 (major) | adopted with change | D3: task-set key with id and version |
+| codex-10 (major) | adopted | D3: multiset pairing |
+| codex-11 (major) | adopted | D5: counting rule, requested and observed class (coordinator E) |
+| codex-12 (minor) | adopted | D5 |
+| codex gap: draw.io attributes | adopted | D3: the judged state has no rendering attributes of an application (`src/world/schema.ts:52-56`) |
+| codex gap: cost meaning | adopted with change | Consequences: cost stays the client's statement; the ledger counts runs |
+| codex gap: stdout does not authenticate | adopted | D5: the origin limit restated |
+| codex gap: /1 not verifiable after a library change | refuted | Already the /1 rule (PADR-0036 decision 7), not a /3 change; D10 states it |
+| gemini-1 (blocker) | adopted | D3 |
+| gemini-2 (blocker) | adopted | D1: `checkRuns` split by level, `derivedPass` per level (coordinator C) |
+| gemini-3 (major) | adopted | D7 |
+| gemini-4 (major) | adopted | D7: `mutationCounts` per actor |
+| gemini-5 (major) | adopted | D10 and the view type |
+| gemini-6 (minor) | adopted with change | The digest no longer uses the reading; `reading.json` is canonical JSON anyway |
+| gemini-7 (minor) | adopted | D7: undo and reset |
+| gemini gap 1: cross-application state normalisation | refuted | The judged state holds no `roughness`, `roundness` or `fillStyle`; shapes and colours are named values (`src/world/schema.ts:52-56`) |
+| gemini gap 2: reasoning tokens | adopted with change | Consequences: P4 may add an optional count; no budget figure depends on tokens |
+| gemini gap 3: `client.settings` unread | adopted | Reported settings dropped |
+| gemini gap 4: recovery of artifact runs | adopted | D11: with the artifact strand; P3b's recovery refuses artifact folders |
+
+Counts over the 100 rows: adopted 69, adopted with change 26, refuted 5.
