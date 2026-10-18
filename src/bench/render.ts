@@ -90,9 +90,11 @@ const bannerIcon = (shape: 'info' | 'warning'): string => `<svg class="banner-ic
 export function banner(tone: 'neutral' | 'unknown' | 'warning', title: string, body: string): string {
   return `<div class="banner ${tone}" role="note">${bannerIcon(tone === 'warning' ? 'warning' : 'info')}<div class="banner-body"><p class="banner-title">${esc(title)}</p>${body}</div></div>`;
 }
-/** Facts as neutral chips (a chip is a fact, never an action); `ids` inside them (a model, a world) are data. */
+/** Facts as neutral chips (a chip is a fact, never an action); `ids` inside them (a model, a world) are
+ * data. A chip is a flex box, so its words sit in one span: one flex item, one run of text whose spaces
+ * stay (each piece a flex item of its own would lose the spaces between them). */
 export function chips(label: string, facts: readonly string[], ids: readonly string[] = []): string {
-  return `<ul class="chips" aria-label="${esc(label)}">${facts.map(fact => `<li class="chip">${prose(fact, ids)}</li>`).join('')}</ul>`;
+  return `<ul class="chips" aria-label="${esc(label)}">${facts.map(fact => `<li class="chip"><span>${prose(fact, ids)}</span></li>`).join('')}</ul>`;
 }
 /** A table that stacks into one block per row below 40rem (`many` columns: below 60rem): every cell
  * names its column. `capped` bounds a column of lists (it wraps instead of widening the table); `prose`

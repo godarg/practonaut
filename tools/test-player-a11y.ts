@@ -200,7 +200,9 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
         }));
         if (small.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: picture text below 12 px: ${small.slice(0, 3).join("; ")}`);
         // Identifiers never hyphenate (design-language §10.5) and a flag stays on one line, measured as rendered.
+        // A chip or status word is one run of text: words split into flex items lose their spaces.
         const split = await page.evaluate(() => [
+          ...[...document.querySelectorAll(".chip, .result, .outcome")].filter(element => (element as HTMLElement).innerText.includes("\n")).map(element => `"${element.textContent}" falls apart into pieces`),
           ...[...document.querySelectorAll(".flag")].filter(element => element.getClientRects().length > 1).map(element => `flag ${element.textContent} breaks`),
           ...[...document.querySelectorAll(".data, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
         ]);

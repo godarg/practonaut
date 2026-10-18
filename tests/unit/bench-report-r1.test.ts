@@ -71,7 +71,7 @@ test('R1-F3: an artifact run card says why it failed or has no verdict in words,
   assert.equal(text.split('This page does not draw the judged state').length - 1, 1);
   // F14-F16 on the same page: the sandbox said once (a warning, with the triangle), three cards in a
   // three-column grid, and how an artifact-judged run is scored.
-  assert.equal(/<li class="chip">[^<]*sandbox/iu.test(html), false);
+  assert.equal(/sandbox/iu.test(visible(part(html, '<ul class="chips"', '</ul>'))), false);
   assert.match(html, /<div class="banner warning" role="note"><svg class="banner-icon"[^>]*><path d="M10\.3 4\.9L2\.9 17\.7/);
   assert.match(html, /<dl class="figures n3">/);
   assert.match(text, /How this is scored: after the agent stops, a separate checker process reads the result the foreign MCP server stored \(or the start file when it stored none\) and judges its end state only/);
@@ -141,7 +141,7 @@ test('R1-F9: across applications each side names its application and its world f
   }
   const one = sessionReport({ T: { 1: [true] } });
   const same = renderCompareHtml(side(one, 'a'), side(one, 'b'), compareReports(one, one), tokens);
-  assert.equal(/<li class="chip">(Excalidraw|world )/u.test(same), false);
+  assert.equal(/Excalidraw|world /u.test(visible(part(same, '<dl class="sides">', '</dl>'))), false);
 });
 
 test('R1 minors: one colon and a capital per caveat line, the task id in mono, "no instance", a short change cell, p and n kept with their values', () => {

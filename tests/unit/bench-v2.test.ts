@@ -158,7 +158,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   // The model appears once, as a provenance chip, with its source.
   assert.equal((html.match(/some-model/g) ?? []).length, 1);
   // The model id is data inside its chip: never hyphenated (design-language §10.5).
-  assert.match(html, /<li class="chip">model <span class="data">some-model<\/span> \(self-reported, from the command output\)<\/li>/);
+  assert.match(html, /<li class="chip"><span>model <span class="data">some-model<\/span> \(self-reported, from the command output\)<\/span><\/li>/);
   assert.match(html.replace(/<\/?span[^>]*>/g, ''), /Not re-checked by report --verify: .*\(rejected, undo, reset, host calls, time\) and how the agent ended, what the client said about itself \(model, API key source, tokens, turns, cost\), and the call log the agent’s own bridge wrote/);
   const attested = v2Report(); attested.agent = { ...attested.agent, kind: 'preset', name: 'claude-code', isolation: 'tool-restricted-preset', modelSource: 'client-attested' };
   assert.match(renderTable(attested), /· model some-model \(self-reported, client-attested\)$/m);
@@ -170,7 +170,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   const de = renderTable(value, 'de');
   assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
-  assert.match(renderHtml(value, ':root{}', 'de'), /<li class="chip">Modell <span class="data">some-model<\/span> \(Selbstauskunft, aus der Ausgabe des Befehls\)<\/li>/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /<li class="chip"><span>Modell <span class="data">some-model<\/span> \(Selbstauskunft, aus der Ausgabe des Befehls\)<\/span><\/li>/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(verified, /against the world stored with the runs/);
   // A /1 report did not record its isolation level or a world line; its header line says so.

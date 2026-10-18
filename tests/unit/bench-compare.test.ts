@@ -98,7 +98,7 @@ test('rate verdicts: exact McNemar on the discordant instances at α = 0.05', ()
   assert.match(text, /^Baseline: generic · session verdict · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
   assert.match(text, /^Candidate: generic · .* · model only \(no mirror\) · template: tools not restricted by Practonaut · consistency-checked, not re-verified · /m);
   const page = renderCompareHtml({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close, ':root{}', 'de');
-  assert.equal((page.match(/<li class="chip">nur Modell \(keine Spiegelung\)<\/li><li class="chip">Vorlage: Werkzeuge nicht von Practonaut eingeschränkt<\/li>/g) ?? []).length, 2);
+  assert.equal((page.match(/<li class="chip"><span>nur Modell \(keine Spiegelung\)<\/span><\/li><li class="chip"><span>Vorlage: Werkzeuge nicht von Practonaut eingeschränkt<\/span><\/li>/g) ?? []).length, 2);
   assert.match(text, /Baseline: 5\/10 instances passed · 95 % interval 23–77 % over the 10 instances on both sides/);
 });
 
@@ -151,7 +151,7 @@ test('a built-in side carries one chip that says "no language model", not two', 
   const comparison = compareReports(side.report, side.report);
   for (const [language, words] of [['en', 'no language model'], ['de', 'kein Sprachmodell|ohne Sprachmodell']] as const) {
     const page = renderCompareHtml(side, side, comparison, ':root{}', language);
-    const chips = [...page.matchAll(/<li class="chip">([^<]*)<\/li>/g)].map(match => match[1]!);
+    const chips = [...page.matchAll(/<li class="chip"><span>([\s\S]*?)<\/span><\/li>/g)].map(match => match[1]!.replace(/<[^>]+>/g, ''));
     // Two sides, one such chip each.
     assert.equal(chips.filter(chip => new RegExp(words).test(chip)).length, 2, `${language}: ${chips.join(' | ')}`);
   }
