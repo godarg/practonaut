@@ -16,14 +16,17 @@
  *   while a shared worker's are blocked but not recorded (the browser routes neither its requests
  *   nor its reports). Below the page, the browser resolves no host name and sends every connection
  *   it opens itself (WebRTC's TURN over TCP, preconnects) to the shell's sink proxy on the loopback
- *   interface, which forwards nothing and records the target; WebRTC may not send UDP at all.
+ *   interface, which forwards nothing, reads nothing, records nothing and refuses (it cannot tell
+ *   the browser from another local process); WebRTC may not send UDP at all.
  * - **Operations** (transactions, guarded reads, the adapter's start) run one at a time, under one
- *   deadline and an abort that also cover reading the committed scene. A write that answers with a
- *   failure is undone in place; one that times out, is cancelled or throws ends its operation — any
- *   later call it makes into the shell is refused — closes its page and rebuilds the committed
- *   scene on a fresh one, within the start's deadline. A rebuild that fails or runs out of time
- *   closes the shell: every later call answers `mirror_unavailable`, and the owner starts a new one
- *   (the host's mirror recovery does).
+ *   deadline and an abort that also cover reading the committed scene. Reading the scene, the work,
+ *   the undo of a failed result and the rebuild are each an operation of their own: once one ends,
+ *   any later call it makes into the shell is refused, including a fresh page it was still waiting
+ *   for. A write that answers with a failure is undone in place within the start's deadline; one
+ *   that times out, is cancelled or throws (or whose undo does not finish) closes its page and
+ *   rebuilds the committed scene on a fresh one, within the start's deadline. A rebuild that fails
+ *   or runs out of time closes the shell: every later call answers `mirror_unavailable`, and the
+ *   owner starts a new one (the host's mirror recovery does).
  * - **PNG capture** and the **SHA-256 artifact** helper.
  *
  * The app's own semantics (what a scene is, how it is read, written, projected, integrity-checked
@@ -151,26 +154,27 @@ async function within<T>(work: () => Promise<T>, limits: OperationLimits, errors
 
 /** The sink proxy: a listener on the loopback interface that forwards nothing. Every connection the
  * browser opens below the page (WebRTC's TURN over TCP, preconnects, anything that bypasses the
- * routing) is sent to it as a proxy request; it records the target it was asked for and refuses. */
+ * routing) is sent to it as a proxy request and refused. It holds the proxy's port, so no other
+ * process can listen there and receive the browser's connections.
+ *
+ * Any local process can connect to it too (it has no token: Chromium cannot be configured with one
+ * for these connections). So it treats every connection alike and as untrusted: it reads nothing,
+ * records nothing, answers 403 and closes, at most `SINK_LIMITS.connections` at a time. A foreign
+ * client can neither reach the browser, nor fill the shell's records, nor close the shell. */
 interface Sink { readonly server: string; close(): Promise<void> }
-const REQUEST_LINE = /^([A-Z]{3,10}) (\S{1,2048})/;
-async function startSink(record: (target: string) => void): Promise<Sink> {
+export const SINK_LIMITS = Object.freeze({ connections: 64, lingerMs: 1_000 });
+const FORBIDDEN = 'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n';
+async function startSink(): Promise<Sink> {
   const sockets = new Set<Socket>();
-  const server = createServer(socket => {
-    sockets.add(socket); socket.on('close', () => sockets.delete(socket));
-    let head = '', done = false;
-    const refuse = (target: string): void => {
-      if (done) return; done = true; record(target);
-      socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
-    };
-    socket.setTimeout(2_000, () => { refuse('proxy:connection'); socket.destroy(); });
-    socket.on('data', chunk => {
-      head += chunk.toString('latin1');
-      const end = head.indexOf('\r\n');
-      if (end >= 0 || head.length > 4096) { const line = REQUEST_LINE.exec(head.slice(0, end >= 0 ? end : 4096)); refuse(line ? `proxy:${line[1]} ${line[2]}` : 'proxy:unreadable'); }
-    });
-    socket.on('end', () => refuse('proxy:connection')); socket.on('error', () => undefined);
+  // Paused from the start: nothing the client sends is ever read into this process.
+  const server = createServer({ pauseOnConnect: true }, socket => {
+    sockets.add(socket);
+    const linger = setTimeout(() => socket.destroy(), SINK_LIMITS.lingerMs); linger.unref();
+    socket.on('close', () => { clearTimeout(linger); sockets.delete(socket); });
+    socket.on('error', () => undefined);
+    socket.end(FORBIDDEN, () => socket.destroy());
   });
+  server.maxConnections = SINK_LIMITS.connections;
   server.unref();
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()); });
   const { port } = server.address() as AddressInfo;
@@ -225,7 +229,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const chromium = options.chromium ?? (await bounded(import('playwright-core'), remaining())).chromium;
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
   const denied: string[] = [];
-  const sink = await startSink(target => { denied.push(target); });
+  const sink = await startSink();
   let browser: Browser;
   try { browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink); }
   catch (error) { await sink.close(); throw error; }
@@ -290,23 +294,45 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
     page = await wait(() => bounded(context!.newPage(), deadline - performance.now()));
     requireStart();
   } catch (primaryError) { return closeOwned(primaryError); }
-  const replacePage = async (): Promise<Page> => { await page!.close(); page = await context!.newPage(); return page; };
-  /** Rebuilds the committed scene on a fresh page within the start's deadline; when that fails, the
-   * page's state is unknown and the shell closes itself. */
+  /** Replaces the current page. `guard` decides, after the new page exists, whether the caller may
+   * still publish it: an operation that ended meanwhile gets nothing, and its page is closed. */
+  const replacePage = async (guard?: () => void): Promise<Page> => {
+    await page!.close();
+    const fresh = await context!.newPage();
+    try { guard?.(); } catch (error) { await fresh.close().catch(() => undefined); throw error; }
+    page = fresh; return fresh;
+  };
+  const shellStop = { timeout: () => new BrowserDeadlineError(), cancel: () => new BrowserDeadlineError() };
+  /** Writes the committed scene back into the intact page after a failed result, as an operation of
+   * its own within the start's deadline; false when it did not finish. */
+  const undo = async <S>(scene: SceneIO<S>, before: S): Promise<boolean> => {
+    const undoing = asOperation(() => scene.write(before));
+    try { await within(undoing.run, { timeoutMs: startMs }, shellStop); return true; }
+    catch { return false; }
+    finally { undoing.end(); }
+  };
+  /** Rebuilds the committed scene on a fresh page, as an operation of its own within the start's
+   * deadline; when that fails, the page's state is unknown and the shell closes itself. */
   const rebuild = async <S>(scene: SceneIO<S>, before: S): Promise<boolean> => {
-    try {
-      await within(async () => { await replacePage(); await scene.load(before); }, { timeoutMs: startMs }, { timeout: () => new BrowserDeadlineError(), cancel: () => new BrowserDeadlineError() });
-      return true;
-    } catch { await shutDown().catch(() => undefined); return false; }
+    const rebuilding = asOperation(async () => { await replacePage(requireLive); await scene.load(before); });
+    try { await within(rebuilding.run, { timeoutMs: startMs }, shellStop); return true; }
+    catch { rebuilding.end(); await shutDown().catch(() => undefined); return false; }
+    finally { rebuilding.end(); }
   };
   const lost = (cause: unknown): string => `The committed scene could not be rebuilt after ${String(cause)}; the browser shell closed`;
+  /** The committed scene, read as an operation of its own under the caller's deadline: a read that
+   * outlives it can do nothing further in the shell. */
+  const readScene = async <S>(scene: SceneIO<S>, limits: OperationLimits, errors: { timeout(): Error; cancel(): Error }): Promise<S> => {
+    const reading = asOperation(scene.read);
+    try { return await within(reading.run, limits, errors); } finally { reading.end(); }
+  };
   const shell: BrowserShell = {
     get browser() { entry(); return browser; },
     get context() { entry(); return context!; },
     get page() { entry(); return page!; },
     networkAttempts: () => [...denied],
     wait,
-    freshPage: async () => { entry(); return replacePage(); },
+    freshPage: async () => { entry(); return replacePage(entry); },
     transaction: async (work, scene, limits) => {
       entry();
       if (limits.signal?.aborted) return failure('cancelled', 'Operation cancelled before write');
@@ -317,25 +343,27 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
       let before: Awaited<ReturnType<typeof scene.read>>;
       // Nothing is written yet: a read that times out or is aborted leaves the scene as it was.
       // A read that throws (a crashed page, a closed browser) fails the call as before.
-      try { before = await within(scene.read, left(), errors); } catch (error) { if (error instanceof OperationStop) return failure(error.code, `Committed scene not read: ${error.code}`); throw error; }
+      try { before = await readScene(scene, left(), errors); } catch (error) { if (error instanceof OperationStop) return failure(error.code, `Committed scene not read: ${error.code}`); throw error; }
       const operation = asOperation(work);
-      try {
-        const result = await within(operation.run, left(), errors);
-        operation.end();
-        if (!result.ok) await scene.write(before);
-        return result;
-      } catch (error) {
+      let result: AdapterResult;
+      try { result = await within(operation.run, left(), errors); }
+      catch (error) {
         // The operation ends first: none of its later steps may touch the page that replaces it.
         // Closing the page cancels its pending JS work before the committed scene is rebuilt.
         operation.end();
         if (!await rebuild(scene, before)) return failure('mirror_unavailable', lost(error));
         return failure(code(error), String(error));
       } finally { operation.end(); }
+      if (result.ok) return result;
+      // A failed result is undone in place; an undo that does not finish is a rebuild's job.
+      if (await undo(scene, before)) return result;
+      if (!await rebuild(scene, before)) return failure('mirror_unavailable', lost('an undo that did not finish'));
+      return result;
     },
     guarded: async (work, scene, limits, errors) => {
       entry();
       const ends = performance.now() + limits.timeoutMs, left = (): OperationLimits => ({ timeoutMs: Math.max(1, ends - performance.now()), signal: limits.signal });
-      const before = await within(scene.read, left(), errors);
+      const before = await readScene(scene, left(), errors);
       const operation = asOperation(work);
       try { return await within(operation.run, left(), errors); }
       catch (error) { operation.end(); if (!await rebuild(scene, before)) throw new AdapterError('mirror_unavailable', lost(error)); throw error; }

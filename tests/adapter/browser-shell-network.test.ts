@@ -63,10 +63,9 @@ test('no channel of a shell page reaches a host that is not named; what the shel
   const shell = await startShell({ chromium: launcher, origins: { 'http://app.invalid': async path => served[path] } }, async started => { await started.page.goto('http://app.invalid/'); });
   let closed = false;
   try {
-    // Recorded by the shell: the WebSocket route, the HTTP route, the policy's reports and the sink
-    // proxy (TURN over TCP, unresolved; a shared worker's report, which the routing cannot see).
+    // Recorded by the shell: the WebSocket route, the HTTP route and the policy's reports. TURN over
+    // TCP and a shared worker's reports reach the sink proxy, which refuses them and records nothing.
     const expected = [`ws://${target}/page-ws`, `ws://${target}/frame-ws`, `ws://${target}/data-frame-ws`, `http://${target}/popup`,
-      `proxy:CONNECT ${target}`, 'proxy:CONNECT turn-probe.example:3478', 'proxy:POST http://app.invalid/__practonaut/policy-report',
       ...['page-fetch', 'beacon', 'sse', 'worker-fetch', 'blob-worker-fetch', 'frame-fetch', 'data-frame-fetch'].map(name => `policy:connect-src:http://${target}/${name}`),
       ...['worker-ws', 'blob-worker-ws'].map(name => `policy:connect-src:ws://${target}/${name}`),
       ...['worker-import', 'blob-worker-import'].map(name => `policy:script-src-elem:http://${target}/${name}`),
