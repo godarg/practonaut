@@ -16,7 +16,8 @@ import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { validateBenchReport, isBenchReportV2, isSessionReportV3, BENCH_REFERENCES_FILE, type BenchReportV2 } from '../bench/report.ts';
 import { verifyBenchV2, verifyBenchV3 } from '../bench/verify.ts';
-import { readLogHead } from '../bench/evidence.ts';
+import { clientFailure, hashFile, MAX_LOG_BYTES, readLogHead } from '../bench/evidence.ts';
+import { CLAUDE_CODE_STREAM, SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { clientInit } from '../bench/agents.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
 import type { SessionData, World } from '../world/types.ts';
@@ -24,7 +25,7 @@ import { FAMILY_BENCH, SEED_RANGES, generateSet, taskIdOf, worldIdOf, type Chall
 import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, pairOf, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
 import { RUN_ARTIFACTS } from '../bench/run.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
-import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
+import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, rejectedByClientV3, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
 import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
 import { libraryWorld } from '../bench/run.ts';
 import { isDeepStrictEqual } from 'node:util';
@@ -141,12 +142,19 @@ export async function verifySet(dir: string, seeds: readonly number[] = [1]): Pr
 
 /** Reads, validates and re-verifies a report against its bench folder; with `sessions`, also the
  * judged session of each judged run (verified above), for the development digest. */
+export const readGateReport = (path: string, sessions = false): Promise<GateReport> => verifiedReport(path, sessions);
 async function verifiedReport(path: string, sessions = false): Promise<GateReport> {
   const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
   // The 0.2.0 gate reads /2 and session-level /3 reports (bench writes /3 since PADR-0044); P1 restricts 0.3.0 rounds to /3.
   if (!isBenchReportV2(report) && !isSessionReportV3(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report${report.schema === 'practonaut.bench/3' ? ' at artifact level' : ''}; the gate needs practonaut.bench/2 or a session-level practonaut.bench/3 report`);
   if (isBenchReportV2(report)) await verifyBenchV2(report, dirname(path), libraryWorld);
-  else await verifyBenchV3(report, dirname(path), libraryWorld);
+  else {
+    // A gate takes a /3 report only when every value read from its runs' output was re-derived here and
+    // its preset was checked: a model or an isolation that is only the report's claim never reaches a round.
+    const verified = await verifyBenchV3(report, dirname(path), libraryWorld);
+    if (verified.parsers.notShipped.length) throw new GateInputError(`${basename(path)}: values read by ${verified.parsers.notShipped.join(', ')} were not re-derived by this Practonaut; the gate takes only re-derived values`);
+    if (verified.preset === 'not-checked') throw new GateInputError(`${basename(path)}: its preset's name and command were not checked (Practonaut ${report.environment.practonaut}); the gate needs a report this Practonaut checked`);
+  }
   const read = new Map<string, DigestSession>();
   if (sessions) for (const run of report.runs) {
     if (!run.artifacts) continue;
@@ -160,7 +168,17 @@ export async function readDeclaration(path: string): Promise<Declaration> {
   return validateDeclaration(parseJsonEntry(await readFile(path), 'declaration.json', 16));
 }
 
-interface LiteReport { environment?: { world?: { contentHash?: unknown } }; runs?: Array<Parameters<typeof rejectedByClient>[0] & { id?: unknown }> }
+interface LiteReport { schema?: unknown; environment?: { world?: { contentHash?: unknown } }; runs?: Array<Parameters<typeof rejectedByClient>[0] & { id?: unknown; failure?: unknown; stdout?: unknown }> }
+/** A /3 run's failure as a shipped parser re-derives it from the run's own stdout, when the report binds
+ * that stdout and names a shipped parser; null otherwise (nothing then exempts the run). */
+async function rederivedFailure(runFolder: string, run: { failure?: unknown; stdout?: unknown }): Promise<Parameters<typeof rejectedByClientV3>[1]> {
+  const parser = (run.failure as { parser?: unknown } | undefined)?.parser, bound = run.stdout as { sha256?: unknown; bytes?: unknown } | null | undefined;
+  if (typeof parser !== 'string' || !SHIPPED_PARSERS.has(parser) || parser !== CLAUDE_CODE_STREAM || !bound) return null;
+  const path = join(runFolder, 'agent.stdout'), hashed = await hashFile(path);
+  if (!hashed || hashed.sha256 !== bound.sha256 || hashed.bytes !== bound.bytes) return null;
+  const failure = clientFailure((await readLogHead(path, MAX_LOG_BYTES))?.text ?? '');
+  return failure ? { reason: failure.reason, parser, code: failure.code, beforeModelWork: failure.beforeModelWork } : null;
+}
 /** A bench folder's report as far as the spend scan reads it (not validated: only its runs' statuses
  * and its world's content hash are used, to tell infra_error reruns and development benches apart). */
 function liteReport(bytes: Buffer | null): LiteReport | null {
@@ -179,6 +197,10 @@ export async function scanSpend(roots: readonly string[], sets: { developmentHas
     for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
       const folder = join(root, bench);
       const report = liteReport(await readRegularFile(join(folder, 'report.json'), 64 * 1024 * 1024));
+      // A /3 report's runs are exempt only by a failure re-derived from their own stdout (PADR-0044
+      // decision 9); every other report keeps the 0.2.0 rule its committed rounds were counted by.
+      const rejected = async (listed: NonNullable<LiteReport['runs']>[number], runFolder: string): Promise<boolean> =>
+        report?.schema === 'practonaut.bench/3' ? rejectedByClientV3(listed, await rederivedFailure(runFolder, listed)) : rejectedByClient(listed);
       for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
         const match = /^(.+)-s\d+-r\d+$/.exec(entry.name);
         if (!entry.isDirectory() || !match || !(await exists(join(folder, entry.name, 'agent.stdout')))) continue;
@@ -190,10 +212,10 @@ export async function scanSpend(roots: readonly string[], sets: { developmentHas
           // judged but is listed nowhere stays unknown (status null) and refuses the round.
           const listed = report?.runs?.find(run => run.id === entry.name);
           const status = typeof listed?.status === 'string' ? listed.status : await exists(join(folder, entry.name, 'checker.json')) ? null : 'unjudged';
-          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status, ...(listed && rejectedByClient(listed) ? { rejected: true } : {}) });
+          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status, ...(listed && await rejected(listed, join(folder, entry.name)) ? { rejected: true } : {}) });
         } else if (sets.developmentTasks.includes(task) && (report === null || report.environment?.world?.contentHash === sets.developmentHash)) {
           const listed = report?.runs?.find(run => run.id === entry.name);
-          if (listed && rejectedByClient(listed)) developmentRejected++; else development++;
+          if (listed && await rejected(listed, join(folder, entry.name))) developmentRejected++; else development++;
         }
       }
     }

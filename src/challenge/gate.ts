@@ -50,6 +50,24 @@ export function rejectedByClient(run: { status?: unknown; note?: unknown; toolCa
     && none(calls.act) && none(calls.undo) && none(calls.reset) && none(calls.check) && typeof calls.observe === 'number' && calls.observe <= 1
     && (tokens === null || tokens === undefined || [tokens.input, tokens.output, tokens.cacheRead, tokens.cacheCreation].every(none));
 }
+/** The failure a shipped parser re-derived from a run's own bound stdout (null: none, or not re-derived). */
+export interface RederivedFailure { reason: string; parser: string; code: string | null; beforeModelWork: boolean }
+/**
+ * bench/3 (PADR-0044 decision 9): a run the client rejected before any model work counts against no
+ * budget only when its `failure` is a usage limit or a login or billing error (`usage_limit`, `auth`)
+ * before model work, exactly as a parser this Practonaut ships re-derives it from the run's own bound
+ * stdout, with no host call beyond the bridge's start-up read and no tokens. The note's words are never
+ * read: a runner's own reason, a failure after model work, or one no shipped parser re-derived counts.
+ */
+export function rejectedByClientV3(run: { status?: unknown; failure?: unknown; toolCalls?: { observe?: unknown; act?: unknown; undo?: unknown; reset?: unknown; check?: unknown }; client?: { tokens?: unknown } }, rederived: RederivedFailure | null): boolean {
+  const failure = run.failure as { reason?: unknown; parser?: unknown; code?: unknown; beforeModelWork?: unknown } | undefined;
+  if (run.status !== 'infra_error' || !failure || (failure.reason !== 'usage_limit' && failure.reason !== 'auth') || failure.beforeModelWork !== true || typeof failure.parser !== 'string') return false;
+  if (rederived === null || rederived.reason !== failure.reason || rederived.parser !== failure.parser || rederived.code !== (failure.code ?? null) || rederived.beforeModelWork !== true) return false;
+  const calls = run.toolCalls ?? {}, tokens = run.client?.tokens as { input?: unknown; output?: unknown; cacheRead?: unknown; cacheCreation?: unknown } | null | undefined;
+  const none = (value: unknown): boolean => value === 0;
+  return none(calls.act) && none(calls.undo) && none(calls.reset) && none(calls.check) && typeof calls.observe === 'number' && calls.observe <= 1
+    && (tokens === null || tokens === undefined || [tokens.input, tokens.output, tokens.cacheRead, tokens.cacheCreation].every(none));
+}
 /** Runs that may be benched again: listed as infra_error, or never judged. */
 const resumable = (status: string | null): boolean => status === 'infra_error' || status === 'unjudged';
 export interface AgentResult {
