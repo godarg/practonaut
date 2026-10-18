@@ -137,8 +137,10 @@ export interface ServeOptions { seed?: number; taskId?: string; mirror?: MirrorM
   demonstration?: boolean;
   /** Why this session is model-only, for the Player's banner (set by the CLI with `mirror: "off"`). */
   modelOnly?: ModelOnlyNotice;
-  /** A bench host (PADR-0036): the task list holds only the session's own task, and a change to another
-   * task is refused. The Player's `play` and `serve` keep every task. */
+  /** A bench host (PADR-0036): the task list holds only the session's own task, and every variant
+   * request (another task, a new variant, a restart of its own task) and every hint request is
+   * refused with `invalid_request`; reset is the counted way back to the start. The Player's `play`
+   * and `serve` keep every task, variant and hint. */
   singleTask?: boolean }
 /** Credentials are runtime-only; callers must never log token or write it to tracked files. */
 export interface RunningHost {

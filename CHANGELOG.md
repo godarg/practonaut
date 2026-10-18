@@ -20,6 +20,21 @@ All notable changes are recorded here. The format follows
   console in its evidence; CI uploads that evidence on failure on every platform;
   `.github/workflows/native-open-repeat.yml` repeats the test by hand and fails unless it ran and
   passed; `npm run clean` removes `.local/native-transfer/` ([testing](docs/testing.md#native-open-ordering)).
+- A bench host refused only a change to another task: a variant request without a task id (a new
+  seed) or naming the run's own task (a restart outside the counted resets) was accepted, and the
+  bench neither counted nor recorded it. The session token is in a file that the agent's own MCP
+  config names, so an agent with a shell, running as the same OS user, could switch the run's
+  variant over HTTP; the judged session's seed then no longer matched the run's. Measured with a
+  stand-in command-template agent that reads the token file: before, both requests were answered
+  200 and the run ended `infra_error` (the checker rejected the session); after, both are refused
+  with `invalid_request` (400) and the run is judged at its own seed. A hint request was accepted the
+  same way, also with the action budget used up: it opened a hint and raised the revision, and
+  neither the counters, the mutation log nor the stored session showed it; it is now refused too.
+  A sweep of every route the session token opens on a bench host found no other such path: the
+  reads, the tool image and the export change nothing, act, undo, reset and check are counted and
+  logged, and the demonstration and editor routes do not exist there. A single-task host now refuses
+  every variant and hint request; `practonaut`, `play`, `serve` and `mcp --task` keep every task,
+  variant and hint ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
 
 ### Changed
 
@@ -28,6 +43,11 @@ All notable changes are recorded here. The format follows
   tier); headroom is sought per family and toolchain and in new family types, each behind a
   pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
   to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
+- Proposed decision record for the spatial-layout family (PADR-0047): six bounded layout operators
+  (no overlap, aligned, evenly spaced, inside a named canvas, arrows that do not cross, arrows clear of
+  steps) judged on step boxes and on straight lines between step centres, with a cost bound per
+  clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
+  the `challenge-layout` generator. No behaviour changes yet.
 
 ## [0.2.0] - 2026-10-16
 
