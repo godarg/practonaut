@@ -30,14 +30,15 @@ ladder of **at least three agents**.
 
 Three facts from the plan review shape the design:
 
-- **D4's formula is binding as written.** With three subscription agents it allows held-out +
-  pre-probe ≤ 33 (26 + 7, 24 + 9); with two, ≤ 50. A pre-probe of 10 instances with three
-  subscription agents breaks it at every held-out size ≥ 24, whoever runs the pre-probe. Whether
-  the maintainer meant the formula or the runs actually spent (pre-probe once, held-out per agent)
-  is asked; until answered, the formula applies.
+- **D4's formula is binding as written** (confirmed by the maintainer's delegation of 2026-10-18).
+  With three subscription agents it allows held-out + pre-probe ≤ 33 (26 + 7, 24 + 9); with two,
+  ≤ 50. A pre-probe of 10 instances with three subscription agents breaks it at every held-out size
+  ≥ 24, whoever runs the pre-probe.
 - **Only Claude Code attests its model today.** Codex CLI and opencode report no model id in their
-  streams; Gemini CLI no longer serves personal accounts (since 2026-06-18); the terms of the
-  subscription routes are under the maintainer's review.
+  streams; Gemini CLI no longer serves personal accounts (since 2026-06-18). After the terms check
+  of 2026-10-18 the project's own Claude runs use an API key under Anthropic's Commercial Terms with
+  a fixed credit limit, it makes no Codex runs through a ChatGPT subscription in 0.3.0, and Gemini
+  moves to 0.4.0.
 - **Without an operating-system sandbox, an agent with shell or file tools can reach hidden data
   by routes a decoy file does not cover:** regenerate an instance and its oracle from `generatedBy`
   and the generator the npm package ships (`dist/challenge/`), read the library's reference
@@ -62,8 +63,8 @@ strongest configuration only (chosen; D1's wording; all three reviewers).
 **Ladder shape under the formula.** (A) Two subscription agents (the gate pair) plus at least one
 local agent: (H + k) × 2 ≤ 100 allows 30 held-out with a pre-probe of up to 20. (B) Three
 subscription agents: 26 held-out with a pre-probe of 7 (admit at 1–5, an effective upper bound of
-71 %). (C) Three subscription agents and the "runs spent" reading (28 + 10 = 94 runs): only if the
-maintainer confirms that reading.
+71 %). (C) Three subscription agents and a "runs spent" reading (28 + 10 = 94 runs): not admissible,
+the formula applies as written.
 
 **Gate pair.** (1) Within one vendor whose capability order is known, both models attested by the
 client (Opus and Haiku through Claude Code; chosen). (2) Across vendors by an external ranking —
@@ -149,7 +150,7 @@ none measures these tasks, and an inverted pair almost surely fails a family tha
 
 ## Re-assessment triggers
 
-The maintainer confirms the "runs spent" reading of D4 (shape C becomes admissible); more than half
+A local agent becomes available (shape A replaces shape B); more than half
 of the funded units fail on headroom; a vendor's terms forbid automated runs through its
 subscription; a client stops reporting its model; the budget runs out before the preregistered
 units are pre-probed.

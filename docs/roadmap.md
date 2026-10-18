@@ -290,13 +290,15 @@ are accepted whenever they are ready.
   pre-probe of its strongest configuration passes 10–80 % of its instances. Ladder shape, gate pair,
   pre-probe and held-out sizes follow [PADR-0042](adr/0042-gate-for-families-on-toolchains.md).
 - **Ladder:** at least three agents; the gate pair is Opus and Haiku through Claude Code (models
-  attested by the client). Further agents — another vendor's model through a preset, a local
-  open-weight model through an external agent CLI against a loopback endpoint (Practonaut never
-  calls a model) — run on the same instances and are reported by client and requested model,
-  "not attested" where the client reports none, never ranked or pooled. Before the first run of a
-  vendor its terms and costs are checked; only existing subscriptions or free quotas, never paid
-  API use without a maintainer's approval; every run withholds the providers' API keys and its
-  report shows the login it used. An agent whose shell or file tools cannot be removed runs as
+  attested by the client). Further agents — Claude Sonnet, a local open-weight model through an
+  external agent CLI against a loopback endpoint (Practonaut never calls a model), another vendor's
+  model through a preset — run on the same instances and are reported by client and requested
+  model, "not attested" where the client reports none, never ranked or pooled. Before the first run
+  of a vendor its terms and costs are checked (done 2026-10-18): the project's own Claude runs use
+  an API key under Anthropic's Commercial Terms whose credit stops at a fixed limit, not a consumer
+  plan; the project makes no Codex runs through a ChatGPT subscription in 0.3.0; no other paid API
+  use without a maintainer's approval; every run withholds the other providers' keys and its report
+  shows the key source it used. An agent whose shell or file tools cannot be removed runs as
   "template: not restricted" outside the gate.
 
 ### Parallel strands (accepted when ready)
@@ -321,10 +323,10 @@ are accepted whenever they are ready.
   keep reading `/1` and `/2`. *Acceptance:* every committed `/1` and `/2` report still verifies; a
   stored `/2` report rewritten as `/3` keeps every shared field deep-equal; `compare` names the
   reason when it refuses a mixed pair.
-- **P4. More presets** (L, moved from 0.4.0): Codex CLI, local open-weight models (through
+- **P4. More presets** (L, moved from 0.4.0): Codex CLI and local open-weight models (through
   `codex --oss` or opencode, loopback endpoint only, a run whose client does not name the loopback
-  endpoint counts as a subscription run and is refused) and, if its terms and costs allow,
-  Gemini; each with the provider keys and credential files it withholds, a parser for its own output
+  endpoint counts as a subscription run and is refused); Gemini moves to 0.4.0, because Gemini CLI
+  no longer serves personal Google accounts (since 2026-06-18); each with the provider keys and credential files it withholds, a parser for its own output
   (model, client version, usage limits as infrastructure errors) and an isolation level that follows
   from evidence in its own stream, not from the kind of agent; a PADR refines PADR-0034.
   *Acceptance:* each preset whose vendor's terms allow automated subscription runs has a run in the
@@ -360,8 +362,9 @@ are accepted whenever they are ready.
    conformance suite passes unchanged through the registry; a world naming an unknown adapter is
    refused with a named error.
 2. **Application #2: draw.io** (L): pinned release v32.4.1, downloaded unchanged from the official
-   release by `practonaut setup` (which names the download and its size first) and checked against its
-   size and SHA-256 before it is kept (not in the npm package), served
+   release on request (`practonaut setup` with the draw.io option, which names the download and its
+   size first; plain `setup` stays Chromium only) and checked against its size and SHA-256 before it
+   is kept (not in the npm package, never in a CI artifact), served
    from local files with a strict content policy, written and read only through the official embed
    JSON protocol, an independent `.drawio` parser in the checker, a conformance suite against the
    real app. PADRs before the adapter ships: groups across frames, and whether draw.io may start
@@ -497,7 +500,7 @@ with the numbers measured that day.
 
 | When | What is decided |
 |---|---|
-| six weeks after the 0.3.0 launch (the maintainer's first public announcement), at the latest 2027-04-30 | at least one external project? If not, the maintainer decides between the plan and the narrowed plan below. *Proposal awaiting the maintainer:* the narrowed plan replaces 0.4.0 |
+| six weeks after the 0.3.0 launch (the maintainer's first public announcement), at the latest 2027-04-30 | at least one external project? If not, the narrowed plan below replaces 0.4.0 |
 | 2027-06-30 | at least 10 external projects? Which bridge or app brought them? |
 | 2027-12-31 | at least 50 external projects? Plan for 1.0 |
 

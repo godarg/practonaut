@@ -77,10 +77,9 @@ roadmap's zero-family branch and first checkpoint)
    [PADR-0042](0042-gate-for-families-on-toolchains.md) before any run.
 5. **First checkpoint.** At least one external project within six weeks after the 0.3.0 launch
    (the maintainer's first public announcement of Practonaut), at the latest 2027-04-30. Later
-   checkpoints (10 projects by 2027-06-30, 50 by 2027-12-31) stay as they are. What a missed first
-   checkpoint changes is decided by the maintainer on that day between the plan and the narrowed
-   plan in the roadmap; the roadmap carries the proposal for that decision until the maintainer has
-   made it.
+   checkpoints (10 projects by 2027-06-30, 50 by 2027-12-31) stay as they are. If the first
+   checkpoint is missed, the roadmap's narrowed plan replaces 0.4.0 (maintainer decision of
+   2026-10-18, delegated to the coordinating agent and taken as proposed).
 
 ## Consequences
 

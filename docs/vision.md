@@ -76,8 +76,8 @@ Targets are hypotheses, reviewed at the checkpoints in the [roadmap](roadmap.md)
 external project within six weeks after the 0.3.0 launch — the maintainer's first public
 announcement of Practonaut — at the latest 2027-04-30; 10 by 2027-06-30, 50 by 2027-12-31, 300 by
 2028-12-31. A thousand regular users needs several integrations whose users keep the workflow; it is
-a direction, not a forecast. If the first checkpoint fails, the maintainer decides that day between
-the plan and the roadmap's narrowed plan.
+a direction, not a forecast. If the first checkpoint fails, the roadmap's narrowed plan replaces
+0.4.0.
 
 ## 6. Product principles
 
