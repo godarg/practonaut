@@ -56,4 +56,4 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0045](0045-adapter-registry-and-browser-shell.md) | Adapter registry, named refusal of unknown applications, and a shared browser shell | proposed | 2026-10-18 |
 | [PADR-0046](0046-vendor-neutral-presets.md) | Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream | proposed | 2026-10-18 |
 | [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | proposed | 2026-10-18 |
-| [PADR-0049](0049-drawio-adapter.md) | draw.io as application #2: a verified download behind the shared shell, the embed protocol only, groups within one frame, and an independent `.drawio` reader | proposed | 2026-10-18 |
+| [PADR-0049](0049-drawio-adapter.md) | draw.io as application #2: a verified download behind the shared shell, the embed protocol only, declared structural constraints, and an independent `.drawio` reader | proposed | 2026-10-18 |

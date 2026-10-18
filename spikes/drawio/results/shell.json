@@ -1,7 +1,8 @@
 {
- "schema": "practonaut.drawio-shell-measurement/1",
+ "schema": "practonaut.drawio-shell-measurement/2",
  "record": "PADR-0049",
  "measured": "2026-10-18",
+ "note": "A precursor of the acceptance protocol (PADR-0049 decision 8.4): the decided mapping, written with load and read with export through the shared shell; verdicts by the spike reader on the app's own final export, not by the product reader; every run a fresh Node process and browser.",
  "pin": {
   "tag": "v32.4.1",
   "asset": "draw.war",
@@ -16,6 +17,7 @@
   "cpu": "Apple M4",
   "cores": 10,
   "memoryBytes": 17179869184,
+  "loadAverage1m": 12.6,
   "playwrightCore": "1.64.0",
   "chromium": "156.0.8078.4",
   "sandbox": true,
@@ -30,8 +32,39 @@
   "bytes": 48442174,
   "seconds": 7.9
  },
- "archivePerStart": {
-  "entries": 3154,
+ "archive": {
+  "facts": {
+   "entries": 3318,
+   "files": 3154,
+   "directories": 164,
+   "links": 0,
+   "duplicates": 0,
+   "encrypted": 0,
+   "methods": {
+    "0": 164,
+    "8": 3154
+   },
+   "maxEntryBytes": 19861682,
+   "maxEntryName": "js/integrate.min.js",
+   "totalInflatedBytes": 115503243,
+   "maxRatio": 16.8,
+   "maxRatioName": "shapes/mxArrows.js",
+   "markdownFiles": 12,
+   "markdownOutsideWebInf": [
+    "js/cryptojs/README.md",
+    "js/deflate/README.md",
+    "js/diagramly/CLAUDE.md",
+    "js/diagramly/sidebar/CLAUDE.md",
+    "js/diagramly/vsdx/CLAUDE.md",
+    "js/freehand/README.md",
+    "js/grapheditor/CLAUDE.md",
+    "js/libavoid-js/CLAUDE.md",
+    "js/libavoid-js/README.md",
+    "js/rough/README.md",
+    "resources/CONTRIBUTING.md",
+    "resources/README.md"
+   ]
+  },
   "indexHtml": "no CSP meta element",
   "loadedBytesByExtension": {
    ".html": 4134,
@@ -41,37 +74,72 @@
    ".svg": 5268
   },
   "medianMs": {
-   "hashMs": 19.9,
-   "indexMs": 42.4,
-   "inflateMs": 44.7
+   "readMs": 10,
+   "hashMs": 18.7,
+   "indexMs": 133.2,
+   "inflateMs": 79.8
   },
-  "runs": 5
+  "runs": 5,
+  "nodeAfterBytes": {
+   "rss": 276054016,
+   "heapUsed": 25922944,
+   "external": 107190728,
+   "arrayBuffers": 97616986
+  }
  },
- "coldStart": {
-  "definition": "startShell call (sink, launch, context, routing, page) -> load event of the first (empty) diagram; files read from the archive on every start",
-  "medianMs": 612.1,
-  "minMs": 609.9,
-  "maxMs": 1444.8,
-  "firstLoadMs": [
-   1444.8,
-   612.1,
-   609.9,
-   613.7,
-   611.2
-  ],
-  "initMs": [
-   1406.8,
-   579.5,
-   581.5,
-   584.7,
-   581.4
-  ],
-  "refusedPerStart": [
-   0,
-   0,
-   0,
-   0,
-   0
+ "coldStartFreshProcess": {
+  "definition": "each start a fresh Node process: processToFirstLoadMs from the process time origin, archiveMs = read + SHA-256 + index of the in-memory archive, shellToFirstLoadMs = startShell call -> load event of the first (empty) diagram",
+  "median": {
+   "processToFirstLoadMs": 1312.3,
+   "archiveMs": 184.9,
+   "shellToFirstLoadMs": 941.3
+  },
+  "range": {
+   "processToFirstLoadMs": [
+    1297.6,
+    1454
+   ],
+   "shellToFirstLoadMs": [
+    938.8,
+    1093.9
+   ]
+  },
+  "perStart": [
+   {
+    "processToFirstLoadMs": 1342.7,
+    "archiveMs": 144.8,
+    "shellToFirstLoadMs": 1027.8,
+    "refused": 0,
+    "nodeRssBytes": 296026112
+   },
+   {
+    "processToFirstLoadMs": 1297.6,
+    "archiveMs": 186.4,
+    "shellToFirstLoadMs": 938.8,
+    "refused": 0,
+    "nodeRssBytes": 278904832
+   },
+   {
+    "processToFirstLoadMs": 1301.7,
+    "archiveMs": 160.7,
+    "shellToFirstLoadMs": 941.3,
+    "refused": 0,
+    "nodeRssBytes": 246300672
+   },
+   {
+    "processToFirstLoadMs": 1454,
+    "archiveMs": 185.4,
+    "shellToFirstLoadMs": 1093.9,
+    "refused": 0,
+    "nodeRssBytes": 278495232
+   },
+   {
+    "processToFirstLoadMs": 1312.3,
+    "archiveMs": 184.9,
+    "shellToFirstLoadMs": 939.4,
+    "refused": 0,
+    "nodeRssBytes": 214679552
+   }
   ],
   "servedFiles": 14,
   "servedBytes": 20279361
@@ -79,92 +147,170 @@
  "replay": [
   {
    "run": 1,
+   "order": "forward",
    "totals": {
-    "sequences": 165,
-    "sequencesOk": 165,
-    "roundTrips": 624,
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
     "references": 48,
     "referencesPassed": 48,
     "nearMisses": 117,
     "nearMissesFailed": 117
    },
    "latency": {
-    "loadMedianMs": 3.1,
-    "exportMedianMs": 1
+    "loadMedianMs": 3.5,
+    "exportMedianMs": 1.1
    },
-   "wallSeconds": 19.5,
-   "startFirstLoadMs": 1179.6,
-   "peakChromiumRssBytes": 632373248,
-   "peakNodeRssBytes": 445972480,
+   "wallSeconds": 27.6,
+   "loadAverage1m": 12.6,
+   "peakChromiumRssBytes": 656949248,
+   "peakNodeRssBytes": 492978176,
+   "nodeEnd": {
+    "rss": 345325568,
+    "heapUsed": 196790712,
+    "external": 60411425,
+    "arrayBuffers": 49304196
+   },
+   "archiveBufferBytes": 48442174,
    "peakProcesses": 4,
-   "samples": 48,
+   "samples": 78,
    "refused": 0,
    "servedFiles": 14,
-   "servedBytes": 20279361,
    "failures": 0,
+   "firstFailures": [],
    "consoleErrors": 0
   },
   {
    "run": 2,
+   "order": "reverse",
    "totals": {
-    "sequences": 165,
-    "sequencesOk": 165,
-    "roundTrips": 624,
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
     "references": 48,
     "referencesPassed": 48,
     "nearMisses": 117,
     "nearMissesFailed": 117
    },
    "latency": {
-    "loadMedianMs": 3.2,
-    "exportMedianMs": 1
+    "loadMedianMs": 8.6,
+    "exportMedianMs": 3.1
    },
-   "wallSeconds": 19.4,
-   "startFirstLoadMs": 826.4,
-   "peakChromiumRssBytes": 619216896,
-   "peakNodeRssBytes": 451805184,
+   "wallSeconds": 120.5,
+   "loadAverage1m": 106.7,
+   "peakChromiumRssBytes": 567214080,
+   "peakNodeRssBytes": 354041856,
+   "nodeEnd": {
+    "rss": 248643584,
+    "heapUsed": 55567080,
+    "external": 60164294,
+    "arrayBuffers": 48842284
+   },
+   "archiveBufferBytes": 48442174,
    "peakProcesses": 4,
-   "samples": 47,
+   "samples": 173,
    "refused": 0,
    "servedFiles": 14,
-   "servedBytes": 20279361,
    "failures": 0,
+   "firstFailures": [],
    "consoleErrors": 0
   },
   {
    "run": 3,
+   "order": "shuffle",
    "totals": {
-    "sequences": 165,
-    "sequencesOk": 165,
-    "roundTrips": 624,
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
     "references": 48,
     "referencesPassed": 48,
     "nearMisses": 117,
     "nearMissesFailed": 117
    },
    "latency": {
-    "loadMedianMs": 3.4,
-    "exportMedianMs": 1.1
+    "loadMedianMs": 8.1,
+    "exportMedianMs": 3
    },
-   "wallSeconds": 20.6,
-   "startFirstLoadMs": 824.8,
-   "peakChromiumRssBytes": 617676800,
-   "peakNodeRssBytes": 527400960,
-   "peakProcesses": 4,
-   "samples": 49,
+   "wallSeconds": 131.5,
+   "loadAverage1m": 119.9,
+   "peakChromiumRssBytes": 510427136,
+   "peakNodeRssBytes": 316194816,
+   "nodeEnd": {
+    "rss": 263913472,
+    "heapUsed": 102891488,
+    "external": 60057335,
+    "arrayBuffers": 48950106
+   },
+   "archiveBufferBytes": 48442174,
+   "peakProcesses": 5,
+   "samples": 169,
    "refused": 0,
    "servedFiles": 14,
-   "servedBytes": 20279361,
    "failures": 0,
+   "firstFailures": [],
    "consoleErrors": 0
   }
  ],
  "replayRunsAgree": {
-  "sequences": 165,
-  "identicalStepHashChains": true
+  "sequences": 213,
+  "comparedPerSequence": "raw export after every step (diagram id normalised), final PNG bytes, verdict and error classes",
+  "disagreements": 0,
+  "pngDisagreements": 0,
+  "firstDisagreements": []
  },
  "probes": {
-  "idsWriteCheck": [],
+  "servedLang_de": [
+   "images/github-logo.svg",
+   "index.html",
+   "js/PostConfig.js",
+   "js/PreConfig.js",
+   "js/app.min.js",
+   "js/bootstrap.js",
+   "js/extensions.min.js",
+   "js/main.js",
+   "js/shapes-14-6-5.min.js",
+   "js/stencils.min.js",
+   "mxgraph/css/common.css",
+   "resources/dia_de.txt",
+   "styles/grapheditor.css",
+   "styles/high-contrast.css"
+  ],
+  "servedLang_en": [
+   "images/github-logo.svg",
+   "index.html",
+   "js/PostConfig.js",
+   "js/PreConfig.js",
+   "js/app.min.js",
+   "js/bootstrap.js",
+   "js/extensions.min.js",
+   "js/main.js",
+   "js/shapes-14-6-5.min.js",
+   "js/stencils.min.js",
+   "mxgraph/css/common.css",
+   "resources/dia.txt",
+   "styles/grapheditor.css",
+   "styles/high-contrast.css"
+  ],
+  "refusedLang": [
+   0,
+   0
+  ],
+  "emptyPng": {
+   "ok": true,
+   "bytes": 88
+  },
+  "originGeometryReadBack": [
+   "<mxGeometry height=\"70\" width=\"460\" x=\"100\" y=\"100\" as=\"geometry\" />",
+   "<mxGeometry height=\"70\" width=\"160\" as=\"geometry\" />",
+   "<mxGeometry height=\"70\" width=\"160\" x=\"300\" as=\"geometry\" />"
+  ],
+  "idsFullWriteCheck": [],
   "fileAttributes": {
    "mxfile": [
     "host"
@@ -194,26 +340,26 @@
   "mxfileHost": "drawio.practonaut.invalid",
   "png": {
    "signature": true,
-   "bytes": 8531,
+   "bytes": 8519,
    "identical": true
   },
   "svg": {
+   "bytes": 2747,
+   "foreignObject": 0,
+   "svgText": 3,
+   "script": false,
+   "externalHosts": [],
+   "identical": false,
+   "identicalAfterRootId": true
+  },
+  "svgWithWrap": {
    "bytes": 4464,
    "foreignObject": 2,
    "svgText": 4,
    "script": false,
    "externalHosts": [
     "www.drawio.com"
-   ],
-   "identical": false,
-   "identicalAfterRootId": true
-  },
-  "svgWithoutWrap": {
-   "bytes": 2747,
-   "foreignObject": 0,
-   "svgText": 3,
-   "script": false,
-   "externalHosts": []
+   ]
   },
   "refused": 0
  }
