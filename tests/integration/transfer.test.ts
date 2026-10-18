@@ -223,7 +223,7 @@ import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {chromium} from ${JSON.stringify(new URL('../../node_modules/playwright-core/index.mjs', import.meta.url).href)};
 import {nativeFileTransfer,nativeTransferErrorEvidence} from ${JSON.stringify(new URL('../../src/evaluation/transfer.ts', import.meta.url).href)};
-import {bounded} from ${JSON.stringify(new URL('../../src/adapters/excalidraw/bounded.ts', import.meta.url).href)};
+import {bounded} from ${JSON.stringify(new URL('../../src/adapters/browser/bounded.ts', import.meta.url).href)};
 // Without process monitoring the observable lifecycle is Playwright's connection state.
 const ownedBrowserEvidence=async b=>({bound:b.isConnected(),parentOwner:true,residualCount:b.isConnected()?1:0,profilePresent:b.isConnected()});
 const root=${JSON.stringify(root)}, outputDirectory=${JSON.stringify(outputDirectory)}, start=performance.now(), timeline=[];

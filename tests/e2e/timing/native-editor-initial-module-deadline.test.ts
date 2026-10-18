@@ -12,7 +12,7 @@ import {launchBrowser} from '../../support/browser.ts';
 import {startHost} from '../../../src/host/server.ts';
 import {validateWorld} from '../../../src/world/schema.ts';
 import {TOKEN_HEADER} from '../../../src/host/protocol.ts';
-import {closeBrowser,bounded,BROWSER_BOUNDS} from '../../../src/adapters/excalidraw/bounded.ts';
+import {closeBrowser,bounded,BROWSER_BOUNDS} from '../../../src/adapters/browser/bounded.ts';
 
 const OUT=process.env.PN_INITIAL_EDITOR_DEADLINE_EVIDENCE;
 const sha=(bytes:Uint8Array|string)=>createHash('sha256').update(bytes).digest('hex');

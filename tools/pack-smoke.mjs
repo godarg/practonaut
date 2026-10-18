@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { chromium } from 'playwright-core';
-import { launchChromium } from '../src/adapters/excalidraw/chromium.ts';
+import { launchChromium } from '../src/adapters/browser/chromium.ts';
 
 const [bin, world] = process.argv.slice(2);
 assert.ok(bin && world, 'usage: pack-smoke.mjs <installed-bin> <world>');
