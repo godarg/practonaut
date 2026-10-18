@@ -42,9 +42,11 @@ export interface InstallOptions {
   allowedSchemes: ReadonlySet<string>;
   pin?: InstallPin;
   limits?: Partial<InstallLimits>;
-  /** Test seams: the network, the clock's waits and the rename (to simulate a held file). */
+  /** Test seams: the network, the clock's waits, the clock the deadline is read from, and the rename
+   * (to simulate a held file). */
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
   rename?: (from: string, to: string) => Promise<void>;
 }
 export interface InstallResult { status: 'installed' | 'already'; path: string; bytes: number; sha256: string; replaced: boolean; attempts: number }
@@ -121,8 +123,9 @@ export async function installDrawio(options: InstallOptions): Promise<InstallRes
   if ('status' in prepared) return prepared;
   const { pin, limits, directory, replaced, release } = prepared;
   const fetchImpl = options.fetch ?? fetch, sleep = options.sleep ?? defaultSleep;
-  const deadlineAt = performance.now() + limits.totalMs;
-  const remaining = (): number => deadlineAt - performance.now();
+  const now = options.now ?? (() => performance.now());
+  const deadlineAt = now() + limits.totalMs;
+  const remaining = (): number => deadlineAt - now();
   let attempts = 0;
   try {
     for (;;) {
@@ -173,9 +176,11 @@ async function downloadOnce(pin: InstallPin, partial: string, limits: InstallLim
   for (;;) {
     if (!schemes.has(current.protocol)) throw failed('scheme', `a hop to ${current.protocol} is not allowed`, { scheme: current.protocol });
     if (remaining() <= 0) throw failed('deadline', `the download did not finish within ${limits.totalMs} ms`);
-    const timeout = Math.min(limits.connectMs, Math.max(1, remaining()));
+    // A timer cut short by the absolute deadline reports the deadline: a timer may fire a fraction of a
+    // millisecond before the clock it was computed from says the time is up.
+    const timeout = Math.min(limits.connectMs, Math.max(1, remaining())), byDeadline = timeout < limits.connectMs;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const stopped = new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(remaining() <= 0 ? failed('deadline', `the download did not finish within ${limits.totalMs} ms`) : failed('connect', `no response headers within ${limits.connectMs} ms`)); }, timeout); });
+    const stopped = new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(byDeadline || remaining() <= 0 ? failed('deadline', `the download did not finish within ${limits.totalMs} ms`) : failed('connect', `no response headers within ${limits.connectMs} ms`)); }, timeout); });
     try { response = await Promise.race([fetchImpl(current, { redirect: 'manual', signal: controller.signal }), stopped]); }
     catch (error) { if (error instanceof DrawioInstallError) throw error; throw failed('network', `the request failed: ${error instanceof Error ? error.message.slice(0, 120) : 'error'}`); }
     finally { clearTimeout(timer); }
@@ -196,9 +201,9 @@ async function downloadOnce(pin: InstallPin, partial: string, limits: InstallLim
   let bytes = 0;
   try {
     for (;;) {
-      const wait = Math.min(limits.stallMs, Math.max(1, remaining()));
+      const wait = Math.min(limits.stallMs, Math.max(1, remaining())), byDeadline = wait < limits.stallMs;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const stalled = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(remaining() <= 0 ? failed('deadline', `the download did not finish within ${limits.totalMs} ms`) : failed('stall', `no data for ${limits.stallMs} ms`)), wait); });
+      const stalled = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(byDeadline || remaining() <= 0 ? failed('deadline', `the download did not finish within ${limits.totalMs} ms`) : failed('stall', `no data for ${limits.stallMs} ms`)), wait); });
       let part: ReadableStreamReadResult<Uint8Array>;
       try { part = await Promise.race([reader.read(), stalled]); }
       catch (error) { if (error instanceof DrawioInstallError) throw error; throw failed('network', 'the download broke off'); }

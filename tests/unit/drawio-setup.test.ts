@@ -123,12 +123,28 @@ test('server errors and broken bodies are retried at most twice; a stall and a s
     mode = '503'; calls = 0; await assert.rejects(installDrawio(opts), (error: unknown) => reason('http')(error) && (error as DrawioInstallError).details.status === 503); assert.equal(calls, 3, 'one attempt and two retries'); nothingKept(dir, opts);
     mode = 'truncated'; calls = 0; await assert.rejects(installDrawio(opts), reason('network')); assert.equal(calls, 3); nothingKept(dir, opts);
     mode = 'stall'; calls = 0; await assert.rejects(installDrawio(opts), reason('stall')); assert.equal(calls, 3); nothingKept(dir, opts);
-    // One byte every 5 ms never stalls for a second, so only the absolute deadline ends it.
-    mode = 'trickle'; calls = 0; await assert.rejects(installDrawio({ ...opts, limits: { ...fast, stallMs: 1_000, totalMs: 2_500 } }), reason('deadline')); nothingKept(dir, opts);
+    // One byte every 5 ms (64 KiB would take over five minutes): with a stall limit longer than the
+    // whole deadline, only the absolute deadline can end it, however loaded the machine is.
+    mode = 'trickle'; calls = 0; await assert.rejects(installDrawio({ ...opts, limits: { ...fast, stallMs: 10_000, totalMs: 2_500 } }), reason('deadline')); nothingKept(dir, opts);
     mode = '503-then-ok'; calls = 0;
     const result = await installDrawio(opts);
     assert.deepEqual([result.status, result.attempts], ['installed', 3]);
   } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a wait cut short by the absolute deadline is reported as the deadline, even when its timer fires before the clock says so', async () => {
+  // A clock running at nine tenths of the timers' speed: when a wait bounded by the deadline ends, it
+  // still says time is left. Waiting for headers and waiting for data both end by the deadline.
+  const start = performance.now(), now = (): number => start + (performance.now() - start) * 0.9;
+  const limits = { ...fast, connectMs: 10_000, stallMs: 10_000, totalMs: 200, retryDelaysMs: [] };
+  const dir = home();
+  try {
+    const opts = options('http://127.0.0.1:9', dir, { limits, now });
+    const noHeaders = (_url: unknown, init?: RequestInit): Promise<Response> => new Promise((_, reject) => { init?.signal?.addEventListener('abort', () => setTimeout(() => reject(new Error('aborted')), 0)); });
+    await assert.rejects(installDrawio({ ...opts, fetch: noHeaders as typeof fetch }), reason('deadline')); nothingKept(dir, opts);
+    const noData = async (): Promise<Response> => new Response(new ReadableStream({ start() { /* never a byte */ } }), { status: 200 });
+    await assert.rejects(installDrawio({ ...opts, fetch: noData as typeof fetch }), reason('deadline')); nothingKept(dir, opts);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('one setup at a time: a live lock refuses by name, a stale lock and old partial files are cleared', async () => {
