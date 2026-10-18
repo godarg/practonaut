@@ -33,12 +33,22 @@
   "seconds": 7.9
  },
  "archive": {
+  "audit": {
+   "localHeaderMismatches": 0,
+   "localMethodMismatches": 0,
+   "inflatedSizeMismatches": 0,
+   "crcMismatches": 0,
+   "filesInflated": 3154,
+   "actualInflatedBytes": 115503243,
+   "allowlistDeclaredBytes": 20279361,
+   "ms": 257.2
+  },
   "facts": {
    "entries": 3318,
    "files": 3154,
    "directories": 164,
    "links": 0,
-   "duplicates": 0,
+   "duplicateNames": 0,
    "encrypted": 0,
    "methods": {
     "0": 164,
@@ -74,17 +84,17 @@
    ".svg": 5268
   },
   "medianMs": {
-   "readMs": 10,
-   "hashMs": 18.7,
-   "indexMs": 133.2,
-   "inflateMs": 79.8
+   "readMs": 7.1,
+   "hashMs": 39.7,
+   "indexMs": 488.3,
+   "inflateMs": 46.8
   },
   "runs": 5,
   "nodeAfterBytes": {
-   "rss": 276054016,
-   "heapUsed": 25922944,
-   "external": 107190728,
-   "arrayBuffers": 97616986
+   "rss": 376029184,
+   "heapUsed": 18371328,
+   "external": 167994051,
+   "arrayBuffers": 158420309
   }
  },
  "coldStartFreshProcess": {
@@ -257,6 +267,25 @@
    "consoleErrors": 0
   }
  ],
+ "servingPathCheck": {
+  "run": 4,
+  "order": "forward",
+  "totals": {
+   "sequences": 213,
+   "sequencesOk": 213,
+   "roundTrips": 672,
+   "starts": 48,
+   "startsFailed": 48,
+   "references": 48,
+   "referencesPassed": 48,
+   "nearMisses": 117,
+   "nearMissesFailed": 117
+  },
+  "failures": 0,
+  "refused": 0,
+  "loadAverage1m": 99.3,
+  "differFromRun1": 0
+ },
  "replayRunsAgree": {
   "sequences": 213,
   "comparedPerSequence": "raw export after every step (diagram id normalised), final PNG bytes, verdict and error classes",

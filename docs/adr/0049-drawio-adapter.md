@@ -1,7 +1,7 @@
 # PADR-0049 — draw.io as application #2: a verified download behind the shared shell, the embed protocol only, declared structural constraints, and an independent `.drawio` reader
 
-Status: proposed · Date: 2026-10-18, revised 2026-10-19 · Roadmap 0.3.0, Must 2 (issue #52) ·
-Amends [PADR-0032](0032-chromium-sandbox-stays-on.md) (a sandbox policy per adapter: draw.io never
+Status: proposed · Date: 2026-10-18, revised twice on 2026-10-19 · Roadmap 0.3.0, Must 2 (issue #52)
+· Amends [PADR-0032](0032-chromium-sandbox-stays-on.md) (a sandbox policy per adapter: draw.io never
 starts without the sandbox) and [PADR-0045](0045-adapter-registry-and-browser-shell.md) decision 8
 (a downloaded runtime is kept as the verified archive, read whole into memory at every start and
 served from an allowlist, never unpacked) · Builds on [PADR-0007](0007-adapter-contract.md),
@@ -9,12 +9,13 @@ served from an allowlist, never unpacked) · Builds on [PADR-0007](0007-adapter-
 set, task identity, bench/3), [PADR-0047](0047-bounded-spatial-predicates.md) decision 10 (draw.io
 geometry) and [PADR-0043](0043-artifact-judged-verdict-level.md) (what stays for artifact mode) ·
 Evidence: the 0.2.0 spike ([report](../../spikes/drawio/REPORT.md)) and its re-measurement through
-the shared shell with the mapping decided here ([`spikes/drawio/shell.ts`](../../spikes/drawio/shell.ts),
+the shared shell with the mapping decided here
+([`spikes/drawio/shell.ts`](../../spikes/drawio/shell.ts),
 [`mapping.ts`](../../spikes/drawio/mapping.ts), summary
 [`results/shell.json`](../../spikes/drawio/results/shell.json)) · Revised after three independent
 reviews on 2026-10-19 (OpenAI Codex, Google Gemini, a three-lens Claude Opus workflow with a skeptic
-per major) and the coordinator's dispositions (see *Review*) · To be accepted with the pull request
-that implements it, after a review of that code
+per major), the coordinator's dispositions, and a second round (see *Review* and *Re-review*) · To
+be accepted with the pull request that implements it, after a review of that code
 
 ## Context
 
@@ -47,14 +48,21 @@ the app's own export, not from the product reader of decision 6 on `exportArtifa
 | Download | 48,442,174 bytes, SHA-256 `b836…7820` | same bytes and hash, 7.9 s; GitHub redirects to `release-assets.githubusercontent.com` (2026-10-18) |
 | Archive | 3,154 files, 115.5 MB unpacked | 3,318 entries: 3,154 files (deflate), 164 directory entries (stored), no link, no duplicate name, no encryption; largest entry 19,861,682 bytes (`js/integrate.min.js`, not loaded); 115,503,243 bytes inflated; highest ratio 16.8 |
 | Start, each in a fresh Node process (process start → `load` event of the first, empty diagram), 5 | median 709 ms (703–923), in one process | median 1,312 ms (1,298–1,454), of which the archive (read, SHA-256, directory) 185 ms and the shell to the first `load` 941 ms (939–1,094) |
-| Archive work per start, median of 5 | — | read 10 ms, SHA-256 19 ms, directory 133 ms, inflating the 14 served files (20,279,361 bytes) 80 ms |
+| Archive work, archive mode of the script in one process, median of 5 (load average about 150) | — | read 7 ms, SHA-256 40 ms, directory 488 ms, inflating the 14 served files (20,279,361 bytes) 47 ms; the fresh-process figure above (185 ms for read, hash and directory) is the user-facing one |
+| Every rule of decision 3.3 over all 3,318 entries | — | local-header name and method equal to the central directory's for every entry; no duplicate name among files and directories; every file inflated with `maxOutputLength` to exactly its declared size with a matching CRC-32 (115,503,243 bytes); the 14 allowlisted files declare 20,279,361 bytes |
 | Library, 3 runs, each a fresh process and browser, orders forward, reverse, seeded shuffle | 3 × 165 sequences, 624 round trips | 3 × 213 sequences (48 starts, 48 references, 117 near misses), 672 round trips each; every step held the declared set, the full write check and integrity; per run 48/48 starts fail, 48/48 references pass, 117/117 near misses fail |
 | Agreement between the 3 runs, per sequence | identical projections (fixed by the checks) | the app's raw export after every step (diagram id normalised), the final PNG bytes, the verdict and its error classes: 0 of 213 differ |
 | `load` / `export` median per round trip | 4.6–7.9 ms / 1.7–3.1 ms | 3.5 / 1.1 ms (run 1); 8.1–8.6 / 3.0–3.1 ms under load 107–120 |
-| Peak RSS, Chromium process tree | 491–628 MB (all runs) | 510–657 MB (3 runs, 4 processes) |
+| Peak RSS, Chromium process tree | 491–628 MB (all runs) | 510–657 MB (3 runs, 4–5 processes) |
 | Peak RSS, the Node process | not reported | 316–493 MB (the measuring process: library, core, Playwright and the 48.4 MB archive buffer) |
 | Requests refused by the shell (any origin, path, policy report) | 0 | 0 in every start, run and probe; no console error or warning |
 | Files the app loads | 14, 20.28 MB | with `lang=en` the same 14; with `lang=de` `resources/dia_de.txt` replaces `resources/dia.txt`; `index.html` has no policy of its own |
+
+The starts and the three runs above were measured before the second review changed how the script
+inflates (one inflation per entry with `maxOutputLength` and a CRC-32 check, shared by concurrent
+requests, instead of a streaming inflate). A fourth run with the changed script (forward order, load
+average about 99) gave the same app output as run 1 for all 213 sequences, with every expectation
+met; starts were not measured again under that load.
 
 Probes (same session): cells with ids outside the semantic id pattern (`pn:root`, `pn:layer`,
 `pn:group:g1`) and steps whose ids are `0` and `1` came back unchanged under the full write check.
@@ -94,8 +102,17 @@ the previous diagram (REPORT, *malformed XML*).
 loads only the Excalidraw library and its oracle file bound to world id `excalidraw-library`
 (`src/bench/world.ts:46-49,166-168,177,189`, `src/library/index.ts:69`; unchanged on PR #66's
 branch); the challenge generator's world (`src/challenge/build.ts:142`); the Player's editor and
-author workspaces, which embed Excalidraw (`src/player/main.ts:17`); and the CLI's mirror messages,
-which name Excalidraw (`src/cli/messages.ts`, `browserRuntimeMissing`, `mirrorFallback`). A
+author workspaces, which embed Excalidraw (`src/player/main.ts:17`); and **every text that tells the
+agent, the human or the report reader which app runs** (found by the second review): the MCP
+instructions sent to every agent ("a diagram in Excalidraw", `src/mcp/contracts.ts:33`, sent by
+`src/mcp/server.ts:59`); the Player's board, model-only and evidence texts (`src/player/messages.ts`:
+`boardModel`, `modelOnly`, `modelOnlyMissing`, `evidence`, `noEvidence`, `toolAlt`, EN and DE; used at
+`src/player/main.ts:575,710,712`); the bench report texts (16 occurrences in
+`src/bench/report-text.ts`, among them "Exported by the real Excalidraw {version}", unchanged on PR
+#66's branch, where `{version}` becomes `environment.app.version`); and the CLI's setup and mirror
+messages (`src/cli/messages.ts`: `setupStart`, `setupDoneAt`, `browserRuntimeMissing`,
+`mirrorFallback`; 21 occurrences). A draw.io session would show draw.io's picture under the words
+"the real Excalidraw" and its committed evidence would credit Excalidraw with a draw.io export. A
 model-only session already has no real-tool image: the host refuses the image (`src/host/session.ts:451`)
 and the Player disables "show tool" and labels the board as the model (`src/player/main.ts:575,711`).
 
@@ -185,23 +202,36 @@ through a test seam, so the product reads no new variable.
    command; under `--mirror auto` the session runs model-only with one line naming the same remedy, and
    the Player's banner gives the command and the size (the `missing` notice, with the draw.io download
    instead of Chromium). `validate`, `pack` and `check` need no runtime. The adapter's own start
-   verifies again (decision 2.5) and fails as `mirror_unavailable` with the same cause, which the CLI
+   verifies again (decision 2.6) and fails as `mirror_unavailable` with the same cause, which the CLI
    reports by the same code.
 4. **`doctor --adapter`** lists, per adapter, the runtime (bundled; downloaded and verified; missing;
    does not match the pin), the Chromium start under the adapter's sandbox policy (decision 7), and
    for draw.io on a platform without a recorded conformance run (decision 8.7) that its mirror is not
    yet verified there.
+5. **Display names.** Each world-table entry carries a fixed display name, EN and DE, as project text:
+   `excalidraw` "Excalidraw", `drawio` "draw.io" in both languages. It is never taken from a world.
+   Every text that names the running app takes it from the world's `app.adapterId` (sessions, the
+   Player, MCP, the CLI) or from a report's `environment.app.adapterId` (bench pages, cards, JUnit),
+   never as a literal: the MCP instructions (built per session by the bridge from the host's reply),
+   the Player's board, model-only, missing-runtime, evidence and picture texts (the host sends the
+   adapter id; the Player's catalog fills the name), the bench report texts, and the CLI's setup,
+   mirror and doctor messages. Texts about the Player's editor and author workspaces, which embed
+   Excalidraw, keep naming it. A test runs a draw.io session and asserts that its MCP instructions, its
+   Player states mirrored and model-only (EN and DE) and a draw.io bench report contain no
+   "Excalidraw" outside the editor and author workspace texts, and that an Excalidraw session's texts
+   are unchanged.
 
 ### 2. Setup: opt-in download, verification, atomic keep
 
-1. **Opt-in.** Plain `practonaut setup` keeps installing only Chromium. `practonaut setup --app
-   drawio` first ensures Chromium exactly as plain `setup` does, then runs the Chromium start check
-   under draw.io's sandbox policy: when the sandboxed start is refused, it says that draw.io will run
-   model-only on this system until the restriction is lifted (the AppArmor advice of PADR-0032) and
-   still offers the download. Before any byte is fetched it prints the file (`draw.war`, draw.io
-   v32.4.1), the source (`https://github.com/jgraph/drawio/releases/download/v32.4.1/draw.war`), the
-   exact size (48,442,174 bytes, 48.4 MB), the full SHA-256 and the notice of decision 9. No install
-   script, `play`, `bench`, `mcp` or test ever downloads it implicitly.
+1. **Opt-in.** Plain `practonaut setup` keeps installing only Chromium.
+   `practonaut setup --app drawio` first ensures Chromium exactly as plain `setup` does, then runs
+   the Chromium start check under draw.io's sandbox policy: when the sandboxed start is refused, it
+   says that draw.io will run model-only on this system until the restriction is lifted (the
+   AppArmor advice of PADR-0032) and still offers the download. Before any byte is fetched it prints
+   the file (`draw.war`, draw.io v32.4.1), the source
+   (`https://github.com/jgraph/drawio/releases/download/v32.4.1/draw.war`), the exact size
+   (48,442,174 bytes, 48.4 MB), the full SHA-256 and the notice of decision 9. No install script,
+   `play`, `bench`, `mcp` or test ever downloads it implicitly.
 2. **Pin.** Tag, asset name, size and SHA-256
    `b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820` move from
    `spikes/drawio/pin.json` into the adapter as constants, with the entry allowlist of decision 3.2.
@@ -237,17 +267,20 @@ through a test seam, so the product reads no new variable.
    exactly the pinned size (a larger file is refused before it is read), hashes that buffer, opens
    the zip from it and serves only from it. Nothing on disk is read after the check, and no handle
    stays open. The buffer lives as long as the adapter: 48,442,174 bytes per running draw.io adapter,
-   plus at most 32 MiB of inflated allowlisted files (20,279,361 bytes measured). Removing the
-   runtime is deleting that folder.
+   plus at most 32 MiB of inflated allowlisted files (20,279,361 bytes measured), a bound decision
+   3.3 makes normative. Removing the runtime is deleting that folder.
 7. **No network at runtime.** After setup nothing of draw.io is fetched.
 8. **Tests and CI.**
    - Setup's unit tests run on all three CI platforms against a stand-in HTTP server on 127.0.0.1
      serving a small fixture archive under an injected pin (never the real pin), each in its own
-     temporary home: kept on match; refused on a size overrun, a hash mismatch, a truncated body, a
-     stall, a slow trickle that exceeds the absolute deadline, a sixth redirect, a redirect to
-     `http:`; retries counted; two concurrent setups (one lock holder, the other waits or stops by
-     name, never a half file); stale partial files and locks; `--from`; the Windows rename retry
-     with a held reader.
+     temporary home. The download takes its **allowed URL schemes as a named seam**: the product
+     passes exactly `https:`; the tests pass `http:` so the stand-in can answer, and the scheme test
+     redirects to a scheme outside the injected set. Cases: kept on match; refused on a size overrun,
+     a hash mismatch, a truncated body, a stall, a slow trickle that exceeds the absolute deadline, a
+     sixth redirect (all five earlier hops allowed), a redirect to a scheme outside the set; retries
+     counted; two concurrent setups (one lock holder, the other waits or stops by name, never a half
+     file); stale partial files and locks; `--from`; the Windows rename retry with a held reader. Each
+     negative test asserts the refusal reason by name, so none passes for another reason.
    - The draw.io conformance and adapter tests get the runtime through two **test-only** variables,
      read only by test support, never by the product: `PN_DRAWIO_HOME` (an absolute path to a
      Practonaut home in which `setup --app drawio` ran; default `.local/drawio-home/` in the
@@ -255,22 +288,32 @@ through a test seam, so the product reads no new variable.
      run). The test support passes the archive path to the adapter through a test seam; the preload
      still gives every test its own `PRACTONAUT_HOME`. With `PN_DRAWIO_REQUIRED=0` the tests skip by
      name, separately for "runtime absent" and "sandboxed start refused"; with `1` either fails.
-   - CI, in the Linux step that lifts the AppArmor restriction: `PRACTONAUT_HOME` under
-     `${{ runner.temp }}`, `setup --app drawio` on every run, the draw.io layer with
-     `PN_DRAWIO_REQUIRED=1`, the layer's summary must report a non-zero sequence count, and a step
-     under `if: always()` deletes that home afterwards. `*.war` joins `.gitignore`, and `test:pack`
-     refuses a packed file whose name ends in `.war` or that is a zip archive.
-   - **Nothing leaves CI by an unlisted path.** A file in the repository lists every path that a
-     workflow may save or publish (the `path:` of `actions/cache`, `actions/upload-artifact`,
-     `actions/upload-pages-artifact`, and every asset argument of `gh release create` or
-     `gh release upload`),
-     literally — today `.local/native-chart-paper/`, `.local/native-transfer/`, the three Playwright
-     cache paths, `${{ runner.temp }}/practonaut-out/` and the release's own list. `npm run check`
-     reads every workflow and fails on any such path that is not literally in the list, on any glob,
-     on any expression other than the listed literal ones, and on `${{ runner.temp }}`, `~`, `.`,
-     `.local` or the workspace root on their own. It also fails when the draw.io step does not set
-     `PN_DRAWIO_REQUIRED: 1`. Its unit tests include negative fixtures: a parent directory of the
-     home, `${{ runner.temp }}`, a glob, an environment variable, a path set through `$GITHUB_ENV`.
+   - CI, Linux, in **its own step after the step that lifts the AppArmor restriction**, with no
+     `PRACTONAUT_CHROMIUM_SANDBOX` at step, job or workflow level (so only the per-adapter policy
+     can require the sandbox; decision 7.3): one absolute home under `${{ runner.temp }}` is
+     `PRACTONAUT_HOME` for `setup --app drawio` (on every run) and `PN_DRAWIO_HOME` for the draw.io
+     layer, which runs with `PN_DRAWIO_REQUIRED=1`; the layer's summary must report a non-zero
+     sequence count; a step under `if: always()` deletes that home afterwards. `*.war` joins
+     `.gitignore`, and `test:pack` refuses a packed file whose name ends in `.war` or that is a zip
+     archive.
+   - **Cache and upload paths are listed; unknown actions are refused.** A file in the repository
+     lists, literally, every path a workflow may hand to a cache or upload action and every asset
+     argument of `gh release create` or `gh release upload` — today `.local/native-chart-paper/`,
+     `.local/native-transfer/`, the three Playwright cache paths, `${{ runner.temp }}/practonaut-out/`
+     and the release's own list. `npm run check` reads every workflow. It matches cache and upload
+     actions by prefix (`actions/cache` and `actions/cache/…`, `actions/upload-artifact…`,
+     `actions/upload-pages-artifact…`) and fails on any of their paths that is not literally in the
+     list, on any glob, on any expression other than the listed literal ones, and on
+     `${{ runner.temp }}`, `~`, `.`, `.local` or the workspace root on their own. It fails on any
+     `uses:` that is not on a second list of actions known not to save or publish files (checkout,
+     setup-node, download-artifact and the like, each pinned by SHA). For the draw.io step it asserts
+     that the same literal path is given as `PRACTONAUT_HOME` to setup, as `PN_DRAWIO_HOME` to the
+     layer and to the deletion step, that `PN_DRAWIO_REQUIRED` is `1`, and that
+     `PRACTONAUT_CHROMIUM_SANDBOX` is absent at every level. Its unit tests include negative fixtures:
+     a parent directory of the home, `${{ runner.temp }}`, a glob, an environment variable, a path set
+     through `$GITHUB_ENV`, `actions/cache/save`, an unlisted third-party upload action, two different
+     homes, and the sandbox variable set on the job. This checks what the workflows say; a run step
+     that copies files elsewhere by a shell command is outside it and is a review matter.
 
 ### 3. Serving: the shared shell, two origins, an allowlist from the archive in memory
 
@@ -288,15 +331,23 @@ through a test seam, so the product reads no new variable.
    decodes the request path before it checks it (`src/adapters/browser/shell.ts`, route), so the
    lookup is by the exact decoded name; `/%57EB-INF/…` reaches the check as `/WEB-INF/…` and is
    refused like it. Content types come from a fixed extension table.
-3. **Zip limits** (normative, checked when the archive is opened; the pinned archive meets them, so a
-   violation means another file): at most 4,096 entries (3,318 measured); every file entry at most
-   32 MiB inflated, declared and actual, checked while inflating with a byte counter on every inflate
-   (19,861,682 bytes measured for the largest); at most 256 MiB inflated in total (115,503,243
-   measured); a compression ratio of at most 100 per entry (16.8 measured); compression methods
-   stored or deflate only; no encrypted entry; no duplicate name; no link entry; entry names relative,
-   without `..`, backslash, drive letter or control character; a local-header name that differs from
-   the central-directory name refuses the archive. Directory entries (164 in the pinned archive) are
-   allowed in the archive and never served. A violation is `app_runtime_unverified`.
+3. **Zip limits** (normative, checked when the archive is opened; the pinned archive meets them, so
+   a violation means another file): at most 4,096 entries (3,318 measured); every file entry at most
+   32 MiB inflated, declared and actual — an inflation's output is capped by `maxOutputLength` at
+   the declared size (19,861,682 bytes measured for the largest); at most 256 MiB inflated in total
+   (115,503,243 measured); a compression ratio of at most 100 per entry (16.8 measured); compression
+   methods stored or deflate only; no encrypted entry; no duplicate name among files and
+   directories; no link entry; entry names relative, without `..`, backslash, drive letter or
+   control character; a local-header name that differs from the central-directory name refuses the
+   archive. Directory entries (164 in the pinned archive) are allowed in the archive and never
+   served. **Inflation memory**: the allowlisted entries together declare at most 32 MiB inflated
+   (checked at archive open; 20,279,361 bytes today; the allowlist's unit test checks it too); each
+   is inflated at most once per adapter and kept, and concurrent requests for one entry share one
+   pending inflation, so the inflated files held never exceed 32 MiB. Every inflation runs on the
+   in-memory bytes with zlib's `maxOutputLength` set to the entry's declared size, then checks the
+   size and the CRC-32 against the central directory. A test requests one allowlisted entry many
+   times at once and observes one inflation. A violation is `app_runtime_unverified`. Measured on
+   the pinned archive (Context): every rule holds over all 3,318 entries.
 4. **URL parameters**: the spike's documented set plus `lang=en`, which pins the UI language and with
    it the served set (measured: `lang=de` loads `resources/dia_de.txt` instead of
    `resources/dia.txt`) —
@@ -338,8 +389,10 @@ through a test seam, so the product reads no new variable.
      writes back: it leaves out an `x` or `y` of 0 (measured). Measured with the decided mapping: 3 ×
      672 round trips, every write check empty;
    - **integrity**: unique ids, one root, existing parents, no cycle, no edge as a parent, edge ends
-     are steps, `html=0` everywhere, integer geometry, only the adapter's colours, shapes and style
-     keys, and every declared constraint (decision 1.2) holds (`integrity_failed`).
+     are steps, no `html` value other than 0 on any cell (an absent key counts as 0, so the group
+     cell's `group;` and the root and layer cells pass), integer geometry, only the adapter's colours,
+     shapes and style keys, and every declared constraint (decision 1.2) holds (`integrity_failed`).
+     The integrity unit tests include a state with a live group.
    A failure is undone in place or the committed scene is rebuilt on a fresh page by the shell
    (PADR-0045 decision 7); under `--mirror required` the step is rejected and the core state is
    unchanged (PADR-0011). The spike's 12 silent-change cases become conformance cases, written
@@ -385,6 +438,14 @@ through a test seam, so the product reads no new variable.
    `endArrow=classic;html=0;`, `source` and `target` its live ends (absent = loose end, with a
    terminal point the adapter remembers), child of its frame or of the layer. A **tombstone** has no
    cell.
+
+   **Derived memory.** The adapter remembers two things the state does not hold: an empty frame's last
+   box and a loose end's last point. Every adapter start, `restoreState` and recovery resets that
+   memory, so what is written after them is a function of the restored state alone; between them it
+   evolves only with the applied transitions. The same state therefore gives the same file whatever
+   ran before (the precursor reset it per sequence too). A conformance case runs the `two-frames`
+   task, whose start holds two empty frames, after two different sequences and requires identical
+   exports and PNGs.
 2. **Declared constraints, refused by name** (option A.5). For a world whose application declares a
    constraint (decision 1.2):
    - **the core** checks every declared constraint on the successor of every world/2 transition; a
@@ -458,15 +519,17 @@ through a test seam, so the product reads no new variable.
    - **edge labels are classified first**: a vertex whose parent is an edge is an edge label, listed
      as unmodeled and not read, before any parent rule applies; an edge whose parent is an edge is
      `structure_invalid`;
-   - a **frame** is a vertex with the style name `swimlane` or `container=1`; a **group** a vertex with
-     the style name `group`; an **arrow** an edge. A **step** is a vertex whose style holds at most one
-     shape-determining token — a style name (`ellipse`, `rhombus` or any other name) or a `shape=`
-     key — and that token is absent (a rectangle; `rounded` either way), `ellipse`, `rhombus`,
-     `shape=ellipse` or `shape=rhombus`. A step style with more than one shape-determining token
-     (`ellipse;rhombus`, `ellipse;shape=rhombus`, `shape=ellipse;rhombus`) is refused
-     (`unmodeled_value`): draw.io applies them left to right and draws the last, and the reader does
-     not reproduce the stylesheet cascade. A vertex with another single shape is listed as unmodeled
-     and not read;
+   - **the effective shape comes before any classification.** For every vertex the reader collects
+     its shape-determining tokens — every style name (`swimlane`, `group`, `ellipse`, `rhombus` or
+     any other name) and the `shape` key. More than one refuses the file (`unmodeled_value`), whatever
+     the vertex would be classified as (`ellipse;rhombus`, `ellipse;shape=rhombus`,
+     `shape=ellipse;rhombus`, `swimlane;shape=ellipse`): draw.io applies them left to right and draws
+     the last, and the reader does not reproduce the stylesheet cascade. Then, by the single token:
+     `swimlane` or `shape=swimlane`, or no token with `container=1`, is a **frame**; `group` is a
+     **group**; no token (a rectangle; `rounded` either way), `shape=rectangle`, `ellipse`,
+     `shape=ellipse`, `rhombus` or `shape=rhombus` is a **step**, and a step token together with
+     `container=1` is refused (`unmodeled_value`: it would be drawn as a step and hold children like a
+     frame); any other single token is listed as unmodeled and not read. An **arrow** is an edge;
    - a step's frame is its nearest frame ancestor; its group is the outermost group between it and
      that frame (or the layer). A group cell that has a frame among its descendants groups frames: it
      is listed as unmodeled and gives no step a group. The reader therefore never yields a group across
@@ -477,9 +540,13 @@ through a test seam, so the product reads no new variable.
      (`geometry_invalid`) instead of normalised or widened: draw.io does not draw such a shape as a
      box. `rotation` is ignored here as in Excalidraw's world/2 reader, and layout units' reading rules
      refuse it (PADR-0047);
-   - an arrow's ends are `source` and `target` when they are read steps. A head is drawn at the end
-     unless `endArrow` is `none` or empty, and at the start when `startArrow` is set to anything but
-     `none` or empty; a single head at the start reverses the ends, as for Excalidraw. Its frame
+   - an arrow's ends are `source` and `target` when they are read steps. **Arrow markers** take only
+     the values of a list kept with the pin: the marker names for which the pinned app draws a head,
+     measured by the conformance suite from SVG exports, plus `none` and empty; any other value of
+     `startArrow` or `endArrow` refuses the file (`unmodeled_value`), because draw.io draws no head
+     for a name it does not know. A head is at the end when `endArrow` is absent or a listed marker,
+     and at the start when `startArrow` is a listed marker; a single head at the start reverses the
+     ends, as for Excalidraw. Its frame
      follows world/2's rule; an arrow with both ends loose takes its nearest frame ancestor;
    - ids matching the semantic id pattern are kept; `pn:group:<id>` gives the group id `<id>`; any
      other id gets a derived one, as `src/checker/scene.ts` does. **Group ids are injective over group
@@ -519,8 +586,9 @@ through a test seam, so the product reads no new variable.
    reading — the reader agrees or refuses, never reads something the app does not show. They include
    CRLF in attributes, adjacent attributes, `&#1;`, both compressed text and a model child, two
    geometries, `x="0x1F4"`, `vertex="true"`, hidden and collapsed ancestors, an edge label vertex,
-   `ellipse;shape=rhombus` and `shape=ellipse;rhombus`, `endArrow=`, `g1` beside `pn:group:g1`, a
-   `" A "` label with `html=1`, non-positive sizes and a relative ancestor. For PADR-0047 decision 10:
+   `ellipse;shape=rhombus`, `shape=ellipse;rhombus` and `swimlane;shape=ellipse`, `endArrow=`,
+   `startArrow=bogus` and `endArrow=bogus`, `g1` beside `pn:group:g1`, a `" A "` label with
+   `html=1`, non-positive sizes and a relative ancestor. For PADR-0047 decision 10:
    steps inside groups inside frames, with integer and fractional offsets; the reader's boxes must equal
    the boxes draw.io renders in its SVG export (relative to a reference step on the layer). Until they
    pass, the `layout` unit on draw.io is not pre-probed (PADR-0047).
@@ -541,9 +609,11 @@ through a test seam, so the product reads no new variable.
    `PRACTONAUT_CHROMIUM_SANDBOX` unset and a fake Chromium, (a) after Excalidraw's fallback has set the
    process memo, a draw.io start still asks for the sandbox; (b) a draw.io start whose sandboxed launch
    is refused for the sandbox reason fails and never launches a second time without it; (c) on a
-   simulated restrictive Linux the CLI answers `browser_start_failed` by name. The CI step that lifts
-   the restriction keeps its global `require` only for its own Excalidraw check; the draw.io layer runs
-   there without it.
+   simulated restrictive Linux the CLI answers `browser_start_failed` by name. These unit tests carry
+   the evidence for the policy: once the restriction is lifted, a sandboxed start succeeds with or
+   without it. The CI step that lifts the restriction keeps its global `require` for its own Excalidraw
+   check; the draw.io layer runs in its own later step without the variable, which the workflow check
+   asserts (2.8).
 4. **Why.** Nothing was measured on Linux (UNKNOWN), so the safer option wins. The amendment that lets
    Excalidraw start without the sandbox rests on what the browser loads: the engine Practonaut builds
    from a locked dependency. draw.io is 20.1 MB of downloaded third-party script (99 % of the 20.3 MB
@@ -556,8 +626,8 @@ through a test seam, so the product reads no new variable.
    told before the download and at every start, and can lift the restriction in the system or practise
    model-only; Excalidraw practice is untouched.
 5. **Cost.** On Ubuntu 23.10 and later with the default AppArmor setting, draw.io sessions run
-   model-only until the restriction is lifted. In CI the draw.io layer runs in the Linux step that
-   lifts it (`kernel.apparmor_restrict_unprivileged_userns=0`).
+   model-only until the restriction is lifted. In CI the draw.io layer runs in its own step after the
+   Linux step that lifts it (`kernel.apparmor_restrict_unprivileged_userns=0`).
 
 ### 8. The 16 library tasks, the families and the acceptance on draw.io
 
@@ -599,12 +669,12 @@ through a test seam, so the product reads no new variable.
    spike's reader instead of the product's, Context): 3 × 213 sequences, every expectation met, 0
    disagreements on export chains, PNG bytes and verdicts. The acceptance numbers come only from this
    protocol in the product.
-5. **Families.** No challenge family is published today (the 0.2.0 round: none passed;
-   [challenge reports](../benchmarks/challenge/README.md)). To find problems before the release, the
-   draw.io layer runs every family the generator has (`FAMILIES`, and `challenge-layout` once P5b
-   lands) on seeds 1–3 at difficulty `mixed` through the same protocol. The generator gains an `--app
-   drawio` option that writes the same instances into a draw.io world with `generatedBy` unchanged, so
-   that identities pair; a family published before the release joins the acceptance and the compare
+5. **Families.** No challenge family is published today (the 0.2.0 round: none passed; [challenge
+   reports](../benchmarks/challenge/README.md)). To find problems before the release, the draw.io
+   layer runs every family the generator has (`FAMILIES`, and `challenge-layout` once P5b lands) on
+   seeds 1–3 at difficulty `mixed` through the same protocol. The generator gains an `--app drawio`
+   option that writes the same instances into a draw.io world with `generatedBy` unchanged, so that
+   identities pair; a family published before the release joins the acceptance and the compare
    below.
 6. **Durable evidence.** Committed under `docs/benchmarks/drawio/` (a page linked from
    `docs/index.md`): the conformance summary of the release commit in a versioned schema without local
@@ -612,10 +682,10 @@ through a test seam, so the product reads no new variable.
    and orders); the two oracle bench/3 folders; and the compare page. CI always uploads the summary
    JSON of its conformance run (a listed path; it holds no part of the archive).
 7. **Platforms.** Setup and reader unit tests run on all three CI platforms; the conformance layer
-   runs on Linux in the step that lifts the restriction, on every CI run. Before acceptance a manual
-   workflow (`workflow_dispatch`) runs it on macOS and Windows, three runs each, and its summaries are
-   committed beside the Linux one; until a platform has one, `doctor --adapter` and the adapter page
-   say the draw.io mirror is not yet verified there.
+   runs on Linux in its own step after the one that lifts the restriction, on every CI run. Before
+   acceptance a manual workflow (`workflow_dispatch`) runs it on macOS and Windows, three runs each,
+   and its summaries are committed beside the Linux one; until a platform has one,
+   `doctor --adapter` and the adapter page say the draw.io mirror is not yet verified there.
 8. **Re-checked before the release.** [docs/release.md](../release.md) gains a step: on the release
    commit, run the conformance layer with `PN_DRAWIO_REQUIRED=1`, bench the oracle on both libraries
    and compare them; the committed evidence of 8.6 is replaced by that run's, and the release notes
@@ -672,7 +742,8 @@ through a test seam, so the product reads no new variable.
 1. **This pull request closes Must 2.** It is built on PR #66 (bench/3, `taskSet`), which merges
    first; there is no interim path. It delivers the three table entries and the declared constraints
    (decisions 1 and 5.2: world table, core, world validation, checker, host detail, Player catalog,
-   MCP parity), setup and the runtime check, the adapter on the shell, the checker reader, the
+   MCP parity), the display names and every text filled from them with its test (decision 1.5), setup
+   and the runtime check, the adapter on the shell, the checker reader, the
    per-adapter sandbox policy, the Player (board workspace only for draw.io worlds: the editor and
    author workspaces embed Excalidraw and say they are unavailable; export as `practonaut.drawio`),
    `run --export`, `doctor`, the library table and the committed draw.io library with its oracle
@@ -706,9 +777,9 @@ through a test seam, so the product reads no new variable.
   table, with markup in its labels, with stacked shape tokens or with other ambiguous forms is refused
   by name until artifact mode's reading rules (Must 3) decide otherwise.
 - Each running draw.io adapter holds the 48.4 MB archive in Node memory.
-- On Linux with the default AppArmor restriction draw.io is model-only; CI covers draw.io in the
-  Linux step that lifts the restriction; macOS and Windows are covered by the manual workflow before
-  acceptance and the release re-check.
+- On Linux with the default AppArmor restriction draw.io is model-only; CI covers draw.io in a Linux
+  step after the one that lifts the restriction; macOS and Windows are covered by the manual
+  workflow before acceptance and the release re-check.
 - Each CI run downloads 48.4 MB from GitHub; a release outage or a removed asset fails the draw.io
   step by name (`app_download_failed`) after bounded retries, not silently. Caching it is not an
   option (maintainer decision).
@@ -784,7 +855,7 @@ Every finding and its disposition:
 | core-unmodeled-code (minor): `unmodeled` for a known limit; details dropped by the host | Adopted (D1) | 5.2: `constraint_refused`, message with the remedy, the host keeps `details.constraint`, Player catalog entry, MCP parity test, bench text |
 | core-xml-chars (minor): non-XML characters accepted model-only, refused under the mirror | Adopted (D1) | 1.2 `xml-text`, 5.2 in validation, core and checker; 6.2 tokenizer; conformance cases (4.2) |
 | core-group-id-collision (major) | Adopted (D8) | As Codex 2 |
-| core-codec-divergence (major): the reader decodes forms differently from draw.io's codec | Adopted (D8), the remedy verbatim | 6.3, with fixtures (6.7); "exactly one geometry" applies to vertices and edges, since root and layer cells have none |
+| core-codec-divergence (major): the reader decodes forms differently from draw.io's codec | Adopted with change (D8) | 6.3, with fixtures (6.7); "exactly one geometry" applies to vertices and edges, since root and layer cells have none |
 | core-style-cascade (major): several shape tokens; empty arrow value | Adopted (D8) | 6.4: more than one shape-determining token refused; an empty arrow value is none |
 | core-geometry-sizes (minor) | Adopted | 6.4: non-positive sizes and relative ancestors refused for `.drawio` |
 | core-visibility (minor) | Adopted (D8) | 6.4: hidden or collapsed ancestors hide their descendants |
@@ -807,3 +878,28 @@ Every finding and its disposition:
 D5's "refuse directories" is adopted with one change: the pinned archive holds 164 directory entries,
 so refusing them would refuse the official release; directory entries are allowed in the archive and
 never served (3.3).
+
+## Re-review (2026-10-19)
+
+A second round reviewed the revision (commit 4e9af59): OpenAI Codex (4 findings, and a table
+confirming each round-one finding) and a Claude Opus reviewer with a skeptic (10 findings). Both
+confirm that every round-one finding and every disposition D1–D17 is resolved in the record. The
+coordinator accepted `constraint_refused` with the host keeping `details.constraint`, the Node bound
+of 1 GB and the two-thirds triggers, the CI arrangement of r2-07, and left the naming question with
+the maintainer: acceptance waits for that decision, the code does not. Every new finding and its
+disposition:
+
+| Finding (reviewer, severity after verification) | Disposition | Where, or why not |
+|---|---|---|
+| r2-01 (Opus, major, skeptic confirmed): MCP instructions, Player, report and CLI texts name Excalidraw in a draw.io session | Adopted | Context lists every such text; 1.5: a fixed EN/DE display name per adapter in the world table, every text filled from the world's app or `environment.app`, never world-authored, with the test the finding asks for; 10.1 |
+| Codex r2-1 (major): `swimlane;shape=ellipse` is read as a frame while draw.io draws an ellipse | Adopted | 6.4: the effective shape is decided before any classification; more than one shape-determining token refuses the file for every vertex; a step token with `container=1` is refused; differential fixture (6.7) |
+| Codex r2-2 (major): `startArrow=bogus` reverses an arrow draw.io draws without a head | Adopted | 6.4: marker values only from a list kept with the pin (names the pinned app draws a head for, measured from SVG exports), plus `none` and empty; anything else `unmodeled_value`; fixtures for an unknown start and end marker (6.7) |
+| r2-02 (Opus, minor): "`html=0` everywhere" contradicts `group;` and the root and layer cells | Adopted | 4.2: no `html` value other than 0; an absent key counts as 0; a live group in the integrity unit tests |
+| r2-03 (Opus, minor): the adapter's derived memory has no lifetime, so orders could differ | Adopted | 5.1: start, `restoreState` and recovery reset it; a `two-frames` case in two orders |
+| r2-04 (Opus, minor) and Codex r2-4 (minor): the 32 MiB inflation bound is not enforced; concurrent requests inflate copies; `maxOutputLength` replaced by a byte counter without a reason | Adopted | 3.3: the allowlist declares at most 32 MiB (checked at open and in its test); one inflation per entry per adapter, concurrent requests share it (tested); every inflation with `maxOutputLength` at the declared size, then size and CRC-32; 2.6 points to it; the script now inflates this way |
+| r2-05 (Opus, minor): the local-header and duplicate rules were claimed, not measured | Adopted | Measured over all 3,318 entries (Context): local-header names and methods equal, no duplicate among files and directories, every file inflated to its declared size with a matching CRC-32 |
+| r2-06 (Opus, minor) and Codex r2-3 (minor): setup's home and the tests' home are not connected in CI | Adopted | 2.8: one literal home is `PRACTONAUT_HOME` for setup, `PN_DRAWIO_HOME` for the layer and the deletion step's target; the workflow check asserts it, with a two-homes fixture |
+| r2-07 (Opus, minor): the draw.io layer in the step with the global `require` can detect nothing | Adopted | 2.8, 7.3, 7.5: its own step after the lifting step, the variable absent at every level and asserted; the policy's evidence rests on the unit tests of 7.3 |
+| r2-08 (Opus, minor): against an `http:` stand-in, the redirect-cap test passes for the scheme reason | Adopted | 2.8: allowed schemes as a named seam (`https:` in the product, `http:` in tests), the scheme test redirects outside the injected set, every negative test asserts its reason by name |
+| r2-09 (Opus, minor): `actions/cache/save` or a third-party upload action escapes a name match | Adopted | 2.8: cache and upload actions matched by prefix; any `uses:` not on a list of actions known not to save or publish files fails; the heading names what is checked, and a shell command that copies files is stated as outside the check |
+| r2-10 (Opus, minor): small contradictions | Adopted | 1.3 points to 2.6; "4–5 processes"; the archive-mode medians are labelled as one process under load and the fresh-process figure as the user-facing one; the review row no longer says "verbatim" (the remedy was changed for root and layer cells) |

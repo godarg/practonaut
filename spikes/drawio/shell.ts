@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { crc32, inflateRawSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { cpus, loadavg, release, totalmem } from 'node:os';
 import yauzl from 'yauzl';
@@ -85,8 +86,24 @@ async function fetchPinned(): Promise<void> {
 // ---- the archive, read whole into memory, checked, indexed and served only from that buffer ----
 const safeName = (name: string): boolean => !!name && name.length <= 512 && !name.startsWith('/') && !name.includes('\\') && !/^[A-Za-z]:/.test(name)
   && name.split('/').every(part => part !== '..' && part !== '.' && !/[\u0000-\u001f]/.test(part));
-interface ZipFacts { entries: number; files: number; directories: number; links: number; duplicates: number; encrypted: number; methods: Record<string, number>; maxEntryBytes: number; maxEntryName: string; totalInflatedBytes: number; maxRatio: number; maxRatioName: string; markdownNames: string[] }
-interface Archive { entries: Map<string, yauzl.Entry>; facts: ZipFacts; read(name: string): Promise<Buffer>; timings: { readMs: number; hashMs: number; indexMs: number }; bufferBytes: number }
+interface ZipFacts { entries: number; files: number; directories: number; links: number; duplicateNames: number; encrypted: number; methods: Record<string, number>; maxEntryBytes: number; maxEntryName: string; totalInflatedBytes: number; maxRatio: number; maxRatioName: string; markdownNames: string[] }
+interface ZipAudit { localHeaderMismatches: number; localMethodMismatches: number; inflatedSizeMismatches: number; crcMismatches: number; filesInflated: number; actualInflatedBytes: number; allowlistDeclaredBytes: number; ms: number }
+interface Archive { entries: Map<string, yauzl.Entry>; facts: ZipFacts; read(name: string): Promise<Buffer>; audit(): ZipAudit; timings: { readMs: number; hashMs: number; indexMs: number }; bufferBytes: number }
+/** One entry's bytes straight from the in-memory archive: the local header is read from the buffer,
+ * its name must equal the central directory's, and a deflated entry is inflated with
+ * `maxOutputLength` set to the declared size; size and CRC-32 must then match the directory. */
+function inflateEntry(buffer: Buffer, entry: yauzl.Entry): { data: Buffer; nameMatches: boolean; methodMatches: boolean } {
+  const at = entry.relativeOffsetOfLocalHeader;
+  if (buffer.readUInt32LE(at) !== 0x04034b50) throw new Error(`no local header for ${entry.fileName}`);
+  const method = buffer.readUInt16LE(at + 8), nameLength = buffer.readUInt16LE(at + 26), extraLength = buffer.readUInt16LE(at + 28);
+  const localName = buffer.subarray(at + 30, at + 30 + nameLength);
+  const start = at + 30 + nameLength + extraLength, compressed = buffer.subarray(start, start + entry.compressedSize);
+  if (entry.uncompressedSize > 32 * 1024 * 1024) throw new Error('entry larger than 32 MiB');
+  const data = entry.compressionMethod === 0 ? Buffer.from(compressed) : entry.compressionMethod === 8 ? inflateRawSync(compressed, { maxOutputLength: Math.max(1, entry.uncompressedSize) }) : (() => { throw new Error('compression method not allowed'); })();
+  if (data.length !== entry.uncompressedSize) throw new Error(`inflated size differs for ${entry.fileName}`);
+  if ((crc32(data) >>> 0) !== (entry.crc32 >>> 0)) throw new Error(`CRC-32 differs for ${entry.fileName}`);
+  return { data, nameMatches: localName.equals(entry.fileNameRaw), methodMatches: method === entry.compressionMethod };
+}
 async function openArchive(): Promise<Archive> {
   const t0 = performance.now();
   const buffer = readFileSync(ARCHIVE);
@@ -95,21 +112,23 @@ async function openArchive(): Promise<Archive> {
   const t2 = performance.now();
   if (buffer.length !== pin.size || sha256 !== pin.sha256) throw new Error('kept archive does not match pin.json');
   const zip = await new Promise<yauzl.ZipFile>((ok, fail) => yauzl.fromBuffer(buffer, { lazyEntries: true, validateEntrySizes: true, strictFileNames: true }, (error, file) => error ? fail(error) : ok(file)));
-  const entries = new Map<string, yauzl.Entry>();
-  const facts: ZipFacts = { entries: 0, files: 0, directories: 0, links: 0, duplicates: 0, encrypted: 0, methods: {}, maxEntryBytes: 0, maxEntryName: '', totalInflatedBytes: 0, maxRatio: 0, maxRatioName: '', markdownNames: [] };
+  const entries = new Map<string, yauzl.Entry>(), all: yauzl.Entry[] = [], names = new Set<string>();
+  const facts: ZipFacts = { entries: 0, files: 0, directories: 0, links: 0, duplicateNames: 0, encrypted: 0, methods: {}, maxEntryBytes: 0, maxEntryName: '', totalInflatedBytes: 0, maxRatio: 0, maxRatioName: '', markdownNames: [] };
   await new Promise<void>((ok, fail) => {
     zip.on('error', fail); zip.on('end', () => ok());
     zip.on('entry', (entry: yauzl.Entry) => {
-      facts.entries++;
+      facts.entries++; all.push(entry);
       const mode = (entry.externalFileAttributes >>> 16) & 0o170000;
       if (!safeName(entry.fileName)) { fail(new Error('unsafe entry name')); return; }
+      // Duplicates over every entry, files and directories alike.
+      if (names.has(entry.fileName)) facts.duplicateNames++;
+      names.add(entry.fileName);
       if (mode === 0o120000) facts.links++;
       if (entry.generalPurposeBitFlag & 1) facts.encrypted++;
       facts.methods[String(entry.compressionMethod)] = (facts.methods[String(entry.compressionMethod)] ?? 0) + 1;
       if (entry.fileName.endsWith('/')) facts.directories++;
       else {
         facts.files++;
-        if (entries.has(entry.fileName)) facts.duplicates++;
         entries.set(entry.fileName, entry);
         facts.totalInflatedBytes += entry.uncompressedSize;
         if (entry.uncompressedSize > facts.maxEntryBytes) { facts.maxEntryBytes = entry.uncompressedSize; facts.maxEntryName = entry.fileName; }
@@ -123,18 +142,33 @@ async function openArchive(): Promise<Archive> {
     zip.readEntry();
   });
   const t3 = performance.now();
+  // Served files are inflated once; concurrent requests for one entry share one pending inflation.
+  const cache = new Map<string, Promise<Buffer>>();
   return {
     entries, facts, bufferBytes: buffer.length, timings: { readMs: ms(t1 - t0), hashMs: ms(t2 - t1), indexMs: ms(t3 - t2) },
-    read: name => new Promise<Buffer>((ok, fail) => {
+    read: name => {
       const entry = entries.get(name);
-      if (!entry || entry.uncompressedSize > 32 * 1024 * 1024) { fail(new Error('no such entry')); return; }
-      zip.openReadStream(entry, (error, stream) => {
-        if (error || !stream) { fail(error ?? new Error('no stream')); return; }
-        const chunks: Buffer[] = []; let size = 0;
-        stream.on('data', (c: Buffer) => { size += c.length; if (size > 32 * 1024 * 1024) stream.destroy(new Error('entry larger than 32 MiB')); else chunks.push(c); });
-        stream.on('error', fail); stream.on('end', () => ok(Buffer.concat(chunks)));
-      });
-    }),
+      if (!entry) return Promise.reject(new Error('no such entry'));
+      let pending = cache.get(name);
+      if (!pending) { pending = Promise.resolve().then(() => inflateEntry(buffer, entry).data); cache.set(name, pending); }
+      return pending;
+    },
+    audit: () => {
+      const a0 = performance.now();
+      const audit: ZipAudit = { localHeaderMismatches: 0, localMethodMismatches: 0, inflatedSizeMismatches: 0, crcMismatches: 0, filesInflated: 0, actualInflatedBytes: 0, allowlistDeclaredBytes: LOADED.reduce((sum, n) => sum + (entries.get(n)?.uncompressedSize ?? 0), 0), ms: 0 };
+      for (const entry of all) {
+        try {
+          const { data, nameMatches, methodMatches } = inflateEntry(buffer, entry);
+          if (!nameMatches) audit.localHeaderMismatches++;
+          if (!methodMatches) audit.localMethodMismatches++;
+          if (!entry.fileName.endsWith('/')) { audit.filesInflated++; audit.actualInflatedBytes += data.length; }
+        } catch (error) {
+          if (/size differs/.test(String(error))) audit.inflatedSizeMismatches++; else if (/CRC/.test(String(error))) audit.crcMismatches++; else throw error;
+        }
+      }
+      audit.ms = ms(performance.now() - a0);
+      return audit;
+    },
   };
 }
 
@@ -213,8 +247,10 @@ async function archiveFacts(): Promise<void> {
     for (const name of LOADED) { const size = (await archive.read(name)).length; bytes += size; if (i === 0) byExtension[extname(name)] = (byExtension[extname(name)] ?? 0) + size; }
     runs.push({ ...archive.timings, inflateMs: ms(performance.now() - t), inflatedBytes: bytes });
   }
-  const html = (await (await openArchive()).read('index.html')).toString('utf8');
-  save('archive', { mode: 'archive', environment: await environment(), facts, indexHtml: /http-equiv\s*=\s*["']Content-Security-Policy/i.test(html) ? 'has a CSP meta element' : 'no CSP meta element', loadedBytesByExtension: byExtension, runs, median: Object.fromEntries(['readMs', 'hashMs', 'indexMs', 'inflateMs'].map(k => [k, median(runs.map(r => r[k]!))])), nodeAfter: nodeMemory() });
+  const audited = await openArchive();
+  const audit = audited.audit();
+  const html = (await audited.read('index.html')).toString('utf8');
+  save('archive', { mode: 'archive', environment: await environment(), facts, audit, indexHtml: /http-equiv\s*=\s*["']Content-Security-Policy/i.test(html) ? 'has a CSP meta element' : 'no CSP meta element', loadedBytesByExtension: byExtension, runs, median: Object.fromEntries(['readMs', 'hashMs', 'indexMs', 'inflateMs'].map(k => [k, median(runs.map(r => r[k]!))])), nodeAfter: nodeMemory() });
 }
 
 /** One cold start in this (fresh) process: archive read, hash and index, then the shell and the app. */
@@ -400,9 +436,12 @@ function summary(): void {
     pin: { tag: pin.tag, asset: pin.asset, bytes: pin.size, sha256: pin.sha256 },
     environment: runs[0]?.environment ?? cold?.environment ?? null,
     download: fetched ? { source: fetched.source, finalHost: fetched.finalHost, bytes: fetched.bytes, seconds: fetched.seconds } : null,
-    archive: cost ? { facts: { ...cost.facts, markdownNames: undefined, markdownFiles: cost.facts.markdownNames.length, markdownOutsideWebInf: cost.facts.markdownNames.filter((n: string) => !/^(WEB-INF|META-INF)\//i.test(n)) }, indexHtml: cost.indexHtml, loadedBytesByExtension: cost.loadedBytesByExtension, medianMs: cost.median, runs: cost.runs.length, nodeAfterBytes: cost.nodeAfter } : null,
+    archive: cost ? { audit: cost.audit, facts: { ...cost.facts, markdownNames: undefined, markdownFiles: cost.facts.markdownNames.length, markdownOutsideWebInf: cost.facts.markdownNames.filter((n: string) => !/^(WEB-INF|META-INF)\//i.test(n)) }, indexHtml: cost.indexHtml, loadedBytesByExtension: cost.loadedBytesByExtension, medianMs: cost.median, runs: cost.runs.length, nodeAfterBytes: cost.nodeAfter } : null,
     coldStartFreshProcess: cold ? { definition: cold.definition, median: cold.median, range: cold.range, perStart: cold.cold.map((c: Record<string, unknown>) => ({ processToFirstLoadMs: c.processToFirstLoadMs, archiveMs: c.archiveMs, shellToFirstLoadMs: c.shellToFirstLoadMs, refused: (c.refused as unknown[]).length, nodeRssBytes: (c.node as Record<string, number>).rss })), servedFiles: cold.cold[0]?.served.length, servedBytes: cold.cold[0]?.servedBytes } : null,
     replay: runs.map(r => ({ run: r.run, order: r.order, totals: r.totals, latency: r.latency, wallSeconds: r.wallSeconds, loadAverage1m: r.environment?.loadAverage1m, peakChromiumRssBytes: r.memory.peakChromium, peakNodeRssBytes: r.memory.peakNode, nodeEnd: r.nodeEnd, archiveBufferBytes: r.archiveBufferBytes, peakProcesses: r.memory.peakProcesses, samples: r.memory.samples, refused: r.refused.length, servedFiles: r.served.files, failures: r.failures.length, firstFailures: r.failures.slice(0, 3), consoleErrors: r.console.length })),
+    // Run 4 (optional): the same sequences after the serving path changed to one inflation per entry
+    // with maxOutputLength and CRC-32 (round 2); it must give the same app output as run 1.
+    servingPathCheck: (() => { const r4 = read('replay-run4'); if (!r4 || !byKey[0]) return null; const m = new Map<string, string>((r4.sequences as Array<Record<string, unknown>>).map(s => [s.key as string, JSON.stringify([s.exportChain, s.finalPng, s.passed, s.errors])])); return { run: 4, order: r4.order, totals: r4.totals, failures: r4.failures.length, refused: r4.refused.length, loadAverage1m: r4.environment?.loadAverage1m, differFromRun1: keys.filter(k => m.get(k) !== byKey[0]!.get(k)).length }; })(),
     replayRunsAgree: runs.length === 3 ? { sequences: keys.length, comparedPerSequence: 'raw export after every step (diagram id normalised), final PNG bytes, verdict and error classes', disagreements: disagreements.length, pngDisagreements: pngDisagreements.length, firstDisagreements: disagreements.slice(0, 5) } : null,
     probes: probed ? { servedLang_de: probed.servedLang_de, servedLang_en: probed.servedLang_en, refusedLang: [probed.refusedLang_de.length, probed.refusedLang_en.length], emptyPng: probed.emptyPng, originGeometryReadBack: probed.originGeometry.readBack, idsFullWriteCheck: probed.ids.fullWriteCheck, fileAttributes: probed.ids.fileAttributes, mxfileHost: probed.ids.mxfileHost, png: probed.png, svg: probed.svg, svgWithWrap: probed.svgWithWrap, refused: probed.refused.length } : null,
   }, (_k, v) => v === undefined ? undefined : v, 1) + '\n');
