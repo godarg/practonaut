@@ -79,6 +79,9 @@ export interface PrivateWorldSource {
 export type WorldSchemaId = "practonaut.world/1" | "practonaut.world/2";
 export interface World {
   schema: WorldSchemaId; id: string; version: string;
+  /** world/2: the task set whose id and version select variant cases instead of the world's own
+   * (PADR-0044 decision 3); absent, the world's own id and version. */
+  taskSet?: { id: string; version: string };
   app: { adapterId: "excalidraw"; versionRange: "0.18.1"; fontFamilies: number[]; excludedAttributes: Record<string, string> };
   units: Record<string, string>;
   objectTypes: Array<{ type: ObjectType; attributes: Record<string, "string" | "integer" | "id" | "nullable-id" | "boolean"> }>;
