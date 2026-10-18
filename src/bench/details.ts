@@ -24,7 +24,7 @@ import { validateState } from '../world/schema.ts';
 import { worldEra, type Action, type Localized, type SessionData, type State, type World } from '../world/types.ts';
 import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
-import { nativeFileOf, type BenchReportView, type SessionReportView, type ViewSessionRun } from './view.ts';
+import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
 import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
@@ -249,7 +249,8 @@ export function firstDifference(final: State, target: State): number | null {
 }
 
 /** Reads the details of every run from `folder` (the bench folder); `null` folder: none given. */
-export async function loadReportDetails(report: BenchReportView, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
+export async function loadReportDetails(input: ReportInput, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
+  const report = asView(input);
   const runs = new Map<string, RunDetail>();
   const explanations = await libraryExplanations(report).catch(() => new Map<string, Localized>());
   // An artifact-judged run has no session, trajectory or trace to explain it (PADR-0044 decision 1).

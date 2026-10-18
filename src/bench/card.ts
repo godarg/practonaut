@@ -20,7 +20,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { BenchReportView, ViewRun } from './view.ts';
+import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
 import { headline, instanceOutcome, type Verification } from './render.ts';
@@ -198,12 +198,10 @@ interface Fact { kind: 'confirmed' | 'open'; text: string }
 /** The evidence of a report, in words: verification, mirror, isolation, model, runs without a verdict, interruption. */
 function facts(report: BenchReportView, verification: Verification, language: Language): Fact[] {
   const t = TEXT[language], out: Fact[] = [];
-  // Only a re-verified report confirms what it says about the level, the mirror and the isolation;
+  // Only a re-verified report confirms what it says about the mirror and the isolation;
   // otherwise these are claims of the file, with the same words and the open mark.
   const confirmed = verification === 're-verified' ? 'confirmed' : 'open';
   out.push(verification === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
-  // The verdict level, also for a session report (PADR-0044 decision 1).
-  out.push({ kind: confirmed, text: report.verdictLevel === 'session' ? t.cardLevelSession : t.cardLevelArtifact });
   if (report.verdictLevel === 'session') out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
   if (report.toolchain.kind === 'foreign-mcp') out.push({ kind: 'open', text: t.cardNoSandbox });
   const isolation = report.agent.isolation;
@@ -235,7 +233,8 @@ const worldLine = (report: BenchReportView, t: Words, language: Language): strin
 const accessibleName = (report: BenchReportView, language: Language, verification: Verification): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
 
 /** The card of a report in one theme: an SVG of 1280 × 640 px. */
-export function renderCard(report: BenchReportView, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderCard(input: ReportInput, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+  const report = asView(input);
   const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
   const m = (className: string): Metrics => metricsOf(className, tokens, all);
   const space = (step: number): number => numeric(`--pn-space-${step}`, tokens);
@@ -244,7 +243,9 @@ export function renderCard(report: BenchReportView, tokensCss: string, theme: Th
 
   // Header: what this is and when, whose runs, the label.
   const eyebrow = m('card-eyebrow'), title = m('card-title'), label = m('card-label');
-  parts.push(paragraph('card-eyebrow', [t.title.toLocaleUpperCase(language)], padX, padY, eyebrow), paragraph('card-date', [report.createdAt.slice(0, 10)], right, padY, m('card-date'), 'end'));
+  // The verdict level beside what this is, also for a session report (PADR-0044 decision 1).
+  const level = report.verdictLevel === 'session' ? t.badgeLevelSession : t.badgeLevelArtifact;
+  parts.push(paragraph('card-eyebrow', [`${t.title} · ${level}`.toLocaleUpperCase(language)], padX, padY, eyebrow), paragraph('card-date', [report.createdAt.slice(0, 10)], right, padY, m('card-date'), 'end'));
   let y = padY + eyebrow.leading + space(2);
   parts.push(paragraph('card-title', wrap(report.agent.name, contentWidth, title, 1), padX, y, title));
   y += title.leading;
@@ -307,7 +308,8 @@ export function renderCard(report: BenchReportView, tokensCss: string, theme: Th
 }
 
 /** The badge: one line in a chip, light, and dark where the reader's system prefers it. */
-export function renderBadge(report: BenchReportView, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderBadge(input: ReportInput, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+  const report = asView(input);
   const t = TEXT[language], themes = tokenThemes(tokensCss), tokens = themes.light, all = rules();
   const metrics = metricsOf('badge-text', tokens, all), name = { ...metrics, bold: true };
   const instances = instanceOutcome(report.runs), interval = intervalPercent(instances.passed, instances.instances);

@@ -10,12 +10,12 @@ import { fileURLToPath } from 'node:url';
 import { libraryWorld, runBench, type BenchOptions } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
 import { ownBenchWorld } from '../../src/bench/world.ts';
-import { summarize, validateBenchReport, validateBenchReportV2, type BenchReport, type BenchReportV2 } from '../../src/bench/report.ts';
+import { summarize, validateBenchReport, validateBenchReportV3, type BenchReport, type SessionReportV3 } from '../../src/bench/report.ts';
 import { loadReportDetails } from '../../src/bench/details.ts';
 import { detailWords, readTokensCss, renderHtml, renderTable, type Verification } from '../../src/bench/render.ts';
 import { compareReports, differences } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderIncomparableHtml, type CompareInput } from '../../src/bench/render-compare.ts';
-import { verifyBenchV2 } from '../../src/bench/verify.ts';
+import { verifyBenchV3 } from '../../src/bench/verify.ts';
 import type { Language } from '../../src/bench/rates.ts';
 import { arrow, between, box, scene } from './scenes.ts';
 
@@ -52,7 +52,7 @@ export const SOLVING: Script = {
   group: { steps: [{ act: 'group_steps', params: { id: 'b', with: 'a' } }, { act: 'group_steps', params: { id: 'c', with: 'a' } }] },
 };
 
-export interface Bench { report: BenchReportV2; directory: string }
+export interface Bench { report: SessionReportV3; directory: string }
 const base = { seeds: [1], repeats: 1, timeoutSeconds: 60, maxActions: 50, mirrorRequested: 'off' as const, mirror: 'off' as const };
 const template = (mode: string): BenchOptions['agent'] => resolveAgent(`${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} ${mode} {mcp_config}`);
 
@@ -96,7 +96,7 @@ export interface Fixtures {
 
 /** Refuses a fixture bench that did not play as its script says: a fixture whose agent could not run
  * would make every state built from it show the wrong thing (and still pass a scan). */
-function expectBench(name: string, bench: Bench, expected: { status: BenchReportV2['runs'][number]['status']; pass?: boolean; acted?: boolean }): Bench {
+function expectBench(name: string, bench: Bench, expected: { status: SessionReportV3['runs'][number]['status']; pass?: boolean; acted?: boolean }): Bench {
   for (const run of bench.report.runs) {
     const problem = run.status !== expected.status ? `ended ${run.status} (exit ${run.agentExitCode}), expected ${expected.status}`
       : expected.pass !== undefined && run.pass !== expected.pass ? `${run.pass ? 'passed' : 'failed'}, expected ${expected.pass ? 'a pass' : 'a failure'}` : null;
@@ -154,30 +154,30 @@ export interface ReportState {
 }
 
 /** A report whose given runs were not judged (an infrastructure fault), still valid: for compare. */
-export function withUnjudged(report: BenchReportV2, runIds: readonly string[]): BenchReportV2 {
+export function withUnjudged(report: SessionReportV3, runIds: readonly string[]): SessionReportV3 {
   const value = structuredClone(report);
   for (const run of value.runs) if (runIds.includes(run.id)) {
-    Object.assign(run, { status: 'infra_error', pass: false, checker: null, agentExitCode: null, note: 'fixture: not judged' });
+    Object.assign(run, { status: 'infra_error', pass: false, checker: null, agentExitCode: null, note: 'fixture: not judged', failure: { reason: 'runner', parser: null, code: null, beforeModelWork: null } });
     delete run.artifacts;
   }
-  value.summary = summarize(value.runs, value.settings.repeats);
-  return validateBenchReportV2(value);
+  value.summary = summarize(value.runs, value.settings.repeats, run => run.agentActions);
+  return validateBenchReportV3(value) as SessionReportV3;
 }
 /** Only the first repeat of every instance: single runs, for compare. */
-export function firstRepeats(report: BenchReportV2): BenchReportV2 {
+export function firstRepeats(report: SessionReportV3): SessionReportV3 {
   const value = structuredClone(report);
   value.runs = value.runs.filter(run => run.repeat === 1); value.settings.repeats = 1;
-  value.summary = summarize(value.runs, 1);
-  return validateBenchReportV2(value);
+  value.summary = summarize(value.runs, 1, run => run.agentActions);
+  return validateBenchReportV3(value) as SessionReportV3;
 }
 /** Every named state of the report and compare pages (PADR-0039 B, C). */
 export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   if (!all.good || !all.bad) throw new Error('reportStates needs the compare fixtures: fixtureBenches(folder, { compare: true })');
   const fixtures = all as Fixtures & { good: Bench; bad: Bench };
   const v1 = validateBenchReport(JSON.parse(await readFile(V1_REPORT, 'utf8')));
-  await verifyBenchV2(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
+  await verifyBenchV3(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();
-  const side = (report: BenchReportV2, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
+  const side = (report: SessionReportV3, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
   const compared = (baseline: CompareInput, candidate: CompareInput) => async (language: Language): Promise<string> => renderCompareHtml(baseline, candidate, compareReports(baseline.report, candidate.report), tokens, language);
   const good = side(fixtures.good.report, 'good'), bad = side(fixtures.bad.report, 'bad');
   // The good bench again, with one repeat of restyle-flow seed 2 and all of group seed 3 not judged.

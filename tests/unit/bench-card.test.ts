@@ -84,11 +84,14 @@ test('the card carries n, the interval, verification, mirror, isolation and the 
   for (const phrase of ['2/3 bestanden', '95-%-Intervall 20–94 % über 3 Instanzen (je ein Lauf)', 'n = 3 Läufe · 3 Seeds · 1 Wiederholung', 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt',
     'Nur Modell: nicht mit dem echten Excalidraw geprüft', 'Eingebaute Vergleichsbasis: kein Sprachmodell, nur MCP', 'Nicht versiegelt: Der Agent lief unter demselben Benutzer wie Practonaut.']) assert.ok(hasText(de, phrase), `${phrase}\n${texts(de).join('\n')}`);
   assert.match(de, /^<svg [^>]*xml:lang="de"/);
+  // The verdict level is named beside what the card is, also for a session report (PADR-0044 decision 1).
+  assert.ok(hasText(en, 'PRACTONAUT BENCH · SESSION VERDICT'), texts(en).join('\n'));
+  assert.ok(hasText(de, 'PRACTONAUT-BENCH · SITZUNGSURTEIL'), texts(de).join('\n'));
   // One unit: with one run per instance the headline does not switch between runs and instances.
   assert.equal(texts(en).some(text => /runs passed/.test(text)), false, texts(en).join('\n'));
   assert.equal(texts(de).some(text => /Läufe bestanden/.test(text)), false);
   // The accessible name repeats the whole header line.
-  assert.match(en, /<title>Practonaut bench: oracle · 2\/3 passed · 95 % interval 20–94 % over 3 instances · re-verified from the artifacts · model only \(no mirror\) · built-in baseline: no language model, MCP only<\/title>/);
+  assert.match(en, /<title>Practonaut bench: oracle · 2\/3 passed · 95 % interval 20–94 % over 3 instances · session verdict · re-verified from the artifacts · model only \(no mirror\) · built-in baseline: no language model, MCP only<\/title>/);
   assert.deepEqual([parseXml(en).attributes.get('width'), parseXml(en).attributes.get('height')], [String(CARD_SIZE.width), String(CARD_SIZE.height)]);
   assert.deepEqual([CARD_SIZE.width, CARD_SIZE.height], [1280, 640]);
 });
@@ -114,7 +117,7 @@ test('runs without a verdict are counted on the card and the badge, never hidden
   // Wilson 1/2 (by hand): centre 0.5, half-width 0.4054, so 0.0946 … 0.9054, shown 9–91 %.
   for (const phrase of ['1/2', 'instances passed', 'n = 6 runs, 3/6 passed · 2 seeds · 3 repeats', '1 run without a verdict, counted as not passed', 'An instance passed when at least half of all its runs passed.']) assert.ok(hasText(svg, phrase), `${phrase}\n${texts(svg).join('\n')}`);
   assert.deepEqual(factMarks(svg).find(([text]) => text.includes('without a verdict'))?.[1], 'open');
-  assert.ok(hasText(badge(value), '1/2 instances passed · 95 % interval 9–91 % · consistency-checked only · built-in baseline · model only · 1 without a verdict'));
+  assert.ok(hasText(badge(value), '1/2 instances passed · 95 % interval 9–91 % · session verdict · consistency-checked only · built-in baseline · model only · 1 without a verdict'));
   assert.ok(hasText(card(value, 'de'), '1 Lauf ohne Urteil, als nicht bestanden gezählt'));
   // Two runs: the plural.
   assert.ok(hasText(card(report({ outcomes: ['unjudged', 'unjudged', 'pass'] })), '2 runs without a verdict, counted as not passed'));

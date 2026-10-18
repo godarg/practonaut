@@ -175,7 +175,7 @@ test('rendering names label, isolation level, world, generated instances and "no
   // A /1 report did not record its isolation level or a world line; its header line says so.
   const v1 = JSON.parse(readFileSync(new URL('../fixtures/bench/v1/report.json', import.meta.url), 'utf8'));
   const old = renderTable(validateBenchReport(v1));
-  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\)$/m);
+  assert.match(old, /^2\/2 passed · 95 % interval 34–100 % over 2 instances · session verdict · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\)$/m);
   assert.equal(/^World:/m.test(old), false);
 });
 

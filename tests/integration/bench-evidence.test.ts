@@ -14,7 +14,7 @@ import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
 import { parseCallLog, parseMutations } from '../../src/bench/evidence.ts';
 import { sha256Hex } from '../../src/canonical/index.ts';
-import type { BenchReportV2 } from '../../src/bench/report.ts';
+import type { SessionReportV3 as BenchReportV2 } from '../../src/bench/report.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));

@@ -15,7 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { VerdictLevel } from './report.ts';
-import type { ArtifactReportView, BenchReportView, SessionReportView, ViewArtifactRun, ViewRun, ViewSessionRun } from './view.ts';
+import { asView, type ArtifactReportView, type BenchReportView, type ReportInput, type SessionReportView, type ViewArtifactRun, type ViewRun, type ViewSessionRun } from './view.ts';
 import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
@@ -280,7 +280,8 @@ export function runStates(run: ViewSessionRun, detail: RunDetail | undefined, de
   return states;
 }
 
-export function renderTable(report: BenchReportView, language: Language = 'en', details?: ReportDetails, verification: Verification = 'consistency-checked'): string {
+export function renderTable(input: ReportInput, language: Language = 'en', details?: ReportDetails, verification: Verification = 'consistency-checked'): string {
+  const report = asView(input);
   if (report.verdictLevel === 'artifact') return renderArtifactTable(report, language, verification);
   const t = TEXT[language], s = report.summary, lines: string[] = [];
   lines.push(`${t.title}  ${shown(report.agent.name)}`);
@@ -487,7 +488,8 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
   return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary>${summary}</summary><div class="run-body">${parts.join('')}</div></details>`;
 }
 
-export function renderHtml(report: BenchReportView, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+export function renderHtml(input: ReportInput, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+  const report = asView(input);
   if (report.verdictLevel === 'artifact') return renderArtifactHtml(report, tokensCss, language, verification);
   const t: Words = TEXT[language], s = report.summary, e = report.environment;
   const passHat = allRepeats(report, language), repeated = allRepeatsCount(report), efficiency = efficiencyText(report, language);

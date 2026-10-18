@@ -24,7 +24,7 @@
  * written as visible `\u{…}` escapes, as the terminal output shows them.
  */
 import { readableText } from '../cli/output.ts';
-import type { BenchReportView, ViewRun } from './view.ts';
+import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { fill, TEXT } from './report-text.ts';
 import type { Language } from './rates.ts';
 import { errorClassesOf, headline, runStates, statusWords, type State, type Verification } from './render.ts';
@@ -98,7 +98,8 @@ function properties(report: BenchReportView, verification: Verification, languag
 
 /** The JUnit XML of a validated report. `details` (the bench folder) names the unmet conditions; without
  * it a failure still names its error classes and says where the conditions are shown. */
-export function renderJunit(report: BenchReportView, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+export function renderJunit(input: ReportInput, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+  const report = asView(input);
   const t = TEXT[language];
   const worldId = report.environment.world.worldId;
   // The schema's timestamp has no fraction and no zone: the report's creation time, in UTC.

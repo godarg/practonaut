@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
-import { summarize, validateBenchReport, type BenchReportV2 as BenchReport } from '../../src/bench/report.ts';
+import { summarize, validateBenchReport, type SessionReportV3 as BenchReport } from '../../src/bench/report.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
@@ -27,14 +27,14 @@ test('CLI: oracle passes every run with the real mirror; report renders; a forge
     // The native-export artifacts are re-judged as well when the report lives outside its run directory.
     const verified = spawnSync(process.execPath, [CLI, 'report', out, '--verify', '--runs', join(benchRoot, runs[0]!)], { encoding: 'utf8' });
     assert.equal(verified.status, 0, verified.stderr); assert.match(verified.stdout, /Re-verified: 6 runs re-judged by the checker from their artifacts, against the world stored in the bench folder \(excalidraw-library [^)]+\); every verdict matches \(0 not judged\); 3 references re-checked/);
-    const report = validateBenchReport(JSON.parse(await readFile(out, 'utf8')));
+    const report = validateBenchReport(JSON.parse(await readFile(out, 'utf8'))) as BenchReport;
     assert.deepEqual([report.summary.runs, report.summary.passed, report.summary.passAt1, report.environment.mirror], [6, 6, 1, 'required']);
     for (const run of report.runs) { assert.equal(run.checker?.native?.passed, true, run.id); assert.equal(run.actions, run.referenceActions); }
     assert.equal(JSON.stringify(report).includes(dir), false, 'no absolute run paths in the report');
     const html = join(dir, 'oracle.html');
     const rendered = spawnSync(process.execPath, [CLI, 'report', out, '--html', html], { encoding: 'utf8' });
     // Six of six as a fraction with its Wilson interval (6/6: 0.6097 … 1, shown outward as 60–100 %).
-    assert.equal(rendered.status, 0, rendered.stderr); assert.match(rendered.stdout, /^6\/6 passed · 95 % interval 60–100 % over 6 instances · consistency-checked, not re-verified · real Excalidraw mirror/m);
+    assert.equal(rendered.status, 0, rendered.stderr); assert.match(rendered.stdout, /^6\/6 passed · 95 % interval 60–100 % over 6 instances · session verdict · consistency-checked, not re-verified · real Excalidraw mirror/m);
     assert.match(await readFile(html, 'utf8'), /^<!doctype html>/);
     // Negative control at the CLI: one failed run rewritten to pass, with the summary recomputed by hand.
     const forged = structuredClone(report) as BenchReport; forged.runs[0]!.checker!.session.passed = false;
@@ -86,7 +86,7 @@ test('report --verify re-judges every run from its artifacts; a consistent forge
   assert.deepEqual([verification.level, verification.reverified, verification.unjudged, verification.references, verification.world.id], ['re-verified', 2, 0, 2, 'excalidraw-library']);
   // A forgery that keeps the file consistent: a failed run rewritten to pass, the summary recomputed.
   const forged = structuredClone(report) as BenchReport; const target = forged.runs[0]!;
-  target.checker!.session = { passed: true, errorClasses: [] }; target.pass = true; forged.summary = summarize(forged.runs, 1);
+  target.checker!.session = { passed: true, errorClasses: [] }; target.pass = true; forged.summary = summarize(forged.runs, 1, run => run.agentActions);
   const forgedPath = join(directory, 'forged.json'); await writeFile(forgedPath, JSON.stringify(forged));
   const consistent = cli(forgedPath); assert.equal(consistent.status, 0, 'the consistency check alone cannot see it'); assert.match(consistent.stdout, /not re-verified/);
   const refused = cli(forgedPath, '--verify'); assert.equal(refused.status, 2); assert.match(refused.stderr, /verdict differs from the re-run checker.*\[bench_report_invalid\]/); assert.equal(refused.stdout, '');

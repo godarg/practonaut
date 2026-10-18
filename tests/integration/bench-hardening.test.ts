@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
-import { summarize, type BenchReportV2 as BenchReport } from '../../src/bench/report.ts';
+import { summarize, type SessionReportV3 as BenchReport } from '../../src/bench/report.ts';
 import { loadLibrary } from '../../src/library/index.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -31,7 +31,7 @@ test('report --verify re-derives the reference length, the final history and the
   const path = join(directory, 'report.json'); await writeFile(path, JSON.stringify(report));
   assert.equal(verify(path).status, 0);
   const forge = async (name: string, mutate: (value: BenchReport) => void): Promise<ReturnType<typeof verify>> => {
-    const value = structuredClone(report); mutate(value); value.summary = summarize(value.runs, 1);
+    const value = structuredClone(report); mutate(value); value.summary = summarize(value.runs, 1, run => run.agentActions);
     const forged = join(directory, `${name}.json`); await writeFile(forged, JSON.stringify(value));
     // The forgery is internally consistent: without --verify it is accepted.
     assert.equal(spawnSync(process.execPath, [CLI, 'report', forged], { encoding: 'utf8' }).status, 0, `${name} passes the consistency check`);

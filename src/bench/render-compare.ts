@@ -10,14 +10,16 @@ import { agentKindDiffers, isolationOf, levelsDiffer, type Comparison, type Diff
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
 import { banner, chips, escapeHtml as esc, levelText, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, type Verification } from './render.ts';
-import type { BenchReportView } from './view.ts';
+import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
 
 /** One side: its report (read through the view, any version), how it was verified and the name it goes by (label or file name). */
-export interface CompareInput { report: BenchReportView; verification: Verification; name?: string }
+export interface CompareInput { report: ReportInput; verification: Verification; name?: string }
+interface Side { report: BenchReportView; verification: Verification; name?: string }
+const toSide = (input: CompareInput): Side => ({ ...input, report: asView(input.report) });
 
-const nameOf = (input: CompareInput): string => input.name ?? input.report.label ?? input.report.agent.name;
-const heading = (baseline: CompareInput, candidate: CompareInput, language: Language): string => fill(language, TEXT[language].compareHeading, { baseline: nameOf(baseline), candidate: nameOf(candidate) });
+const nameOf = (input: Side): string => input.name ?? input.report.label ?? input.report.agent.name;
+const heading = (baseline: Side, candidate: Side, language: Language): string => fill(language, TEXT[language].compareHeading, { baseline: nameOf(baseline), candidate: nameOf(candidate) });
 const pValue = (p: number, language: Language): string => p < 0.001 ? '< 0.001' : number(p, 3, language);
 function verdictText(comparison: Comparison, language: Language): string {
   const t = TEXT[language], values = { p: pValue(comparison.p, language), b: comparison.discordant.baselineOnly, c: comparison.discordant.candidateOnly };
@@ -38,7 +40,7 @@ function sideText(side: Comparison['baseline'], language: Language): string {
 }
 /** What travels with each side (vision §6 principle 4): agent, label, model with its source, mirror,
  * isolation level, verification status and date. */
-function sideFacts(input: CompareInput, t: Words, language: Language): string[] {
+function sideFacts(input: Side, t: Words, language: Language): string[] {
   const report = input.report;
   // A built-in has no model: its isolation chip already says "no language model", once.
   const model = report.agent.kind === 'builtin' ? [] : [modelHeadline(report, language)];
@@ -82,7 +84,8 @@ const caveatLine = (caveat: Comparison['caveats'][number], language: Language): 
 };
 const rulesText = (comparison: Comparison, t: Words): string => comparison.pairing === 'identity' ? t.compareRulesIdentity : t.compareRules;
 
-export function renderCompareTable(baseline: CompareInput, candidate: CompareInput, comparison: Comparison, language: Language = 'en'): string {
+export function renderCompareTable(baselineInput: CompareInput, candidateInput: CompareInput, comparison: Comparison, language: Language = 'en'): string {
+  const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language], lines: string[] = [];
   lines.push(readableText(`${t.compareTitle}  ${heading(baseline, candidate, language)}`));
   lines.push(readableText(`${t.baseline}: ${sideFacts(baseline, t, language).join(' · ')}`), readableText(`${t.candidate}: ${sideFacts(candidate, t, language).join(' · ')}`), '');
@@ -121,9 +124,10 @@ const outcomeCell = (aggregate: InstancePair['baseline'], t: Words, language: La
 type Mark = 'pass' | 'fail' | 'unknown' | undefined;
 // (A list item may carry its own mark: [text, mark].)
 const list = (items: ReadonlyArray<string | [string, Mark]>, mark?: Mark, ids: readonly string[] = []): string => `<ul class="flips">${items.map(item => { const [text, own] = typeof item === 'string' ? [item, mark] : item; return `<li>${own ? statusIcon(own) : ''}<span>${prose(text, ids)}</span></li>`; }).join('')}</ul>`;
-const side = (title: string, input: CompareInput, rate: Comparison['baseline'], t: Words, language: Language): string => `<div class="figure"><dt>${esc(title)}</dt><dd>${esc(rate.instances ? rateText(rate.passed, rate.instances, language) : t.none)}</dd><dd class="detail">${esc(sideText(rate, language))}</dd><dd class="detail">${chips(title, sideFacts(input, t, language))}</dd></div>`;
+const side = (title: string, input: Side, rate: Comparison['baseline'], t: Words, language: Language): string => `<div class="figure"><dt>${esc(title)}</dt><dd>${esc(rate.instances ? rateText(rate.passed, rate.instances, language) : t.none)}</dd><dd class="detail">${esc(sideText(rate, language))}</dd><dd class="detail">${chips(title, sideFacts(input, t, language))}</dd></div>`;
 
-export function renderCompareHtml(baseline: CompareInput, candidate: CompareInput, comparison: Comparison, tokensCss: string, language: Language = 'en'): string {
+export function renderCompareHtml(baselineInput: CompareInput, candidateInput: CompareInput, comparison: Comparison, tokensCss: string, language: Language = 'en'): string {
+  const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language];
   const flipWord = (pair: InstancePair): string => noVerdictSide(pair) ? t.flipNoVerdict : pair.flip === 'regression' ? t.flipRegression : pair.flip === 'fix' ? t.flipFix : pair.flip === 'changed-down' || pair.flip === 'changed-up' ? t.flipChanged : pair.flip === 'config-down' || pair.flip === 'config-up' ? t.flipConfig : pair.flip ? t.flipSingle : t.flipNone;
   const rows = comparison.pairs.map(pair => [pair.names ? prose(pairName(pair, language).task, [...pair.names.baseline, ...pair.names.candidate]) : `<code>${esc(pair.taskId)}</code> · ${pair.seed}`, outcomeCell(pair.baseline, t, language), outcomeCell(pair.candidate, t, language), esc(pair.kind === 'paired' ? flipWord(pair) : notComparedLine(pair, language))]);
@@ -154,7 +158,8 @@ ${comparison.caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveat
 }
 
 /** The page for two reports that cannot be compared: every difference, and what to do. */
-export function renderIncomparableHtml(baseline: CompareInput, candidate: CompareInput, found: readonly Difference[], tokensCss: string, language: Language = 'en'): string {
+export function renderIncomparableHtml(baselineInput: CompareInput, candidateInput: CompareInput, found: readonly Difference[], tokensCss: string, language: Language = 'en'): string {
+  const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language];
   const field = (difference: Difference): string => (t as unknown as Record<string, string>)[`field_${difference.field}`] ?? difference.field;
   const items = found.map(difference => fill(language, t.caveatLine, { field: field(difference), baseline: differenceValue(difference, difference.baseline, language), candidate: differenceValue(difference, difference.candidate, language) }));

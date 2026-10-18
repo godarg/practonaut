@@ -26,7 +26,7 @@
  *    counts. Flips are differences between the two configurations, never regressions or fixes.
  */
 import { BENCH_SCHEMA_V3, ISOLATION_OF } from './report.ts';
-import { isolationBasis, isolationOfView, type BenchReportView, type ViewRun } from './view.ts';
+import { asView, isolationBasis, isolationOfView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { aggregateInstance, ALPHA, isInstanceFix, isInstanceRegression, mcnemarExact, REGRESSION_REPEATS, wilson, type InstanceAggregate } from './stats.ts';
 import type { IsolationLevel } from './report.ts';
 
@@ -43,7 +43,7 @@ export class CompareError extends Error {
 
 /** What Practonaut restricted about the agent's tools; a /1 report did not record it, but it follows
  * from the agent kind (PADR-0036). */
-export function isolationOf(report: BenchReportView): IsolationLevel { return isolationOfView(report); }
+export function isolationOf(report: ReportInput): IsolationLevel { return isolationOfView(asView(report)); }
 export function worldHashOf(report: BenchReportView): string { return report.environment.world.contentHash; }
 const worldName = (report: BenchReportView): string => `${report.environment.world.worldId} ${report.environment.world.version} (${report.environment.world.contentHash.slice(0, 12)})`;
 const sorted = <T extends string | number>(values: readonly T[]): T[] => [...values].sort((a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
@@ -61,7 +61,8 @@ export function identityPaired(baseline: BenchReportView, candidate: BenchReport
 export interface CompareOptions { /** `--fail-on-regression`: a regression gate compares one world with itself, under one reading of results. */ regressionGate?: boolean }
 
 /** Every comparability rule a pair of reports breaks (empty: comparable). */
-export function differences(baseline: BenchReportView, candidate: BenchReportView, options: CompareOptions = {}): Difference[] {
+export function differences(baselineInput: ReportInput, candidateInput: ReportInput, options: CompareOptions = {}): Difference[] {
+  const baseline = asView(baselineInput), candidate = asView(candidateInput);
   const found: Difference[] = [];
   // Runs of different verdict levels are never paired (PADR-0043 decision 1): nothing else is compared.
   if (baseline.verdictLevel !== candidate.verdictLevel) return [{ field: 'verdictLevel', baseline: baseline.verdictLevel, candidate: candidate.verdictLevel }];
@@ -178,7 +179,8 @@ function caveatsOf(baseline: BenchReportView, candidate: BenchReportView): Cavea
 }
 
 /** Compares two validated reports; throws `CompareError` naming every difference when they are not comparable. */
-export function compareReports(baseline: BenchReportView, candidate: BenchReportView, options: CompareOptions = {}): Comparison {
+export function compareReports(baselineInput: ReportInput, candidateInput: ReportInput, options: CompareOptions = {}): Comparison {
+  const baseline = asView(baselineInput), candidate = asView(candidateInput);
   const found = differences(baseline, candidate, options);
   if (found.length) throw new CompareError(found);
   return identityPaired(baseline, candidate) ? compareByIdentity(baseline, candidate) : compareByInstance(baseline, candidate);

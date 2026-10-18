@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BENCH_SCHEMA_V2, summarize, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
+import { BENCH_SCHEMA_V2, summarize, validateBenchReport, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 import { compareReports, CompareError, isolationOf } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderCompareTable } from '../../src/bench/render-compare.ts';
 
@@ -95,7 +95,7 @@ test('rate verdicts: exact McNemar on the discordant instances at α = 0.05', ()
   const text = renderCompareTable({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close);
   assert.match(text, /Verdict: rate difference not distinguishable at this n \(exact McNemar p = 0\.063; 0 only on the baseline, 5 only on the candidate\)/);
   // Each side carries its mirror, isolation level and verification status (vision §6, principle 4).
-  assert.match(text, /^Baseline: generic · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
+  assert.match(text, /^Baseline: generic · session verdict · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
   assert.match(text, /^Candidate: generic · .* · model only \(no mirror\) · template: tools not restricted by Practonaut · consistency-checked, not re-verified · /m);
   const page = renderCompareHtml({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close, ':root{}', 'de');
   assert.equal((page.match(/<li class="chip">nur Modell \(keine Spiegelung\)<\/li><li class="chip">Vorlage: Werkzeuge nicht von Practonaut eingeschränkt<\/li>/g) ?? []).length, 2);
@@ -155,7 +155,7 @@ test('a built-in side carries one chip that says "no language model", not two', 
     // Two sides, one such chip each.
     assert.equal(chips.filter(chip => new RegExp(words).test(chip)).length, 2, `${language}: ${chips.join(' | ')}`);
   }
-  assert.match(renderCompareTable(side, side, comparison), /^Baseline: oracle · model only \(no mirror\) · built-in baseline: no language model, MCP only · consistency-checked, not re-verified · 2026-10-14$/m);
+  assert.match(renderCompareTable(side, side, comparison), /^Baseline: oracle · session verdict · model only \(no mirror\) · built-in baseline: no language model, MCP only · consistency-checked, not re-verified · 2026-10-14$/m);
 });
 
 test('incomparable reports are refused, naming every difference', () => {
@@ -173,8 +173,9 @@ test('incomparable reports are refused, naming every difference', () => {
   // Timeout and repeats may differ; they are named as caveats.
   const slower = compareReports(base, report(instances([[true, true]]), value => { value.settings.timeoutSeconds = 60; }));
   assert.deepEqual(slower.caveats.map(caveat => caveat.field), ['timeout', 'repeats']);
-  // A /1 report has no isolation field; it follows from the agent kind (PADR-0036).
-  assert.equal(isolationOf({ schema: 'practonaut.bench/1', agent: { kind: 'builtin' } } as never), 'builtin-baseline');
+  // A /1 report has no isolation field; it follows from the agent kind (PADR-0036): the committed /1
+  // fixture's agent is the built-in oracle.
+  assert.equal(isolationOf(validateBenchReport(JSON.parse(readFileSync(fileURLToPath(new URL('../fixtures/bench/v1/report.json', import.meta.url)), 'utf8')))), 'builtin-baseline');
 });
 
 test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit 2 by name; the HTML escapes report text', () => {
@@ -212,12 +213,12 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     const oracle = write('o.json', report(instances([[true, true, true], [true, true, true]]), value => { value.agent = { kind: 'builtin', name: 'oracle', command: [], isolation: 'builtin-baseline', model: null, modelSource: 'none', apiKeySource: null, keptEnv: [] }; }));
     const kinds = cli(oracle, candidate, '--html', join(dir, 'kinds.html'));
     assert.equal(kinds.status, 2);
-    assert.match(kinds.stderr, /the isolation level differs \(builtin-baseline on the baseline, template-unrestricted on the candidate\)\. The isolation level follows from the agent kind: oracle and random compare only with a built-in, the claude-code preset only with itself, a command template only with a command template\. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings \[compare_incomparable\]/);
+    assert.match(kinds.stderr, /the isolation level differs \(builtin-baseline on the baseline, template-unrestricted on the candidate\)\. The isolation level follows from the agent kind for a built-in or a command template, and for a preset from its runs' evidence \(tool-restricted only when its client listed exactly Practonaut's tools\): oracle and random compare only with a built-in, a tool-restricted preset only with itself, a command template only with a command template or an unrestricted preset\. As the baseline, bench a configuration of the candidate's agent kind that you trust, with the candidate's settings \[compare_incomparable\]/);
     assert.equal(kinds.stderr.includes('Bench the baseline again'), false);
-    assert.match(readFileSync(join(dir, 'kinds.html'), 'utf8').replace(/ /g, ' '), /<p>The isolation level follows from the agent kind: .*As the baseline, bench a configuration of the candidate’s agent kind that you trust, with the candidate’s settings, then compare\.<\/p>/);
+    assert.match(readFileSync(join(dir, 'kinds.html'), 'utf8').replace(/ /g, ' '), /<p>The isolation level follows from the agent kind for a built-in or a command template, and for a preset from its runs’ evidence .*As the baseline, bench a configuration of the candidate’s agent kind that you trust, with the candidate’s settings, then compare\.<\/p>/);
     const german = spawnSync(process.execPath, [CLI, '--lang', 'de', 'compare', oracle, candidate], { encoding: 'utf8' });
     assert.equal(german.status, 2);
-    assert.match(german.stderr, /Die Isolationsstufe folgt aus der Art des Agenten: oracle und random lassen sich nur mit einer eingebauten Vergleichsbasis vergleichen, .* Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen \[compare_incomparable\]/);
+    assert.match(german.stderr, /Die Isolationsstufe folgt bei einer eingebauten Vergleichsbasis und einer Befehlsvorlage aus der Art des Agenten, bei einer Voreinstellung aus dem Nachweis ihrer Läufe .* Als Basis eine vertrauenswürdige Konfiguration derselben Agentenart wie beim Kandidaten benchen, mit dessen Einstellungen \[compare_incomparable\]/);
     const json = JSON.parse(cli(baseline, candidate, '--json').stdout);
     assert.deepEqual([json.comparison.regressions.length, json.comparison.verdict], [1, 'not_distinguishable']);
     const html = renderCompareHtml({ report: report(instances([[true]]), value => { value.label = '<img src=x onerror=alert(1)>'; }), verification: 'consistency-checked' }, { report: report(instances([[true]])), verification: 'consistency-checked' }, compareReports(report(instances([[true]])), report(instances([[true]]))), ':root{}');

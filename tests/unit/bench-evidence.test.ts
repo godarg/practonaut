@@ -140,7 +140,7 @@ test('the checker splits every library goal into the same conditions the Player 
 test('client failures: a usage or rate limit, a login or billing error and a server error are the client\'s; error_max_turns, a context overflow and other 4xx errors are not (review B-A, third review)', () => {
   const lines = (...events: unknown[]): string => events.map(event => JSON.stringify(event)).join('\n') + '\n';
   const init = { type: 'system', subtype: 'init', model: 'claude-opus-5-5' };
-  assert.deepEqual(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'rejected' } })), { reason: 'usage_limit', detail: 'rate_limit_event not allowed' });
+  assert.deepEqual(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'rejected' } })), { reason: 'usage_limit', detail: 'rate_limit_event not allowed', code: 'rejected', beforeModelWork: true });
   assert.equal(clientFailure(lines(init, { type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }, { type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning' } })), null);
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000' }))?.reason, 'usage_limit');
   assert.equal(clientFailure(lines(init, { type: 'result', subtype: 'success', is_error: true, result: 'x', api_error_status: 429 }))?.reason, 'usage_limit');

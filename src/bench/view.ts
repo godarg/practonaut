@@ -118,6 +118,9 @@ export function toView(report: BenchReport): BenchReportView {
   return fromV3(report);
 }
 
+/** What a consumer accepts: a validated source report or its view; either is read through the view. */
+export type ReportInput = BenchReport | BenchReportView;
+export const asView = (input: ReportInput): BenchReportView => 'readFrom' in input ? input : toView(input);
 export const isSessionView = (view: BenchReportView): view is SessionReportView => view.verdictLevel === 'session';
 /** The isolation level a report shows: as recorded, else (/1) from the agent's kind, as /1 consumers always did. */
 export const isolationOfView = (view: BenchReportView): IsolationLevel => view.agent.isolation ?? ISOLATION_OF[view.agent.kind];

@@ -94,7 +94,7 @@ test('HTML is static and self-contained, escapes report text and never shows sta
   // their runs), decision s1 [pass, not judged] passes with 1 of 2 (the unjudged run counts as not
   // passed; half is enough), decision s2 [fail, fail] fails: 3/4.
   // Wilson 3/4 by hand: centre (0.75 + 0.4802) / 1.9604 = 0.6275, half 0.3269 → 30.06–95.44 %, shown 30–96 %.
-  assert.match(table, /^4\/8 runs passed · 3\/4 instances passed \(at least half of all their runs\) · 95 % interval 30–96 % over 4 instances · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\) · model not reported$/m);
+  assert.match(table, /^4\/8 runs passed · 3\/4 instances passed \(at least half of all their runs\) · 95 % interval 30–96 % over 4 instances · session verdict · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\) · model not reported$/m);
   assert.match(table, /^1 not judged \(infrastructure\), counted as not passed$/m);
   assert.match(table, /^n = 8 runs · 2 seeds · 2 repeats$/m);
   // pass^2 for k = repeats: only connect s2 passed both repeats.
