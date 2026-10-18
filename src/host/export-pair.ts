@@ -3,8 +3,7 @@ import {z} from 'zod';
 import {canonicalJson,sha256Hex} from '../canonical/index.ts';
 import {parseJsonEntry} from '../package/json.ts';
 import {parseSession} from '../checker/state.ts';
-import {parseExcalidraw} from '../checker/excalidraw.ts';
-import {parseScene} from '../checker/scene.ts';
+import {nativeFormat} from '../checker/formats.ts';
 import type {SessionData,State,World} from '../world/types.ts';
 import {HOST_LIMITS} from './limits.ts';
 
@@ -46,13 +45,11 @@ export function parseExportPair(input:string|Uint8Array,world:World,native:strin
   return {...parsed,session};
  }catch{throw new ExportPairError();}
 }
-/** Does a native file carry exactly this session state? world/1 reads the strict native format
- * (tombstones included). world/2 reads any drawing with the tolerant scene parser, which keeps
- * live objects only, so both sides are compared without tombstones. Parse failures are a mismatch. */
-export function nativeMatchesState(schema:World['schema'],native:string|Uint8Array,state:State):boolean {
- const live=(value:State):State=>({objects:Object.fromEntries(Object.entries(value.objects).filter(([,object])=>!object.deleted))});
- try {
-  if(schema==='practonaut.world/2')return canonicalJson(live(parseScene(native).state))===canonicalJson(live(state));
-  return canonicalJson(parseExcalidraw(native))===canonicalJson(state);
- }catch{return false;}
+/** Does a native file carry exactly this session state? The parser is the native format of the
+ * world's adapter, from the checker's own table (PADR-0045). For Excalidraw, world/1 reads the
+ * strict native format (tombstones included); world/2 reads any drawing with the tolerant scene
+ * parser, which keeps live objects only, so both sides are compared without tombstones. Parse
+ * failures and an adapter without a format are a mismatch. */
+export function nativeMatchesState(world:Pick<World,'schema'|'app'>,native:string|Uint8Array,state:State):boolean {
+ try {return nativeFormat(world.app).matches(world.schema,native,state);}catch{return false;}
 }

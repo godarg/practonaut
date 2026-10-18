@@ -5,6 +5,7 @@ import { toolSchemasFor, type McpBridgeConfig } from "../mcp/contracts.ts";
 import { checksOption, fallbackNotice, resolveMirror, resolvePracticeSource, startHostWithMirror, type MirrorChoice } from './serve.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { RuntimeError } from './runtime.ts';
+import { WorldError } from '../world/preflight.ts';
 import { safeText } from './output.ts';
 import { startHost } from '../host/server.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
@@ -98,7 +99,9 @@ export async function commandMcp(args: string[]): Promise<number> {
   } catch (error) {
     await host?.close().catch(() => {});
     if (error instanceof McpConfigurationError) process.stderr.write(cliText("mcpRefused", { code: error.code }));
-    else if (error instanceof RuntimeError) throw error;
+    // A refused world (an application this Practonaut does not have, PADR-0045) keeps its named code
+    // and exit 2, as with play and serve; stdout stays clean for JSON-RPC.
+    else if (error instanceof RuntimeError || error instanceof WorldError) throw error;
     else process.stderr.write(cliText("mcpStart"));
     return 3;
   }

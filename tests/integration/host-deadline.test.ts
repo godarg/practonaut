@@ -44,7 +44,7 @@ test('deadline expiration at real core serialization is a timeout, with preserve
  let controller:Awaited<ReturnType<typeof createPracticeController>>|undefined;
  try{
   const module=await import(pathToFileURL(path).href) as typeof import('../../src/host/session.ts');
-  controller=await module.createPracticeController(await world(),{seed:42},createProductionMirror);
+  controller=await module.createPracticeController(await world(),{seed:42},(initial,app)=>createProductionMirror(initial,undefined,app));
   const before=controller.view(),reply=await controller.export({expectedRevision:0});
   assert.equal(reply.ok,false);if(!reply.ok)assert.equal(reply.error.code,'mirror_timeout');
   assert.deepEqual(committed(controller.view()),committed(before));
