@@ -10,6 +10,9 @@
 // plant-board: put a folder where the run's board.svg goes (a mirror run's picture), then solve.
 // stubborn: ignore SIGTERM and never finish; its pid goes to <state>/pids.json (forced-stop path).
 // tasks   : write the task list of a full observe to <PN_TEST_AGENT_STATE>/tasks.json, then exit.
+// direct  : read the token file its MCP config names and ask the host directly over HTTP for a new
+//           variant, a restart of its own task and a hint; the replies and the view afterwards go to
+//           <PN_TEST_AGENT_STATE>/direct.json, then solve.
 // family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
 //           and both sleep; their pids go to <state>/pids.json (interrupt path).
 // init    : print a stream-json system/init line (model pn-test-model, apiKeySource none), then solve.
@@ -22,9 +25,10 @@
 //           | { "check": true } | { "sleep": true }; a param { "created": k } is the id the k-th act made.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { request } from 'node:http';
 import { join } from 'node:path';
 import { StdioMcpClient } from '../../src/bench/mcp-client.ts';
-import type { HostView } from '../../src/host/protocol.ts';
+import { HOST_ROUTES, TOKEN_HEADER, type HostView } from '../../src/host/protocol.ts';
 
 const [mode, configPath] = process.argv.slice(2);
 const text = readFileSync(configPath!, 'utf8');
@@ -100,6 +104,28 @@ else {
   if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
   if (mode === 'plant-log') mkdirSync(join(home, '..', 'mutations.jsonl'), { recursive: true });
   if (mode === 'plant-board') mkdirSync(join(home, '..', 'board.svg'), { recursive: true });
+  if (mode === 'direct') {
+    // What an agent with a shell can do as the same OS user: the bridge's arguments in its own MCP
+    // config name the host and the token file, and the file holds the session token.
+    const argument = (name: string): string => server.args[server.args.indexOf(name) + 1]!;
+    const origin = argument('--host'), token = readFileSync(argument('--token-file'), 'utf8').trim();
+    type Reply = { status: number; value: { ok: boolean; error?: { code: string }; value?: unknown } };
+    const http = (path: string, body?: unknown): Promise<Reply> => new Promise((done, fail) => {
+      const outgoing = request(origin + path, { method: body === undefined ? 'GET' : 'POST', headers: { [TOKEN_HEADER]: token, 'Content-Type': 'application/json' }, agent: false }, response => {
+        const chunks: Buffer[] = []; response.on('data', (chunk: Buffer) => chunks.push(chunk)); response.on('error', fail);
+        response.on('end', () => done({ status: response.statusCode!, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Reply['value'] }));
+      });
+      outgoing.on('error', fail); outgoing.end(body === undefined ? undefined : JSON.stringify(body));
+    });
+    const observe = async (): Promise<HostView> => (await http(HOST_ROUTES.observe)).value.value as HostView;
+    const start = await observe(), replies: Array<{ route: string; status: number; code: string | null }> = [];
+    for (const [route, extra] of [[HOST_ROUTES.variant, { confirmed: true }], [HOST_ROUTES.variant, { confirmed: true, taskId: start.task.id }], [HOST_ROUTES.hint, {}]] as const) {
+      const reply = await http(route, { expectedRevision: (await observe()).revision, ...extra });
+      replies.push({ route, status: reply.status, code: reply.value.error?.code ?? null });
+    }
+    const end = await observe();
+    writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'direct.json'), JSON.stringify({ seed: start.seed, replies, after: { seed: end.seed, revision: end.revision, hintsOpened: end.hintsOpened, hints: end.hints.length } }));
+  }
   const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
   if (mode === 'tasks') {
     const full = await client.call<HostView>('observe', { detail: 'full', lang: 'both' });
