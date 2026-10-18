@@ -47,7 +47,11 @@ jobs:
         run: node tools/build-engine.ts
       - name: H1 native file test
         shell: bash
-        run: node --import ./tests/support/test-home.ts --test --test-reporter=spec --test-name-pattern='^H1 native file' tests/integration/transfer.test.ts
+        run: node --import ./tests/support/test-home.ts --test --test-name-pattern='^H1 native file' --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=h1-native-file.tap tests/integration/transfer.test.ts
+      # A pattern that selects no test still exits 0; this step fails unless the H1 test ran and passed.
+      - name: The H1 native file test ran and passed
+        shell: bash
+        run: node tools/require-test-passed.ts h1-native-file.tap 'H1 native file:'
       # The attempt originals: screenshots (one before Open), page console, terminal record.
       - name: Upload native-transfer evidence on failure
         if: ${{ failure() }}
