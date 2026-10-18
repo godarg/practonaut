@@ -1,4 +1,5 @@
-import { cliText } from './messages.ts';
+import { cliText, getCliLanguage } from './messages.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { chromiumCheck } from './doctor.ts';
 import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, sandboxFallbackNotice } from './browser-start.ts';
@@ -72,8 +73,8 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  if(mirror==='required'){
   // A downloaded app runtime is checked first, before any browser check or start (PADR-0049 decision 1.3).
   if(registration.runtime==='downloaded'){const status=await registration.runtimeStatus!((await resolvedDataPaths()).home);if(!status.ok)throw new RuntimeError(status.code,appRuntimeMessage(registration,status));}
-  if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', headlessShellDownload()));
-  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
+  if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', { ...headlessShellDownload(), app: appDisplayName(registration.id, getCliLanguage()) }));
+  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{app:appDisplayName(registration.id,getCliLanguage()),detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];

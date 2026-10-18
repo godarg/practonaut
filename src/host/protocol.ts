@@ -54,7 +54,8 @@ export interface HistoryItem {
 }
 export interface HostView {
   schema: "practonaut.host/1"; sessionId: string; revision: number;
-  world: { id: string; version: string }; seed: number; variantId: string;
+  /** `adapterId` is the world's `app.adapterId`: clients name the running app by its fixed display name (PADR-0049 decision 1.5). */
+  world: { id: string; version: string; adapterId: string }; seed: number; variantId: string;
   task: { id: string; title: Localized; prompt: Localized; conditions: PublicCondition[]; hintCount: number };
   /** The world's tasks for the task list; `level` (1-3) and `referenceActions` only for library tasks. */
   tasks: Array<{ id: string; title: Localized; level?: 1 | 2 | 3; referenceActions?: number }>;

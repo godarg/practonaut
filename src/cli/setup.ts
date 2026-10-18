@@ -1,4 +1,5 @@
-import { cliText } from './messages.ts';
+import { cliText, getCliLanguage } from './messages.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { displayPath, safeText } from './output.ts';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -24,7 +25,9 @@ export async function commandSetup(args: string[], seams: SetupSeams = {}): Prom
   return setupDrawio(from, { chromium: setupChromium, ...seams });
 }
 
-export async function setupChromium(): Promise<number> {
+/** Chromium for the mirror of `adapterId`'s app, named by its display name (PADR-0049 decision 1.5). */
+export async function setupChromium(adapterId = 'excalidraw'): Promise<number> {
+  const app = appDisplayName(adapterId, getCliLanguage());
   const require = createRequire(import.meta.url);
   let cli: string;
   try { cli = join(dirname(require.resolve('playwright-core/package.json')), 'cli.js'); }
@@ -46,12 +49,12 @@ export async function setupChromium(): Promise<number> {
   });
   // The download is named with its size before anything is fetched; the dry run then names the
   // actual pinned sources and the cache folder, including when everything is cached already.
-  process.stdout.write(cliText('setupStart', { name: HEADLESS_SHELL.name, version: HEADLESS_SHELL.browserVersion, size: headlessShellMegabytes() }));
+  process.stdout.write(cliText('setupStart', { app, name: HEADLESS_SHELL.name, version: HEADLESS_SHELL.browserVersion, size: headlessShellMegabytes() }));
   if (await run(['--dry-run']) !== 0) return 3;
   if (await run([]) !== 0) return 3;
   const installed = await installedHeadlessShell();
   // Megabytes are 10^6 bytes here, as in the download size printed before it.
-  process.stdout.write(installed ? cliText('setupDoneAt', { name: HEADLESS_SHELL.name, path: safeText(displayPath(installed.directory)), size: Math.round(installed.bytes / 1_000_000) }) : cliText("setupDone"));
+  process.stdout.write(installed ? cliText('setupDoneAt', { app, name: HEADLESS_SHELL.name, path: safeText(displayPath(installed.directory)), size: Math.round(installed.bytes / 1_000_000) }) : cliText("setupDone"));
   return 0;
 }
 

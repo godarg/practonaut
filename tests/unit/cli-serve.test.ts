@@ -29,11 +29,11 @@ test('serve defaults: bundled world, seed 42, mirror auto, browser opens', () =>
 
 test('mirror auto falls back to model-only without Chromium or when it does not start; required refuses with a named error; off never probes', async () => {
   const probes = (installed: boolean, starts: StartResult | 'never') => ({ installed: async () => installed, starts: async (): Promise<StartResult> => { if (starts === 'never') throw new Error('must not start'); return starts; } });
-  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true });
-  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: false })), { mode: 'required', fallback: false, sandbox: false });
-  assert.deepEqual(await resolveMirror('auto', probes(false, 'never')), { mode: 'off', fallback: true, reason: 'missing' });
-  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: false, detail: 'No usable sandbox!' })), { mode: 'off', fallback: true, reason: 'start', detail: 'No usable sandbox!' });
-  assert.deepEqual(await resolveMirror('required', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true });
+  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true, app: 'excalidraw' });
+  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: true, sandbox: false })), { mode: 'required', fallback: false, sandbox: false, app: 'excalidraw' });
+  assert.deepEqual(await resolveMirror('auto', probes(false, 'never')), { mode: 'off', fallback: true, reason: 'missing', app: 'excalidraw' });
+  assert.deepEqual(await resolveMirror('auto', probes(true, { ok: false, detail: 'No usable sandbox!' })), { mode: 'off', fallback: true, reason: 'start', detail: 'No usable sandbox!', app: 'excalidraw' });
+  assert.deepEqual(await resolveMirror('required', probes(true, { ok: true, sandbox: true })), { mode: 'required', fallback: false, sandbox: true, app: 'excalidraw' });
   await assert.rejects(resolveMirror('required', probes(false, 'never')), (error: unknown) => error instanceof RuntimeError && error.code === 'browser_runtime_missing');
   await assert.rejects(resolveMirror('required', probes(true, { ok: false, detail: 'No usable sandbox!' })), (error: unknown) => error instanceof RuntimeError && error.code === 'browser_start_failed' && /did not start \(No usable sandbox!\)/.test(error.message) && /--mirror off/.test(error.message));
   assert.deepEqual(await resolveMirror('off', { installed: async () => { throw new Error('must not probe'); }, starts: async () => { throw new Error('must not probe'); } }), { mode: 'off', fallback: false });

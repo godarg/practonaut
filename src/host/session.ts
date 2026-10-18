@@ -250,7 +250,7 @@ export async function createPracticeController(input: World, options: PracticeSe
     const selectedTask = candidate.world.tasks.find(value => value.id === candidate.taskId)!;
     const limits = limitsOf(candidate, counts.actions, counts.checks);
     return structuredClone({
-      schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
+      schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version, adapterId: original.app.adapterId },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
       task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) })), hintCount: selectedTask.hints.length },
       tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,

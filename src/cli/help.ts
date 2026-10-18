@@ -38,6 +38,7 @@ Practice:
   report <file>      show a bench report as a table, an HTML page, JUnit XML or a result card
   compare <a> <b>    compare two bench reports instance by instance (instance regressions, McNemar)
   setup              download the Chromium headless shell once for the real Excalidraw mirror
+                     (--app drawio: also the pinned draw.io release, on request)
   doctor             check the environment
 
 Worlds and results:
@@ -70,6 +71,7 @@ Verwendung:
   report <Datei>     Bench-Bericht als Tabelle, HTML-Seite, JUnit-XML oder Ergebniskarte zeigen
   compare <a> <b>    zwei Bench-Berichte Instanz für Instanz vergleichen (Instanz-Regressionen, McNemar)
   setup              Chromium Headless Shell einmalig für die echte Excalidraw-Spiegelung laden
+                     (--app drawio: auf Wunsch auch das gepinnte draw.io-Release)
   doctor             Umgebung prüfen
 
 Welten und Ergebnisse:
@@ -336,16 +338,28 @@ Lauf enthält. --verify rechnet jeden Bericht zuerst aus seinem eigenen Ordner n
 statische Seite (auch für Berichte, die sich nicht vergleichen lassen).`,
   },
   setup: {
-    en: `Usage: practonaut setup
+    en: `Usage: practonaut setup [--app drawio [--from <file>]]
 
 Downloads the one thing the real Excalidraw mirror needs, Playwright's pinned Chromium headless shell
 (about 105 to 130 MB depending on the platform; the exact size is printed first), or reuses its cache.
-Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.`,
-    de: `Verwendung: practonaut setup
+Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.
+
+--app drawio also downloads the pinned, unmodified draw.io release (draw.war, 48,442,174 bytes), or
+checks a copy given with --from, and keeps it only when its size and SHA-256 match the pin. Nothing
+else ever downloads it. draw.io's mirror needs the Chromium sandbox; setup says when this system
+refuses it. draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or
+sponsored by draw.io Ltd or draw.io AG.`,
+    de: `Verwendung: practonaut setup [--app drawio [--from <Datei>]]
 
 Lädt das Einzige, was die echte Excalidraw-Spiegelung braucht: Playwrights gepinnte Chromium Headless Shell
 (etwa 105 bis 130 MB je nach Plattform; die genaue Größe steht vorher da), oder nutzt den Cache.
-Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.`,
+Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.
+
+--app drawio lädt zusätzlich das gepinnte, unveränderte draw.io-Release (draw.war, 48.442.174 Bytes)
+oder prüft eine mit --from übergebene Kopie und behält es nur, wenn Größe und SHA-256 dem Pin
+entsprechen. Nichts anderes lädt es je. Die draw.io-Spiegelung braucht die Chromium-Sandbox; setup
+sagt, wenn dieses System sie verweigert. draw.io ist eine eingetragene Marke; Practonaut ist mit
+draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert.`,
   },
   doctor: {
     en: `Usage: practonaut doctor [--adapter] [--dev] [--json]

@@ -17,7 +17,7 @@ import { resolvedDataPaths } from '../platform/paths.ts';
 /** Seams for tests: where the runtime goes, the network, the browser checks. */
 export interface SetupSeams {
   home?: string;
-  chromium?: () => Promise<number>;
+  chromium?: (adapterId: string) => Promise<number>;
   starts?: (policy: AdapterSandboxPolicy) => Promise<StartResult>;
   install?: (options: InstallOptions) => Promise<InstallResult>;
   installFrom?: (file: string, options: Omit<InstallOptions, 'allowedSchemes' | 'fetch'>) => Promise<InstallResult>;
@@ -25,7 +25,7 @@ export interface SetupSeams {
 /** Chromium first, exactly as plain setup; then Chromium under draw.io's sandbox policy, said
  * before the download; then the pinned release, checked before it is kept. */
 export async function setupDrawio(from: string | undefined, seams: SetupSeams): Promise<number> {
-  const chromium = await seams.chromium!();
+  const chromium = await seams.chromium!('drawio');
   if (chromium !== 0) return chromium;
   const values = { app: appDisplayName('drawio', getCliLanguage()), id: 'drawio', version: DRAWIO_PIN.version };
   const started = await (seams.starts ?? (policy => chromiumStarts(undefined, policy)))('required');

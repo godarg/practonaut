@@ -79,13 +79,13 @@ test('setup --app drawio: Chromium first, the sandbox said before the download, 
   const installed = { status: 'installed' as const, path: '/h/apps/drawio/32.4.1/draw.war', bytes: 48_442_174, sha256: 'b8'.padEnd(64, '0'), replaced: false, attempts: 1 };
   const seams = {
     home: '/h',
-    chromium: async () => { order.push('chromium'); return 0; },
+    chromium: async (adapterId: string) => { order.push(`chromium:${adapterId}`); return 0; },
     starts: async (policy: string) => { order.push(`starts:${policy}`); return { ok: false as const, detail: 'No usable sandbox!' }; },
     install: async (options: { home: string; allowedSchemes: ReadonlySet<string> }) => { order.push(`install:${options.home}:${[...options.allowedSchemes].join(',')}`); return installed; },
   };
   const ran = await captured(() => commandSetup(['--app', 'drawio'], seams as never));
   assert.equal(ran.code, 0, String(ran.error));
-  assert.deepEqual(order, ['chromium', 'starts:required', 'install:/h:https:']);
+  assert.deepEqual(order, ['chromium:drawio', 'starts:required', 'install:/h:https:'], 'Chromium\'s setup names draw.io as the app it is for');
   const before = ran.out.slice(0, ran.out.indexOf('is ready'));
   for (const fact of ['draw.war', '48442174', 'b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820', 'https://github.com/jgraph/drawio/releases/download/v32.4.1/draw.war', 'not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG', 'model-only']) assert.ok(before.includes(fact), fact);
   // Chromium's own setup failing stops before anything of draw.io.

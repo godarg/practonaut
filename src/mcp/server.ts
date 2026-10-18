@@ -5,7 +5,7 @@ import { serveStdio, StdioServerTransport, type StdioServerHandle } from "@model
 import { HOST_LIMITS, RequestBudget } from "../host/limits.ts";
 import { appendFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
-import { inputProblems, MCP_INSTRUCTIONS, MCP_TOOL_NAMES, PRACTISE_PROMPT, TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS, TOOL_SCHEMAS, type McpBridge, type McpToolInputs, type ToolSchemas } from "./contracts.ts";
+import { inputProblems, mcpInstructions, MCP_TOOL_NAMES, PRACTISE_PROMPT, TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS, TOOL_SCHEMAS, type McpBridge, type McpToolInputs, type ToolSchemas } from "./contracts.ts";
 import type { CompactView } from "./replies.ts";
 import type { ActionDefinition } from "../world/types.ts";
 
@@ -21,7 +21,8 @@ export function loggedRequestId(id: unknown): number | string | null {
   if (typeof id === "number") return Number.isSafeInteger(id) ? id : null;
   return typeof id === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(id) ? id : null;
 }
-export interface McpServerOptions { actions?: readonly ActionDefinition[] }
+/** `adapterId`: the session world's app, from the host's view; it names the app in the instructions. */
+export interface McpServerOptions { actions?: readonly ActionDefinition[]; adapterId?: string }
 function appendCallLog(path: string, entry: CallLogEntry): void {
   try { appendFileSync(path, JSON.stringify(entry) + "\n", { mode: 0o600 }); } catch { /* The log is a measurement aid; a failed write never fails the call. */ }
 }
@@ -56,7 +57,7 @@ function declaredClient(server: McpServer, context: unknown): string | undefined
 }
 /** Both wire eras use the same fixed tools and bridge; no socket is opened here. */
 export function createMcpServer(bridge: McpBridge, schemas: ToolSchemas = TOOL_SCHEMAS, options: McpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: "practonaut", version: PACKAGE_VERSION }, { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: MCP_INSTRUCTIONS, maxToolInputElements: MCP_LIMITS.inputElements });
+  const server = new McpServer({ name: "practonaut", version: PACKAGE_VERSION }, { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: mcpInstructions(options.adapterId), maxToolInputElements: MCP_LIMITS.inputElements });
   for (const name of MCP_TOOL_NAMES) {
     server.registerTool<StandardSchemaWithJSON, StandardSchemaWithJSON>(name, { description: TOOL_DESCRIPTIONS[name], inputSchema: schemas[name], annotations: TOOL_ANNOTATIONS[name] }, async (input: unknown, context: unknown) => {
       const client = declaredClient(server, context);
@@ -86,7 +87,7 @@ export function startMcpStdio(bridge: McpBridge, options: { transport?: StdioSer
     transport=new StdioServerTransport(input,process.stdout,{maxBufferSize:MCP_LIMITS.inboundBytes});
     process.stdin.pipe(input);
   }
-  const serverOptions: McpServerOptions = options.actions ? { actions: options.actions } : {};
+  const serverOptions: McpServerOptions = { ...(options.actions ? { actions: options.actions } : {}), ...(options.adapterId !== undefined ? { adapterId: options.adapterId } : {}) };
   const handle = serveStdio(() => createMcpServer(bridge, schemas, serverOptions), { transport, ...(options.onerror ? { onerror: options.onerror } : {}) });
   const accept = transport.onmessage, budget = new RequestBudget();
   // The call log sees every tools/call where it enters and its reply where it leaves this process,

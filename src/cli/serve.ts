@@ -24,6 +24,7 @@ import { resolvedDataPaths } from '../platform/paths.ts';
 import type { MirrorMode, ModelOnlyNotice, RunningHost } from '../host/protocol.ts';
 import { invocationName } from './invocation.ts';
 import type { World } from '../world/types.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { inlineOptionValues } from './options.ts';
 
 export type MirrorChoice = MirrorMode | 'auto';
@@ -68,7 +69,8 @@ export function parseServeArguments(given: string[]): ServeArguments {
 
 /** `sandbox: false` marks a mirror whose Chromium runs without its sandbox (Linux fallback, PADR-0032).
  * `app-missing` and `app-unverified` name a downloaded app runtime that is absent or does not match its
- * pin (PADR-0049 decision 1.3); `app` is then the adapter. */
+ * pin (PADR-0049 decision 1.3). `app` is the adapter whose mirror was resolved; every text about the
+ * mirror names that app by its display name (decision 1.5). */
 export interface MirrorResolution { mode: MirrorMode; fallback: boolean; reason?: 'missing' | 'start' | 'app-missing' | 'app-unverified'; detail?: string; sandbox?: boolean; app?: string }
 export interface MirrorProbes {
   installed(): Promise<boolean>;
@@ -80,6 +82,8 @@ const defaultProbes: MirrorProbes = { installed: async () => (await chromiumChec
 /** The world's adapter and what its mirror needs; Excalidraw when a caller names no world. */
 export type MirrorApp = Pick<World, 'app' | 'schema'>;
 const EXCALIDRAW_WORLD: MirrorApp = { app: { adapterId: 'excalidraw', versionRange: '0.18.1', fontFamilies: [3], excludedAttributes: {} }, schema: 'practonaut.world/2' };
+/** The fixed display name of an adapter's app in the CLI's language (PADR-0049 decision 1.5). */
+const appName = (adapterId: string): string => appDisplayName(adapterId, getCliLanguage());
 
 /**
  * `auto` mirrors when the Playwright Chromium is installed and actually starts, and otherwise runs
@@ -97,17 +101,18 @@ export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes =
       return { mode: 'off', fallback: true, reason: status.code === 'app_runtime_missing' ? 'app-missing' : 'app-unverified', detail: status.detail, app: registration.id };
     }
   }
+  const app = appName(registration.id);
   if (!await probes.installed()) {
-    if (choice === 'required') throw new RuntimeError('browser_runtime_missing', cliText('browserRuntimeMissing', headlessShellDownload()));
-    return { mode: 'off', fallback: true, reason: 'missing' };
+    if (choice === 'required') throw new RuntimeError('browser_runtime_missing', cliText('browserRuntimeMissing', { ...headlessShellDownload(), app }));
+    return { mode: 'off', fallback: true, reason: 'missing', app: registration.id };
   }
   // Started under the adapter's sandbox policy: draw.io never without the sandbox (PADR-0049 decision 7).
   const started = await probes.starts(registration.sandbox);
   if (!started.ok) {
-    if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail: started.detail, advice: browserAdvice() }));
-    return { mode: 'off', fallback: true, reason: 'start', detail: started.detail };
+    if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { app, detail: started.detail, advice: browserAdvice() }));
+    return { mode: 'off', fallback: true, reason: 'start', detail: started.detail, app: registration.id };
   }
-  return { mode: 'required', fallback: false, sandbox: started.sandbox };
+  return { mode: 'required', fallback: false, sandbox: started.sandbox, app: registration.id };
 }
 
 /** The stderr notice for a model-only fallback. */
@@ -116,7 +121,8 @@ export function fallbackNotice(mirror: MirrorResolution, registry: AdapterRegist
   const registration = mirror.app !== undefined && Object.hasOwn(registry, mirror.app) ? registry[mirror.app]! : undefined;
   if (registration && mirror.reason === 'app-missing') return cliText('mirrorAppFallback', appValues(registration));
   if (registration && mirror.reason === 'app-unverified') return cliText('mirrorAppUnverifiedFallback', { ...appValues(registration), detail: safeText(mirror.detail ?? '') });
-  return mirror.reason === 'start' ? cliText('mirrorStartFallback', { detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback', headlessShellDownload());
+  const app = appName(mirror.app ?? EXCALIDRAW_WORLD.app.adapterId);
+  return mirror.reason === 'start' ? cliText('mirrorStartFallback', { app, detail: mirror.detail ?? 'unknown error', advice: browserAdvice() }) : cliText('mirrorFallback', { ...headlessShellDownload(), app });
 }
 
 /**
@@ -139,9 +145,9 @@ export async function startHostWithMirror(choice: MirrorChoice, resolved: Mirror
       return { host: await start('off', modelOnlyNotice(choice, mirror, registry)), mirror };
     }
     const detail = launchFailureDetail(error instanceof AdapterInitializationError ? error.primaryError : error);
-    if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail, advice: browserAdvice() }));
-    const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: 'start', detail };
-    return { host: await start('off', modelOnlyNotice(choice, mirror)), mirror };
+    if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { app: appName(resolved.app ?? EXCALIDRAW_WORLD.app.adapterId), detail, advice: browserAdvice() }));
+    const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: 'start', detail, ...(resolved.app !== undefined ? { app: resolved.app } : {}) };
+    return { host: await start('off', modelOnlyNotice(choice, mirror, registry)), mirror };
   }
 }
 

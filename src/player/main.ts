@@ -1,7 +1,7 @@
 import type { Action, Arrow, Frame, Localized, Step, StepV2, WorldObject } from '../world/types.ts';
 import type { DemonstrationStatus, HostEvent, HostReply, HostView, ModelOnlyNotice, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
 import { createPhase3 } from './phase3.ts';
-import { catalogs } from './messages.ts';
+import { appName, catalogs } from './messages.ts';
 import type { Language, Message } from './messages.ts';
 import { clearTabSession, readTabSession, writeTabSession } from './tab-session.ts';
 import { banner, button, card, chip, disclosure, evidence, h, icon, listPicker, openSheet, segmented, selectField, statusIcon, textField } from './ui/components.ts';
@@ -39,7 +39,9 @@ function demoRunning(): boolean { return demoAttempt() && demo!.state === 'runni
 function locked(): boolean { return working || demoRunning(); }
 
 function cacheSession(): void { if (token&&current) reloadAvailable = writeTabSession({ schema: 'practonaut.tab-session/2', token, ...(authorToken?{authorToken}:{}),sessionId:current.sessionId,language, theme, workspace }); }
-const msg = (key: Message): string => catalogs[language][key];
+/** `{app}` is the running app's fixed display name from the Player's catalog, by the adapter id the host
+ * sends (PADR-0049 decision 1.5); the texts that use it are shown only with a view. */
+const msg = (key: Message): string => catalogs[language][key].replaceAll('{app}', appName(current?.world.adapterId ?? 'excalidraw', language));
 const exportControl=createExportControl({current:()=>current,request:expectedRevision=>request('export',{expectedRevision}),message:msg,working:()=>locked(),demonstration:()=>demoAttempt(),setWorking:value=>{working=value;},render,announce:say});
 const text = (value: Localized): string => value[language];
 const tagged = <T extends Element>(node: T, id: string): T => { node.setAttribute('data-testid', id); return node; };

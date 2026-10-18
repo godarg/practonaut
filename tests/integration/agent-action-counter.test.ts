@@ -21,7 +21,7 @@ function fixture() {
   const prefix = { action: { name: 'move_step', params: { id: 'a', x: 100, y: 180 }, baseStep: 0 }, hash };
   const before: HostView = {
     schema: 'practonaut.host/1', sessionId: 'synthetic-counter-session', revision: 3,
-    world: { id: world.id, version: world.version }, seed: 42, variantId: 'synthetic-variant',
+    world: { id: world.id, version: world.version, adapterId: world.app.adapterId }, seed: 42, variantId: 'synthetic-variant',
     task: { id: 'CounterProbe', title: { en: 'Synthetic counter probe', de: 'Synthetische Zählerprobe' }, prompt: { en: 'Remove b', de: 'b entfernen' }, conditions: [], hintCount: 1 },
     tasks: [], state, hash, step: 1, log: [prefix], history: [], actions: world.actions,
     rules: world.rules, mirror: 'required', mirrorHealth: { status: 'available', recoveries: 0 },

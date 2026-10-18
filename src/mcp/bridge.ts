@@ -67,7 +67,7 @@ const action = z.strictObject({ name: z.string(), params: z.record(z.string(), z
 /** Fail closed on unknown fields: a future host field never silently becomes an agent oracle. */
 export const publicViewSchema = z.strictObject({
   schema: z.literal("practonaut.host/1"), sessionId: z.string(), revision: integer,
-  world: z.strictObject({ id: z.string(), version: z.string() }), seed: z.number().int(), variantId: z.string(),
+  world: z.strictObject({ id: z.string(), version: z.string(), adapterId: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }), seed: z.number().int(), variantId: z.string(),
   task: z.strictObject({ id: z.string(), title: localized, prompt: localized, conditions: z.array(condition), hintCount: integer }),
   tasks: z.array(z.strictObject({ id: z.string(), title: localized, level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(), referenceActions: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional() })), state: AnyStateSchema, hash: z.string(), step: integer,
   log: z.array(z.strictObject({ action, hash: z.string() })),

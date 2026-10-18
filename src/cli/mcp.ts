@@ -74,7 +74,10 @@ export async function commandMcp(args: string[]): Promise<number> {
     // The act tool lists exactly the session world's actions; without a host reply the generic
     // vocabulary stays and the host still rejects anything its world does not define.
     const listed = await bridge.call("list_actions", {});
-    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined), ...(listed.ok ? { actions: listed.value } : {}), ...(parsed.callLog ? { callLog: parsed.callLog } : {}) });
+    // The instructions name the app the session's world names, from the host's own view (PADR-0049 decision 1.5).
+    const viewed = await bridge.call("observe", { detail: "full", history: 0 });
+    const adapterId = viewed.ok ? (viewed.value as { world?: { adapterId?: unknown } }).world?.adapterId : undefined;
+    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined), ...(listed.ok ? { actions: listed.value } : {}), ...(typeof adapterId === 'string' ? { adapterId } : {}), ...(parsed.callLog ? { callLog: parsed.callLog } : {}) });
     let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined;
     if (parsed.start?.open && host) {
       try {
