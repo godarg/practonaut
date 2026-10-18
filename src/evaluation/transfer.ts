@@ -288,7 +288,7 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
   // The factory settles on Abort itself. A refused browser API reply is never blindly joined.
   let runSettled = false;
   const settled = running.then(value => { runSettled = true; return value; }, error => { runSettled = true; throw error; });
-  try { await bounded(settled, NATIVE_TRANSFER_SETTLEMENT_MS); } catch (error) {
+  try { await bounded(settled, NATIVE_TRANSFER_SETTLEMENT_MS, 'settlement'); } catch (error) {
     joinedError = error;
     if (error instanceof AdapterInitializationError) {
       factoryFailure = error; cleanupAttempted = true;

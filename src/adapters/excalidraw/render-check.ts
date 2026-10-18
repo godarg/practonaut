@@ -22,7 +22,7 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
       arrows.push({ id: arrow.id, end, gap, ok: gap <= 12 });
     }
   }
-  const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch);
+  const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch, 'launch');
   const { browser } = await launchChromium(chromium, () => ({ headless: true }));
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });

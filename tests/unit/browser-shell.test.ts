@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { connect } from 'node:net';
 import type { Browser, LaunchOptions } from 'playwright-core';
-import { BrowserDeadlineError } from '../../src/adapters/browser/bounded.ts';
+import { BrowserDeadlineError, closeBrowser } from '../../src/adapters/browser/bounded.ts';
 import { AdapterError, AdapterInitializationError, artifactOf, capturePng, serialQueue, startShell, type BrowserShell, type SceneIO, type ShellOptions } from '../../src/adapters/browser/shell.ts';
 import type { AdapterResult } from '../../src/adapters/types.ts';
 
@@ -42,10 +42,26 @@ const SANDBOX = { env: {}, platform: 'darwin' as const, memo: { unavailable: fal
 const base = (chromium: NonNullable<ShellOptions['chromium']>, extra: Partial<ShellOptions> = {}): ShellOptions => ({ chromium, launchContext: { ...SANDBOX, memo: { unavailable: false } }, origins: {}, ...extra });
 const tick = (ms = 0): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
+// Issue #64: the CI log said only "Browser operation exceeded its deadline"; which bound it was had
+// to be worked out from test durations. Graceful 3 s plus forced 5 s is the close budget of the
+// browser (archived PADR-0027); the clock is Node's mock, so nothing waits 8 s.
+test('a browser close that does not finish fails at 8 s and names the close and its bound', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let settled: unknown = 'pending';
+  const outcome = (): unknown => settled;
+  void closeBrowser({ close: () => new Promise<void>(() => {}) }).then(() => { settled = 'closed'; }, error => { settled = error; });
+  t.mock.timers.tick(7_999); await new Promise(done => setImmediate(done));
+  assert.equal(outcome(), 'pending');
+  t.mock.timers.tick(1); await new Promise(done => setImmediate(done));
+  const error = outcome();
+  assert.ok(error instanceof BrowserDeadlineError);
+  assert.deepEqual([error.operation, error.ms, error.message], ['close', 8_000, 'Browser close exceeded its deadline of 8000 ms']);
+});
+
 test('the shell bounds the launch itself and closes a browser that arrives after the deadline', { timeout: 5_000 }, async () => {
   const fake = fakeChromium(false);
   const started = performance.now();
-  await assert.rejects(startShell(base(fake.chromium, { launchMs: 50 }), async () => {}), (error: unknown) => error instanceof BrowserDeadlineError);
+  await assert.rejects(startShell(base(fake.chromium, { launchMs: 50 }), async () => {}), (error: unknown) => error instanceof BrowserDeadlineError && error.operation === 'launch');
   assert.ok(performance.now() - started < 2_000, 'refused at the deadline, not when the launch ends');
   assert.equal(fake.browser.closed, 0);
   fake.release(); await tick(10);
@@ -121,7 +137,7 @@ test('every WebSocket is closed and recorded; policy violations reported to the 
 
 test('the adapter\'s own start is bounded: a start that never finishes closes the browser at its deadline', { timeout: 5_000 }, async () => {
   const fake = fakeChromium();
-  await assert.rejects(startShell(base(fake.chromium, { initializeMs: 50 }), () => new Promise<void>(() => {})), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError);
+  await assert.rejects(startShell(base(fake.chromium, { initializeMs: 50 }), () => new Promise<void>(() => {})), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError && error.primaryError.operation === 'start');
   assert.equal(fake.browser.closed, 1);
 });
 
@@ -142,7 +158,7 @@ test('an abort is never lost: during the committed-scene read, or raised by the 
 test('a routing setup that never answers is bounded by the launch deadline and closes the browser', { timeout: 5_000 }, async () => {
   for (const hang of ['route', 'routeWebSocket'] as const) {
     const fake = fakeChromium(); fake.browser.context.hang = hang;
-    await assert.rejects(startShell(base(fake.chromium, { launchMs: 100, initializeMs: 100 }), async () => {}), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError, hang);
+    await assert.rejects(startShell(base(fake.chromium, { launchMs: 100, initializeMs: 100 }), async () => {}), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError && error.primaryError.operation === 'setup', hang);
     assert.equal(fake.browser.closed, 1, hang);
   }
 });
