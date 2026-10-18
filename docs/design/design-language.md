@@ -757,3 +757,18 @@ The task-limit states of 0.2.0 (changes and checks left, a failed check used, ev
 used) were looked at on captures, light and dark, at 1280 and 390 px with German, on 2026-10-15: one
 must-fix (with every change used, the refused "New variant" was still the primary button) was fixed
 and checked on new captures ([pull request #32](https://github.com/godarg/practonaut/pull/32)).
+
+Round R1 of the bench report v3 pages of 0.3.0 (the artifact-judged report, a report whose client
+values were not re-derived, the compare pages across worlds and the refusals of the regression gate
+and of runs judged in different ways) was reviewed on 2026-10-19 by an independent agent started from
+fresh context: eight registered states, light and dark, EN and DE, at 1280 and 320 px, from commit
+`a6f4fe9`, plus the result card and the badge. Verdict conditional: no blocker, 9 major and 13 minor
+findings. The majors (identifiers and flags broken by hyphenation, one caveat said three times in a
+header, artifact run cards that did not say why a run failed, five on the compare pages across worlds,
+a gate refusal that contradicted itself) were fixed, each with a test that fails on the reviewed
+commit, and the missing state with changed outcomes across worlds was registered. Consciously not
+done: "level" stays on the §3 list (the pages say "how runs were judged" instead; no rule change);
+the badge keeps the header line's facts (§10.5) and only marks the preset as a claim; a world
+difference still shows the short content hash, since that is what differs; the terminal's refusal
+keeps its decision-record number, which the pages no longer show. A re-review on the fixed state
+follows ([pull request #66](https://github.com/godarg/practonaut/pull/66)).
