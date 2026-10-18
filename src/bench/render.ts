@@ -605,7 +605,7 @@ ${chips(t.provenance, [...provenance(report, language, verification), report.cre
 ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
 </header>
 ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
-<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n5'}">${cards.join('')}</dl></section>
+<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures n4">${cards.join('')}</dl></section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${runFacts.join('')}</section>
@@ -618,7 +618,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.selfReported)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.selfReportedArtifact)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

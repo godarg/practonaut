@@ -251,8 +251,9 @@ function compareByIdentity(baseline: BenchReportView, candidate: BenchReportView
     regressions: [], fixes: [], singleFlips: [], changedFlips: [], configFlips: paired.filter(pair => pair.flip !== null),
     notCompared: pairs.filter(pair => pair.kind !== 'paired'),
     withUnjudged: paired.filter(pair => pair.baseline!.unjudged > 0 || pair.candidate!.unjudged > 0),
-    incomplete: pairs.filter(pair => pair.candidate === null || pair.candidate.unjudged > 0),
-    regressionSignal: false, caveats,
+    // No regression gate takes an identity-paired comparison (it is refused), so nothing here is "incomplete";
+    // an identity on one side only is listed as not compared.
+    incomplete: [], regressionSignal: false, caveats,
   };
 }
 

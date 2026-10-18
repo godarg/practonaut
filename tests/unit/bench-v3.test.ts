@@ -212,6 +212,9 @@ test('across worlds compare pairs by task identity: without a task-set key the h
   assert.ok(comparison.caveats.some(caveat => caveat.field === 'identityPairing'));
   const text = renderCompareTable({ report: a, verification: 'consistency-checked' }, { report: b, verification: 'consistency-checked' }, comparison);
   assert.match(text, /no rate verdict: every paired task identity has a different number of runs on the two sides/);
+  // Never a regression across worlds, and never the gate's "incomplete" (the gate refuses such a pair).
+  assert.match(text, /Instance regressions: none across worlds: a different outcome on two configurations is a difference between them, never an instance regression/);
+  assert.deepEqual(comparison.incomplete, []);
   assert.match(text, /Paired across worlds by task identity \(PADR-0044\)/);
   assert.match(text, /review-and-send seed 2, review-and-send seed 3, review-and-send seed 5 \(baseline\) · — \(candidate\): no run on the candidate/);
   // A regression gate compares one world with itself: refused by name.

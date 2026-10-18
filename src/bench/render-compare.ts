@@ -30,6 +30,8 @@ const differenceValue = (difference: Difference, value: string, language: Langua
 /** Whether there is an instance regression, in one phrase. */
 const regressionText = (comparison: Comparison, language: Language): string => {
   const t = TEXT[language];
+  // Across worlds no flip is a regression (PADR-0044 decision 3): said as such, never as too few repeats.
+  if (comparison.pairing === 'identity') return t.regressionsIdentity;
   return comparison.regressions.length ? fill(language, t.regressionCount, { n: comparison.regressions.length }) : comparison.regressionSignal ? t.regressionsNone : t.regressionsSingle;
 };
 function sideText(side: Comparison['baseline'], language: Language): string {
