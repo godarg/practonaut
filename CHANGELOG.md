@@ -10,9 +10,9 @@ All notable changes are recorded here. The format follows
 
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file") no
   longer loses its file dialog on a busy machine (issue #45). The shortcut was sent in the same tick
-  as Playwright's `filechooser` listener, whose interception Chromium applies on the renderer's main
-  thread; a key handled first opened a chooser that was not intercepted and was cancelled without an
-  event. Open now arms the waiter, clicks the editor, completes one page round trip that also checks
+  as Playwright's `filechooser` listener; with a busy renderer the key was handled before Chromium's
+  file-chooser interception took effect, and the chooser it opened was cancelled without an event
+  (28 of 30 attempts with the renderer throttled 20x before, 0 of 30 after). Open now arms the waiter, clicks the editor, completes one page round trip that also checks
   keyboard focus is inside the editor (refused by name otherwise), then sends the shortcut. The 10 s
   step cap is unchanged. A failed attempt keeps a screenshot from before Open and the page console in
   its evidence; CI uploads that evidence on failure on every platform, and

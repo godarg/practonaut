@@ -49,10 +49,10 @@ file with Excalidraw's own shortcut, Ctrl/Cmd+O. The engine page has a non-secur
 Excalidraw clicks a detached `<input type=file>`, and the test takes the file dialog as Playwright's
 `filechooser` event. That event exists only while Chromium intercepts file dialogs
 (`Page.setInterceptFileChooserDialog`). Playwright turns the interception on when the first
-`filechooser` listener is added and does not wait for it; Chromium applies it on the renderer's main
-thread, while a key event reaches the renderer by its own input path. When the renderer is busy the
-key can be handled first: the page opens a dialog that is not intercepted, headless Chromium cancels
-it, and no event arrives. In 0.2.0 this failed the test on five CI runs after 10 s (issue #45).
+`filechooser` listener is added and does not wait for it. When the renderer is busy, a key sent right
+after that command can be handled before the interception takes effect: the page opens a dialog that
+is not intercepted, headless Chromium cancels it, and no event arrives. In 0.2.0 this failed the test
+on five CI runs after 10 s (issue #45).
 
 The contract, `armBarrierTrigger` in `src/evaluation/native-trigger.ts`: **arm** the waiter first,
 run any preparation (the click on the editor), complete one page round trip after arming

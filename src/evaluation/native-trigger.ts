@@ -5,15 +5,14 @@ import { RuntimeError } from '../cli/runtime.ts';
  * Arm, barrier, trigger: the ordering contract for a browser event that page input causes (issue #45).
  *
  * Playwright turns on Chromium's file-chooser interception (`Page.setInterceptFileChooserDialog`) when
- * the first `filechooser` listener is added, and does not wait for it. Chromium applies that command on
- * the renderer's main thread, while a key or mouse event reaches the renderer on its own input path. On
- * a loaded machine the input can be handled first: the page opens a chooser that is not intercepted,
- * headless Chromium cancels it without a trace, and the awaited event never arrives (measurements in
- * docs/testing.md, "Native Open ordering").
+ * the first `filechooser` listener is added, and does not wait for it. When the renderer is busy, an
+ * input sent right after that command can be handled before the interception takes effect: the page
+ * opens a chooser that is not intercepted, headless Chromium cancels it without a trace, and the
+ * awaited event never arrives (measurements in docs/testing.md, "Native Open ordering").
  *
  * So the waiter is created first (arm), then any preparation runs, then one page round trip completes
- * (barrier: it is answered on the same session after the interception command), and only then is the
- * input sent (trigger). The barrier may refuse by name when the trigger would be lost anyway.
+ * after it (barrier), and only then is the input sent (trigger). The barrier may refuse by name when
+ * the trigger would be lost anyway.
  */
 export async function armBarrierTrigger<T>(steps: {
   arm(): Promise<T>; prepare?(): Promise<void>; barrier(): Promise<void>; trigger(): Promise<void>;
