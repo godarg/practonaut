@@ -307,6 +307,8 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
  * report (decisions 5, 6 and 9); the agent-level values from the first run that reports each. */
 function verifyClientValues(report: BenchReportV3, run: SessionRunV3, read: ClientEvidence): void {
   const fail = (field: string): never => { throw new BenchReportError(cliText('verifyClientValue', { run: run.id, field })); };
+  // A report relabelled to another model is named as such (as for /2).
+  if (run.client && read.client && run.client.model !== read.client.model) throw new BenchReportError(cliText('verifyClientModel', { run: run.id, model: safeText(run.client.model ?? 'none'), seen: safeText(read.client.model ?? 'none') }));
   if (!isDeepStrictEqual(read.client, run.client)) fail('client');
   if (!isDeepStrictEqual(read.isolation, run.isolation)) fail('isolation');
   if (run.failure?.parser) {
