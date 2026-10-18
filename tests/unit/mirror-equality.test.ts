@@ -80,6 +80,38 @@ test('an entry that declares live commits a delete its app holds without the tom
   } finally { await controller.close(); }
 });
 
+// What the host does when the browser shell closes itself after a rollback it could not finish
+// (PADR-0045): the adapter answers mirror_unavailable and refuses everything after; the host's
+// diagnostic read-back fails, so its recovery starts a new adapter instead of restoring into the old.
+test('an adapter that gave up its page (mirror_unavailable) is replaced by the host\'s recovery, not restored into', async () => {
+  const world = v2World(), created: string[] = [];
+  let fail = true;
+  const create: AdapterRegistration['create'] = async initial => {
+    const id = `adapter-${created.length + 1}`; created.push(id);
+    let held = structuredClone(initial), closed = false;
+    const alive = (): void => { if (closed) throw new Error(`${id} is closed`); };
+    return {
+      describe: () => { throw new Error('unused'); },
+      snapshot: async () => { alive(); return structuredClone(held); },
+      // The first write fails the way a browser shell does when it could not rebuild its page.
+      apply: async transition => { alive(); if (fail) { fail = false; closed = true; return { ok: false, error: { code: 'mirror_unavailable', message: 'shell closed', details: {} } }; } held = structuredClone(transition.after); return { ok: true, state: structuredClone(held), warnings: [] }; },
+      restoreState: async state => { alive(); held = structuredClone(state); return { ok: true, state: structuredClone(held), warnings: [] }; },
+      exportArtifact: async () => { throw new Error('unused'); }, importArtifact: async () => { throw new Error('unused'); },
+      renderPng: async () => new Uint8Array([137, 80, 78, 71]), networkAttempts: () => [], terminate: async () => { closed = true; }, close: async () => { closed = true; },
+    };
+  };
+  const registry: AdapterRegistry = { excalidraw: { ...ADAPTER_REGISTRY.excalidraw, create } };
+  const controller = await createPracticeController(world, { taskId: 'T1' }, (initial, mirrored) => createProductionMirror(initial, undefined, mirrored, registry));
+  try {
+    const refused = await controller.act({ expectedRevision: 0, action: deleteShip });
+    assert.equal(refused.ok, false); if (!refused.ok) assert.equal(refused.error.code, 'mirror_unavailable');
+    assert.deepEqual(created, ['adapter-1', 'adapter-2'], 'a new adapter took over');
+    assert.deepEqual(controller.view().mirrorHealth, { status: 'available', recoveries: 1 });
+    const retried = await controller.act({ expectedRevision: 0, action: deleteShip });
+    assert.equal(retried.ok, true, JSON.stringify(retried));
+  } finally { await controller.close(); }
+});
+
 test('live read-back is still a check: an app that keeps the deleted step live is refused', async () => {
   const world = v2World();
   const controller = await createPracticeController(world, { taskId: 'T1' }, (initial, mirrored) => createProductionMirror(initial, undefined, mirrored, registryWith(appWithoutTombstones(true), 'live')));
