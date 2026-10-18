@@ -97,7 +97,9 @@ export function checkSubmission(world: World, input: string | Uint8Array, option
   const bytes = typeof input === "string" ? Buffer.from(input) : input;
   if (bytes.length > 16 * 1024 * 1024) throw new CheckerError("artifact_invalid", "submission exceeds 16 MiB");
   let isSession = options.format === "session";
-  if (options.format === undefined) {
+  // An XML document (a .drawio file) is never a session file; anything else must be bounded JSON.
+  const xml = /^\s*</.test(Buffer.from(bytes.subarray(0, 64)).toString("utf8"));
+  if (options.format === undefined && !xml) {
     let raw: unknown;
     try { raw = parseJsonEntry(bytes, "submission.json", 64); } catch { throw new CheckerError("artifact_invalid", "submission is not bounded valid JSON"); }
     isSession = raw !== null && typeof raw === "object" && !Array.isArray(raw) && (raw as Record<string, unknown>).schema === "practonaut.session/1";

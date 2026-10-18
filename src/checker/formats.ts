@@ -8,6 +8,7 @@ import type { State, WorldSchemaId } from "../world/types.ts";
 import { CheckerError } from "./errors.ts";
 import { parseExcalidraw } from "./excalidraw.ts";
 import { parseScene } from "./scene.ts";
+import { parseDrawio } from "./drawio.ts";
 
 export interface NativeFormat {
   /** The adapter id of the worlds whose exports this format reads. */
@@ -35,8 +36,8 @@ export const NATIVE_FORMATS = Object.freeze({
   /** draw.io's `.drawio` file, read by the checker's own reader (PADR-0049 decision 6). */
   drawio: Object.freeze({
     id: "drawio", extension: ".drawio",
-    parse: (_schema: WorldSchemaId, _input: string | Uint8Array): State => { throw new CheckerError("artifact_invalid", "the checker's draw.io reader is not available in this build"); },
-    matches: (): boolean => false,
+    parse: (schema: WorldSchemaId, input: string | Uint8Array): State => { if (schema !== "practonaut.world/2") throw new CheckerError("artifact_invalid", "draw.io files belong to world/2"); return parseDrawio(input).state; },
+    matches: (schema: WorldSchemaId, input: string | Uint8Array, state: State): boolean => schema === "practonaut.world/2" && canonicalJson(live(parseDrawio(input).state)) === canonicalJson(live(state)),
   }),
 } satisfies Record<string, NativeFormat>);
 export type NativeFormatId = keyof typeof NATIVE_FORMATS;
