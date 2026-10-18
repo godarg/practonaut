@@ -158,8 +158,11 @@ describe('a new variant under task limits', () => {
     const single = await createPracticeController(limited({ actions: 1 }), { seed: 1, taskId: 'T1', mirror: 'off', singleTask: true }, noMirror);
     try {
       assert.equal((await single.act({ expectedRevision: 0, action: move(150) })).ok, true);
-      const again = await single.variant({ expectedRevision: 1, confirmed: true });
-      assert.equal(!again.ok && again.error.code, 'action_budget_exhausted');
+      // A single-task host refuses every variant request, before any limit is looked at.
+      for (const request of [{}, { taskId: 'T1' }]) {
+        const again = await single.variant({ expectedRevision: 1, confirmed: true, ...request });
+        assert.equal(!again.ok && again.error.code, 'invalid_request', JSON.stringify(request));
+      }
       assert.deepEqual(single.view().limits, { actions: { limit: 1, used: 1 } });
     } finally { await single.close(); }
   });
