@@ -362,6 +362,24 @@ test('native Open refuses by name when keyboard focus left the editor before the
   assert.equal((await readdir(outputDirectory)).includes('result.json'), false);
 });
 
+test('native Open: a failed before-Open screenshot is recorded and does not fail the attempt', { timeout: 90_000 }, async context => {
+  const root = await nativeEvidenceRoot('screenshot-');
+  context.diagnostic(`Native Open screenshot failure evidence: ${root}`);
+  const input = await h1NativeInput(root), outputDirectory = join(root, 'native-attempt');
+  // Through the seam: only the first screenshot of the page (the one before Open) fails.
+  const seam = installLaunchSeam({ page: page => {
+    const screenshot = page.screenshot.bind(page); let first = true;
+    page.screenshot = (options => { if (first) { first = false; return Promise.reject(new Error('independently assigned screenshot failure')); } return screenshot(options); }) as typeof page.screenshot;
+  } });
+  try { await nativeFileTransfer({ inputPath: input.inputPath, expectedInputSha256: input.expectedInputSha256, outputDirectory, stepId: 'transfer-step-0' }); }
+  finally { seam.uninstall(); }
+  const terminal = JSON.parse(await readFile(join(outputDirectory, 'terminal.json'), 'utf8')) as { status: string; diagnostics: { beforeOpenScreenshot: { message: string } | null } };
+  assert.equal(terminal.status, 'succeeded');
+  assert.equal(terminal.diagnostics.beforeOpenScreenshot?.message, 'independently assigned screenshot failure');
+  const files = await readdir(outputDirectory);
+  assert.equal(files.includes('00-before-open.png'), false); assert.equal(files.includes('01-opened.png'), true);
+});
+
 test('H1 native file: genuine Open, visible edit, native Undo, completed Save As and entire-file checker', { timeout: 90_000 }, async context => {
   const root = await nativeEvidenceRoot('h1-');
   // Keep attempt originals on success and failure; no re-run silently replaces this directory.

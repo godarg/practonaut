@@ -39,6 +39,8 @@ function classify(terminal: { status?: string; stage?: string; primaryError?: { 
   const message = terminal?.primaryError?.message ?? '';
   if (terminal?.stage !== 'open') return `failed-${terminal?.stage ?? 'unknown'}`;
   if (/focus/i.test(message)) return 'open-focus-outside-editor';
+  if (/the limit of \d+ ms passed/.test(message)) return 'open-step-limit-passed';
+  if (/the wait for the event ended|the event arrived before the input/.test(message)) return 'open-shortcut-not-sent';
   if (!/filechooser/.test(message)) return 'open-other';
   const clicks = probe.filter(row => row.kind.startsWith('file-input'));
   if (!probe.some(row => row.kind === 'open-keydown')) return 'open-no-shortcut-keydown';

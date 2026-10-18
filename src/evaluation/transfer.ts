@@ -13,6 +13,7 @@ import { bounded, BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
 import { parseExcalidraw } from '../checker/excalidraw.ts';
 import { RuntimeError } from '../cli/runtime.ts';
 import { openNativeFileChooser } from './native-trigger.ts';
+import { consoleRecorder } from './console-evidence.ts';
 
 export const TransferSolutionSchema = z.strictObject({ steps: z.array(z.strictObject({ label: z.string().min(1).max(128), x: z.number().int().min(200).max(950), y: z.number().int().min(180).max(500) })).min(1).max(8), arrows: z.array(z.strictObject({ from: z.number().int().min(0).max(7), to: z.number().int().min(0).max(7) })).max(16) });
 export type TransferSolution = z.infer<typeof TransferSolutionSchema>;
@@ -57,8 +58,6 @@ export async function exportScriptedHuman(initial: State): Promise<TransferExpor
 
 export const NATIVE_TRANSFER_WALL_MS = 60_000;
 export const NATIVE_TRANSFER_SETTLEMENT_MS = BROWSER_BOUNDS.launch + BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced;
-/** Console evidence bounds per attempt: messages kept, characters kept per message. */
-export const NATIVE_TRANSFER_CONSOLE_LIMIT = 200, NATIVE_TRANSFER_CONSOLE_TEXT = 2_000;
 export interface NativeTransferFile {
   native: string; sha256: string; bytes: number; state: State;
   activeElements: Array<Record<string, unknown>>; tombstoneIds: string[];
@@ -171,12 +170,9 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
   const requireAttempt = (): void => { if (controller.signal.aborted) throw new RuntimeError('transfer_invalid', 'Native transfer cancelled at its one attempt deadline'); };
   let pendingNativeOperations = 0;
   // Attempt evidence: the engine page's console and uncaught errors from readiness on, bounded.
-  const attemptStart = performance.now(), consoleMessages: Array<{ type: string; text: string; ms: number }> = [];
-  let consoleDropped = 0;
-  const recordConsole = (type: string, text: string): void => {
-    if (consoleMessages.length >= NATIVE_TRANSFER_CONSOLE_LIMIT) { consoleDropped++; return; }
-    consoleMessages.push({ type, text: text.slice(0, NATIVE_TRANSFER_CONSOLE_TEXT), ms: Math.round(performance.now() - attemptStart) });
-  };
+  const pageConsole = consoleRecorder();
+  // Diagnostics that may fail without failing the attempt; their errors are attempt evidence.
+  let beforeOpenScreenshotError: unknown;
   const observe = async <T>(operation: () => Promise<T>): Promise<T> => {
     requireAttempt();
     let cancel: (() => void) | undefined;
@@ -204,8 +200,8 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
     if (expired || !page) throw new RuntimeError('transfer_invalid', 'Native editor did not become ready within the attempt');
     const nativePage = page, modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
     nativePage.setDefaultTimeout(timeout());
-    nativePage.on('console', message => recordConsole(message.type(), message.text()));
-    nativePage.on('pageerror', error => recordConsole('pageerror', `${error.name}: ${error.message}`));
+    nativePage.on('console', pageConsole.message);
+    nativePage.on('pageerror', pageConsole.pageError);
     const capture = async (name: string): Promise<NativeTransferFile> => {
       requireAttempt();
       // Read-only observer: no updateScene, write, importArtifact, apply or host history operation.
@@ -218,11 +214,15 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
       return file;
     };
     stage = 'open';
-    // Diagnostics for a failed Open: the page as it was before the shortcut.
-    const beforeOpen = await observe(() => nativePage.screenshot({ timeout: timeout() }));
-    requireAttempt(); await observe(() => writeFile(join(input.outputDirectory, '00-before-open.png'), beforeOpen, { flag: 'wx', mode: 0o600, signal: controller.signal }));
-    // Arm the filechooser waiter, click the editor, one round trip with a focus check, then the shortcut.
-    const chooser = await observe(() => openNativeFileChooser(nativePage, { container: '.excalidraw', position: { x: 1300, y: 800 }, shortcut: `${modifier}+o`, timeout }));
+    // Diagnostics for a failed Open: the page before the click and the shortcut. Best effort: a failed
+    // screenshot is recorded in the terminal record and never fails the attempt; the deadline still does.
+    try {
+      const beforeOpen = await observe(() => nativePage.screenshot({ timeout: timeout() }));
+      requireAttempt(); await observe(() => writeFile(join(input.outputDirectory, '00-before-open.png'), beforeOpen, { flag: 'wx', mode: 0o600, signal: controller.signal }));
+    } catch (error) { requireAttempt(); beforeOpenScreenshotError = error; }
+    // Arm the filechooser waiter, click the editor, one round trip with a focus check, then the shortcut;
+    // all of it, up to the filechooser event, under one step limit.
+    const chooser = await observe(() => openNativeFileChooser(nativePage, { container: '.excalidraw', position: { x: 1300, y: 800 }, shortcut: `${modifier}+o`, limitMs: timeout() }));
     await observe(() => chooser.setFiles(input.inputPath, { timeout: timeout() }));
     await observe(() => nativePage.waitForFunction(id => (window as unknown as { __pn: { read(): Array<{ id: string }> } }).__pn.read().some(element => element.id === id), input.stepId, { timeout: timeout() }));
     if (!(await observe(() => readFile(input.inputPath))).equals(inputBytes)) throw new RuntimeError('transfer_invalid', 'Native input bytes changed while opening the file');
@@ -315,7 +315,8 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
     resultFile,
     inputSha256: before.sha256, networkAttempts, primaryError: nativeTransferErrorEvidence(primaryError),
     joinedRunError: nativeTransferErrorEvidence(joinedError),
-    console: { messages: consoleMessages, dropped: consoleDropped },
+    console: pageConsole.evidence(),
+    diagnostics: { beforeOpenScreenshot: beforeOpenScreenshotError === undefined ? null : nativeTransferErrorEvidence(beforeOpenScreenshotError) },
     cleanup: { attempted: cleanupAttempted, succeeded: cleanupAttempted && cleanupErrors.length === 0,
       errors: cleanupErrors.map(error => nativeTransferErrorEvidence(error)) } };
   await writeNativeTerminal(input.outputDirectory, terminal, primaryError, cleanupErrors);
