@@ -48,13 +48,13 @@ export async function closeAfterFailure<E>(failure: E, close: () => Promise<unkn
   return failure;
 }
 /**
- * Runs `work`, then `close` within the close bound. When `work` fails, its failure is what the caller
- * gets, with a failed close next to it (`closeAfterFailure`); when it succeeds, a close that fails or
- * runs out of time fails the call.
+ * Runs `work`, then `close`. When `work` fails, its failure is what the caller gets: the close runs
+ * within the close bound, with a failed close next to it (`closeAfterFailure`). When `work` succeeds,
+ * the close runs as before, under whatever bound it has itself, and a close that fails fails the call.
  */
 export async function withClose<T>(work: () => Promise<T>, close: () => Promise<unknown> | undefined): Promise<T> {
   let value: T;
   try { value = await work(); } catch (failure) { throw await closeAfterFailure(failure, close); }
-  await closeWithin(close);
+  await close();
   return value;
 }

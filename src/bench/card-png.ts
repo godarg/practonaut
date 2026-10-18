@@ -9,7 +9,7 @@
  */
 import type { Browser, LaunchOptions } from 'playwright-core';
 import { launchChromium } from '../adapters/browser/chromium.ts';
-import { closeBrowser, withClose } from '../adapters/browser/bounded.ts';
+import { withClose } from '../adapters/browser/bounded.ts';
 import { CARD_SIZE } from './card.ts';
 
 /** Never resolved: the request is answered by the route below before anything reaches a network. */
@@ -25,7 +25,9 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
   const timeoutMs = options.timeoutMs ?? 30_000;
   const chromium = options.chromium ?? (await import('playwright-core')).chromium;
   const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-  try {
+  // After a failure each close has the close bound and never replaces that failure (issue #64); after
+  // the pictures, the browser's close runs as before and its failure is ignored, as before.
+  return withClose(async () => {
     const pngs: Buffer[] = [];
     for (const svg of svgs) {
       const context = await browser.newContext({ viewport: { ...CARD_SIZE }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: 'block', reducedMotion: 'reduce' });
@@ -37,5 +39,5 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
       }, () => context.close());
     }
     return { pngs, sandbox };
-  } finally { await closeBrowser(browser).catch(() => {}); }
+  }, () => browser.close().catch(() => {}));
 }

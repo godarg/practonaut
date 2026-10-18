@@ -24,7 +24,7 @@ export async function exportAgentSolution(initial: State, input: unknown): Promi
   if (!frame) throw new RuntimeError('transfer_invalid', 'Transfer start requires a frame');
   const adapter = await createExcalidrawAdapter(initial); let state = structuredClone(initial);
   const commit = async (action: Action, next: State): Promise<void> => { const result = await adapter.apply({ before: state, after: next, action }); if (!result.ok) throw new RuntimeError('transfer_invalid', 'Real editor rejected the agent solution'); state = await adapter.snapshot(); };
-  // The browser closes within its bound; a failed close never replaces the export's own failure (issue #64).
+  // After a failure the close has the close bound and never replaces the export's own failure (issue #64).
   return withClose(async (): Promise<TransferExport> => {
     for (let index = 0; index < solution.steps.length; index++) { const step = solution.steps[index]!, id = `transfer-step-${index}`;
       const next = structuredClone(state); next.objects[id] = { id, type: 'step', frameId: frame.id, label: step.label, x: step.x, y: step.y, width: 180, height: 100, fontFamily: 3, deleted: false };
