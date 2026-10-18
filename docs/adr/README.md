@@ -53,3 +53,4 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0042](0042-gate-for-families-on-toolchains.md) | The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget | proposed | 2026-10-18 |
 | [PADR-0043](0043-artifact-judged-verdict-level.md) | Artifact mode: an "artifact-judged" verdict level for results made with foreign tools | proposed | 2026-10-18 |
 | [PADR-0044](0044-bench-report-v3.md) | Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity | proposed | 2026-10-18 |
+| [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | proposed | 2026-10-18 |
