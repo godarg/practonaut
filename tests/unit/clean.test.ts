@@ -1,4 +1,4 @@
-// tools/clean.ts removes exactly dist/, coverage/ and .local/demo/ under the given root.
+// tools/clean.ts removes exactly dist/, coverage/, .local/demo/ and .local/native-transfer/ under the given root.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,8 +20,8 @@ function put(root: string, rel: string, data = "x"): void {
 }
 
 describe("clean", () => {
-  it("targets exactly dist/, coverage/ and .local/demo/", () => {
-    assert.deepEqual([...CLEAN_TARGETS], ["dist", "coverage", ".local/demo"]);
+  it("targets exactly dist/, coverage/, .local/demo/ and .local/native-transfer/", () => {
+    assert.deepEqual([...CLEAN_TARGETS], ["dist", "coverage", ".local/demo", ".local/native-transfer"]);
   });
 
   it("removes the targets, keeps everything else, and is idempotent", () => {
@@ -29,13 +29,14 @@ describe("clean", () => {
     put(root, "dist/index.js");
     put(root, "coverage/lcov.info");
     put(root, ".local/demo/minimal.pnworld");
+    put(root, ".local/native-transfer/h1-abc/terminal.json");
     put(root, ".local/penpot/.env", "KEEP");
     put(root, "spikes/runtime-parity/out/run.json", "KEEP");
     put(root, "src/index.ts", "KEEP");
     put(tmp, "outside.txt", "KEEP");
     const first = clean(root);
-    assert.deepEqual(first.removed.sort(), [".local/demo", "coverage", "dist"]);
-    for (const gone of ["dist", "coverage", ".local/demo"]) assert.ok(!existsSync(join(root, gone)), gone);
+    assert.deepEqual(first.removed.sort(), [".local/demo", ".local/native-transfer", "coverage", "dist"]);
+    for (const gone of ["dist", "coverage", ".local/demo", ".local/native-transfer"]) assert.ok(!existsSync(join(root, gone)), gone);
     for (const kept of [".local/penpot/.env", "spikes/runtime-parity/out/run.json", "src/index.ts"]) assert.equal(readFileSync(join(root, kept), "utf8"), "KEEP", kept);
     assert.equal(readFileSync(join(tmp, "outside.txt"), "utf8"), "KEEP");
     const second = clean(root);

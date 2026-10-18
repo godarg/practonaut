@@ -55,7 +55,7 @@ them automatically must read the matching file before editing:
 | `npm run library:write` | rebuild the task library after editing `tasks/excalidraw/sources/` |
 | `npm run schema:write` | regenerate `schemas/` after changing a schema in `src/` |
 | `npm run design:gallery` | living component gallery in `.local/gallery/` |
-| `npm run clean` | remove `dist/`, `coverage/`, `.local/demo/` |
+| `npm run clean` | remove `dist/`, `coverage/`, `.local/demo/`, `.local/native-transfer/` |
 
 ## 4. Non-negotiables
 
