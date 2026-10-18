@@ -639,8 +639,12 @@ this paragraph are not maintained.
 ## 10. Challenge tier (candidates)
 
 The task library is saturated for current Claude models (0.1.0 baseline: 36 of 36 runs on its six
-hardest tasks passed). The challenge tier adds harder task families, made by a seeded generator and
-published only after a preregistered ladder gate
+hardest tasks passed); until a family passes a gate it is a **library, not a challenge tier**. Round 1
+of the five candidate families below found no headroom on Practonaut's own actions; they get no
+second round there ([PADR-0041](../adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)),
+and 0.3.0 gates families on toolchains under
+[PADR-0042](../adr/0042-gate-for-families-on-toolchains.md) (proposed). The challenge tier adds
+harder task families, made by a seeded generator and published only after a preregistered ladder gate
 ([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md), roadmap 0.2.0 item 4). Until
 a family passes, it is a **candidate**: it lives in `src/challenge/` and is generated from a checkout
 with `node tools/challenge.ts`, not through the `practonaut` command.

@@ -23,6 +23,14 @@ held-out set existed, and each round's spend is in `<family>-round1.ledger.json`
 the branches `challenge/<family>-round-1`, which are kept so that the commits the held-out sets
 record stay reachable.
 
+**What follows.** The maintainer chose the zero-family branch for Practonaut's own actions
+([PADR-0041](../../adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)):
+these five families get no second round there, and until a family passes a gate the bundled tasks
+are a **library, not a challenge tier**. 0.3.0 gates families on toolchains (the same families
+through foreign MCP servers, judged in artifact mode) and new family types, each behind a pre-probe
+([PADR-0042](../../adr/0042-gate-for-families-on-toolchains.md), proposed); its gate reports will go to
+`0.3.0/` next to this page.
+
 **What it means.** With these generators and difficulties, the current Claude models solve the
 families completely; they do not yet give a signal between Opus, Sonnet and Haiku. "Does not pass"
 on discrimination is not evidence that the models are equal: with 26 instances the exact McNemar

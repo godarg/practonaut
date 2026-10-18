@@ -41,7 +41,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0030](0030-bench-replaces-unsealed-eval.md) | Bench: independent scoring of any MCP agent; the unsealed eval runner is retired | accepted | 2026-10-12 |
 | [PADR-0031](0031-public-release-and-trusted-publishing.md) | Public 0.1.0 release: fresh snapshot, npm trusted publishing, manual approval | accepted | 2026-10-12 |
 | [PADR-0032](0032-chromium-sandbox-stays-on.md) | The Chromium sandbox stays on where the system allows it; a browser that does not start falls back or fails by name | accepted (amended: Linux start without the sandbox when the system refuses it) | 2026-10-13 |
-| [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted | 2026-10-14 |
+| [PADR-0033](0033-product-direction-measurement-you-can-act-on.md) | Product direction: measurement you can act on | accepted (first checkpoint, B2 and B3 amended by PADR-0041) | 2026-10-14 |
 | [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) | Preset agents get no provider credentials unless the user keeps them by name | accepted | 2026-10-14 |
 | [PADR-0035](0035-no-design-capture-or-invariants-until-needed.md) | `design:capture` and `design:invariants` are not built until a review needs them | accepted | 2026-10-14 |
 | [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) | Bench report v2: any world, the world stored with the runs, isolation level, optional reference; generated instances are materialised | accepted | 2026-10-14 |
@@ -49,3 +49,6 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0038](0038-lean-mcp-replies.md) | Lean MCP replies: compact observe, mutation deltas, one language by default | accepted | 2026-10-14 |
 | [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) | Results you can act on: run evidence in the bench folder, report v2, and the rules of `compare` | accepted | 2026-10-15 |
 | [PADR-0040](0040-challenge-tier-generated-families-and-gate.md) | Challenge tier: seeded families of materialised instances, task limits, minimal length and a preregistered gate | accepted | 2026-10-15 |
+| [PADR-0041](0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) | Headroom where agents fail, and the first checkpoint after the 0.3.0 launch | accepted | 2026-10-18 |
+| [PADR-0042](0042-gate-for-families-on-toolchains.md) | The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget | proposed | 2026-10-18 |
+| [PADR-0043](0043-artifact-judged-verdict-level.md) | Artifact mode: an "artifact-judged" verdict level for results made with foreign tools | proposed | 2026-10-18 |

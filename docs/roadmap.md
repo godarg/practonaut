@@ -1,8 +1,11 @@
 # Roadmap
 
 Status: **accepted** 2026-10-14 by the maintainer, together with the [vision](vision.md)
-([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)). Dates are targets, not
-promises. Each deliverable has an **acceptance** line; it is done when that line is measured.
+([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)); 0.3.0 and the first
+checkpoint re-planned 2026-10-18 from the maintainer's decisions of 2026-10-17
+([PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)).
+Dates are targets, not promises. Each deliverable has an **acceptance** line; it is done when that
+line is measured.
 Sizes are rough estimates in agent sessions (one session ≈ one reviewable pull request with tests):
 S = 1, M = 2–3, L = 4–8, XL = more than 8.
 
@@ -43,9 +46,10 @@ Baseline measured on 2026-10-14 (published package, details in the
 
 *Released 2026-10-16* ([changelog](../CHANGELOG.md)). Ladder round 1 of the challenge tier: none of
 the five candidate families passes; Opus, Sonnet and Haiku solve almost every held-out instance, so
-there is no headroom ([gate reports](benchmarks/challenge/README.md)). A second round needs new
-budget (470 of the 500 model runs are spent); otherwise the zero-family branch below applies to
-0.3.0 — a maintainer decision.
+there is no headroom ([gate reports](benchmarks/challenge/README.md)); 470 of the 500 model runs
+were spent. The maintainer chose the zero-family branch for Practonaut's own actions: the five
+families get no second round there, and 0.3.0 looks for headroom on foreign toolchains and in new
+family types ([PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)).
 
 **Question:** does a Practonaut score tell two agents apart, and does it say why?
 
@@ -242,7 +246,8 @@ preparation (version in `package.json`, both places in `server.json`, `src/versi
 checker's known writers, lockfile, changelog) is a pull request the maintainer merges; tagging and
 publishing are maintainer steps ([release](release.md)).
 *Evidence goal (not a release blocker):* one external project uses Practonaut on its own task within
-six weeks after the release (see Checkpoints).
+six weeks after the release (see Checkpoints; moved to after the 0.3.0 launch, because 0.2.0 was not
+announced).
 Estimated 20–32 sessions: Must 0 S, Must 1 M, Must 2 M, Must 3 L, Must 4 L plus up to two ladder rounds
 per family, spikes M and S, walkthrough and release preparation S.
 
@@ -254,47 +259,167 @@ per family, spikes M and S, walkthrough and release preparation S.
 | draw.io aborts | spike bpmn-js as application #2 at the start of 0.3.0 (same abort criteria); the adapter follows only if it passes |
 | both abort | no second application in 0.3.0; artifact mode, bridges and the co-actor family; the spreadsheet spike moves forward from 0.4.0 |
 | bring-your-own-tools spike finds no readable state | artifact mode in 0.3.0 starts with tools that hand back a native file (for example draw.io's `create_diagram`), and the other servers are listed as not supported |
-| no challenge family passes (zero-family branch) | 0.3.0 starts with a renewed, gated family development (new candidates, new held-out instances); until a family passes, artifact mode and the narrowed plan use the library tasks, labelled "library, not a challenge tier" |
+| no challenge family passes (zero-family branch) — **the case after 0.2.0** | no second round of these families on Practonaut's own actions; 0.3.0 gates families on toolchains and new family types, each behind a pre-probe ([PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)); until a family passes, artifact mode and the narrowed plan use the library tasks, labelled "library, not a challenge tier" |
 
 ## 0.3.0 — Two apps, your tools (target: March 2027)
 
 **Question:** can I score *my* toolchain, on more than one app, and keep it from regressing?
-Estimated 22–32 sessions. Content changes if a spike aborted (table above) or the usage checkpoint
-narrows the plan (Checkpoints).
 
-- **Adapter registry and browser shell** (M): adapters chosen by the world's `app.adapterId`; the
-  literal `"excalidraw"`/`"0.18.1"` types widened in the adapter contract, world schema, mirror and
-  checker dispatch; the reusable browser shell (Chromium start with deadline, fail-closed routing,
-  transaction with timeout and rollback, PNG render, hash export) extracted while the second adapter
-  is built. *Acceptance:* the Excalidraw conformance suite passes unchanged through the registry; a
-  world naming an unknown adapter is refused with a named error.
-- **Application #2: draw.io** (L), if its spike passed: pinned release, served from local files,
-  written and read only through the official embed JSON protocol, an independent `.drawio` parser
-  in the checker, a conformance suite against the real app. *Acceptance:* the 16 library tasks and
-  every published challenge family pass with the oracle and fail with near misses on draw.io (three
-  runs agree); one report shows the same tasks on both apps.
-- **Bring your own tools (artifact mode)** (M–L): the agent gets a start file and the task and works
-  with any tools it has; Practonaut judges the native result with the same independent checker. A
-  separate verdict level ("artifact-judged, end-state only, no Practonaut history") recorded by a
-  PADR, shown as such in every report, card and comparison. *Acceptance:* two external toolchains
-  (for example the official Excalidraw and draw.io MCP servers) scored on the challenge tier (or, in
-  the zero-family branch, on the library, labelled so), with the results and their verdict level in
-  the docs.
-- **A human edits mid-run** (M): the challenge family deferred from 0.2.0, after its scenario PADR
-  (schedule stored with the run and bound into `--verify` and `compare`; human actions do not use the
-  agent's budget; undo and reset rules). *Acceptance:* the oracle passes under the scripted
-  intervention; the family passes the ladder gate or is reported as not passing.
-- **Bridges** (M): verdict files that Claude Code `plugin eval` graders can read; JUnit; a GitHub
-  Action (publishing it is a maintainer step). *Acceptance:* one example repository runs the action
-  and fails on an instance regression.
-- **Demonstrate once, for real** (M): record any practice or editor session → start and end state →
-  task via the state-based core of `from-scenes`; the human's action sequence becomes the reference.
-  Freeze the old three-step repair flow behind a flag; do not delete it. *Acceptance:* a recorded
-  session of a library task becomes a task that passes its own oracle and rejects its near misses.
-- **Community task packs** (M): data-only packs (world + oracle sidecar) benchable by name; a
-  contribution guide with an acknowledgement rule (contributors of accepted tasks are named).
-  *Acceptance:* a pack from a separate folder is validated, benched and re-verified; a hostile pack is
-  rejected with a named code.
+Planned on 2026-10-18 from the maintainer's decisions of 2026-10-17
+([PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)), a
+read of the code each deliverable touches and three independent reviews of the plan. Estimated
+**55–75 sessions** (the earlier estimate was 22–32): the presets, artifact mode and the human-edit
+family each need a new report format (bench/2 is frozen since 0.2.0), artifact mode needs scripted
+baselines and a proxy per foreign server, and the gate tool needs a rebuild and two later
+extensions. The ordered list below is the order of acceptance (a deliverable is delivered when its
+acceptance line is measured; code may merge earlier in its own pull request). The parallel strands
+are accepted whenever they are ready.
+
+**Measurement rules for this release** (in addition to those of 0.2.0, which still apply):
+
+- **Budget:** at most 800 model runs through subscriptions (Claude, GPT, Gemini together), counted
+  from zero for 0.3.0: every run of a model agent made for the project through a subscription —
+  gate runs, pre-probes, red-team, examples, acceptance and development runs. Each such run takes an
+  entry in a local append-only ledger before its client starts, and a start past 800 is refused.
+  Runs of local models and of the built-in agents are listed, not counted; reviews and subagents are
+  not counted. Per unit and round (held-out + pre-probe) × subscription agents ≤ 100, at most three
+  subscription agents, at most two rounds per unit. When the budget is used up, nothing new starts
+  and a maintainer decides. The list-price total is kept with every round and in the changelog.
+- **Unit of gating:** a family on a toolchain (Practonaut's own actions, or a foreign MCP server
+  judged in artifact mode). The units are preregistered; a unit enters a gate round only after a
+  pre-probe of its strongest configuration passes 10–80 % of its instances. Ladder shape, gate pair,
+  pre-probe and held-out sizes follow [PADR-0042](adr/0042-gate-for-families-on-toolchains.md).
+- **Ladder:** at least three agents; the gate pair is Opus and Haiku through Claude Code (models
+  attested by the client). Further agents — Claude Sonnet, a local open-weight model through an
+  external agent CLI against a loopback endpoint (Practonaut never calls a model), another vendor's
+  model through a preset — run on the same instances and are reported by client and requested
+  model, "not attested" where the client reports none, never ranked or pooled. Before the first run
+  of a vendor its terms and costs are checked (done 2026-10-18): the project's own Claude runs use
+  an API key under Anthropic's Commercial Terms whose credit stops at a fixed limit, not a consumer
+  plan; the project makes no Codex runs through a ChatGPT subscription in 0.3.0; no other paid API
+  use without a maintainer's approval; every run withholds the other providers' keys and its report
+  shows the key source it used. An agent whose shell or file tools cannot be removed runs as
+  "template: not restricted" outside the gate.
+
+### Parallel strands (accepted when ready)
+
+- **P1. Gate tool for 0.3.0** (M–L): `src/challenge/`, `tools/challenge.ts` and the release-run
+  guard, after the bench/3 frame (P3) and before any model run; artifact-mode and co-actor support
+  in later changes. *Acceptance:* a whole 0.3.0 round without a language model (stand-ins, shapes A
+  and B of PADR-0042) runs through pre-probe, declaration, held-out set, preflight, gate and ledger;
+  the count starts at zero although the 0.2.0 rounds are committed; every refusal PADR-0042 names has
+  a test that fails without it; a start past 800 is refused before the client starts.
+- **P2. "H1 native file" fixed at its cause** (S–M): the integration test whose native file dialog
+  did not open within 10 s on several runners in 0.2.0, fixed at the cause, not the timeout.
+  *Acceptance:* a deterministic ordering test fails on the old code and passes on the new; an opt-in
+  amplifier shows at least 6 failures in 30 before and none after; at least 20 runs per CI platform
+  green after the fix.
+- **P3. Bench report `/3`** (M): one new major format, decided once by a PADR before other strands
+  write to it — verdict level, application, toolchain, the agent's vendor, requested and reported
+  model with the evidence for each, client version and settings, isolation evidence, actor
+  attribution and counting for a co-actor, the inputs of a round's digest per verdict level, and an
+  application-independent task identity for comparing the same tasks across apps and toolchains.
+  Optional fields may be added until 0.3.0 ships; then it is frozen, with a migration note. Readers
+  keep reading `/1` and `/2`. *Acceptance:* every committed `/1` and `/2` report still verifies; a
+  stored `/2` report rewritten as `/3` keeps every shared field deep-equal; `compare` names the
+  reason when it refuses a mixed pair.
+- **P4. More presets** (L, moved from 0.4.0): Codex CLI and local open-weight models (through
+  `codex --oss` or opencode, loopback endpoint only, a run whose client does not name the loopback
+  endpoint counts as a subscription run and is refused); Gemini moves to 0.4.0, because Gemini CLI
+  no longer serves personal Google accounts (since 2026-06-18); each with the provider keys and credential files it withholds, a parser for its own output
+  (model, client version, usage limits as infrastructure errors) and an isolation level that follows
+  from evidence in its own stream, not from the kind of agent; a PADR refines PADR-0034.
+  *Acceptance:* each preset whose vendor's terms allow automated subscription runs has a run in the
+  example reports with its isolation level; the others are listed with the reason; a preset whose
+  tools are not structurally limited is reported "template: not restricted" and refused by the gate.
+- **P5. Spatial-layout family** (M–L): steps that must not overlap, aligned and evenly spaced steps,
+  arrows that do not cross or pass through steps, every step in its frame and inside the canvas the
+  task names — on new bounded predicates decided by a PADR that amends PADR-0013 before the draw.io
+  parser and the artifact readers are written. The judged geometry is stated in the goal sentence
+  (an arrow is the straight segment between its steps' centres; a frame is membership; the canvas is
+  a rectangle the task names) and drawn in the Player and the report. *Acceptance:* oracle 100 %,
+  random ≤ 5 %, every near miss fails in a checker process; the predicate cost on the stress boards
+  is at most half the budget; the unit `layout.practonaut` has a pre-probe report and, if admitted
+  and funded, a gate report.
+- **P6. Units on foreign toolchains** (after item 3): `repair`, `injection`, `long-horizon` and
+  `layout` on each foreign toolchain of item 3, pre-probed and gated under PADR-0042.
+  *Acceptance:* each preregistered unit has a pre-probe report; each admitted unit a gate report or
+  "admitted, not gated for budget"; passing families are published for their toolchain.
+- **P7. Technical report** (S, before the release): the 0.2.0 negative finding (no headroom on
+  Practonaut's own actions; a hypothesis for why, labelled so) and the 0.3.0 comparison of
+  toolchains on identical instances (side by side by verdict level, never pooled), as a citable page
+  in the repository. *Acceptance:* every number in it traces to a committed gate or bench report and
+  carries its n, interval, verdict level and isolation level.
+
+### Must, in this order
+
+1. **Adapter registry and browser shell** (M): adapters chosen by the world's `app.adapterId`; the
+   literal `"excalidraw"`/`"0.18.1"` types widened in the adapter contract, world schema, mirror and
+   checker dispatch; mirror equality defined on live objects for every adapter (draw.io keeps no
+   deleted cells); the reusable browser shell (Chromium start with deadline, fail-closed routing,
+   transaction with timeout and rollback, PNG render, hash export, the native file dialog helper,
+   moved unchanged) extracted while the second adapter is built. *Acceptance:* the Excalidraw
+   conformance suite passes unchanged through the registry; a world naming an unknown adapter is
+   refused with a named error.
+2. **Application #2: draw.io** (L): pinned release v32.4.1, downloaded unchanged from the official
+   release on request (`practonaut setup` with the draw.io option, which names the download and its
+   size first; plain `setup` stays Chromium only) and checked against its size and SHA-256 before it
+   is kept (not in the npm package, never in a CI artifact), served
+   from local files with a strict content policy, written and read only through the official embed
+   JSON protocol, an independent `.drawio` parser in the checker, a conformance suite against the
+   real app. PADRs before the adapter ships: groups across frames, and whether draw.io may start
+   without the Chromium sandbox on Linux (PADR-0032). The name only describes what the adapter works
+   with ("works with draw.io"; "draw.io is a trademark of JGraph Ltd; Practonaut is not
+   affiliated"), no logo, no "draw.io" in product or package names. *Acceptance:* the 16 library
+   tasks and every challenge family published at the time pass with the oracle and fail with near
+   misses on draw.io (three runs agree), re-checked before the release; one report shows the same
+   tasks on both apps.
+3. **Bring your own tools (artifact mode)** (L): the agent gets a start file and the task and works
+   with any tools it has; Practonaut judges the native result with the same independent checker, at
+   a separate verdict level ("artifact-judged, end-state only, no Practonaut history",
+   [PADR-0043](adr/0043-artifact-judged-verdict-level.md)), shown as such everywhere and never
+   pooled with session verdicts. Each foreign server pinned (version, archive SHA-256), behind a
+   proxy with a tool allowlist, its own temporary directory per run, its reading rules checked
+   against the real app. *Acceptance:* two external toolchains (for example the official
+   Excalidraw and draw.io MCP servers) scored on the challenge tier (or, in the zero-family branch,
+   on the library, labelled so) — oracle 100 %, random ≤ 5 % and every near miss failing through the
+   server, and at least one model agent on the 16 library tasks — with the results and their verdict
+   level in the docs.
+4. **A human edits mid-run** (L): the challenge family deferred from 0.2.0, after its scenario PADR
+   (schedule stored with the run and bound into `--verify` and `compare`; human actions do not use the
+   agent's budget; undo and reset rules; a co-actor only the host can act as). *Acceptance:* the
+   oracle passes under the scripted intervention, random and near misses fail under it, and a run in
+   which the agent removed the edited object is judged by a stated rule; the family passes the
+   ladder gate or is reported as not passing (or "admitted, not gated for budget").
+5. **Bridges** (M–L): verdict files that Claude Code `plugin eval` graders can read
+   (deterministic graders only; a PADR on how the file is produced during the run and why the agent
+   cannot forge it, or the verdict is labelled self-reported); JUnit with application, toolchain and
+   verdict level; a GitHub Action (publishing it is a maintainer step). *Acceptance:* one example
+   repository runs the action and fails on an instance regression (the repository is a maintainer's
+   decision).
+6. **Demonstrate once, for real** (M): record any practice or editor session → start and end state →
+   task via the state-based core of `from-scenes`; the human's action sequence becomes the reference.
+   Freeze the old three-step repair flow behind a flag; do not delete it. *Acceptance:* a recorded
+   session of a library task becomes a task that passes its own oracle and rejects its near misses.
+7. **Community task packs** (M): data-only packs (world + oracle sidecar) benchable by name; a
+   contribution guide with an acknowledgement rule (contributors of accepted tasks are named).
+   *Acceptance:* a pack from a separate folder is validated, benched and re-verified; a hostile pack is
+   rejected with a named code.
+
+### Won't (0.3.0)
+
+A second round of the five 0.2.0 families on Practonaut's own actions, hidden goals, MCP Apps, MCP
+over HTTP, a sealed runner, Harbor/OpenEnv export, GUI mode, a third application, a public ranking
+of models or vendors, paid API runs.
+
+### Exit criteria
+
+Items 1–7 and strands P1–P7 delivered with their acceptance lines measured (P5 and P6 with any number
+of passing units, including none); `npm run check`, `npm test` and every test layer green on all CI
+platforms; the release notes state the measured numbers, the model-run total and its list-price
+equivalent, and the bench/3 migration note. Schedule checks by event: if item 3 is not accepted
+three weeks after item 2, or items 1–3 are not accepted by 2027-02-01, the maintainer decides what
+moves to 0.4.0 (candidates: items 6 and 7, the draw.io MCP toolchain, the number of units).
 
 ## 0.4.0 — Where agents live (target: May 2027)
 
@@ -312,9 +437,7 @@ Estimated 18–28 sessions.
   Dockerfile, tests that call the checker and write `reward.json` with the fraction of conditions met,
   a solution from the oracle); the call log as JSONL or ATIF trajectories. *Acceptance:* one exported
   task runs in Harbor where Docker is available; the trajectory file validates against its schema.
-- **More presets** (S each): other agent CLIs where their tools can be limited to MCP, otherwise
-  documented wrappers; a preset for OpenAI-compatible local endpoints. *Acceptance:* each preset has a
-  run in the example reports, with its isolation level.
+- *More presets: moved to 0.3.0* (maintainer decision, 2026-10-17).
 - **Spreadsheet identity spike** (M, timeboxed, preregistered like the draw.io spike) for Univer:
   stable row and range identity across inserts, awaitable formula recalculation, computed values
   readable by an independent checker, offline bundle size, licence (xlsx export is commercial-only).
@@ -377,11 +500,15 @@ with the numbers measured that day.
 
 | When | What is decided |
 |---|---|
-| six weeks after 0.2.0 ships, at the latest 2027-02-28 | at least one external project? If not, run the narrowed plan below instead of the rest of 0.3.0 |
+| six weeks after the 0.3.0 launch (the maintainer's first public announcement), at the latest 2027-04-30 | at least one external project? If not, the narrowed plan below replaces 0.4.0 |
 | 2027-06-30 | at least 10 external projects? Which bridge or app brought them? |
 | 2027-12-31 | at least 50 external projects? Plan for 1.0 |
 
 **Narrowed plan (written now, used only if the first checkpoint fails):** keep own-task bench,
-`compare` and the challenge tier; publish the measured findings (headroom, context cost, model
-comparisons) as a technical report; export the challenge tier (or the library, in the zero-family branch) to Harbor and OpenEnv so researchers
-can use it where they already work; no second application; re-assess after three months.
+`compare`, the challenge tier, artifact mode and both applications; publish the measured findings
+(headroom, context cost, model and toolchain comparisons) as a technical report; export the
+challenge tier (or the library, in the zero-family branch) to Harbor and OpenEnv so researchers can
+use it where they already work; no third application and no spreadsheet spike; MCP Apps and MCP
+over HTTP only when an external user asks for them; re-assess after three months. (The first
+checkpoint moved to after the 0.3.0 launch by
+[PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md).)
