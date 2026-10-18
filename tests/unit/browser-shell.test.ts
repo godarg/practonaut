@@ -176,6 +176,9 @@ test('a committed-scene read that never answers is bounded by the operation\'s d
   const aborted = await shell.transaction(async () => { ran = true; return ok([]); }, stuck, { timeoutMs: 1_000, signal: controller.signal });
   assert.equal(aborted.ok, false); if (!aborted.ok) assert.equal(aborted.error.code, 'cancelled');
   await assert.rejects(shell.guarded(async () => 'read', stuck, { timeoutMs: 30 }, { timeout: () => new AdapterError('mirror_timeout', 'late'), cancel: () => new AdapterError('cancelled', 'cancelled') }), (error: unknown) => error instanceof AdapterError && error.code === 'mirror_timeout');
+  // A read the browser itself fails (a crashed page) is not a deadline: it fails the call, as before.
+  const crashed: SceneIO<string[]> = { read: async () => { throw new Error('Target crashed'); }, write: async () => {}, load: async () => {} };
+  await assert.rejects(shell.transaction(async () => { ran = true; return ok([]); }, crashed, { timeoutMs: 1_000 }), /Target crashed/);
   assert.equal(ran, false, 'nothing is written without the committed scene');
   assert.deepEqual((shell.page as unknown as FakePage).scene, ['committed'], 'and the scene is as it was');
   assert.equal(fake.browser.context.pages.length, 1, 'no page was replaced');

@@ -129,6 +129,11 @@ const requireLive = (): void => {
   if (operations.getStore()?.ended) throw new AdapterError('cancelled', 'Operation ended; its page was replaced');
 };
 
+/** A transaction's own deadline or abort, told apart from an error of the browser itself. */
+class OperationStop extends Error {
+  readonly code: 'mirror_timeout' | 'cancelled';
+  constructor(code: OperationStop['code']) { super(code); this.code = code; }
+}
 /** `work` raced against a timeout and an abort. The abort is watched before `work` starts, and an
  * operation that is already aborted never starts. */
 async function within<T>(work: () => Promise<T>, limits: OperationLimits, errors: { timeout(): Error; cancel(): Error }): Promise<T> {
@@ -307,11 +312,12 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
       if (limits.signal?.aborted) return failure('cancelled', 'Operation cancelled before write');
       // One deadline for the operation: reading the committed scene counts against it too.
       const ends = performance.now() + limits.timeoutMs, left = (): OperationLimits => ({ timeoutMs: Math.max(1, ends - performance.now()), signal: limits.signal });
-      const errors = { timeout: () => new Error('mirror_timeout'), cancel: () => new Error('cancelled') };
+      const errors = { timeout: () => new OperationStop('mirror_timeout'), cancel: () => new OperationStop('cancelled') };
       const code = (error: unknown): Failure['code'] => String(error).includes('mirror_timeout') ? 'mirror_timeout' : String(error).includes('cancelled') ? 'cancelled' : 'integrity_failed';
       let before: Awaited<ReturnType<typeof scene.read>>;
       // Nothing is written yet: a read that times out or is aborted leaves the scene as it was.
-      try { before = await within(scene.read, left(), errors); } catch (error) { return failure(code(error), `Committed scene not read: ${String(error)}`); }
+      // A read that throws (a crashed page, a closed browser) fails the call as before.
+      try { before = await within(scene.read, left(), errors); } catch (error) { if (error instanceof OperationStop) return failure(error.code, `Committed scene not read: ${error.code}`); throw error; }
       const operation = asOperation(work);
       try {
         const result = await within(operation.run, left(), errors);
