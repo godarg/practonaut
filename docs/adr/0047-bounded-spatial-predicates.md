@@ -196,7 +196,10 @@ tolerance by a public clause, as from-scenes pins resized steps (chosen for the 
   outline; the sentences say "box", and the pictures draw it. Rotation is not part of the judged
   state (decision 10 says how each toolchain keeps it out). Boxes of zero area do not exist. Readers
   of foreign files produce the box by rounding **edges**, not position and size separately
-  (decision 10), so boxes that touch in the file still touch when judged.
+  (decision 10): an edge two boxes share in the file rounds to one integer, so boxes that touch in
+  the file still touch when judged. The one exception is a box that collapses — both edges round to
+  the same integer; a layout unit's reading rules refuse such a result, so the guarantee holds on
+  every board a layout unit judges (decision 10).
 - **Doubled coordinates.** To stay in integers every point is computed twice its size: the centre of
   a box is (2x + width, 2y + height); its doubled box is [2x, 2x + 2·width] × [2y, 2y + 2·height].
 - **Judged segment** of an arrow: the closed segment from the centre of its `from` step to the centre
@@ -376,12 +379,14 @@ stronger feedback channel than the others and change what the gate measures.
 ### 7. Pictures and the public overlay
 
 - **Public overlay field.** `PublicCondition` gains an optional `layout`: the clause's operator and
-  parameters, with each selection as `{ type, frame, count }` (`frame` is `"all"`, `null` or a frame
-  name) and, for `within`, the canvas rectangle. It is a lossless projection of the goal clause alone
-  — the formal text already states the same — and never of the board, a reference or a near miss.
-  `publicConditions` builds it, so the Player view, the check result and MCP carry the same field;
-  `CompactCondition` and the bridge's condition schema admit it (`replies.ts:36`, `bridge.ts:60`), and
-  a test asserts that a layout task's conditions are deep-equal in the Player view and over MCP.
+  parameters, with each selection as `{ type, scope, count }`, where `scope` is a tagged value —
+  `{ kind: "all" }`, `{ kind: "outside" }` or `{ kind: "frame", name }` — so a frame named "all" can
+  never be read as every object; for `within`, the canvas rectangle. It is a lossless projection of
+  the goal clause alone — the formal text already states the same — and never of the board, a
+  reference or a near miss. `publicConditions` builds it, so the Player view, the check result and
+  MCP carry the same field; `CompactCondition` and the bridge's condition schema admit it
+  (`replies.ts:36`, `bridge.ts:60`), and a test asserts that a layout task's conditions are
+  deep-equal in the Player view and over MCP.
 - **Player.** From the public field and the public board, board mode draws for every layout task,
   before and after a check: the judged segments of the selected arrows as thin dashed lines between
   centres; a self-loop's judged point as a small ring at its step's centre, beside the curve the board
@@ -489,18 +494,30 @@ membership, and anything it cannot map that way is refused, not silently judged.
   refused. The adapter's arrows lie on the judged segments (Context).
 - **Excalidraw files** (session-level native export; `excalidraw-mcp` at artifact level). The box is
   normalised and rounded by edges: left = round(min(x, x + width)), right = round(max(x, x + width)),
-  width = max(1, right − left), likewise vertically, with `Math.round` (half up). A negative stored
-  size therefore keeps the box where it is drawn. Today's `scene.ts:131` rounds position and size
+  likewise vertically, with `Math.round` (half up); the judged box runs from left to right, so its
+  width is right − left. A negative stored size therefore keeps the box where it is drawn, and an edge
+  two boxes share rounds to one integer, so touching stays touching. Each edge moves by at most half a
+  pixel, so a judged size differs from the drawn size by less than 1 px: a step drawn at the pinned
+  W × H is judged within W ± 1 × H ± 1, inside the size pin's ± 4 px, so rounding never decides the
+  pin. A box narrower or lower than about 1 px can **collapse** (right = left). A layout unit's
+  reading rules refuse a result with a collapsed step with a named code (judged as `unreadable`, not
+  passed; the size pin would fail it anyway); every other world/2 reading keeps a valid state by
+  widening a collapsed box to 1 px rightwards or downwards (right = left + 1, as `Math.max(1, …)` does
+  today) and documents that such a box may then overlap a neighbour it only touched in the file.
+  Today's `scene.ts:131` rounds position and size
   separately and keeps `x` for a negative width: two touching boxes A from 0.5 to 11.0 and B from 11
   become 1–12 and 11–21 (1 px of overlap), and x = 100 with width −40 becomes 100–140 instead of
   60–100 (measured). P5b changes the reader for every world/2 reading, so one geometry holds
-  everywhere, with differential fixtures for touching boxes at fractional edges, positive and negative
-  half values and negative sizes; `npm run library:check` shows whether a library goal changes. Arrow
+  everywhere, with differential fixtures for touching boxes at fractional edges (A from 0.5 to 11.0,
+  B from 11: judged 1–11 and 11–21, touching), positive and negative half values, negative sizes, and
+  a collapse (A at x = 0 and B at x = 0.25, both 0.25 wide: both round to 0–0 and 0–1; refused by a
+  layout unit's rules, widened to 0–1 and 0–1 elsewhere); `npm run library:check` shows whether a
+  library goal changes. Arrow
   ends come from bindings (`scene.ts:142`); arrow `points`, elbows and roundness are derived and
   ignored; membership from `frameId`. At artifact level, a layout unit's reading rules refuse with a
-  named code (judged as `unreadable`, not passed): a step with an angle other than 0, a box edge
-  outside ±1 000 000, and a result over the object allowance of decision 5. Positions are judged in
-  whole pixels; the unit's prompt says so.
+  named code (judged as `unreadable`, not passed): a step with an angle other than 0, a collapsed
+  step, a box edge outside ±1 000 000, and a result over the object allowance of decision 5.
+  Positions are judged in whole pixels; the unit's prompt says so.
 - **draw.io files.** The box is the vertex's `mxGeometry` converted to **absolute page coordinates**:
   draw.io stores a shape inside a container relative to that container, so the reader adds the
   offsets of every ancestor container before rounding edges as above. This is a normative reading
@@ -534,7 +551,8 @@ export type LayoutPredicate =
 export type Predicate = /* existing members */ | LayoutPredicate;
 
 // src/host/protocol.ts: the public overlay of decision 7
-export interface LayoutScope { type: "step" | "arrow"; frame: "all" | null | string; count: number }
+export type LayoutWhere = { kind: "all" } | { kind: "outside" } | { kind: "frame"; name: string };
+export interface LayoutScope { type: "step" | "arrow"; scope: LayoutWhere; count: number }
 export type LayoutOverlay =
   | { op: "noOverlap"; steps: LayoutScope; gap: number }
   | { op: "aligned"; steps: LayoutScope; axis: Axis; anchor: Anchor; tolerance: number }
@@ -678,3 +696,15 @@ disposition:
 | Gemini gap 1 | Segment–box intersection algorithm unspecified | Adopted: "meet" and "touch" defined exactly in integers (decisions 2, 3.6) |
 | Gemini gap 2 | Unbound arrow ends in foreign tools | Refuted: binding ends by proximity would invent a relation the file does not hold (architecture §10, "Explicit unknowns"); an unbound end is loose, and the prompt says that arrows must be attached at both ends (decisions 9.6, 10) |
 | Gemini gap 3 | Why not shift the canvas with `layoutOffset` | Refuted for now: variant substitution rewrites only strings, in two independent implementations (`src/world/variant.ts:41-49`, `src/checker/index.ts:38-43`), and generated worlds have one case at (0, 0) (`src/challenge/build.ts:143`); a hand-written world that needs it is a reason to revisit (decision 1.4) |
+
+## Re-review (2026-10-18)
+
+Codex `gpt-6.1-sol` re-reviewed the revision: every earlier blocker and major finding resolved
+(selection by name checked with the real evaluator after re-assigning frame ids; `evenlySpaced`; the
+empty-board cost of 12; the total object allowance; the size pin; the three Gemini refutations). Two
+minor findings remained:
+
+| # | Finding | Disposition |
+|---|---|---|
+| Codex R1 | `PublicCondition.layout` cannot tell every object from a frame named "all": both became `frame: "all"`, so the Player could not know which segments are selected | Adopted: the selection's scope is a tagged value, `{ kind: "all" }`, `{ kind: "outside" }` or `{ kind: "frame", name }` (decision 7, schema sketch) |
+| Codex R2 | Widening a collapsed box to 1 px breaks the promise that touching boxes stay touching (A at 0 and B at 0.25, both 0.25 wide, become 0–1 and 0–1) | Adopted: the rule is stated — shared edges round to one integer; a collapsed step is refused by a layout unit's reading rules and widened, with the overlap documented, only in other readings; a judged size differs from the drawn one by less than 1 px, inside the size pin's ± 4 px; the case is a listed fixture (decisions 2, 10) |
