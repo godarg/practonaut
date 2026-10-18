@@ -155,13 +155,18 @@ with what is about the app.
      frame or a dedicated worker reports go to a path of the first named origin that the shell
      answers, and are recorded. Below the page, the browser starts with WebRTC limited to proxied
      UDP and with a proxy that is the shell's **sink**: a listener on the loopback interface (bound
-     to 127.0.0.1, a free port, closed with the shell) that forwards nothing, answers every request
-     with 403 and records the target it was asked for (`proxy:CONNECT host:port`). The loopback
+     to 127.0.0.1, a free port, closed with the shell) that forwards nothing. The loopback
      interface is proxied too, so a page cannot reach local services this way either. Every
      connection the browser opens itself therefore ends at the sink: TURN over TCP (measured, by
      address and by host name, which is not resolved), a preconnect, and the violation reports of a
-     shared worker, which the routing cannot see — so a shared worker's blocked attempts now show up
-     as `proxy:POST …/policy-report`. In addition the browser resolves no host name
+     shared worker, which the routing cannot see. The sink has no token — Chromium cannot be given
+     one for these connections — so any local process, also of another OS user, can connect to it
+     as well. It therefore trusts no connection: it reads nothing (the socket starts paused), records
+     nothing, answers 403 and closes, at most 64 connections at a time. A foreign client can neither
+     reach the browser, nor fill the shell's records, nor close the shell or make its adapter fail;
+     the sink only holds the port, so nothing else can listen there and receive the browser's
+     connections. The price: the browser's own attempts through the sink (TURN, a shared worker's
+     reports) are blocked but not recorded. In addition the browser resolves no host name
      (`--host-resolver-rules`, all names not found; routed content is never resolved) and every
      served document turns DNS prefetching off (`X-DNS-Prefetch-Control: off`); neither has an effect
      that can be measured in the headless shell, which acts on no prefetch or preconnect hint, so
@@ -170,10 +175,13 @@ with what is about the app.
    - **Operations and time.** The routing setup shares the launch deadline. Transactions and guarded
      reads have one deadline and one abort, watched before the work starts, that also cover reading
      the committed scene: a read that does not return fails the operation (`mirror_timeout` or
-     `cancelled`) with nothing written. A failed write is undone in place; a timed-out, cancelled or
-     thrown one ends its operation — every later call it makes into the shell (page, browser,
-     context, fresh page, a new operation, closing the shell) is refused, wherever it resumes —
-     closes the page and rebuilds the committed scene on a fresh one within the start's deadline. A
+     `cancelled`) with nothing written. Reading the scene, the work, the undo and the rebuild are each
+     an operation of their own: once one ends, every later call it makes into the shell (page,
+     browser, context, fresh page, a new operation, closing the shell) is refused, wherever it
+     resumes, and a fresh page it was still waiting for is closed instead of published. A failed
+     write is undone in place within the start's deadline; a timed-out, cancelled or thrown one —
+     or one whose undo did not finish — closes the page and rebuilds the committed scene on a fresh
+     one within the start's deadline. A
      rebuild that fails or runs out of time leaves the page in an unknown state: the shell closes its
      browser and its sink, the operation answers `mirror_unavailable`, and so does every later call.
      The host's mirror then replaces the adapter instead of restoring into it (its read-back after the
@@ -215,9 +223,11 @@ with what is about the app.
   that needs any network beyond its named origins cannot work in the shell.
 - A start or recovery of the mirror is bounded by the launch and start deadlines (15 s + 60 s)
   instead of the per-call timeouts alone; an operation is bounded by its own limit plus, after a
-  failure, the start's deadline for the rebuild.
+  failure, the start's deadline for the undo and again for the rebuild.
 - The shell opens one listening socket per running browser: the sink, on 127.0.0.1 only, which
-  serves nothing. The app itself is still served without any listener (PADR-0012).
+  serves, reads and records nothing (threat model: other OS users are untrusted and can connect to
+  it; it is built so that they gain nothing). The app itself is still served without any listener
+  (PADR-0012).
 
 ## Re-assessment triggers
 
