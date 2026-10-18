@@ -1,0 +1,28 @@
+{
+  "schema": "practonaut.bench-references/1",
+  "references": [
+    {
+      "taskId": "review-and-send",
+      "source": "oracle-file",
+      "worldId": "review-and-send",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "b",
+            "shape": "rectangle",
+            "stroke": "black",
+            "fill": "green"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ]
+    }
+  ]
+}
