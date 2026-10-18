@@ -52,6 +52,7 @@
 · [0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) Headroom where agents fail, and the first checkpoint after the 0.3.0 launch (accepted).
 · [0042](adr/0042-gate-for-families-on-toolchains.md) The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget (proposed).
 · [0043](adr/0043-artifact-judged-verdict-level.md) Artifact mode: an "artifact-judged" verdict level for results made with foreign tools (proposed).
+· [0048](adr/0048-co-actor-scenario.md) Co-actor scenario: a scripted colleague edits the board mid-run (proposed).
 
 [Archive](adr/archive/README.md): [0009](adr/archive/0009-release-and-publication.md) · [0021](adr/archive/0021-supported-unsealed-evaluation.md) · [0027](adr/archive/0027-private-player-bootstrap-handoff.md).
 
