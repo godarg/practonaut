@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classify, closePhases, tapResult } from '../../tools/amplify-host-deadline.ts';
+import { classify, closePhases, requireAllPassed, tapResult } from '../../tools/amplify-host-deadline.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'pn-amplify-tap-'));
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -57,4 +57,28 @@ test('an attempt is a close deadline only when a recorded close reached the boun
   assert.equal(classify(tapResult(tap, 'hangs'), [], 8000), 'test-timeout');
   assert.equal(classify(tapResult(tap, 'fails otherwise'), [], 8000), 'other');
   assert.equal(classify(null, [], 8000), 'not-run');
+});
+
+// --require-pass (the repeat workflow): the two real test names, written out here, not taken from the tool.
+const LATE = 'a real late mirror write cannot commit after the supplied monotonic deadline';
+const CORE = 'deadline expiration at real core serialization is a timeout, with preserved committed export state';
+writeFileSync(join(scratch, 'named.test.mjs'), [
+  "import test from 'node:test';",
+  `test(${JSON.stringify(LATE)}, () => {});`,
+  `test(${JSON.stringify(CORE)}, () => {});`,
+  `test(${JSON.stringify(CORE + ' (skipped twin)')}, { skip: 'not here' }, () => {});`,
+  "test('fails beside them', () => { throw new Error('red'); });",
+].join('\n'));
+/** A TAP report of the named scratch tests that the pattern selects. */
+function named(pattern: string, label: string): string {
+  const out = join(scratch, `${label}.tap`);
+  const done = spawnSync(process.execPath, ['--test', `--test-name-pattern=${pattern}`, '--test-reporter=tap', `--test-reporter-destination=${out}`, join(scratch, 'named.test.mjs')], { encoding: 'utf8', env });
+  return done.error ? '' : readFileSync(out, 'utf8');
+}
+test('--require-pass holds only when each test ran and passed in every attempt', () => {
+  const late = named('^a real late', 'late'), core = named(`^${CORE.replace(/[(),]/g, '\\$&')}$`, 'core');
+  assert.equal(requireAllPassed({ 'late-write': [late, late], 'core-serialization': [core, core] }, 2), null);
+  assert.equal(requireAllPassed({ 'late-write': [late], 'core-serialization': [core, core] }, 2), 'late-write: expected 2 reports, found 1');
+  assert.match(requireAllPassed({ 'late-write': [late, named('^nothing matches', 'none')], 'core-serialization': [core, core] }, 2) ?? '', /^late-write attempt 2: expected exactly one test named/);
+  assert.match(requireAllPassed({ 'late-write': [late, late], 'core-serialization': [core, named('^(deadline expiration|fails beside)', 'failing')] }, 2) ?? '', /^core-serialization attempt 2: failed: fails beside them/);
 });

@@ -9,17 +9,20 @@
 // (two files at a time) ran `challenge-round.test.ts` beside `host-deadline.test.ts` in both failed
 // Windows runs; its results are kept, not judged.
 //
-//   npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0] [--beside <file>]
+//   npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0] [--beside <file>] [--require-pass]
 //
+// `--require-pass` (the repeat workflow) makes it exit 1 unless each test ran in every attempt and
+// passed, read from each attempt's TAP report with tools/require-test-passed.ts.
 // Writes .local/amplify-host-deadline/<timestamp>-<commit>-<random>.json (commit, whether the tree and
 // src/ had changes, settings, counts, every attempt with its close durations and where Playwright's
 // own log says each close spent its time) and keeps each attempt's TAP report (with that log,
 // `DEBUG=pw:browser`, as comment lines) and close record beside it.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
-import { availableParallelism } from 'node:os';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireTestPassed } from './require-test-passed.ts';
 
 export const HOST_DEADLINE_TESTS = Object.freeze({
   'late-write': 'a real late mirror write cannot commit after the supplied monotonic deadline',
@@ -65,6 +68,17 @@ export function closePhases(log: string): ClosePhases[] {
   const span = (from?: number, to?: number): number | null => from !== undefined && to !== undefined ? to - from : null;
   return [...marks].filter(([, mark]) => mark.start !== undefined).map(([pid, mark]) => ({ pid, exitMs: span(mark.start, mark.exit), cleanupMs: span(mark.cleanupStart, mark.cleanupEnd), totalMs: span(mark.start, mark.end), removalError: errors.has(pid) }));
 }
+/** Null when every test has exactly `runs` reports and each shows that test ran and passed (one
+ * top-level test with its name, not skipped, nothing failed); otherwise every reason. */
+export function requireAllPassed(reports: Record<TestKey, string[]>, runs: number): string | null {
+  const reasons: string[] = [];
+  for (const test of Object.keys(HOST_DEADLINE_TESTS) as TestKey[]) {
+    const own = reports[test] ?? [];
+    if (own.length !== runs) reasons.push(`${test}: expected ${runs} reports, found ${own.length}`);
+    own.forEach((tap, index) => { const reason = requireTestPassed(tap, HOST_DEADLINE_TESTS[test]); if (reason) reasons.push(`${test} attempt ${index + 1}: ${reason}`); });
+  }
+  return reasons.length ? reasons.join('\n') : null;
+}
 /** One attempt's outcome from its test result and the closes the preload recorded. */
 export function classify(result: TapResult | null, closes: CloseRow[], closeBoundMs: number): string {
   if (!result) return 'not-run';
@@ -88,7 +102,7 @@ async function main(): Promise<void> {
     return value;
   };
   const runs = option('--runs', 30, 1), cpu = option('--cpu', 20, 1), block = option('--block', 0, 0), load = option('--load', 0, 0), hold = option('--hold', 0, 0);
-  const besideIndex = args.indexOf('--beside'), beside = besideIndex >= 0 ? args[besideIndex + 1] : undefined;
+  const besideIndex = args.indexOf('--beside'), beside = besideIndex >= 0 ? args[besideIndex + 1] : undefined, requirePass = args.includes('--require-pass');
   if (besideIndex >= 0 && !beside?.endsWith('.test.ts')) throw new Error('--beside needs a test file');
   const git = (...command: string[]): string => spawnSync('git', command, { encoding: 'utf8' }).stdout.trim();
   const commit = git('rev-parse', '--short', 'HEAD'), dirty = git('status', '--porcelain').length > 0;
@@ -98,13 +112,15 @@ async function main(): Promise<void> {
   const out = await realpath(resolve('.local/amplify-host-deadline'));
   const root = await mkdtemp(join(out, `${stamp}-${commit}-`));
 
-  // Host load: CPU workers and file churn in the OS temporary directory, until the attempts end.
-  let loader: ChildProcess | undefined;
+  // Host load: CPU workers and file churn in the OS temporary directory, until the attempts end. The
+  // churn stays inside one folder this tool made, which it removes after stopping the loader.
+  let loader: ChildProcess | undefined, churn: string | undefined;
   if (load > 0) {
-    const script = `const {Worker}=require('node:worker_threads'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+    churn = await mkdtemp(join(tmpdir(), 'pn-amplify-load-'));
+    const script = `const {Worker}=require('node:worker_threads'),fs=require('node:fs'),path=require('node:path'),root=process.argv[1];
 for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
-(async()=>{for(;;){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pn-amplify-load-'));await Promise.all(Array.from({length:200},(_,i)=>fs.promises.writeFile(path.join(dir,'f'+i),Buffer.alloc(16384,i))));await fs.promises.rm(dir,{recursive:true,force:true});}})();`;
-    loader = spawn(process.execPath, ['-e', script], { stdio: 'ignore' });
+(async()=>{for(let n=0;;n++){const dir=path.join(root,String(n));fs.mkdirSync(dir);await Promise.all(Array.from({length:200},(_,i)=>fs.promises.writeFile(path.join(dir,'f'+i),Buffer.alloc(16384,i))));await fs.promises.rm(dir,{recursive:true,force:true});}})();`;
+    loader = spawn(process.execPath, ['-e', script, churn], { stdio: 'ignore' });
   }
   // The partner test file, restarted until the attempts end; each of its runs keeps its TAP report.
   let partner: Promise<void> = Promise.resolve(), attemptsDone = false;
@@ -117,7 +133,7 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
   };
   runPartner(1);
   type Row = { attempt: number; test: TestKey; outcome: string; ms: number; testMs: number | null; error: string | null; closes: CloseRow[]; phases: ClosePhases[] };
-  const rows: Row[] = [];
+  const rows: Row[] = [], reports: Record<TestKey, string[]> = { 'late-write': [], 'core-serialization': [] };
   try {
     for (let attempt = 1; attempt <= runs; attempt++) {
       for (const test of Object.keys(HOST_DEADLINE_TESTS) as TestKey[]) {
@@ -132,6 +148,7 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
           child.once('close', () => done());
         });
         const report = await readFile(tap, 'utf8').catch(() => ''), result = tapResult(report, name);
+        reports[test].push(report);
         const closes = (await readFile(record, 'utf8').catch(() => '')).split('\n').filter(Boolean).map(line => JSON.parse(line) as CloseRow);
         const phases = closePhases(report);
         const row: Row = { attempt, test, outcome: classify(result, closes, closeBoundMs), ms: Math.round(performance.now() - start), testMs: result?.durationMs ?? null, error: result?.ok ? null : `${result?.errorName ?? ''}: ${result?.error ?? ''}`, closes, phases };
@@ -141,7 +158,11 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
         console.log(`${String(attempt).padStart(2)}/${runs} ${test} ${row.outcome} test ${row.testMs} ms, close ${closeMs.join('/') || '-'} ms${split ? ` (${split})` : ''}${row.error ? ` — ${row.error}` : ''}`);
       }
     }
-  } finally { attemptsDone = true; loader?.kill(); }
+  } finally {
+    attemptsDone = true;
+    if (loader) { const ended = new Promise(done => loader!.once('close', done)); loader.kill(); await ended; }
+    if (churn) await rm(churn, { recursive: true, force: true, maxRetries: 5 });
+  }
   // The partner is not interrupted (its own child processes and folders would be left behind): its
   // current run ends on its own, and no new one starts.
   await partner;
@@ -165,6 +186,11 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
   const file = `${root}.json`;
   await writeFile(file, JSON.stringify(summary, null, 2) + '\n', { flag: 'wx' });
   console.log(JSON.stringify({ commit, dirty, srcChanged, runs, cpuThrottlingRate: cpu, eventLoopBlockMs: block, loadWorkers: load, closeHoldMs: hold, beside: beside ?? null, partnerRuns: partnerRuns.length, failures: summary.failures, outcomes: summary.outcomes, closeDurationsMs, slowCloses: slowCloses.length, file }));
+  if (requirePass) {
+    const reason = requireAllPassed(reports, runs);
+    if (reason) { console.error(`amplify-host-deadline: not every attempt ran and passed\n${reason}`); process.exitCode = 1; }
+    else console.log(`amplify-host-deadline: all ${runs} attempts of each test ran and passed`);
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
