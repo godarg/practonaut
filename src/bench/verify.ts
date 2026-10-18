@@ -55,10 +55,10 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchReportV3, type BenchRun, type BenchRunV2, type SessionRunV3 } from './report.ts';
 import { hashFile, mutationCounts, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf, type MutationLogFormat } from './evidence.ts';
-import { AGENT_PRESETS, clientInit, displayCommand, PRESET_INFO, type AgentSpec } from './agents.ts';
+import { AGENT_PRESETS, clientInit, clientOf, displayCommand, PRESET_INFO, requestedBilling, vendorOf, type AgentSpec } from './agents.ts';
 import { readClientEvidence, type ClientEvidence } from './client-evidence.ts';
 import { apiKeySourceValue, SHIPPED_PARSERS } from './parsers.ts';
-import { taskIdentity } from './identity.ts';
+import { identityCache } from './identity.ts';
 import { nativeFile, RUN_ARTIFACTS, verdictOf, taskLimitsOf } from './run.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, referenceProblem, worldContentHash, worldFromPackage, type BenchReference, type ReferencesFile } from './world.ts';
@@ -303,6 +303,32 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
   return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}) };
 }
 
+/** The order of two semantic versions (a pre-release below its release, RFC-style identifiers); null when
+ * either is not a version. */
+export function versionOrder(a: string, b: string): number | null {
+  const parse = (value: string): { core: number[]; pre: string[] } | null => {
+    const match = /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
+    return match ? { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: match[4] ? match[4].split('.') : [] } : null;
+  };
+  const x = parse(a), y = parse(b);
+  if (!x || !y) return null;
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i]! < y.core[i]! ? -1 : 1;
+  if (!x.pre.length || !y.pre.length) return x.pre.length === y.pre.length ? 0 : x.pre.length ? -1 : 1;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i], q = y.pre[i];
+    if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
+    if (p === q) continue;
+    const pn = /^\d+$/.test(p), qn = /^\d+$/.test(q);
+    if (pn && qn) return Number(p) < Number(q) ? -1 : 1;
+    if (pn !== qn) return pn ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return 0;
+}
+/** A report made by a Practonaut newer than this one: only such a report may name a parser this one does
+ * not ship (a version that is not a version is never newer). */
+const madeByNewer = (report: { environment: { practonaut: string } }): boolean => (versionOrder(report.environment.practonaut, PACKAGE_VERSION) ?? 0) > 0;
+
 /** bench/3: the values a shipped parser reads from a run's bound stdout, re-derived and compared with the
  * report (decisions 5, 6 and 9); the agent-level values from the first run that reports each. */
 function verifyClientValues(report: BenchReportV3, run: SessionRunV3, read: ClientEvidence): void {
@@ -311,10 +337,13 @@ function verifyClientValues(report: BenchReportV3, run: SessionRunV3, read: Clie
   if (run.client && read.client && run.client.model !== read.client.model) throw new BenchReportError(cliText('verifyClientModel', { run: run.id, model: safeText(run.client.model ?? 'none'), seen: safeText(read.client.model ?? 'none') }));
   if (!isDeepStrictEqual(read.client, run.client)) fail('client');
   if (!isDeepStrictEqual(read.isolation, run.isolation)) fail('isolation');
-  if (run.failure?.parser) {
-    const failure = read.failure;
-    if (!failure || failure.reason !== run.failure.reason || failure.parser !== run.failure.parser || failure.code !== run.failure.code || failure.beforeModelWork !== run.failure.beforeModelWork) fail('failure');
-  } else if (run.status === 'infra_error' && read.failure && run.failure?.reason !== 'interrupted') fail('failure');
+  // The failure the shipped parser reads must be the report's, whatever the run's status: a client
+  // failure in a judged run's own output, or one the report leaves out, is refused. Only an interrupted
+  // run keeps the runner's reason (it was stopped before its output was classified).
+  if (run.failure?.reason === 'interrupted') return;
+  const failure = read.failure;
+  if (failure === null) { if (run.failure?.parser) fail('failure'); return; }
+  if (!run.failure || failure.reason !== run.failure.reason || failure.parser !== run.failure.parser || failure.code !== run.failure.code || failure.beforeModelWork !== run.failure.beforeModelWork) fail('failure');
 }
 
 /**
@@ -329,9 +358,10 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
   const world = await storedWorld(report, runsDirectory), changed = (message: string): never => { throw new BenchReportError(message, 'bench_world_changed'); };
   if (report.environment.app.adapterId !== world.app.adapterId) changed(cliText('verifyWorldApp', { given: safeText(report.environment.app.adapterId), stored: safeText(world.app.adapterId) }));
   if (report.environment.world.scenarios !== undefined) throw new BenchReportError(cliText('verifyCoActor', { run: report.environment.world.scenarios[0]?.taskId ?? '' }));
+  const identityOf = identityCache(world);
   for (const entry of report.instances) {
     let identity: string;
-    try { identity = taskIdentity(world, entry.taskId, entry.seed); } catch { return changed(cliText('verifyIdentity', { task: safeText(entry.taskId), seed: entry.seed })); }
+    try { identity = identityOf(entry.taskId, entry.seed); } catch { return changed(cliText('verifyIdentity', { task: safeText(entry.taskId), seed: entry.seed })); }
     if (identity !== entry.identity) changed(cliText('verifyIdentity', { task: safeText(entry.taskId), seed: entry.seed }));
   }
   let library: LibraryAnchor | undefined;
@@ -346,7 +376,7 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
   const tools = report.toolchain.kind === 'practonaut' ? report.toolchain.tools : [];
   // Artifacts, evidence and stdout are compared with their hashes before anything is re-derived.
   const evidence = new Map<string, { mutations: string | null; trace: string | null }>(), reads = new Map<string, ClientEvidence>();
-  const notShipped = new Set<string>();
+  const notShipped = new Set<string>(), newer = madeByNewer(report);
   let rederived = 0;
   for (const run of runs) {
     if (run.artifacts) {
@@ -355,14 +385,24 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
       if (run.artifacts.native !== null) await artifact(runsDirectory, run.id, nativeName, run.artifacts.native, 'bench_artifact_changed');
     }
     evidence.set(run.id, await evidenceHashes(run, runsDirectory));
+    // An external run whose stdout the runner could not read binds none; a readable stdout in its folder
+    // was hidden from the report (its evidence would not be re-derived), so it is refused.
+    if (run.stdout === null && await hashFile(join(runsDirectory, run.id, 'agent.stdout')) !== null)
+      throw new BenchReportError(cliText('verifyStdoutUnbound', { run: run.id }), 'bench_artifact_changed');
     if (run.stdout) {
       const path = join(runsDirectory, run.id, 'agent.stdout'), bound = await hashFile(path);
       if (bound === null) throw new BenchReportError(cliText('verifyArtifactMissing', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       if (bound.sha256 !== run.stdout.sha256 || bound.bytes !== run.stdout.bytes) throw new BenchReportError(cliText('verifyArtifactHash', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       const parser = run.client?.parser;
-      // A parser this Practonaut does not ship, or a preset whose client (and so its tool naming) it does not
-      // know, as in an older report after a preset was renamed: the values are named as not re-derived.
-      if (parser !== undefined && (!SHIPPED_PARSERS.has(parser) || (report.agent.kind === 'preset' && !Object.hasOwn(PRESET_INFO, report.agent.name)))) { notShipped.add(SHIPPED_PARSERS.has(parser) ? `${parser} (preset ${report.agent.name})` : parser); continue; }
+      // A report of this Practonaut or an older one can only name parsers this one ships: any other is
+      // refused. Only a newer Practonaut's parser, or a preset whose client (and so its tool naming) this one
+      // does not know, as in an older report after a preset was renamed, leaves the values not re-derived —
+      // and every surface and the gate then treat them as the report's claims.
+      if (parser !== undefined && !SHIPPED_PARSERS.has(parser)) {
+        if (!newer) throw new BenchReportError(cliText('verifyParserUnknown', { run: run.id, parser: safeText(parser), version: safeText(report.environment.practonaut) }));
+        notShipped.add(parser); continue;
+      }
+      if (parser !== undefined && report.agent.kind === 'preset' && !Object.hasOwn(PRESET_INFO, report.agent.name)) { notShipped.add(`${parser} (preset ${report.agent.name})`); continue; }
       const read = await readClientEvidence(spec, path, tools);
       if (read.stdout?.sha256 !== run.stdout.sha256) throw new BenchReportError(cliText('verifyArtifactHash', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       verifyClientValues(report, run, read);
@@ -374,7 +414,18 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
     const first = <T>(pick: (read: ClientEvidence) => T | null): T | null => { for (const run of runs) { const value = reads.get(run.id); const picked = value ? pick(value) : null; if (picked !== null) return picked; } return null; };
     if (report.agent.model !== first(read => read.init.model)) throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field: 'agent.model' }));
     if (report.agent.apiKeySource !== apiKeySourceValue(first(read => read.init.apiKeySource))) throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field: 'agent.apiKeySource' }));
-    if (report.agent.clientVersion.value !== first(read => read.init.version)) throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field: 'agent.clientVersion' }));
+    const agentField = (field: string): never => { throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field })); };
+    // The client version with its source, the vendor from the preset's mapping (of the attested model,
+    // else of the requested one), and the client program the preset starts (decision 5).
+    const version = first(read => read.init.version), source = report.agent.kind === 'preset' ? 'client-attested' as const : 'command-output' as const;
+    if (!isDeepStrictEqual(report.agent.clientVersion, version === null ? { value: null, source: 'none' } : { value: version, source })) agentField('agent.clientVersion');
+    if (!isDeepStrictEqual(report.agent.vendor, vendorOf(spec, first(read => read.init.model), report.agent.requestedModel))) agentField('agent.vendor');
+    if (!isDeepStrictEqual(report.agent.client, clientOf(spec))) agentField('agent.client');
+    // What the preset was set up for, as this Practonaut sets it up: only for a report of this version.
+    if (report.environment.practonaut === PACKAGE_VERSION) {
+      if (!isDeepStrictEqual(report.agent.billing, requestedBilling(spec, report.agent.keptEnv))) agentField('agent.billing');
+      if (report.agent.settings.length) agentField('agent.settings');
+    }
   }
   // A preset's name and command, against this Practonaut's own presets when the report is its own version.
   let preset: VerificationResultV3['preset'] = null;

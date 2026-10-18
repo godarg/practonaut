@@ -739,6 +739,14 @@ export const CLI_CATALOG = {
     "en": "run {run} holds co-actor records; this Practonaut does not re-verify co-actor runs (their schedule checks come with the scenario record)",
     "de": "Lauf {run} enthält Einträge eines Mitspielers; dieses Practonaut prüft Läufe mit Mitspieler nicht nach (ihre Ablaufprüfung kommt mit dem Szenario-Record)"
   },
+  "verifyParserUnknown": {
+    "en": "run {run} names parser {parser}, which this Practonaut does not ship; a report of Practonaut {version}, this version or an older one, can only name shipped parsers",
+    "de": "Lauf {run} nennt den Parser {parser}, den dieses Practonaut nicht mitliefert; ein Bericht von Practonaut {version}, dieser oder einer älteren Version, kann nur mitgelieferte Parser nennen"
+  },
+  "verifyStdoutUnbound": {
+    "en": "run {run} binds no stdout, but its folder holds a readable agent.stdout",
+    "de": "Lauf {run} bindet keine Standardausgabe, sein Ordner enthält aber eine lesbare agent.stdout"
+  },
   "verifyClientValue": {
     "en": "run {run}: its {field} is not what the parser reads from the run's bound stdout",
     "de": "Lauf {run}: das Feld {field} ist nicht das, was der Parser aus der gebundenen Standardausgabe des Laufs liest"
