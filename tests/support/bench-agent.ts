@@ -10,9 +10,9 @@
 // plant-board: put a folder where the run's board.svg goes (a mirror run's picture), then solve.
 // stubborn: ignore SIGTERM and never finish; its pid goes to <state>/pids.json (forced-stop path).
 // tasks   : write the task list of a full observe to <PN_TEST_AGENT_STATE>/tasks.json, then exit.
-// variant : read the token file its MCP config names and ask the host directly over HTTP for a new
-//           variant and a restart of its own task; the replies go to <PN_TEST_AGENT_STATE>/variant.json,
-//           then solve.
+// direct  : read the token file its MCP config names and ask the host directly over HTTP for a new
+//           variant, a restart of its own task and a hint; the replies and the view afterwards go to
+//           <PN_TEST_AGENT_STATE>/direct.json, then solve.
 // family  : the first run (per PN_TEST_AGENT_STATE folder) claims and exits; later runs start a child
 //           and both sleep; their pids go to <state>/pids.json (interrupt path).
 // init    : print a stream-json system/init line (model pn-test-model, apiKeySource none), then solve.
@@ -104,7 +104,7 @@ else {
   if (mode === 'plant-dir') mkdirSync(join(home, '..', 'checker.json'), { recursive: true });
   if (mode === 'plant-log') mkdirSync(join(home, '..', 'mutations.jsonl'), { recursive: true });
   if (mode === 'plant-board') mkdirSync(join(home, '..', 'board.svg'), { recursive: true });
-  if (mode === 'variant') {
+  if (mode === 'direct') {
     // What an agent with a shell can do as the same OS user: the bridge's arguments in its own MCP
     // config name the host and the token file, and the file holds the session token.
     const argument = (name: string): string => server.args[server.args.indexOf(name) + 1]!;
@@ -118,12 +118,13 @@ else {
       outgoing.on('error', fail); outgoing.end(body === undefined ? undefined : JSON.stringify(body));
     });
     const observe = async (): Promise<HostView> => (await http(HOST_ROUTES.observe)).value.value as HostView;
-    const start = await observe(), replies: Array<{ status: number; code: string | null }> = [];
-    for (const extra of [{}, { taskId: start.task.id }]) {
-      const reply = await http(HOST_ROUTES.variant, { expectedRevision: (await observe()).revision, confirmed: true, ...extra });
-      replies.push({ status: reply.status, code: reply.value.error?.code ?? null });
+    const start = await observe(), replies: Array<{ route: string; status: number; code: string | null }> = [];
+    for (const [route, extra] of [[HOST_ROUTES.variant, { confirmed: true }], [HOST_ROUTES.variant, { confirmed: true, taskId: start.task.id }], [HOST_ROUTES.hint, {}]] as const) {
+      const reply = await http(route, { expectedRevision: (await observe()).revision, ...extra });
+      replies.push({ route, status: reply.status, code: reply.value.error?.code ?? null });
     }
-    writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'variant.json'), JSON.stringify({ seed: start.seed, replies }));
+    const end = await observe();
+    writeFileSync(join(process.env.PN_TEST_AGENT_STATE!, 'direct.json'), JSON.stringify({ seed: start.seed, replies, after: { seed: end.seed, revision: end.revision, hintsOpened: end.hintsOpened, hints: end.hints.length } }));
   }
   const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
   if (mode === 'tasks') {

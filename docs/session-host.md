@@ -70,7 +70,7 @@ request (the MCP bridge sends it, PADR-0038) the view is left out.
 | POST `/api/undo` | revision, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | last committed action removed in core and mirror |
 | POST `/api/reset` | revision, `confirmed:true`, optional `actor:{kind:"agent",client}` (set by the MCP bridge), optional `reply:"delta"` | original task state, hints/history cleared, new attempt |
 | POST `/api/variant` | revision, `confirmed:true`, optional `taskId` | next distinct finite case; task-only change preserves seed; a bench host refuses every request (`invalid_request`) |
-| POST `/api/hint` | revision | next public hint, never hidden data |
+| POST `/api/hint` | revision | next public hint, never hidden data; a bench host refuses every request (`invalid_request`) |
 | POST `/api/check` | revision | replay-checked public conditions and end-state-only verdict; with a check limit also `checksRemaining` |
 | GET `/api/events` | token header via fetch | SSE ready/changed/rejected/heartbeat/demonstration; never browser-supplied confirmation |
 | GET `/api/tool.png` | token header | host-rendered image/png with nosniff; no SVG or HTML |
@@ -126,7 +126,11 @@ confirmed:true, including direct API clients. A bench host (one task per host,
 [PADR-0036](adr/0036-bench-report-v2-any-world-stored-world.md)) refuses every variant request with
 `invalid_request`, whether it names another task, its own task or none: the run is judged at its
 own task and seed, its token is in a file the agent's OS user can read, and a reset is the counted
-way back to the start.
+way back to the start. It refuses every hint request the same way: bench agents have no hint tool,
+and a hint opened over HTTP would be help that no count, mutation log or stored session shows. Every
+other route the session token opens on a bench host either changes nothing (the reads, the tool
+image, the export) or is counted and written to the run's mutation log (act, undo, reset, check);
+the demonstration and editor routes do not exist there.
 
 The host is the only writer and serializes transactions. It replays the committed prefix into
 a candidate Session, applies the requested core action and checks coverage/replay. The adapter

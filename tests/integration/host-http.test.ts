@@ -5,10 +5,12 @@ import { connect } from "node:net";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile, lstat, readdir } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
-import { startHost, PLAYER_CSP, type HostOptions } from "../../src/host/server.ts";
+import { startHost, PLAYER_CSP, HTTP_CAPABILITIES, type HostOptions } from "../../src/host/server.ts";
+import { countingController, type RunCounters } from "../../src/bench/run.ts";
+import { MutationRecorder } from "../../src/bench/evidence.ts";
 import { HOST_LIMITS } from "../../src/host/limits.ts";
 import { createPracticeSession, createPracticeController, type MirrorDiagnostic, type PracticeSessionOptions } from "../../src/host/session.ts";
-import { TOKEN_HEADER, type RunningHost, type ControllerFactory, type HostView } from "../../src/host/protocol.ts";
+import { TOKEN_HEADER, type RunningHost, type ControllerFactory, type HostView, type PracticeController } from "../../src/host/protocol.ts";
 import { validateWorld } from "../../src/world/index.ts";
 import { packWorld, readWorldPackage } from "../../src/package/index.ts";
 import { loadWorldPackage } from "../../src/world/index.ts";
@@ -19,7 +21,7 @@ import type { PracticeMirror } from "../../src/host/mirror.ts";
 import { solution } from "./solutions.ts";
 import { POSIX } from "../support/platform.ts";
 
-async function fixture(controllerFactory?: ControllerFactory, extra: Pick<HostOptions, "singleTask"> = {}): Promise<{ dir: string; host: RunningHost }> {
+async function fixture(controllerFactory?: ControllerFactory, extra: Pick<HostOptions, "singleTask" | "taskInfo"> = {}): Promise<{ dir: string; host: RunningHost }> {
   await mkdir(".local", { recursive: true }); const dir = await mkdtemp(resolve(".local/host-http-"));
   const assets = join(dir, "player"); await mkdir(assets);
   for (const file of ["index.html", "player.js", "player.css", "tokens.css"]) await writeFile(join(assets, file), file === "index.html" ? '<!doctype html><script src="/player.js"></script>' : "/* fixed shell */");
@@ -348,19 +350,20 @@ test("confirmed HTTP task switch keeps seed, confirmed variant changes case; rej
 });
 
 // A bench host (singleTask) judges the run's own task at the run's own seed. Its token is in a file
-// a same-user agent can read, so no direct HTTP request may switch the variant (a new seed) or
-// restart the task past the bench's counted reset; a Player host keeps both.
-test("a single-task host refuses every variant request over HTTP; a Player host still accepts one", async () => {
+// a same-user agent can read, so no direct HTTP request may switch the variant (a new seed), restart
+// the task past the bench's counted reset or open a hint nothing counts; a Player host keeps all three.
+test("a single-task host refuses every variant and hint request over HTTP; a Player host still accepts both", async () => {
   const world = loadWorldPackage(await readWorldPackage(await packWorld("examples/worlds/flow-diagram")));
   const factory: ControllerFactory = async (_fixtureWorld, options) => createPracticeSession(world, { ...options, seed: 42, taskId: "T3" });
   const bench = await fixture(factory, { singleTask: true });
   try {
     const before = await view(bench.host) as HostView;
     assert.deepEqual([before.seed, before.task.id, before.tasks.map(task => task.id)], [42, "T3", ["T3"]]);
-    for (const extra of [{}, { taskId: "T3" }, { taskId: "T1" }]) {
-      const refused = await call(bench.host, "/api/variant", { method: "POST", headers: auth(bench.host), body: JSON.stringify({ expectedRevision: before.revision, confirmed: true, ...extra }) });
-      assert.equal(refused.status, 400, `${JSON.stringify(extra)}: ${refused.text.slice(0, 200)}`); assert.equal(refused.value.error?.code, "invalid_request");
-      assert.deepEqual(await view(bench.host), before, `${JSON.stringify(extra)} leaves seed, variant, task and revision as they were`);
+    for (const [route, extra] of [["/api/variant", { confirmed: true }], ["/api/variant", { confirmed: true, taskId: "T3" }], ["/api/variant", { confirmed: true, taskId: "T1" }], ["/api/hint", {}]] as const) {
+      const refused = await call(bench.host, route, { method: "POST", headers: auth(bench.host), body: JSON.stringify({ expectedRevision: before.revision, ...extra }) });
+      const label = `${route} ${JSON.stringify(extra)}`;
+      assert.equal(refused.status, 400, `${label}: ${refused.text.slice(0, 200)}`); assert.equal(refused.value.error?.code, "invalid_request", label);
+      assert.deepEqual(await view(bench.host), before, `${label} leaves seed, variant, task, hints and revision as they were`);
     }
     // The counted way back to the start stays open.
     const reset = await call(bench.host, "/api/reset", { method: "POST", headers: auth(bench.host), body: JSON.stringify({ expectedRevision: before.revision, confirmed: true }) });
@@ -373,7 +376,64 @@ test("a single-task host refuses every variant request over HTTP; a Player host 
     assert.equal(accepted.status, 200, accepted.text); assert.equal(accepted.value.ok, true);
     const after = await view(player.host) as HostView;
     assert.equal(after.task.id, "T3"); assert.notEqual(after.seed, 42); assert.notEqual(after.variantId, before.variantId);
+    const hint = await call(player.host, "/api/hint", { method: "POST", headers: auth(player.host), body: JSON.stringify({ expectedRevision: after.revision }) });
+    assert.equal(hint.status, 200, hint.text.slice(0, 200)); assert.equal((await view(player.host) as HostView).hintsOpened, 1);
   } finally { await dispose(player); }
+});
+
+// The sweep: every route the run token unlocks, on a host assembled as `bench` assembles it (one task,
+// no task-list facts, the counting controller with its mutation log). A route either leaves the
+// committed session as it was, or it is counted and written to the mutation log; a practice route
+// added later fails here until it is probed. With the real mirror too, so the tool image and the
+// export answer with data instead of a refusal.
+test("on a bench-assembled host every practice route leaves the session as it was or is counted and recorded", { timeout: 180_000 }, async () => {
+  const world = loadWorldPackage(await readWorldPackage(await packWorld("examples/worlds/flow-diagram")));
+  const practiceRoutes = Object.entries(HTTP_CAPABILITIES).filter(([, capability]) => capability === "practice").map(([route]) => route).sort();
+  const countedOps: Record<string, string> = { "/api/act": "act", "/api/undo": "undo", "/api/reset": "reset", "/api/check": "check" };
+  const opened = (host: RunningHost, path: string): Promise<number> => new Promise((resolveStatus, reject) => {
+    const req = request(host.origin + path, { headers: auth(host), agent: false }, response => { resolveStatus(response.statusCode!); response.destroy(); });
+    req.on("error", reject); req.end(); // An error after the status (the stream torn down) settles nothing.
+  });
+  for (const mirror of ["off", "required"] as const) {
+    const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
+    const recorder = new MutationRecorder(); let inner: PracticeController | undefined;
+    const f = await fixture(async (_fixtureWorld, options) => { inner = await createPracticeSession(world, { ...options, seed: 42, taskId: "T3", mirror }); return countingController(inner, counters, 50, recorder); }, { singleTask: true, taskInfo: {} });
+    try {
+      const committed = () => { const now = inner!.view(); return { revision: now.revision, step: now.step, hash: now.hash, seed: now.seed, task: now.task.id, attempt: now.attempt, hintsOpened: now.hintsOpened, log: now.log.length }; };
+      const revision = () => ({ expectedRevision: inner!.view().revision });
+      const probes: Array<{ route: string; method: "GET" | "POST"; body?: () => unknown; refusedWith?: string }> = [
+        { route: "/api/resume", method: "GET" }, { route: "/api/observe", method: "GET" }, { route: "/api/events", method: "GET" }, { route: "/api/tool.png", method: "GET" },
+        { route: "/api/editor/scene", method: "GET" }, { route: "/api/editor", method: "POST", body: () => ({ ...revision(), before: [], after: [], boundary: "key" }) },
+        { route: "/api/hint", method: "POST", body: revision, refusedWith: "invalid_request" },
+        { route: "/api/variant", method: "POST", body: () => ({ ...revision(), confirmed: true }), refusedWith: "invalid_request" },
+        { route: "/api/export", method: "POST", body: revision },
+        { route: "/api/demonstration", method: "POST", body: () => ({ ...revision(), confirmed: true }) }, { route: "/api/demonstration/stop", method: "POST", body: () => ({}) },
+        { route: "/api/act", method: "POST", body: () => ({ ...revision(), action: { name: "move_step", params: { id: "a", x: 120, y: 200 } } }) },
+        { route: "/api/undo", method: "POST", body: revision }, { route: "/api/reset", method: "POST", body: () => ({ ...revision(), confirmed: true }) },
+        { route: "/api/check", method: "POST", body: revision },
+      ];
+      assert.deepEqual(probes.map(probe => probe.route).sort(), practiceRoutes, "every practice route is probed");
+      for (const probe of probes) {
+        const before = committed(), records = recorder.records.length, label = `${mirror} ${probe.method} ${probe.route}`;
+        let status: number, code: string | undefined;
+        if (probe.route === "/api/events") status = await opened(f.host, probe.route);
+        else { const reply = await call(f.host, probe.route, { method: probe.method, headers: auth(f.host), ...(probe.body ? { body: JSON.stringify(probe.body()) } : {}) }); status = reply.status; code = reply.value.error?.code; }
+        if (probe.refusedWith) assert.deepEqual([status, code], [400, probe.refusedWith], label);
+        if (mirror === "required" && ["/api/tool.png", "/api/export"].includes(probe.route)) assert.equal(status, 200, `${label} answers with data`);
+        const op = countedOps[probe.route];
+        if (op) {
+          assert.equal(status, 200, label);
+          assert.equal(recorder.records.length, records + 1, `${label} is written to the mutation log`);
+          assert.equal(recorder.records.at(-1)!.op, op, label);
+        } else {
+          assert.deepEqual(committed(), before, `${label} (${status} ${code ?? ""}) leaves the committed session as it was`);
+          assert.equal(recorder.records.length, records, `${label} needs no mutation log entry`);
+        }
+      }
+      assert.deepEqual([counters.act, counters.undoCalls, counters.resetCalls, counters.check, counters.mutations], [1, 1, 1, 1, 3]);
+      if (mirror === "required") assert.equal(inner!.view().mirrorHealth.status, "available", "the image and the export answered from a live mirror");
+    } finally { await dispose(f); }
+  }
 });
 
 test("closing a session leaves no empty diagnostics file and no credential file behind", async () => {

@@ -243,10 +243,13 @@ verified and never part of a score.
   The agent sees what a human player sees, including the public goal conditions and their formal
   form (each goal clause written out). An `--oracle` file is not part of the world and is never given
   to the host. A bench host lists only the run's own task and refuses every task or variant change
-  (`invalid_request`), so a world that holds several instances shows an agent only the one it is on
-  and the judged session keeps the run's seed. This holds for a direct HTTP request with the token
-  from the run's token file too (tested with an agent that reads it); a reset, which the bench counts,
-  is the way back to the start.
+  and every hint (`invalid_request`), so a world that holds several instances shows an agent only the
+  one it is on, the judged session keeps the run's seed, and no help reaches the agent that the
+  report does not show. This holds for a direct HTTP request with the token from the run's token file
+  too (tested with an agent that reads it): every other route that token opens either changes
+  nothing or is counted and written to the mutation log as the same call through MCP is (with no
+  client name), and a reset,
+  which the bench counts, is the way back to the start.
 - While the agents of a bench run, its folder holds neither the world package nor the references:
   the hosts load the world from bytes kept in memory (hashed before the first run), and
   `world.pnworld` and `references.json` (the action sequences only, no near misses) are written after

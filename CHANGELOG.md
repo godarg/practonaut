@@ -27,9 +27,14 @@ All notable changes are recorded here. The format follows
   variant over HTTP; the judged session's seed then no longer matched the run's. Measured with a
   stand-in command-template agent that reads the token file: before, both requests were answered
   200 and the run ended `infra_error` (the checker rejected the session); after, both are refused
-  with `invalid_request` (400) and the run is judged at its own seed. A single-task host now refuses
-  every variant request; `practonaut`, `play`, `serve` and `mcp --task` keep every task and variant
-  ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
+  with `invalid_request` (400) and the run is judged at its own seed. A hint request was accepted the
+  same way, also with the action budget used up: it opened a hint and raised the revision, and
+  neither the counters, the mutation log nor the stored session showed it; it is now refused too.
+  A sweep of every route the session token opens on a bench host found no other such path: the
+  reads, the tool image and the export change nothing, act, undo, reset and check are counted and
+  logged, and the demonstration and editor routes do not exist there. A single-task host now refuses
+  every variant and hint request; `practonaut`, `play`, `serve` and `mcp --task` keep every task,
+  variant and hint ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
 
 ### Changed
 

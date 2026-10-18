@@ -411,6 +411,9 @@ export async function createPracticeController(input: World, options: PracticeSe
       // task starts fresh counts (a single-task host refuses every variant request).
     },context,(request.taskId === undefined || request.taskId === session.taskId) && limitsOf(session) ? { counted: true } : { counted: false, newAttempt: true }),
     hint: async (request,suppliedContext) => {
+      // A single-task (bench) host opens no hints: its agents have no hint tool, and a hint opened
+      // with the run's token over HTTP would be help that no count, log or stored session shows.
+      if (options.singleTask) return rejected(reject('invalid_request', 'This session opens no hints'));
       const context=contextFor(suppliedContext),invalid = guard<HostView>(request,context); if (invalid) return rejected(invalid);
       try {
         const opened = Math.min(hintsOpened + 1, task().hints.length);
