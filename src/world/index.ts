@@ -8,6 +8,7 @@ export * from "./types.ts";
 export * from "./limits.ts";
 export * from "./schema.ts";
 export * from "./variant.ts";
+export * from "./apps.ts";
 
 /** Pure wrapper around the hardened package reader result. Evaluation data is forbidden in every JSON entry. */
 export function loadWorldPackage(pkg: WorldPackage): World {

@@ -31,11 +31,15 @@
       "properties": {
         "adapterId": {
           "type": "string",
-          "const": "excalidraw"
+          "enum": [
+            "excalidraw"
+          ]
         },
         "versionRange": {
           "type": "string",
-          "const": "0.18.1"
+          "enum": [
+            "0.18.1"
+          ]
         },
         "fontFamilies": {
           "minItems": 1,
@@ -883,7 +887,9 @@
         },
         "appVersion": {
           "type": "string",
-          "const": "0.18.1"
+          "enum": [
+            "0.18.1"
+          ]
         },
         "compileToolVersion": {
           "type": "string",

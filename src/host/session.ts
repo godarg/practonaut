@@ -454,7 +454,7 @@ export async function createPracticeController(input: World, options: PracticeSe
         const native=await mirror.exportNative(context);deadline(context);
         if(Buffer.byteLength(native,'utf8')>HOST_LIMITS.replyBytes)throw {code:'result_too_large'};
         // Parse the exact adapter bytes through the separate checker import path (the era's parser).
-        if(session.hash!==boundHash||!nativeMatchesState(session.world.schema,native,session.state))throw {code:'real_tool_disagrees'};
+        if(session.hash!==boundHash||!nativeMatchesState(session.world,native,session.state))throw {code:'real_tool_disagrees'};
         deadline(context);if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const replay=session.checkReplay({continue:()=>continues(context)});deadline(context);if(!replay.ok)throw replay.error;
         const data=session.serialize({continue:()=>continues(context)});deadline(context);

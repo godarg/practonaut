@@ -83,7 +83,7 @@ export async function commandRun(args:string[]):Promise<number>{
   const data=session.serialize();if(flags["--state-out"])await atomicFile(flags["--state-out"],JSON.stringify(data)+"\n");
   let exported:Record<string,string>|undefined;
   if(adapter&&flags["--export"]){const artifact=await adapter.exportArtifact();const prefix=flags["--export"];
-   if(!nativeMatchesState(world.schema,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+   if(!nativeMatchesState(world,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
    const pair=buildExportEnvelope(data,steps.length,artifact.native);
    await atomicFile(prefix+".excalidraw",artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
    exported={native:prefix+".excalidraw",svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
@@ -101,7 +101,7 @@ export async function commandCheck(args:string[]):Promise<number>{
   let pair;
   try{pair=parseExportPair(await readArchiveFile(flags['--pair']),world,input);}catch(error){if(error instanceof ExportPairError)throw new RuntimeError(error.code,cliText('pairInvalid'));throw error;}
   if((flags['--seed']!==undefined&&integer(flags['--seed'])!==pair.seed)||(flags['--task']!==undefined&&flags['--task']!==pair.taskId))throw new RuntimeError('artifact_invalid',cliText('exportContradiction'));
-  if(!nativeMatchesState(world.schema,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+  if(!nativeMatchesState(world,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
   const settings={seed:pair.seed,taskId:pair.taskId,...(bundle?{bundle}:{})};
   // This separate process runs the independent history interpreter, not the production Session replay.
   await checkInProcess(world,canonicalJson(pair.session),settings);
