@@ -199,6 +199,12 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
           return size < 11.95 ? [`${(element.textContent ?? "").slice(0, 24)} at ${size.toFixed(1)} px`] : [];
         }));
         if (small.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: picture text below 12 px: ${small.slice(0, 3).join("; ")}`);
+        // Identifiers never hyphenate (design-language §10.5) and a flag stays on one line, measured as rendered.
+        const split = await page.evaluate(() => [
+          ...[...document.querySelectorAll(".flag")].filter(element => element.getClientRects().length > 1).map(element => `flag ${element.textContent} breaks`),
+          ...[...document.querySelectorAll(".data, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
+        ]);
+        if (split.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: ${split.slice(0, 3).join("; ")}`);
         await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
       }
       assert.deepEqual(external, [], "a report page loads nothing");

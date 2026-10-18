@@ -43,17 +43,25 @@ const shown = (value: string): string => readableText(value);
 /** Quoted text (a label, a name) inside a sentence: kept as written. */
 const QUOTED = /([“„«‚‘"][^“”„«»‚‘’"]*[”“»’"])/u;
 /** A number and the word it counts, or a word and its number ("6 runs", "seed 1", "after #3"), stay on
- * one line: a no-break space joins them, outside quoted data, which keeps its own characters. */
-const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0')).join('');
+ * one line: a no-break space joins them, outside quoted data, which keeps its own characters; so do
+ * the two sides of an equals sign ("p = 0.500", "n = 6"). */
+const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0').replace(/(\S) = (?=\S)/gu, '$1\u00a0=\u00a0')).join('');
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const esc = escapeHtml;
-/** Escaped prose whose quoted parts (labels, names) and the given ids are data: never hyphenated. */
-export function prose(value: string, ids: readonly string[] = []): string {
-  const names = [...new Set(ids)].filter(Boolean).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const pattern = names.length ? new RegExp(`(${names.join('|')})`, 'u') : null;
+/** A command named in prose ("practonaut report", "report --verify") and a command-line flag: data,
+ * which never hyphenates (design-language \u00a710.5); a flag also stays on one line, so a reader who
+ * copies it gets it whole (design review R1). */
+const COMMAND = String.raw`(?:practonaut )?(?:report|compare|bench)(?= --)|practonaut (?:report|compare|bench|challenge)\b|--[a-z][a-z-]*`;
+/** Escaped prose whose quoted parts (labels, names), commands, flags and the given ids are data: never
+ * hyphenated. `code`: the ids are set as code (mono), as a table names a task. */
+export function prose(value: string, ids: readonly string[] = [], idTag: 'data' | 'code' = 'data'): string {
+  const names = [...new Set(ids)].filter(Boolean).sort((a, b) => b.length - a.length).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  // An id is matched as a whole word, never inside another (a task "T" is not the T of "The").
+  const known = new Set(ids), pattern = new RegExp(`(${[...names.map(name => String.raw`(?<![\p{L}\p{N}_-])${name}(?![\p{L}\p{N}_-])`), COMMAND].join('|')})`, 'u');
   const data = (part: string): string => `<span class="data">${esc(part)}</span>`;
+  const piece = (part: string): string => known.has(part) ? (idTag === 'code' ? `<code>${esc(part)}</code>` : data(part)) : part.startsWith('--') ? `<span class="data flag">${esc(part)}</span>` : data(part);
   return readableText(value).split(QUOTED).map((part, index) => index % 2 ? data(part)
-    : pattern ? part.split(pattern).map((piece, at) => at % 2 ? data(piece) : esc(piece)).join('') : esc(part)).join('');
+    : part.split(pattern).map((text, at) => at % 2 ? piece(text) : esc(text)).join('')).join('');
 }
 
 /** Words for the details loader (picture labels and legends) in the page's language. */
@@ -69,26 +77,30 @@ const SHAPES = {
   // No verdict: the kit's dashed ring (a dash means "not known", design-language §7.4).
   unknown: '<circle cx="12" cy="12" r="9" stroke-dasharray="2.4 3"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01" stroke-width="2.6"/>',
+  // A warning is the kit's triangle (design-language §7.3), never the info mark.
+  warning: '<path d="M10.3 4.9L2.9 17.7A2 2 0 004.6 20.7h14.8a2 2 0 001.7-3L13.7 4.9a2 2 0 00-3.4 0z"/><path d="M12 10v4.5"/><path d="M12 17.4h.01" stroke-width="2.6"/>',
 } as const;
 /** A status mark next to its word (the word is what a screen reader reads). */
 export function statusIcon(kind: 'pass' | 'fail' | 'unknown'): string {
   return `<svg class="status-icon ${kind}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${SHAPES[kind]}</svg>`;
 }
-const infoIcon = (): string => `<svg class="banner-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${SHAPES.info}</svg>`;
-/** A banner: a statement about the situation. `tone` neutral (fill), unknown (hatched: something is not known here). */
+const bannerIcon = (shape: 'info' | 'warning'): string => `<svg class="banner-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${SHAPES[shape]}</svg>`;
+/** A banner: a statement about the situation. `tone` neutral (fill), unknown (hatched: something is not
+ * known here), warning (the triangle). */
 export function banner(tone: 'neutral' | 'unknown' | 'warning', title: string, body: string): string {
-  return `<div class="banner ${tone}" role="note">${infoIcon()}<div class="banner-body"><p class="banner-title">${esc(title)}</p>${body}</div></div>`;
+  return `<div class="banner ${tone}" role="note">${bannerIcon(tone === 'warning' ? 'warning' : 'info')}<div class="banner-body"><p class="banner-title">${esc(title)}</p>${body}</div></div>`;
 }
-/** Facts as neutral chips (a chip is a fact, never an action). */
-export function chips(label: string, facts: readonly string[]): string {
-  return `<ul class="chips" aria-label="${esc(label)}">${facts.map(fact => `<li class="chip">${esc(fact)}</li>`).join('')}</ul>`;
+/** Facts as neutral chips (a chip is a fact, never an action); `ids` inside them (a model, a world) are data. */
+export function chips(label: string, facts: readonly string[], ids: readonly string[] = []): string {
+  return `<ul class="chips" aria-label="${esc(label)}">${facts.map(fact => `<li class="chip">${prose(fact, ids)}</li>`).join('')}</ul>`;
 }
 /** A table that stacks into one block per row below 40rem (`many` columns: below 60rem): every cell
- * names its column. `capped` bounds a column of lists (it wraps instead of widening the table). */
-export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false): string {
+ * names its column. `capped` bounds a column of lists (it wraps instead of widening the table); `prose`
+ * marks a column of sentences, which may hyphenate (a stacked cell is narrow). */
+export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean; prose?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false): string {
   const region = labelledBy ? `aria-labelledby="${labelledBy}"` : `aria-label="${esc(label)}"`;
   const header = head.map(cell => `<th scope="col"${cell.capped ? ' class="text capped"' : cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
-  const kind = (cell: { numeric?: boolean; wide?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : ' class="text"';
+  const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : cell.prose ? ' class="text prose"' : ' class="text"';
   const body = rows.map(row => `<tr>${row.map((cell, index) => `<td data-label="${esc(head[index]!.text)}"${kind(head[index]!)}>${cell}</td>`).join('')}</tr>`).join('');
   return `<div class="scroll ${many ? 'stack-many' : 'stack'}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -117,23 +129,27 @@ function worldText(report: BenchReportView, t: Words): string {
   if (world.package === null) return `${world.worldId} ${world.version}`;
   return `${world.worldId} ${world.version} (${world.source === 'library' ? t.worldLibrary : t.worldOwn})`;
 }
-/** The isolation row of the settings: a preset's isolation is the report's claim when its runs' evidence
- * was not re-derived (as on the header line). */
-const settingsIsolation = (report: BenchReportView, language: Language, verification: VerificationInput): string =>
-  report.agent.kind === 'preset' && verificationFacts(verification).claims ? fill(language, TEXT[language].claimNotRederived, { fact: isolationText(report, TEXT[language]) }) : isolationText(report, TEXT[language]);
-/** The verdict level in words (PADR-0044 decision 1): named on every surface, also for session reports. */
+/** How the runs were judged, in words (PADR-0044 decision 1): named on every surface, also for session
+ * reports. The short form is a chip or a value in a sentence; the long one explains it in the settings. */
 export const levelText = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifact;
+export const levelShort = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifactShort;
 /** Applications by adapter id, as their own names spell them; another adapter shows its id. */
 const APP_NAMES: Readonly<Record<string, string>> = Object.freeze({ excalidraw: 'Excalidraw', drawio: 'draw.io' });
 export const appName = (adapterId: string): string => APP_NAMES[adapterId] ?? adapterId;
-/** A foreign MCP server's code runs as the same OS user, without a sandbox (PADR-0043 decision 8): every surface says so. */
-export const noSandbox = (report: Pick<BenchReportView, 'toolchain'>, language: Language): string[] => report.toolchain.kind === 'foreign-mcp' ? [TEXT[language].cardNoSandbox] : [];
-/** The toolchain in words: Practonaut's own tools (by name, when recorded), or the foreign server and its reading rules. */
+/** A foreign MCP server's code runs as the same OS user, without a sandbox (PADR-0043 decision 8): every
+ * surface says so — the report page in a warning banner, a compare side as a chip. */
+export const noSandbox = (report: Pick<BenchReportView, 'toolchain'>, language: Language): string[] => report.toolchain.kind === 'foreign-mcp' ? [TEXT[language].chipNoSandbox] : [];
+/** The toolchain in words: Practonaut's own tools (how many; their names are under Technical details),
+ * or the foreign server and its reading rules. */
 export function toolchainText(report: BenchReportView, language: Language): string {
   const t = TEXT[language], toolchain = report.toolchain;
-  if (toolchain.kind === 'foreign-mcp') return fill(language, t.toolchainForeign, { server: toolchain.server.name, version: toolchain.server.version, id: toolchain.id, rules: `${toolchain.rules.format} ${toolchain.rules.version}` });
-  return toolchain.tools === null ? t.toolchainPractonautUnrecorded : fill(language, t.toolchainPractonaut, { tools: toolchain.tools.join(', ') });
+  if (toolchain.kind === 'foreign-mcp') return fill(language, t.toolchainForeign, { server: toolchain.server.name, version: toolchain.server.version, rules: `${toolchain.rules.format} ${toolchain.rules.version}` });
+  return toolchain.tools === null ? t.toolchainPractonautUnrecorded : fill(language, t.toolchainPractonaut, { n: toolchain.tools.length });
 }
+/** The identifiers in the toolchain's words (server and reading rules), set as data. */
+const toolchainIds = (report: BenchReportView): string[] => report.toolchain.kind === 'foreign-mcp' ? [report.toolchain.server.name, report.toolchain.rules.format] : [];
+/** The model id and the agent's name inside a chip or a line: data. */
+export const agentIds = (report: Pick<BenchReportView, 'agent'>): string[] => [report.agent.name, ...(report.agent.model === null ? [] : [report.agent.model])];
 
 /** The result half of the header line: fractions and the interval (PADR-0039 B.1). */
 export function headlineResult(report: BenchReportView, language: Language): string[] {
@@ -147,16 +163,15 @@ export function headlineResult(report: BenchReportView, language: Language): str
   } else parts.push(t.intervalNone);
   return parts;
 }
-/** The provenance half: verdict level, verification, mirror (session level), isolation, a foreign
- * server's missing sandbox, and the self-reported model. When the client's own values were not
- * re-derived, the verification says so and a preset's isolation and the model read as the report's claims. */
+/** The provenance half: how runs were judged, verification, mirror (session level), isolation and the
+ * self-reported model. When the client's own values were not re-derived, the verification says so,
+ * once; the isolation and the model keep their words (the card marks them with the open mark). A
+ * foreign server's missing sandbox is the page's warning banner and its own terminal line. */
 export function provenance(report: BenchReportView, language: Language, verification: VerificationInput): string[] {
   const t = TEXT[language], v = verificationFacts(verification);
   const mirror = report.verdictLevel === 'session' ? [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff] : [];
-  const claim = (fact: string): string => v.claims ? fill(language, t.claimNotRederived, { fact }) : fact;
-  const isolation = report.agent.kind === 'preset' ? claim(isolationText(report, t)) : isolationText(report, t);
-  const parts = [levelText(report.verdictLevel, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, ...mirror, isolation, ...noSandbox(report, language)];
-  if (report.agent.kind !== 'builtin') parts.push(claim(modelHeadline(report, language)));
+  const parts = [levelShort(report.verdictLevel, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, ...mirror, isolationText(report, t)];
+  if (report.agent.kind !== 'builtin') parts.push(modelHeadline(report, language));
   return parts;
 }
 /** The whole header line (terminal): result, interval, verification, mirror, isolation, model. */
@@ -198,6 +213,9 @@ function technicalFacts(report: BenchReportView, t: Words): Array<[label: string
   if (generated.length) facts.push([t.generated, generated.map(entry => `${entry.taskId} (${entry.id} ${entry.version}, seed ${entry.seed})`).join(', ')]);
   if (report.agent.apiKeySource !== null) facts.push([t.apiKeySource, report.agent.apiKeySource]);
   if (report.agent.keptEnv?.length) facts.push([t.keptEnv, report.agent.keptEnv.join(', ')]);
+  // The toolchain's identifiers: Practonaut's tool names, a foreign server's toolchain id.
+  if (report.toolchain.kind === 'practonaut' && report.toolchain.tools?.length) facts.push([t.toolNames, report.toolchain.tools.join(', ')]);
+  if (report.toolchain.kind === 'foreign-mcp') facts.push([t.toolchainId, report.toolchain.id]);
   return facts;
 }
 const sampleLine = (report: BenchReportView, language: Language): string => {
@@ -386,7 +404,7 @@ const figure = (label: string, value: string, detail?: string): string => `<div 
 /** A "Technical details" disclosure holding label/value pairs (identifiers, codes, hashes). */
 function technical(t: Words, facts: ReadonlyArray<[string, string]>): string {
   if (!facts.length) return '';
-  return `<details class="tech"><summary>${esc(t.technical)}</summary><dl class="settings">${facts.map(([label, value]) => `<dt>${esc(label)}</dt><dd><code>${esc(value)}</code></dd>`).join('')}</dl></details>`;
+  return `<details class="tech"><summary>${esc(t.technical)}</summary><dl class="settings">${facts.map(([label, value]) => `<dt>${prose(label)}</dt><dd><code>${esc(value)}</code></dd>`).join('')}</dl></details>`;
 }
 
 function conditionsHtml(detail: RunDetail, language: Language): string {
@@ -430,7 +448,7 @@ function boardHtml(detail: RunDetail, report: SessionReportView, language: Langu
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));
   legend.push(detail.groups.length ? list(t.groups, detail.groups.map(group => `${group.name}: ${group.members.map(quoted).join(', ')}`)) : `<p class="legend-title">${esc(t.groups)}</p><p class="meta">${esc(t.noGroups)}</p>`);
   if (detail.frames.length) legend.push(list(t.frames, detail.frames.map(item => item.members.length ? fill(language, t.frameMembers, { name: quoted(item.name), members: item.members.map(quoted).join(', ') }) : fill(language, t.emptyFrame, { name: quoted(item.name) }))));
-  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${esc(caption)}</figcaption>${frame(picture.markup, t.finalBoard)}${legend.join('')}</figure>` : '';
+  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard)}${legend.join('')}</figure>` : '';
   const target = detail.target
     ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
     : banner('neutral', t.noTargetTitle, `<p>${esc(detail.targetMissing === 'unreadable' ? t.targetUnreadable : t.noTarget)}</p>`);
@@ -475,7 +493,7 @@ function clientHtml(run: ViewRun, language: Language): string {
   if (client.turns !== null) parts.push(fill(language, t.turnsPart, { n: client.turns }));
   if (client.tokens) parts.push(fill(language, t.tokensPart, { input: number(client.tokens.input + client.tokens.cacheRead + client.tokens.cacheCreation, 0, language), output: number(client.tokens.output, 0, language) }));
   if (client.costUsd !== null) parts.push(fill(language, t.costPart, { cost: number(client.costUsd, 4, language) }));
-  return parts.length ? `<h3>${esc(t.client)}</h3><p class="meta">${esc(fill(language, t.clientLine, { parts: parts.join(' · ') }))}</p>` : '';
+  return parts.length ? `<h3>${esc(t.client)}</h3><p class="meta">${prose(fill(language, t.clientLine, { parts: parts.join(' · ') }), client.model ? [client.model] : [])}</p>` : '';
 }
 
 /** A run card is open when the run failed or its agent did not complete normally (F15). */
@@ -487,7 +505,7 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
   const summary = `<span class="run-title">${runResult(run, t)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span><span class="run-meta">${esc([fill(language, t.actionCount, { n: run.actions }), statusWords(run, t)].join(' · '))}</span>`;
   const parts: string[] = [];
   const heading = run.checker === null ? t.whyNoVerdict : run.pass ? t.whatHappened : t.why;
-  if (states.length) parts.push(`<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${esc(state.name)}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why)}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${prose(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
+  if (states.length) parts.push(`<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${prose(state.name, errorClassesOf(run))}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why)}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${prose(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
   if (detail) {
     parts.push(`<h3>${esc(t.conditions)}</h3>${conditionsHtml(detail, language)}`);
     if (detail.picture || detail.target || detail.targetMissing) parts.push(`<h3>${esc(t.board)}</h3>${boardHtml(detail, report, language)}`);
@@ -509,7 +527,7 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
 
 export function renderHtml(input: ReportInput, tokensCss: string, language: Language = 'en', verification: VerificationInput = 'consistency-checked', details?: ReportDetails): string {
   const report = asView(input);
-  if (report.verdictLevel === 'artifact') return renderArtifactHtml(report, tokensCss, language, verification);
+  if (report.verdictLevel === 'artifact') return renderArtifactHtml(report, tokensCss, language, verification, details);
   const t: Words = TEXT[language], s = report.summary, e = report.environment;
   const passHat = allRepeats(report, language), repeated = allRepeatsCount(report), efficiency = efficiencyText(report, language);
   const cards = [
@@ -537,7 +555,7 @@ export function renderHtml(input: ReportInput, tokensCss: string, language: Lang
 <p class="eyebrow">${esc(t.title)}</p>
 <h1>${esc(report.agent.name)}</h1>
 <p class="headline">${esc(headlineResult(report, language).join(' · '))}</p>
-${chips(t.provenance, facts)}
+${chips(t.provenance, facts, agentIds(report))}
 ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
 ${ended.length ? `<p class="meta">${esc(fill(language, t.endedNote, { n: ended.length, list: endedList.join(', ') }))} <a href="#run-${esc(ended[0]!.id)}">${esc(fill(language, t.endedLink, { n: ended.length }))}</a></p>\n` : ''}${jump}</header>
 ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 5 ? 'n5' : 'n4'}">${cards.join('')}</dl>${totals ? `<p class="note">${esc(totals)}</p>` : ''}</section>
@@ -545,15 +563,15 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.actions, numeric: true }, { text: t.rejected, numeric: true }, { text: t.undo, numeric: true }, { text: t.reset, numeric: true }, { text: t.calls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${ordered.map(run => runHtml(run, report, details, language)).join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
-<dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
+<dt>${esc(t.agent)}</dt><dd>${prose(`${report.agent.name} (${kind})`, [report.agent.name])}</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
-<dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
+<dt>${esc(t.verification)}</dt><dd>${prose(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
-<dt>${esc(t.isolation)}</dt><dd>${esc(settingsIsolation(report, language, verification))}</dd>
-<dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
-<dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
-${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
+<dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
+<dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
+${limitFacts(report, t, language).map(([label, value]) => `<dt>${prose(label)}</dt><dd>${prose(value, (report.environment.world.limits ?? []).map(entry => entry.taskId))}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 
@@ -595,9 +613,30 @@ function renderArtifactTable(report: ArtifactReportView, language: Language, ver
   return lines.join('\n') + '\n';
 }
 
-/** An artifact-judged report as one static page: header with the level and the missing sandbox, the
- * summary without action figures, by task, the runs with the file each was judged on, the settings. */
-function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, language: Language, verification: VerificationInput): string {
+/** Why an artifact-judged run ended as it did, each state by name in words (PADR-0039 B.3, the session
+ * card's grammar): how the agent ended, why there is no verdict, the file the checker judged and each
+ * error class with the first sentence of its explanation. Identifiers stay under Technical details. */
+export function artifactStates(run: ViewArtifactRun, report: ArtifactReportView, details: ReportDetails | undefined, language: Language): State[] {
+  const t = TEXT[language], states: State[] = [];
+  if (run.status === 'timeout') states.push({ name: t.stateTimeout, why: fill(language, t.stateTimeoutArtifactWhy, { timeout: report.settings.timeoutSeconds }) });
+  if (run.status === 'agent_failed') states.push({ name: t.stateAgentFailed, why: run.agentExitCode === null ? t.stateAgentNoStart : fill(language, t.stateAgentFailedWhy, { code: run.agentExitCode }) });
+  if (run.checker === null) {
+    const reason = run.failure && run.failure !== 'not-recorded' ? (t as unknown as Record<string, string>)[`failureWhy_${run.failure.reason}`] : undefined;
+    states.push({ name: t.stateUnjudged, why: reason ? fill(language, t.stateUnjudgedReason, { reason }) : t.stateUnjudgedWhy });
+    return states;
+  }
+  if (run.pass) return states;
+  states.push({ name: t.stateJudgedFile, why: { read: t.stateJudgedRead, absent: t.stateJudgedAbsent, unreadable: t.stateJudgedUnreadable }[run.checker.result] });
+  const classes = errorClassesOf(run);
+  for (const id of classes) { const explanation = explanationOf(run, id, undefined, details, language); states.push({ name: fill(language, t.stateErrorClass, { id }), why: explanation ? firstSentence(explanation) : '' }); }
+  if (!classes.length) states.push({ name: t.stateFailed, why: t.stateFailedArtifactWhy });
+  return states;
+}
+
+/** An artifact-judged report as one static page: header with how runs were judged and the missing
+ * sandbox, the summary without action figures, by task, the runs with the file each was judged on and
+ * why it failed, the settings and how it is scored. */
+function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, language: Language, verification: VerificationInput, details: ReportDetails | undefined): string {
   const t: Words = TEXT[language], s = report.summary;
   const passHat = allRepeats(report, language), repeated = allRepeatsCount(report);
   const cards = [
@@ -608,36 +647,47 @@ function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, langu
   const ordered = failuresFirst(report.runs);
   const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language))]);
   const resultOf = (run: ViewArtifactRun): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
-  const runRows = ordered.map(run => [resultOf(run), `<code>${esc(run.taskId)}</code>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), esc(judgedFileText(run, t)), String(run.proxy.calls), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
-  const runFacts = ordered.map(run => {
+  const runRows = ordered.map(run => [resultOf(run), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), esc(judgedFileText(run, t)), String(run.proxy.calls), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
+  const runTitle = (run: ViewArtifactRun): string => prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId]);
+  const runCards = ordered.map(run => {
+    const states = artifactStates(run, report, details, language), classes = errorClassesOf(run);
+    const heading = run.checker === null ? t.whyNoVerdict : run.pass ? t.whatHappened : t.why;
+    const reasons = states.length ? `<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${prose(state.name, classes)}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why)}` : ''}</li>`).join('')}</ul>` : '';
     const facts: Array<[string, string]> = [[t.runId, run.id], [t.levelLabel, levelText(run.verdictLevel, language)], [t.statusCode, run.status]];
+    if (run.agentExitCode !== null) facts.push([t.exitCode, String(run.agentExitCode)]);
     if (run.note) facts.push([t.runNote, run.note]);
     if (run.failure && run.failure !== 'not-recorded') facts.push([t.failureReason, failureText(run.failure)]);
-    return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary><span class="run-title">${resultOf(run)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span></summary><div class="run-body"><p class="note">${esc(t.artifactBoardNote)}</p>${clientHtml(run, language)}${technical(t, facts)}</div></details>`;
+    for (const id of classes) { const explanation = explanationOf(run, id, undefined, details, language); if (explanation && explanation !== firstSentence(explanation)) facts.push([fill(language, t.fullExplanation, { id }), explanation]); }
+    const meta = [fill(language, t.proxyCallCount, { n: run.proxy.calls }), statusWords(run, t)].join(' · ');
+    return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary><span class="run-title">${resultOf(run)}<span>${runTitle(run)}</span></span><span class="run-meta">${esc(meta)}</span></summary><div class="run-body">${reasons}${clientHtml(run, language)}${technical(t, facts)}</div></details>`;
   });
+  // Runs not passed, linked from the top as on the session page.
+  const failed = ordered.filter(run => !run.pass), shownFailed = failed.slice(0, 12);
+  const jump = failed.length ? `<nav class="jump" aria-label="${esc(t.jumpFailed)}"><span class="jump-title">${esc(t.jumpFailed)}:</span> ${shownFailed.map(run => `<a href="#run-${esc(run.id)}">${runTitle(run)}</a>`).join('<span aria-hidden="true"> · </span>')}${failed.length > shownFailed.length ? ` ${esc(fill(language, t.jumpMore, { n: failed.length - shownFailed.length }))}` : ''}</nav>\n` : '';
   const kind = { builtin: t.kindBuiltin, preset: t.kindPreset, command: t.kindCommand }[report.agent.kind];
+  const v = verificationFacts(verification);
   const body = `<header>
 <p class="eyebrow">${esc(t.title)}</p>
 <h1>${esc(report.agent.name)}</h1>
 <p class="headline">${esc(headlineResult(report, language).join(' · '))}</p>
-${chips(t.provenance, [...provenance(report, language, verification), report.createdAt.slice(0, 10)])}
+${chips(t.provenance, [...provenance(report, language, verification), report.createdAt.slice(0, 10)], agentIds(report))}
 ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
-</header>
+${jump}</header>
 ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
-<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures n4">${cards.join('')}</dl></section>
+<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n3'}">${cards.join('')}</dl></section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
-<section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2>${runFacts.join('')}</section>
+<section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2><p class="note">${esc(t.artifactBoardNote)}</p>${runCards.join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
-<dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
+<dt>${esc(t.agent)}</dt><dd>${prose(`${report.agent.name} (${kind})`, [report.agent.name])}</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
-<dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
+<dt>${esc(t.verification)}</dt><dd>${prose(v.claims ? t.reverifiedClaims : v.level === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
-<dt>${esc(t.isolation)}</dt><dd>${esc(settingsIsolation(report, language, verification))}</dd>
-<dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
-<dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
+<dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
+<dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.selfReportedArtifact)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

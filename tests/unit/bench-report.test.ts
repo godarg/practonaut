@@ -132,8 +132,8 @@ test('the HTML names its verification level; the command line, home folder as ~,
   const local = fixture(); local.agent = { kind: 'command', name: 'mine', command: [join(homedir(), 'agents', 'run.sh'), '{mcp_config}'], model: null, modelSource: 'none' };
   const shared = renderHtml(local, ':root{}');
   assert.match(shared, /<code>~[/\\]agents[/\\]run\.sh \{mcp_config\}<\/code>/); assert.equal(shared.includes(homedir()), false, 'the home folder is not named');
-  assert.match(plain, /n = 8\u00a0runs · 2\u00a0seeds · 2\u00a0repeats/);
-  assert.match(renderHtml(value, ':root{}', 'de'), /n = 8\u00a0Läufe · 2\u00a0Seeds · 2\u00a0Wiederholungen/);
+  assert.match(plain, /n\u00a0=\u00a08\u00a0runs · 2\u00a0seeds · 2\u00a0repeats/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /n\u00a0=\u00a08\u00a0Läufe · 2\u00a0Seeds · 2\u00a0Wiederholungen/);
   const one = report([run('connect', 1, 1, true)], 1, ['connect'], [1]);
   assert.match(renderTable(one), /^n = 1 run · 1 seed · 1 repeat$/m);
   assert.match(renderTable(one), /^1 task × 1 seed × 1 repeat, timeout/m);

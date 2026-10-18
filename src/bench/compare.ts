@@ -31,7 +31,7 @@ import type { IsolationLevel } from './report.ts';
 
 export type ComparableField = 'verdictLevel' | 'world' | 'grid' | 'mirror' | 'budget' | 'checks' | 'isolation' | 'rules';
 export interface Difference { field: ComparableField; baseline: string; candidate: string }
-export type CaveatField = 'timeout' | 'repeats' | 'practonaut' | 'reportVersion' | 'isolationBasis' | 'toolchain' | 'rules' | 'clientVersion' | 'clientSettings' | 'sharedIdentities' | 'runCounts' | 'identityPairing';
+export type CaveatField = 'timeout' | 'repeats' | 'practonaut' | 'reportVersion' | 'isolationBasis' | 'toolchain' | 'rules' | 'clientVersion' | 'clientSettings' | 'sharedIdentities' | 'identityPairing';
 export interface Caveat { field: CaveatField; baseline: string; candidate: string }
 
 export class CompareError extends Error {
@@ -99,6 +99,7 @@ export function refusalHint(found: readonly Difference[], baseline: ReportInput,
 }
 
 export type PairKind = 'paired' | 'missing';
+export interface InstanceName { taskId: string; seed: number }
 /** `config-down`/`config-up`: across worlds, a different outcome of one task identity on the two
  * configurations — never an instance regression or fix. */
 export type Flip = 'regression' | 'fix' | 'single-down' | 'single-up' | 'changed-down' | 'changed-up' | 'config-down' | 'config-up' | null;
@@ -112,16 +113,18 @@ export interface InstancePair {
   flip: Flip;
   /** For an instance that is not compared: the side that lacks it. */
   side?: 'baseline' | 'candidate' | 'both';
-  /** Identity pairing: the identity, and each side's task ids and seeds that hold it ("task seed n"). */
+  /** Identity pairing: the identity, and each side's instances (task id and seed) that hold it; the
+   * renderer names them in the page's language. */
   identity?: string;
-  names?: { baseline: string[]; candidate: string[] };
+  names?: { baseline: InstanceName[]; candidate: InstanceName[] };
   /** Identity pairing: the two sides hold a different number of runs; no rate claim uses the pair. */
   unequalRuns?: boolean;
 }
 /** `nothing_paired`: no instance is on both sides, so there is nothing to test; `no_equal_runs`: every
  * paired identity has different run counts on the two sides, so there is no rate claim. */
 export type RateVerdict = 'improvement' | 'decline' | 'not_distinguishable' | 'nothing_paired' | 'no_equal_runs';
-export interface SideRate { passed: number; instances: number; interval: { low: number; high: number } | null }
+/** `noVerdict`: the counted instances (or identities) with no judged run on this side, counted as not passed. */
+export interface SideRate { passed: number; instances: number; interval: { low: number; high: number } | null; noVerdict: number }
 export interface Comparison {
   /** `instance`: one world, task × seed; `identity`: two worlds, the distinct task identity. */
   pairing: 'instance' | 'identity';
@@ -166,7 +169,7 @@ function rates(counted: readonly InstancePair[]): Pick<Comparison, 'baseline' | 
   const baselineOnly = counted.filter(pair => pair.baseline!.outcome === 'pass' && pair.candidate!.outcome === 'fail').length;
   const candidateOnly = counted.filter(pair => pair.baseline!.outcome === 'fail' && pair.candidate!.outcome === 'pass').length;
   const { p } = mcnemarExact(baselineOnly, candidateOnly);
-  const rate = (side: 'baseline' | 'candidate'): SideRate => ({ passed: passedOn(side), instances: counted.length, interval: counted.length ? wilson(passedOn(side), counted.length) : null });
+  const rate = (side: 'baseline' | 'candidate'): SideRate => ({ passed: passedOn(side), instances: counted.length, interval: counted.length ? wilson(passedOn(side), counted.length) : null, noVerdict: counted.filter(pair => pair[side]!.judged === 0).length });
   return { baseline: rate('baseline'), candidate: rate('candidate'), discordant: { baselineOnly, candidateOnly }, p, alpha: ALPHA, verdict: p < ALPHA ? (candidateOnly > baselineOnly ? 'improvement' : 'decline') : 'not_distinguishable' };
 }
 
@@ -238,7 +241,7 @@ function compareByIdentity(baseline: BenchReportView, candidate: BenchReportView
     return run => map.get(instanceKey(run))!;
   };
   const a = outcomesBy(baseline, identityOf(baseline)), b = outcomesBy(candidate, identityOf(candidate));
-  const names = (entry: { runs: ViewRun[] } | undefined): string[] => entry ? [...new Set(entry.runs.map(run => `${run.taskId} seed ${run.seed}`))] : [];
+  const names = (entry: { runs: ViewRun[] } | undefined): InstanceName[] => entry ? [...new Map(entry.runs.map(run => [instanceKey(run), { taskId: run.taskId, seed: run.seed }])).values()] : [];
   // Rows in the baseline's plan order, then the candidate's identities it lacks.
   const order = [...new Set([...baseline.instances!.map(entry => entry.identity), ...candidate.instances!.map(entry => entry.identity)])].filter(identity => a.has(identity) || b.has(identity));
   const pairs: InstancePair[] = order.map(identity => {
@@ -254,8 +257,10 @@ function compareByIdentity(baseline: BenchReportView, candidate: BenchReportView
   const equal = paired.filter(pair => !pair.unequalRuns);
   const counted = rates(equal);
   const caveats = caveatsOf(baseline, candidate);
-  caveats.push({ field: 'identityPairing', baseline: `${baseline.environment.world.worldId} ${baseline.environment.world.version} (${baseline.environment.app.adapterId}, ${toolchainId(baseline)})`, candidate: `${candidate.environment.world.worldId} ${candidate.environment.world.version} (${candidate.environment.app.adapterId}, ${toolchainId(candidate)})` });
-  for (const pair of paired.filter(value => value.unequalRuns)) caveats.push({ field: 'runCounts', baseline: `${pair.names!.baseline.join(', ')}: ${pair.baseline!.repeats}`, candidate: `${pair.names!.candidate.join(', ')}: ${pair.candidate!.repeats}` });
+  // The worlds paired (the applications and toolchains are on the sides and in their own caveats); the
+  // pairs with unequal run counts carry `unequalRuns` and are named by the renderer.
+  const world = (report: BenchReportView): string => `${report.environment.world.worldId} ${report.environment.world.version}`;
+  caveats.push({ field: 'identityPairing', baseline: world(baseline), candidate: world(candidate) });
   return {
     pairing: 'identity', pairs, paired: paired.length, ...counted, verdict: paired.length === 0 ? 'nothing_paired' : equal.length === 0 ? 'no_equal_runs' : counted.verdict,
     regressions: [], fixes: [], singleFlips: [], changedFlips: [], configFlips: paired.filter(pair => pair.flip !== null),

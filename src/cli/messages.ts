@@ -424,8 +424,8 @@ export const CLI_CATALOG = {
     "de": "die Isolationsstufe"
   },
   "compareField_verdictLevel": {
-    "en": "the verdict level",
-    "de": "die Bewertungsstufe"
+    "en": "the way runs were judged",
+    "de": "die Art der Bewertung"
   },
   "compareField_checks": {
     "en": "the checks per run (--checks)",
@@ -440,12 +440,12 @@ export const CLI_CATALOG = {
     "de": "Sitzungsurteil"
   },
   "compareLevel_artifact": {
-    "en": "artifact-judged, end-state only, no Practonaut history",
-    "de": "nach Artefakt bewertet, nur Endzustand, ohne Practonaut-Verlauf"
+    "en": "artifact-judged",
+    "de": "nach Artefakt bewertet"
   },
   "compareHintLevel": {
-    "en": "Runs of different verdict levels are never paired (PADR-0043 decision 1): compare reports of one level",
-    "de": "Läufe verschiedener Bewertungsstufen werden nie gepaart (PADR-0043 Entscheidung 1): Berichte einer Stufe vergleichen"
+    "en": "Runs judged in different ways are never paired (PADR-0043 decision 1): compare reports whose runs were judged the same way",
+    "de": "Auf verschiedene Weise bewertete Läufe werden nie gepaart (PADR-0043 Entscheidung 1): Berichte vergleichen, deren Läufe auf dieselbe Weise bewertet wurden"
   },
   "compareHintGate": {
     "en": "A regression gate compares one world with itself under one reading of results; compare without --fail-on-regression to see the two configurations side by side",

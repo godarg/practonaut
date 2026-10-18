@@ -61,7 +61,7 @@ test('F: an identity-paired candidate whose runs were all unjudged has no verdic
   const comparison = compareReports(a, b);
   assert.deepEqual([comparison.pairing, comparison.pairs[0]!.flip], ['identity', 'config-down']);
   const text = renderCompareTable({ report: a, verification: 'consistency-checked' }, { report: b, verification: 'consistency-checked' }, comparison);
-  assert.match(text, /T seed 1 \(baseline\) · T seed 2 \(candidate\): passed on the baseline \(1\/1\), no verdict on the candidate \(1 of 1 run not judged, counted as not passed\)/);
+  assert.match(text, /T · seed 1 \(baseline\) · T · seed 2 \(candidate\): passed on the baseline \(1\/1\), no verdict on the candidate \(1 of 1 run not judged, counted as not passed\)/);
   assert.equal(/failed on the candidate/.test(text), false, text);
 });
 
@@ -82,7 +82,10 @@ test('G: one hint for a refusal: settings for two worlds of one application, the
     refused = cli(a, otherApp, '--fail-on-regression', '--html', join(dir, 'gate.html'));
     assert.equal(refused.status, 2);
     assert.match(refused.stderr, /A regression gate compares one world with itself under one reading of results; compare without --fail-on-regression to see the two configurations side by side \[compare_incomparable\]/);
-    assert.match(readFileSync(join(dir, 'gate.html'), 'utf8').replace(/ /g, ' '), /A regression gate compares one world with itself under one reading of results: compare without --fail-on-regression to see the two configurations side by side\./);
+    // The page: why the gate refuses (two worlds), then the way forward with the flag whole.
+    const gate = readFileSync(join(dir, 'gate.html'), 'utf8').replace(/ /g, ' ').replace(/<\/?span[^>]*>/g, '');
+    assert.match(gate, /A regression gate compares one world with itself; these reports come from two worlds\./);
+    assert.match(gate, /Compare without --fail-on-regression to see the two configurations side by side\./);
     // /2 as before: two /2 reports of different worlds under the gate get the settings hint.
     const v2 = JSON.parse(fixture('bench/v2/report.json')) as { environment: { world: { contentHash: string } } };
     const other = structuredClone(v2); other.environment.world.contentHash = hash('f');
@@ -137,9 +140,10 @@ test('A: values a parser this Practonaut does not ship read are never shown as c
   } }) as BenchReportV3);
   const claims = { level: 're-verified' as const, notRederived: ['claude-code-stream/2'], preset: 'not-checked' as const };
   const line = headline(toView(preset), 'en', claims).join(' · ');
-  assert.match(line, /re-verified from the artifacts; the client’s own values not re-derived/);
-  assert.match(line, /tool-restricted preset \(the report’s claim, not re-derived\)/);
-  assert.match(line, /model claude-haiku-5-5 \(self-reported, client-attested\) \(the report’s claim, not re-derived\)/);
+  // Said once, by the verification (R1-F2); the isolation and the model keep their own words.
+  assert.match(line, /re-verified; client values not re-derived/);
+  assert.equal(line.match(/not re-derived/g)?.length, 1, line);
+  assert.match(line, / · tool-restricted preset · model claude-haiku-5-5 \(self-reported, client-attested\)$/);
   // Without the detail (fully re-derived) none of that is said.
   assert.equal(/not re-derived/.test(headline(toView(preset), 'en', 're-verified').join(' · ')), false);
   const tokens = await readTokensCss();
@@ -149,11 +153,14 @@ test('A: values a parser this Practonaut does not ship read are never shown as c
   assert.deepEqual(marks.filter(([text]) => /Tool-restricted preset|not re-derived/.test(text!)), [['Client’s own values not re-derived: the report’s claims', 'open'], ['Tool-restricted preset: only Practonaut’s MCP tools', 'open']]);
   // Fully re-derived, the same report's preset isolation is confirmed by re-verification.
   assert.ok(renderCard(preset, tokens, 'light', 'en', 're-verified').includes('class="mark-confirmed"/><path d="M7.7 12.4l3 3 5.6-6" class="mark-check"/></g><text class="card-fact"><tspan x="24" y="15.4">Tool-restricted preset'));
-  assert.match(renderBadge(preset, tokens, 'en', claims), /re-verified, client values not re-derived/);
+  // The badge marks the preset as a claim, as the card does (R1-F17).
+  const badge = renderBadge(preset, tokens, 'en', claims).match(/<text[^>]*>([\s\S]*)<\/text>/u)![1]!;
+  assert.match(badge, /re-verified · tool restriction not re-derived/);
+  assert.equal(badge.includes('tool-restricted preset'), false);
   const page = renderHtml(preset, tokens, 'en', claims);
-  assert.match(page, /the client’s own values \(model, offered tools and so a preset’s isolation, billing\) were not re-derived and are the report’s claims/);
-  // The settings say it too, and the note does not claim the client's values were read again.
-  assert.match(page, /<dt>Isolation<\/dt><dd>tool-restricted preset \(the report’s claim, not re-derived\)<\/dd>/);
+  assert.match(page, /re-verified: every judged run was re-judged by the checker from its artifacts\. The model and the offered tools are the report’s own statements, not re-derived\./);
+  // The settings name the isolation in its own words, and the note does not claim the client's values were read again.
+  assert.match(page, /<dt>Isolation<\/dt><dd>tool-restricted preset<\/dd>/);
   assert.equal(page.includes('is read again from its bound output'), false);
   const junit = renderJunit(preset, 'en', claims);
   assert.match(junit, /<property name="practonaut\.verification\.clientValues" value="not re-derived: the report&apos;s claims"\/>/);

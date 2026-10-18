@@ -57,7 +57,7 @@ test('instance regression: three repeats a side, all passed on the baseline, all
   const changedText = renderCompareTable({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed);
   assert.match(changedText, /Outcome changed, not in every repeat — not a regression signal:\n  T · seed 1: passed on the baseline \(2\/3\), failed on the candidate \(1\/3\)/);
   const changedHtml = renderCompareHtml({ report: report(instances([[true, true, false]])), verification: 'consistency-checked' }, { report: report(instances([[false, false, true]])), verification: 'consistency-checked' }, changed, ':root{}');
-  assert.match(changedHtml, /<td data-label="change" class="text">outcome changed, not in every repeat — not a regression signal<\/td>/);
+  assert.match(changedHtml, /<td data-label="change" class="text prose">outcome changed, not in every repeat — not a regression signal<\/td>/);
   assert.equal(changedHtml.includes('same outcome'), false);
   assert.equal(comparison.regressionSignal, true);
   // b = 1 (seed 1), c = 1 (seed 3): p = min(1, 2 · P(X ≤ 1 | n = 2)) = min(1, 2 · 3/4) = 1.
@@ -123,7 +123,7 @@ test('every run counts: a run that was not judged counts as not passed, is named
   assert.equal(text.includes('failed on the candidate (0/3)'), false);
   const page = renderCompareHtml({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison, ':root{}').replace(/\u00a0/g, ' ');
   // In the instance table and the list: the unknown mark (a dashed ring) with "no verdict", never the fail mark.
-  assert.match(page, /<td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray="2\.4 3"\/><\/svg>no verdict \(3 of 3 runs not judged\), counted as not passed<\/span><\/td><td data-label="change" class="text">no verdict on one side — not a regression signal<\/td>/);
+  assert.match(page, /<td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray="2\.4 3"\/><\/svg>no verdict \(3 of 3 runs not judged\), counted as not passed<\/span><\/td><td data-label="change" class="text prose">no verdict on one side — not a regression signal<\/td>/);
   assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><span class="data">T<\/span> · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate/);
   assert.equal(page.includes('failed on the candidate (0/3)'), false);
   assert.match(text, /The candidate is incomplete: 3 instances are missing, cut short or hold a run that was not judged\./);
@@ -205,7 +205,7 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     assert.equal(refused.status, 2); assert.match(refused.stderr, /the action budget differs \(50 on the baseline, 10 on the candidate\).*\[compare_incomparable\]/);
     // With --html the refusal is a page that names every difference.
     const refusal = readFileSync(join(dir, 'refused.html'), 'utf8').replace(/\u00a0/g, ' ');
-    assert.match(refusal, /<p class="headline">Not comparable\.<\/p>/); assert.match(refusal, /<p class="banner-title">What differs<\/p>/); assert.match(refusal, /action budget: 50 on the baseline, 10 on the candidate/);
+    assert.match(refusal, /<p class="headline">Not comparable\.<\/p>/); assert.match(refusal, /<p class="banner-title">What differs<\/p>/); assert.match(refusal.replace(/<\/?span[^>]*>/g, ''), /Action budget: 50 on the baseline, 10 on the candidate/);
     assert.equal(existsSync(join(dir, 'refused.html')) && !/<script|style="/i.test(refusal), true);
     assert.match(refused.stderr, /\. Bench the baseline again with the candidate's settings \[compare_incomparable\]/);
     // The isolation level follows from the agent kind, so no flag of the candidate's makes the oracle a

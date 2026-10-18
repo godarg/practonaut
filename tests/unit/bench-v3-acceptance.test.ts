@@ -159,13 +159,17 @@ test('compare refuses a session report beside an artifact report, naming verdict
     const path = join(dir, 'artifact.json'); writeFileSync(path, JSON.stringify(artifact));
     const refused = spawnSync(process.execPath, [CLI, 'compare', join(ROOT, 'tests/fixtures/bench/v2/report.json'), path, '--html', join(dir, 'refused.html')], { encoding: 'utf8' });
     assert.equal(refused.status, 2);
-    assert.match(refused.stderr, /the verdict level differs \(session verdict on the baseline, artifact-judged, end-state only, no Practonaut history on the candidate\)\. Runs of different verdict levels are never paired \(PADR-0043 decision 1\): compare reports of one level \[compare_incomparable\]/);
+    assert.match(refused.stderr, /the way runs were judged differs \(session verdict on the baseline, artifact-judged on the candidate\)\. Runs judged in different ways are never paired \(PADR-0043 decision 1\): compare reports whose runs were judged the same way \[compare_incomparable\]/);
     const german = spawnSync(process.execPath, [CLI, '--lang', 'de', 'compare', join(ROOT, 'tests/fixtures/bench/v2/report.json'), path], { encoding: 'utf8' });
-    assert.match(german.stderr, /die Bewertungsstufe unterscheidet sich \(Sitzungsurteil bei der Basis, nach Artefakt bewertet, nur Endzustand, ohne Practonaut-Verlauf beim Kandidaten\)\. Läufe verschiedener Bewertungsstufen werden nie gepaart/);
+    assert.match(german.stderr, /die Art der Bewertung unterscheidet sich \(Sitzungsurteil bei der Basis, nach Artefakt bewertet beim Kandidaten\)\. Auf verschiedene Weise bewertete Läufe werden nie gepaart/);
     const page = readFileSync(join(dir, 'refused.html'), 'utf8').replace(/ /g, ' ');
-    assert.match(page, /verdict level: session verdict on the baseline, artifact-judged, end-state only, no Practonaut history on the candidate/);
-    assert.match(page, /Runs of different verdict levels are never paired \(PADR-0043 decision 1\)/);
+    // How runs were judged, in short words and one colon; the way forward the reader can take; no
+    // instance rules (they do not apply to runs judged in different ways) and no decision-record number.
+    assert.match(page, /How runs were judged: session verdict on the baseline, artifact-judged on the candidate/);
+    assert.match(page, /Runs judged in different ways are never paired: a session verdict and an artifact-judged end state measure different things\. Compare reports whose runs were judged the same way\./);
+    const body = page.replace(/<head>[\s\S]*?<\/head>/u, '');
+    assert.equal(body.includes('id="rules"') || body.includes('PADR'), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
   const html = renderIncomparableHtml({ report: session, verification: 'consistency-checked' }, { report: artifact, verification: 'consistency-checked' }, [{ field: 'verdictLevel', baseline: 'session', candidate: 'artifact' }], ':root{}', 'de');
-  assert.match(html.replace(/ /g, ' '), /Bewertungsstufe: Sitzungsurteil bei der Basis, nach Artefakt bewertet, nur Endzustand, ohne Practonaut-Verlauf beim Kandidaten/);
+  assert.match(html.replace(/ /g, ' '), /Wie bewertet wurde: Sitzungsurteil bei der Basis, nach Artefakt bewertet beim Kandidaten/);
 });

@@ -60,9 +60,10 @@ test('review A, B, C, E: relabelled client values, a hidden failure, edited agen
     const newer = await edited(folder, 'newer', value => { relabel(value); value.environment.practonaut = '9.9.9'; });
     const read = cli(['report', newer, '--verify', '--junit', join(dir, 'newer.xml')]);
     assert.equal(read.status, 0, read.stderr);
-    assert.match(read.stdout, /re-verified from the artifacts; the client’s own values not re-derived/);
-    assert.match(read.stdout, /tool-restricted preset \(the report’s claim, not re-derived\)/);
-    assert.match(read.stdout, /model claude-haiku-5-5 \(self-reported, client-attested\) \(the report’s claim, not re-derived\)/);
+    // The header says it once, by the verification; the isolation and the model keep their own words.
+    assert.match(read.stdout, /re-verified; client values not re-derived · /);
+    assert.match(read.stdout, / · tool-restricted preset · model claude-haiku-5-5 \(self-reported, client-attested\)$/m);
+    assert.equal(read.stdout.includes('the report’s claim, not re-derived'), false);
     assert.match(read.stdout, /not re-derived: values read by the parser claude-code-stream\/2/);
     assert.match(await readFile(join(dir, 'newer.xml'), 'utf8'), /<property name="practonaut\.verification\.clientValues" value="not re-derived: the report&apos;s claims"\/>/);
     await assert.rejects(readGateReport(newer), /values read by claude-code-stream\/2 were not re-derived by this Practonaut/);

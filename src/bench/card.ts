@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
-import { headline, instanceOutcome, verificationFacts, type VerificationInput } from './render.ts';
+import { headline, instanceOutcome, noSandbox, verificationFacts, type VerificationInput } from './render.ts';
 import { displayText, xmlEscape } from './junit.ts';
 
 /** The card's pixel size (a 2:1 social-preview image). */
@@ -232,7 +232,8 @@ const worldLine = (report: BenchReportView, t: Words, language: Language): strin
   return fill(language, world.source === 'library' ? t.cardWorldLibrary : t.cardWorldOwn, { world: world.worldId, version: world.version });
 };
 /** The accessible name: the report's whole header line, as the terminal prints it. */
-const accessibleName = (report: BenchReportView, language: Language, verification: VerificationInput): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
+/** The card's and the badge's name for a screen reader: the report's header line, and a foreign server's missing sandbox. */
+const accessibleName = (report: BenchReportView, language: Language, verification: VerificationInput): string => `${TEXT[language].title}: ${report.agent.name} · ${[...headline(report, language, verification), ...noSandbox(report, language)].join(' · ')}`;
 
 /** The card of a report in one theme: an SVG of 1280 × 640 px. */
 export function renderCard(input: ReportInput, tokensCss: string, theme: Theme, language: Language = 'en', verification: VerificationInput = 'consistency-checked'): string {
@@ -316,10 +317,13 @@ export function renderBadge(input: ReportInput, tokensCss: string, language: Lan
   const metrics = metricsOf('badge-text', tokens, all), name = { ...metrics, bold: true };
   const instances = instanceOutcome(report.runs), interval = intervalPercent(instances.passed, instances.instances);
   const fraction = instances.repeated ? fill(language, t.badgeInstances, { fraction: rateText(instances.passed, instances.instances, language) }) : fill(language, t.headlinePassed, { fraction: rateText(report.summary.passed, report.summary.runs, language) });
-  const isolation = report.agent.isolation === null ? t.badgeUnrecorded : { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation];
+  // A preset's tool restriction whose evidence was not re-derived is the report's claim, as on the card
+  // (open mark) and the page: said in the isolation's own words, so the verification stays short.
+  const v = verificationFacts(verification), presetClaim = v.claims && report.agent.isolation === 'tool-restricted-preset';
+  const isolation = report.agent.isolation === null ? t.badgeUnrecorded : presetClaim ? t.badgePresetClaim : { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation];
   const unjudged = (report.runs as readonly ViewRun[]).filter(run => run.checker === null).length;
   const level = report.verdictLevel === 'session' ? t.badgeLevelSession : t.badgeLevelArtifact;
-  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), level, verificationFacts(verification).level === 're-verified' ? (verificationFacts(verification).claims ? t.badgeReverifiedClaims : t.badgeReverified) : t.badgeConsistency, isolation,
+  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), level, v.level === 're-verified' ? (v.claims && !presetClaim ? t.badgeReverifiedClaims : t.badgeReverified) : t.badgeConsistency, isolation,
     ...(report.toolchain.kind === 'foreign-mcp' ? [t.badgeNoSandbox] : []), ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
   const rest = ` · ${parts.join(' · ')}`;
   const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);

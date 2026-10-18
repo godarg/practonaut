@@ -18,7 +18,7 @@ import { renderCompareHtml, renderIncomparableHtml, type CompareInput } from '..
 import { verifyBenchV3 } from '../../src/bench/verify.ts';
 import type { Language } from '../../src/bench/rates.ts';
 import { arrow, between, box, scene } from './scenes.ts';
-import { artifactReport, hash, sessionReport } from './bench-v3.ts';
+import { v3States } from './bench-v3-states.ts';
 
 const AGENT = fileURLToPath(new URL('./bench-agent.ts', import.meta.url));
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -179,20 +179,10 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   const fixtures = all as Fixtures & { good: Bench; bad: Bench };
   const v1 = validateBenchReport(JSON.parse(await readFile(V1_REPORT, 'utf8')));
   const v2 = validateBenchReport(JSON.parse(await readFile(join(V2_FOLDER, 'report.json'), 'utf8')));
-  // bench/3 (PADR-0044): an artifact-judged report (hand-built: artifact mode writes none yet), and the
-  // same tasks on two applications paired by task identity (case 1 on one side only, unequal counts).
-  const artifact = validateBenchReportV3(artifactReport({ flow: { 1: ['pass'], 2: ['absent'], 3: [null] } }));
-  const identities = (cases: number[]) => ({ T: Object.fromEntries(cases.map((value, index) => [index + 1, hash(String(value))])) });
-  const excalidraw = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [false], 4: [true], 5: [false] } }, { identities: identities([0, 1, 1, 2, 1]), worldId: 'excalidraw-library', contentHash: hash('a') }));
-  // A preset report whose client values a newer Practonaut's parser read (not re-derived here), and a
-  // candidate whose identity-paired runs were all unjudged; the gate's refusal of an identity pair.
-  const claimed = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [false] } }, { change: value => {
-    value.agent = { ...value.agent, kind: 'preset', name: 'claude-code', command: ['claude'], isolation: 'tool-restricted-preset', modelSource: 'client-attested', model: 'claude-haiku-5-5', billing: { class: 'subscription', source: 'preset-requested' } };
-    for (const run of value.runs as Array<Record<string, unknown>>) { run.isolation = { level: 'tool-restricted-preset', evidence: 'tools-within-servers' }; run.client = { source: 'client-attested', model: 'claude-haiku-5-5', turns: null, costUsd: null, tokens: null, parser: 'claude-code-stream/2', tools: { names: ['mcp__practonaut__act'], omitted: 0 } }; }
-  } }));
-  const claims = { level: 're-verified' as const, notRederived: ['claude-code-stream/2'], preset: 'not-checked' as const };
-  const unjudgedCandidate = validateBenchReportV3(sessionReport({ T: { 1: [null], 2: [null] } }, { identities: { T: { 1: hash('0'), 2: hash('2') } }, worldId: 'drawio-library', contentHash: hash('b'), adapterId: 'drawio' }));
-  const drawio = validateBenchReportV3(sessionReport({ T: { 1: [false], 2: [true], 3: [true], 4: [true], 5: [true] } }, { identities: identities([2, 0, 0, 2, 0]), worldId: 'drawio-library', contentHash: hash('b'), adapterId: 'drawio' }));
+  // bench/3 (PADR-0044): an artifact-judged report (hand-built: artifact mode writes none yet), one
+  // task on two applications paired by task identity, a candidate whose paired runs were all unjudged,
+  // a preset report whose client values were not re-derived, and three cases with changed outcomes.
+  const { artifact, excalidraw, drawio, unjudgedCandidate, claimed, claims, configExcalidraw, configDrawio } = v3States();
   await verifyBenchV3(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
   const tokens = await readTokensCss();
   const side = (report: SessionReportV3, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
@@ -223,6 +213,7 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     { id: 'compare-incomparable-level', html: async language => renderIncomparableHtml(good, { report: artifact, verification: 'consistency-checked', name: 'artifact' }, differences(fixtures.good.report, artifact), tokens, language) },
     { id: 'compare-identity', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }) },
     { id: 'compare-identity-unjudged', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: unjudgedCandidate, verification: 'consistency-checked', name: 'drawio' }) },
+    { id: 'compare-identity-config', html: compared({ report: configExcalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: configDrawio, verification: 'consistency-checked', name: 'drawio' }) },
     { id: 'compare-incomparable-gate', html: async language => renderIncomparableHtml({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }, differences(excalidraw, drawio, { regressionGate: true }), tokens, language, { regressionGate: true }) },
   ];
   if (fixtures.engine) {

@@ -195,35 +195,34 @@ test('across worlds compare pairs by task identity: without a task-set key the h
   assert.equal(comparison.pairing, 'identity');
   // Expected, from the hand-computed cases: case 0 is seed 1 against seeds 2, 3, 5; case 2 is seed 4
   // against seeds 1, 4; case 1 (seeds 2, 3, 5 on the baseline) is not on the candidate.
-  const name = (seeds: number[]): string[] => seeds.map(seed => `review-and-send seed ${seed}`);
+  const name = (seeds: number[]): Array<{ taskId: string; seed: number }> => seeds.map(seed => ({ taskId: 'review-and-send', seed }));
   assert.deepEqual(comparison.pairs.map(pair => [pair.kind, pair.names, pair.baseline?.repeats ?? 0, pair.candidate?.repeats ?? 0, pair.unequalRuns === true]), [
     ['paired', { baseline: name([1]), candidate: name([2, 3, 5]) }, 1, 3, true],
     ['missing', { baseline: name([2, 3, 5]), candidate: [] }, 3, 0, false],
     ['paired', { baseline: name([4]), candidate: name([1, 4]) }, 1, 2, true],
   ]);
   assert.deepEqual(comparison.notCompared.map(pair => pair.side), ['candidate']);
-  // Both paired identities have unequal run counts: no rate claim, and each is a caveat with both counts.
+  // Both paired identities have unequal run counts: no rate claim, and each is listed with both counts.
   assert.deepEqual([comparison.verdict, comparison.paired, comparison.baseline.instances], ['no_equal_runs', 2, 0]);
-  assert.deepEqual(comparison.caveats.filter(caveat => caveat.field === 'runCounts').map(caveat => [caveat.baseline, caveat.candidate]), [
-    ['review-and-send seed 1: 1', 'review-and-send seed 2, review-and-send seed 3, review-and-send seed 5: 3'], ['review-and-send seed 4: 1', 'review-and-send seed 1, review-and-send seed 4: 2'],
-  ]);
+  assert.deepEqual(comparison.pairs.filter(pair => pair.unequalRuns).map(pair => [pair.baseline!.repeats, pair.candidate!.repeats]), [[1, 3], [1, 2]]);
   // No regression labels across worlds; case 2 passed 1/1 on the baseline and 1/2 on the candidate (at least half): the same outcome.
   assert.deepEqual([comparison.regressions.length, comparison.fixes.length, comparison.regressionSignal, comparison.configFlips.length], [0, 0, false, 0]);
-  assert.ok(comparison.caveats.some(caveat => caveat.field === 'identityPairing'));
+  assert.deepEqual(comparison.caveats.filter(caveat => caveat.field === 'identityPairing').map(caveat => [caveat.baseline, caveat.candidate]), [['excalidraw-library 1.0.0', 'drawio-library 1.0.0']]);
   const text = renderCompareTable({ report: a, verification: 'consistency-checked' }, { report: b, verification: 'consistency-checked' }, comparison);
   assert.match(text, /no rate verdict: every paired task identity has a different number of runs on the two sides/);
   // Never a regression across worlds, and never the gate's "incomplete" (the gate refuses such a pair).
-  assert.match(text, /Instance regressions: none across worlds: a different outcome on two configurations is a difference between them, never an instance regression/);
+  assert.match(text, /Instance regressions: across worlds a different outcome is a difference between the two configurations, never an instance regression/);
+  assert.match(text, /^ {2}review-and-send · seed 1 \(baseline\) · review-and-send · seed 2, review-and-send · seed 3, review-and-send · seed 5 \(candidate\): 1 run on the baseline, 3 on the candidate, left out of the rate$/m);
   assert.deepEqual(comparison.incomplete, []);
-  assert.match(text, /Paired across worlds by task identity \(PADR-0044\)/);
-  assert.match(text, /review-and-send seed 2, review-and-send seed 3, review-and-send seed 5 \(baseline\) · — \(candidate\): no run on the candidate/);
+  assert.match(text, /Paired across worlds by task identity: the unit is the distinct identity/);
+  assert.match(text, /review-and-send · seed 2, review-and-send · seed 3, review-and-send · seed 5 \(baseline\) · no instance \(candidate\): no run on the candidate/);
   // A regression gate compares one world with itself: refused by name.
   assert.throws(() => compareReports(a, b, { regressionGate: true }), (error: unknown) => error instanceof CompareError && error.differences.map(difference => difference.field).join() === 'world');
   // One task set: the same cases for the same seeds, every identity paired, equal run counts, a rate verdict.
   const keyed = threeCaseWorld('drawio-library', { id: 'excalidraw-library', version: '1.1.0' });
   const c = benchOf(keyed, 'drawio', hash('c'), seed => seed !== 4);
   const same = compareReports(a, c);
-  assert.deepEqual([same.paired, same.notCompared.length, same.pairs.every(pair => !pair.unequalRuns), same.caveats.some(caveat => caveat.field === 'runCounts')], [3, 0, true, false]);
+  assert.deepEqual([same.paired, same.notCompared.length, same.pairs.every(pair => !pair.unequalRuns)], [3, 0, true]);
   assert.deepEqual(same.pairs.map(pair => [pair.baseline!.repeats, pair.candidate!.repeats]), [[1, 1], [3, 3], [1, 1]]);
   assert.equal(same.verdict, 'not_distinguishable');
   // Case 2 (seed 4) failed on the candidate: a difference between the configurations, not a regression.
@@ -251,8 +250,8 @@ test('every surface names the level; an artifact report renders without session 
   const artifact = validateBenchReportV3(artifactReport());
   const table = renderTable(artifact, 'en');
   assert.match(table, /^1\/2 passed · /m);
-  assert.match(table, /artifact-judged, end-state only, no Practonaut history/);
-  assert.match(table, /Foreign MCP server: no sandbox/);
+  // The header names how runs were judged in its short form; the missing sandbox is said once, in its own line.
+  assert.match(table, / · artifact-judged · consistency-checked, not re-verified · /);
   assert.match(table, /The foreign MCP server’s code runs as the same OS user as Practonaut, without a sandbox\./);
   assert.match(table, /at most 50 forwarded tool calls per run/);
   assert.match(table, /6 forwarded tool calls over all runs/);
