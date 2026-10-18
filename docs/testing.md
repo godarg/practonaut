@@ -103,9 +103,9 @@ the shortcut-plus-dialog had 10 s each. The 60 s attempt limit is unchanged.
 Measured 2026-10-18 on one machine, macOS 27 (Apple M4, Node 22), `--runs 30 --cpu 20`: with the old
 order (9c6a1e9) 28 of 30 attempts lost the dialog at Open; in each of them the probe saw the shortcut
 and the file-input click with user activation and focus inside the editor, so the page did its part.
-With the fix, 0 of 30, and 0 of 30 again with the final limit handling (b5c5a4c). The page's own
-time from the shortcut keydown to the file-input click was 18–104 ms in these three runs (1–2 ms
-unthrottled), so they ran throttled. The 20 CI runs per platform are a maintainer step with the
+With the fix, 0 of 30 (6ddf4f6), 0 of 30 with the shared limit (b5c5a4c) and 0 of 30 with the
+clock checks (72c6905). The page's own time from the shortcut keydown to the file-input click was
+10–104 ms in these four runs (1–2 ms unthrottled), so they ran throttled. The 20 CI runs per platform are a maintainer step with the
 repeat workflow and are still to come.
 
 ## Platform matrix
