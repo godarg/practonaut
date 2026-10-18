@@ -52,6 +52,13 @@ All notable changes are recorded here. The format follows
   steps) judged on step boxes and on straight lines between step centres, with a cost bound per
   clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
   the `challenge-layout` generator. No behaviour changes yet.
+- A browser that runs out of time says which operation and which bound: "Browser close exceeded its
+  deadline of 8000 ms" instead of "Browser operation exceeded its deadline" (launch, setup, start,
+  rollback, close, settlement; issue #64, where the Windows failures were the 8 s close of the real
+  browser in the host deadline tests' cleanup). Bounds and behaviour are unchanged. For developers:
+  `npm run amplify:host-deadline` repeats those two tests under load and times every browser close,
+  and the manual `host-deadline-repeat` workflow runs it on each CI platform
+  ([testing](docs/testing.md#host-deadline-tests)).
 
 ### Fixed
 

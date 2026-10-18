@@ -23,6 +23,7 @@ breaks a test by itself.
 | `npm run test:mcp` | cached Chromium, local engine and Player | Official MCP SDK v2 transports, credential and URL handling, output allowlist, limits, Player/MCP interleaving, structured errors, undo/reset; `mcp --task` self-start with the real mirror (observe → act → check_result, no hidden data, watch link on stderr only). |
 | `npm run test:a11y` | cached Chromium | axe-core and overflow on actual Player states and on every bench report and compare page state (from fixture runs, `tests/support/report-states.ts`), EN/DE, light/dark, 1280/320 px, reduced motion, no external requests. Writes ignored `.local/player-a11y/`. |
 | `npm run amplify:native-open` | cached Chromium, local engine | Opt-in, in no other command: the native Open leg under CPU throttling, repeated ([Native Open ordering](#native-open-ordering)). |
+| `npm run amplify:host-deadline` | cached Chromium, local engine | Opt-in, in no other command: the two real-mirror host deadline tests, repeated under load, every browser close timed ([Host deadline tests](#host-deadline-tests)). |
 | `npm run test:pack` | npm registry for dependencies | Tarball file list, `npm install` of the tarball into an empty project, installed CLI pack/validate/run/check, Chromium setup, installed Player and MCP smoke, `npx practonaut mcp --task excalidraw/connect` initialize/tools list, installed `bench --agent oracle`, `report --html` (with the report stylesheet) and `compare`, byte-identical repack. |
 | `npm run clean` | — | Removes `dist/`, `coverage/`, `.local/demo/` and `.local/native-transfer/` only; idempotent. |
 
@@ -108,6 +109,76 @@ clock checks (72c6905). The page's own time from the shortcut keydown to the fil
 10–104 ms in these four runs (1–2 ms unthrottled), so they ran throttled. The 20 CI runs per platform are a maintainer step with the
 repeat workflow and are still to come.
 
+## Host deadline tests
+
+`tests/integration/host-deadline.test.ts` checks two deadline paths against a real Chromium mirror:
+"a real late mirror write cannot commit after the supplied monotonic deadline" (a test mirror holds
+the real write's reply past a 200 ms transaction deadline) and "deadline expiration at real core
+serialization is a timeout, with preserved committed export state" (a private copy of
+`src/host/session.ts` moves the deadline into the past at the one serialize boundary). Both end in
+`finally` with `controller.close()`, which closes the real browser through `closeBrowser`
+(`src/adapters/browser/bounded.ts`): Playwright's `browser.close()` within graceful + forced =
+8 s. Playwright's close returns once Chromium has exited and Playwright has removed its temporary
+profile; a close that takes longer fails with `BrowserDeadlineError` and goes on in the background.
+There is no forced step: nothing ends the browser before the process exits. So beyond what they
+assert, the tests rely on Chromium closing within 8 s on the machine.
+
+Issue #64: on 2026-10-18 each test failed once on `windows-latest` (runs 39145457184 and
+39145095106) with `BrowserDeadlineError` from the timer in `bounded()`, each about 8 s longer than
+when it passes (9871 ms against 1606–1946 ms elsewhere; 9047 ms against 937–1312 ms). Of the
+bounded browser operations only the close has an 8 s bound and reaches the caller unwrapped, and in
+both tests every mirror operation ends before the reply, so what ran out was the close in the
+cleanup, not a bound the test waits on for its deadline. In both runs the file ran beside
+`challenge-round.test.ts` (`test:integration` runs two files at a time; 325 s and 254 s on Windows,
+250 s and 174 s on macOS), and macOS passed. The error now names the operation and its bound
+("Browser close exceeded its deadline of 8000 ms").
+
+What takes the time is Chromium's own graceful exit when the machine is short of CPU, measured on
+macOS with the amplifier (below): the time from Playwright's close request to the process exit grows
+from about 15 ms to seconds, and many slow exits end at 10.0–10.1 s, as if Chromium waited out a
+10-second limit of its own; Playwright's profile removal stays near or under a second. A close bound
+of 8 s is shorter than that wait. The same contention can hit a mirror recovery: in one attempt the
+export's own reads ran out of time, the recovery had to replace the browser, closing the old one
+took 10.9 s, the recovery failed and the session lost its mirror (the test's comparison of the
+committed view then failed on `practiceEvidence`). Why Windows exceeded 8 s and macOS did not in
+CI is not measured: the repeat workflow below records the same split on each CI platform. Not
+changed: the 8 s bound, the tests' assertions. A close that must survive this needs a forced end of
+the browser after the graceful bound, which Playwright's API does not offer for a launched browser;
+it is a decision of its own.
+
+- `npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0]
+  [--beside <file>] [--require-pass]` (opt-in) runs each of the two tests unchanged in its own
+  `node --test` process, `--runs` times, with the preload `tests/support/host-deadline-seam.ts`
+  (it patches `chromium.launch`): every real `browser.close()` is timed, the renderer is throttled
+  after the first scene write (`--cpu`, `Emulation.setCPUThrottlingRate`), the test process's event
+  loop is blocked for `--block` ms at a time, and `--hold` ms pass before a close starts (a stand-in
+  for a slow close). `--load` adds CPU workers and file churn in the temporary directory;
+  `--beside` runs another test file again and again meanwhile. Playwright's browser-process log
+  (`DEBUG=pw:browser`) lands in each attempt's TAP report, and the summary splits each close into
+  Chromium's exit and the profile removal. It writes
+  `.local/amplify-host-deadline/<time>-<commit>-<random>.json`. `--require-pass` exits 1 unless each
+  test ran and passed in every attempt (read with `tools/require-test-passed.ts`).
+- `.github/workflows/host-deadline-repeat.yml` (by hand) runs the amplifier on each CI platform in
+  5 jobs of 30 attempts per test, without throttling and beside `challenge-round.test.ts`, with
+  `--require-pass`, and uploads the record after a pass too.
+
+Measured 2026-10-18/19 on one shared machine (other work running beside it), macOS 27 (Apple M4,
+10 cores, Node 22); c645e5f has the product code before this change, b1b071f the named error:
+
+| Settings (commit) | Attempts | Failed | Closes ≥ 1 s | Longest close | Longest Chromium exit |
+|---|---|---|---|---|---|
+| `--hold 8500` (c645e5f) | 60 | 60, the CI error and stack frame, tests 8.5–9.1 s | 60 | 15 922 ms | 7 411 ms |
+| `--hold 8500` (b1b071f) | 20 | 20, "Browser close exceeded its deadline of 8000 ms", tests 8.5–9.2 s | 20 | 20 151 ms | 11 641 ms |
+| `--cpu 20 --block 20 --load 6`, load average 60–75 (c645e5f) | 60 | 4, the CI error | 15 | 10 749 ms | 10 046 ms |
+| `--cpu 20 --block 20 --load 6`, load average 130–250 (b1b071f) | 60 | 14: 13 at the close, 1 recovery that lost its mirror | 32 | 30 900 ms | 30 114 ms; 10 exits at 10.0–10.1 s |
+| `--cpu 1 --beside tests/integration/challenge-round.test.ts` (c645e5f) | 60 | 0 | 0 | 37 ms | 20 ms |
+
+Exits of a second or more came with the machine's own load too: in the first held run (load average
+above 100, no throttling, blocking or `--load`) 6 of 60 exits took a second or more, the longest
+7 411 ms. The load average is the machine's and was not controlled, so the rows show that the
+failure appears under contention, not a rate. The Windows repeat is a maintainer step and still to
+come.
+
 ## Platform matrix
 
 | Platform | Status |
@@ -117,6 +188,7 @@ repeat workflow and are still to come.
 | Ubuntu, Node 24 and 26 | CI job `node <version> (ubuntu-latest)`, not a required check: check, unit, build, integration, MCP and pack. |
 | Ubuntu, Node 22, by hand | `.github/workflows/ci-recipe-check.yml` (`workflow_dispatch` only, not a required check): the CI recipe of `examples/ci/` with the packed checkout and the oracle agent; `plant_regression` must make it fail ([benchmarks](benchmarks/README.md) §7). |
 | Ubuntu, macOS, Windows (Node 22), by hand | `.github/workflows/native-open-repeat.yml` (`workflow_dispatch` only, not a required check): the H1 native file test alone, 20 jobs per platform after the engine build, evidence uploaded on failure ([Native Open ordering](#native-open-ordering)). |
+| Ubuntu, macOS, Windows (Node 22), by hand | `.github/workflows/host-deadline-repeat.yml` (`workflow_dispatch` only, not a required check): the two real-mirror host deadline tests, 5 jobs of 30 attempts each per platform beside `challenge-round.test.ts`, every browser close timed, the record uploaded after a pass too ([Host deadline tests](#host-deadline-tests)). |
 
 ## Evaluator rules for worlds
 
