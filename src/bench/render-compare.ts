@@ -174,8 +174,9 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
   const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language];
   const flipWord = (pair: InstancePair): string => noVerdictSide(pair) ? t.flipNoVerdict : pair.flip === 'regression' ? t.flipRegression : pair.flip === 'fix' ? t.flipFix : pair.flip === 'changed-down' || pair.flip === 'changed-up' ? t.flipChanged : pair.flip === 'config-down' || pair.flip === 'config-up' ? t.flipConfig : pair.flip ? t.flipSingle : t.flipNone;
+  // The separator between the two sides ends a line, never starts one.
   const nameCell = (pair: InstancePair): string => pair.names
-    ? fillHtml(t.identityNames, { baseline: namesHtml(pair.names.baseline, language), candidate: namesHtml(pair.names.candidate, language) })
+    ? fillHtml(t.identityNames.replace(' · ', ' · '), { baseline: namesHtml(pair.names.baseline, language), candidate: namesHtml(pair.names.candidate, language) })
     : `<code>${esc(pair.taskId)}</code> · ${pair.seed}`;
   // A pair not compared says only which side lacks a run: the row already names it.
   const changeCell = (pair: InstancePair): string => esc(pair.kind === 'paired' ? flipWord(pair) : fill(language, t.missingShort, { side: sideName(pair.side, t) }));

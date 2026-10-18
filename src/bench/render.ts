@@ -547,7 +547,9 @@ export function renderHtml(input: ReportInput, tokensCss: string, language: Lang
   const ended = report.runs.filter(run => run.status !== 'completed');
   const endedList = (['agent_failed', 'timeout', 'infra_error'] as const).flatMap(status => { const count = ended.filter(run => run.status === status).length; return count ? [`${count} ${statusWords({ status }, t)}`] : []; });
   const folderReason = details === undefined || details.folder === 'missing' ? t.folderMissing : details.folder === 'world-changed' ? t.folderWorldChanged : details.folder === 'world-unreadable' ? t.folderWorldUnreadable : null;
-  const partial = folderReason ? banner('unknown', t.partialTitle, `<p>${esc(folderReason)} ${esc(t.partialShown)}</p><p>${esc(t.partialFix)} <code>${esc(t.partialCommand)}</code></p>`) : '';
+  // The command breaks between its words, never inside a flag.
+  const command = esc(t.partialCommand).replace(/--[a-z][a-z-]*/gu, flag => `<span class="flag">${flag}</span>`);
+  const partial = folderReason ? banner('unknown', t.partialTitle, `<p>${esc(folderReason)} ${esc(t.partialShown)}</p><p>${esc(t.partialFix)} <code>${command}</code></p>`) : '';
   const facts = [...provenance(report, language, verification), report.createdAt.slice(0, 10)];
   // Failed runs, linked from the top: on a phone the first "why" is otherwise screens away.
   const failed = ordered.filter(run => !run.pass), shownFailed = failed.slice(0, 12);

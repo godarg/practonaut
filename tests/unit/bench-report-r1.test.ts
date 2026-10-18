@@ -22,7 +22,7 @@ const gate = (language: 'en' | 'de'): string => renderIncomparableHtml(side(s.ex
 const visible = (html: string): string => html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&quot;/gu, '"').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&').replace(/ /gu, ' ').replace(/\s+/gu, ' ');
 /** Text the browser may hyphenate: everything outside code, `.data`, Technical details and the title. */
 const hyphenable = (html: string): string => visible(html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<h1>[\s\S]*?<\/h1>/gu, '').replace(/<details class="tech">[\s\S]*?<\/details>/gu, '')
-  .replace(/<code>[^<]*<\/code>/gu, '').replace(/<span class="data[^"]*">[^<]*<\/span>/gu, ''));
+  .replace(/<code>[\s\S]*?<\/code>/gu, '').replace(/<span class="data[^"]*">[^<]*<\/span>/gu, ''));
 /** One part of a page: from the element that opens with `start` to the first `end` after it. */
 const part = (html: string, start: string, end: string): string => { const from = html.indexOf(start); assert.ok(from >= 0, start); return html.slice(from, html.indexOf(end, from) + end.length); };
 
@@ -40,8 +40,10 @@ test('R1-F1: identifiers and commands never hyphenate and a flag never breaks, o
     const body = html.replace(/<head>[\s\S]*?<\/head>/u, '');
     for (const flag of ['--fail-on-regression', '--verify']) assert.equal((body.match(new RegExp(`(?<![\\w-])${flag}(?![\\w-])`, 'gu')) ?? []).length, (body.match(new RegExp(`<span class="data flag">${flag}</span>`, 'gu')) ?? []).length, flag);
   }
-  // The gate's way forward names its flag whole (the reviewer saw "without -" / "-fail-on-regression").
+  // The gate's way forward names its flag whole (the reviewer saw "without -" / "-fail-on-regression"),
+  // and so does the command that shows a report's run details.
   assert.match(gate('en'), /Compare without <span class="data flag">--fail-on-regression<\/span> to see/);
+  assert.match(renderHtml(s.claimed, tokens, 'en', s.claims), /<code>practonaut report &lt;report\.json&gt; <span class="flag">--runs<\/span> &lt;bench folder&gt;<\/code>/);
 });
 
 test('R1-F2: a header says once that the client values were not re-derived; the model and the isolation keep their words', () => {
@@ -149,8 +151,8 @@ test('R1 minors: one colon and a capital per caveat line, the task id in mono, "
   const caveats = [...part(html, '<section aria-labelledby="caveats">', '</section>').matchAll(/<li>([\s\S]*?)<\/li>/gu)].map(match => visible(match[1]!).trim());
   assert.deepEqual(caveats.map(line => [/^\p{Lu}/u.test(line), line.split(': ').length - 1]), caveats.map(() => [true, 1]), caveats.join('\n'));
   assert.equal(caveats[0], 'Paired by task identity: excalidraw-library 1.0.0 on the baseline, drawio-library 1.0.0 on the candidate');
-  assert.match(html, /<td data-label="instance" class="text"><code>T<\/code> · seed 1 \(baseline\) · <code>T<\/code>/);
-  assert.match(html, /\(baseline\) · no instance \(candidate\)<\/td>/);
+  assert.match(html, /<td data-label="instance" class="text"><code>T<\/code> · seed 1 \(baseline\) · <code>T<\/code>/);
+  assert.match(html, /\(baseline\) · no instance \(candidate\)<\/td>/);
   assert.match(html, /<td data-label="change" class="text prose">no run on the candidate<\/td>/);
   assert.equal(visible(html).includes('PADR-'), false, 'no decision-record number on a page');
   // The changed outcomes of the configurations are listed under their own heading (R1-F22's state).
