@@ -17,8 +17,9 @@ class FakePage {
 }
 type Handler = (route: unknown) => Promise<void>;
 class FakeContext {
-  pages: FakePage[] = []; handler: Handler | undefined; newContextGate: Promise<void> | undefined;
+  pages: FakePage[] = []; handler: Handler | undefined; socketHandler: Handler | undefined; socketMatcher: ((url: URL) => boolean) | undefined;
   async route(_pattern: string, handler: Handler): Promise<void> { this.handler = handler; }
+  async routeWebSocket(matcher: (url: URL) => boolean, handler: Handler): Promise<void> { this.socketMatcher = matcher; this.socketHandler = handler; }
   async newPage(): Promise<FakePage> { const page = new FakePage(); this.pages.push(page); return page; }
 }
 class FakeBrowser {
@@ -75,21 +76,89 @@ test('a failure in the adapter\'s own start closes the browser and keeps the ref
   assert.equal(fake.browser.closed, 1);
 });
 
-function route(url: string) {
-  const record = { aborted: 0, fulfilled: undefined as undefined | { body: unknown; contentType: string } };
-  return { record, route: { request: () => ({ url: () => url }), abort: async () => { record.aborted++; }, fulfill: async (answer: { body: unknown; contentType: string }) => { record.fulfilled = answer; } } };
+function route(url: string, method = 'GET', body: string | null = null) {
+  const record = { aborted: 0, fulfilled: undefined as undefined | { body: unknown; contentType?: string; status?: number; headers?: Record<string, string> } };
+  return { record, route: { request: () => ({ url: () => url, method: () => method, postData: () => body }), abort: async () => { record.aborted++; }, fulfill: async (answer: { body: unknown; contentType?: string; status?: number; headers?: Record<string, string> }) => { record.fulfilled = answer; } } };
 }
+// Hand-written expectation (PADR-0045): hosts limited to the named origin, local URLs allowed,
+// violations reported to the shell's own path on that origin.
+const POLICY = "default-src http://app.invalid data: blob: 'unsafe-inline' 'unsafe-eval'; report-uri http://app.invalid/__practonaut/policy-report";
 
 test('routing answers only named origins and served safe paths; everything else is aborted and recorded', { timeout: 5_000 }, async () => {
   const fake = fakeChromium(), served: string[] = [];
   const shell = await startShell(base(fake.chromium, { origins: { 'http://app.invalid': async path => { served.push(path); return path === '/engine.js' ? { body: 'code', contentType: 'text/javascript' } : undefined; } } }), async () => {});
   const send = async (url: string) => { const r = route(url); await fake.browser.context.handler!(r.route); return r.record; };
   const ok = await send('http://app.invalid/engine.js');
-  assert.deepEqual(ok.fulfilled, { body: 'code', contentType: 'text/javascript' }); assert.equal(ok.aborted, 0);
+  assert.deepEqual(ok.fulfilled, { body: 'code', contentType: 'text/javascript', headers: { 'Content-Security-Policy': POLICY } }); assert.equal(ok.aborted, 0);
   const refused = ['https://example.com/x', 'http://app.invalid:8080/engine.js', 'http://other.invalid/engine.js', 'http://app.invalid/%2e%2e%2fsecret', 'http://app.invalid/a%20b.js', 'http://app.invalid/missing.js', 'http://app.invalid/%E0%A4%A'];
   for (const url of refused) { const r = await send(url); assert.equal(r.aborted, 1, url); assert.equal(r.fulfilled, undefined, url); }
   assert.deepEqual(shell.networkAttempts(), refused);
   assert.deepEqual(served, ['/engine.js', '/missing.js'], 'unsafe paths and foreign origins never reach the adapter');
+});
+
+test('every WebSocket is closed and recorded; policy violations reported to the shell are recorded', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  const shell = await startShell(base(fake.chromium, { origins: { 'http://app.invalid': async () => undefined } }), async () => {});
+  for (const url of ['wss://example.org/socket', 'ws://app.invalid/socket']) assert.equal(fake.browser.context.socketMatcher!(new URL(url)), true, url);
+  let closed = 0;
+  await fake.browser.context.socketHandler!({ url: () => 'wss://example.org/socket', close: async () => { closed++; } });
+  assert.equal(closed, 1);
+  const report = route('http://app.invalid/__practonaut/policy-report', 'POST', JSON.stringify({ 'csp-report': { 'effective-directive': 'connect-src', 'blocked-uri': 'https://example.org/beacon' } }));
+  await fake.browser.context.handler!(report.route);
+  assert.equal(report.record.fulfilled?.status, 204); assert.equal(report.record.aborted, 0);
+  const garbled = route('http://app.invalid/__practonaut/policy-report', 'POST', 'not json');
+  await fake.browser.context.handler!(garbled.route);
+  // The report path answers reports only; any other use of it is an ordinary refused request.
+  const asked = route('http://app.invalid/__practonaut/policy-report');
+  await fake.browser.context.handler!(asked.route); assert.equal(asked.record.aborted, 1);
+  assert.deepEqual(shell.networkAttempts(), ['wss://example.org/socket', 'policy:connect-src:https://example.org/beacon', 'policy:unreadable', 'http://app.invalid/__practonaut/policy-report']);
+});
+
+test('the adapter\'s own start is bounded: a start that never finishes closes the browser at its deadline', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  await assert.rejects(startShell(base(fake.chromium, { initializeMs: 50 }), () => new Promise<void>(() => {})), (error: unknown) => error instanceof AdapterInitializationError && error.primaryError instanceof BrowserDeadlineError);
+  assert.equal(fake.browser.closed, 1);
+});
+
+test('an abort is never lost: during the committed-scene read, or raised by the work itself before it hangs', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  const shell = await startShell(base(fake.chromium), async started => { (started.page as unknown as FakePage).write(['committed']); });
+  const page = (): FakePage => shell.page as unknown as FakePage;
+  const duringRead = new AbortController(); let ran = false;
+  const scene: SceneIO<string[]> = { read: async () => { duringRead.abort(); return [...page().scene]; }, write: async s => page().write(s), load: async s => page().write(s) };
+  const refused = await shell.transaction(async () => { ran = true; page().write(['written']); return ok([]); }, scene, { timeoutMs: 1_000, signal: duringRead.signal });
+  assert.equal(refused.ok, false); if (!refused.ok) assert.equal(refused.error.code, 'cancelled');
+  assert.equal(ran, false, 'an aborted write never starts'); assert.deepEqual(page().scene, ['committed']);
+  const inside = new AbortController();
+  const hanging = await shell.transaction(() => { inside.abort(); return new Promise<AdapterResult>(() => {}); }, sceneOf(() => shell), { timeoutMs: 200, signal: inside.signal });
+  assert.equal(hanging.ok, false); if (!hanging.ok) assert.equal(hanging.error.code, 'cancelled', 'the abort, not the later timeout');
+});
+
+test('an ended operation cannot act on the page that replaced its own', { timeout: 5_000 }, async () => {
+  const fake = fakeChromium();
+  const shell = await startShell(base(fake.chromium), async started => { (started.page as unknown as FakePage).write(['committed']); });
+  const scene = sceneOf(() => shell);
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  let lateWrite: unknown = 'not attempted';
+  // Unlike the test above, the late step looks the page up again, as the Excalidraw adapter does.
+  const timedOut = await shell.transaction(async () => {
+    await gate;
+    try { await scene.write(['late']); lateWrite = 'landed'; } catch (error) { lateWrite = error; }
+    return ok([]);
+  }, scene, { timeoutMs: 30 });
+  assert.equal(timedOut.ok, false);
+  release(); await tick(10);
+  assert.ok(lateWrite instanceof AdapterError && lateWrite.code === 'cancelled', String(lateWrite));
+  assert.deepEqual((shell.page as unknown as FakePage).scene, ['committed']);
+  // The same for a guarded read whose continuation outlives its deadline.
+  let release2!: () => void; const gate2 = new Promise<void>(resolve => { release2 = resolve; }); let lateRead: unknown;
+  await assert.rejects(shell.guarded(async () => { await gate2; try { await shell.wait(async () => 'read'); lateRead = 'ran'; } catch (error) { lateRead = error; } }, scene, { timeoutMs: 30 }, { timeout: () => new AdapterError('mirror_timeout', 'late'), cancel: () => new AdapterError('cancelled', 'cancelled') }));
+  release2(); await tick(10);
+  assert.ok(lateRead instanceof AdapterError, String(lateRead));
+  // Work outside any operation, and a later operation, still act normally.
+  assert.equal(await shell.wait(async () => 'free'), 'free');
+  assert.equal((await shell.transaction(async () => { await scene.write(['next']); return ok([]); }, scene, { timeoutMs: 1_000 })).ok, true);
+  assert.deepEqual((shell.page as unknown as FakePage).scene, ['next']);
 });
 
 /** The adapter's scene I/O on whatever page is current, as the Excalidraw adapter does. */
