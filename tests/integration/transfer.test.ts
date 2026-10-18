@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, realpath, writeFile, readFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,8 @@ import { checkerRequest } from '../../src/evaluation/process.ts';
 import type { AssignmentReply, VerdictReply } from '../../src/evaluation/contracts.ts';
 import { exportAgentSolution, exportScriptedHuman, inspectNativeTransferFile, assertNativeTransferPreserved, nativeFileTransfer, nativeTransferErrorEvidence, readNativeTransferCompletion, NativeTransferPersistenceError } from '../../src/evaluation/transfer.ts';
 import { createExcalidrawAdapter } from '../../src/adapters/excalidraw/index.ts';
+import { RuntimeError } from '../../src/cli/runtime.ts';
+import { h1NativeInput, installLaunchSeam, recordOpenTimeline, focusThiefInitScript, type OpenTimelineEntry } from '../support/native-open.ts';
 
 test('H1 transfer: scripted human genuine editor input and adapter fixture exports judged only after editing', { timeout: 90_000 }, async () => {
   const root = await mkdtemp(join(await realpath(tmpdir()), 'pn-transfer-')); try {
@@ -307,20 +309,82 @@ finally{
   assert.equal(reply.error, null, reply.stderr || reply.stdout);
 });
 
+/** Attempt originals under the ignored .local/native-transfer/ (uploaded by CI on failure), one fresh folder each. */
+async function nativeEvidenceRoot(prefix: string): Promise<string> {
+  await mkdir('.local/native-transfer', { recursive: true });
+  return mkdtemp(join(await realpath('.local/native-transfer'), prefix));
+}
+const isPng = (bytes: Buffer): boolean => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+
+// Ordering contract of the native Open (issue #45, docs/testing.md): the filechooser listener exists and
+// one page round trip has completed after it before the shortcut is sent. Observed through the launch
+// seam on the real product call; the recorded calls are the runtime behaviour, not source text.
+test('native Open ordering: filechooser listener, then a completed page round trip, then the shortcut', { timeout: 90_000 }, async context => {
+  const root = await nativeEvidenceRoot('ordering-');
+  context.diagnostic(`Native Open ordering evidence: ${root}`);
+  const input = await h1NativeInput(root), timeline: OpenTimelineEntry[] = [];
+  const seam = installLaunchSeam({ page: recordOpenTimeline(timeline) });
+  let transferred: Awaited<ReturnType<typeof nativeFileTransfer>>;
+  try { transferred = await nativeFileTransfer({ inputPath: input.inputPath, expectedInputSha256: input.expectedInputSha256, outputDirectory: join(root, 'native-attempt'), stepId: 'transfer-step-0' }); }
+  finally { seam.uninstall(); await writeFile(join(root, 'timeline.json'), JSON.stringify(timeline, null, 2)); }
+  assert.equal(seam.launches(), 1);
+  assert.equal(transferred.snapshots.opened.state.objects['transfer-step-0']?.type, 'step', 'the native Open loaded the file');
+  const shortcut = timeline.findIndex(entry => entry.event === 'press' && /^(Meta|Control)\+o$/.test(entry.key));
+  const listener = timeline.findIndex(entry => entry.event === 'listener' && entry.name === 'filechooser');
+  assert.ok(shortcut >= 0, 'the Open shortcut was pressed');
+  assert.ok(listener >= 0 && listener < shortcut, 'a filechooser listener exists before the shortcut');
+  const between = timeline.slice(listener + 1, shortcut);
+  const ended = new Set(between.flatMap(entry => entry.event === 'roundtrip-end' ? [entry.call] : []));
+  const completed = between.flatMap(entry => entry.event === 'roundtrip-start' && ended.has(entry.call) ? [entry.call] : []);
+  assert.ok(completed.length >= 1, `a page round trip starts after the listener and completes before the shortcut: ${JSON.stringify(between)}`);
+  assert.equal(timeline.filter(entry => entry.event === 'press' && /\+o$/.test(entry.key)).length, 1, 'exactly one Open shortcut');
+  assert.ok(isPng(await readFile(join(root, 'native-attempt', '00-before-open.png'))), 'a screenshot before Open is attempt evidence');
+});
+
+test('native Open refuses by name when keyboard focus left the editor before the shortcut', { timeout: 90_000 }, async context => {
+  const root = await nativeEvidenceRoot('focus-');
+  context.diagnostic(`Native Open focus refusal evidence: ${root}`);
+  const input = await h1NativeInput(root), outputDirectory = join(root, 'native-attempt');
+  const seam = installLaunchSeam({ initScript: focusThiefInitScript });
+  let refusal: unknown;
+  try { await nativeFileTransfer({ inputPath: input.inputPath, expectedInputSha256: input.expectedInputSha256, outputDirectory, stepId: 'transfer-step-0' }); }
+  catch (error) { refusal = error; } finally { seam.uninstall(); }
+  assert.equal(seam.launches(), 1);
+  // Named at once, not a lost shortcut ending in the 10 s filechooser timeout.
+  assert.ok(refusal instanceof RuntimeError, String(refusal));
+  assert.equal(refusal.code, 'transfer_invalid');
+  assert.match(refusal.message, /keyboard focus is on button#pn-focus-thief, outside the editor/);
+  const terminal = JSON.parse(await readFile(join(outputDirectory, 'terminal.json'), 'utf8')) as { status: string; stage: string; primaryError: { message: string }; console: { messages: Array<{ type: string; text: string }>; dropped: number } };
+  assert.equal(terminal.status, 'failed'); assert.equal(terminal.stage, 'open');
+  assert.match(terminal.primaryError.message, /outside the editor/);
+  assert.ok(terminal.console.messages.some(message => message.text === 'PN_FOCUS_THIEF moved focus'), 'the page console after readiness is attempt evidence');
+  assert.ok(isPng(await readFile(join(outputDirectory, '00-before-open.png'))), 'a screenshot before Open is attempt evidence');
+  assert.equal((await readdir(outputDirectory)).includes('result.json'), false);
+});
+
+test('native Open: a failed before-Open screenshot is recorded and does not fail the attempt', { timeout: 90_000 }, async context => {
+  const root = await nativeEvidenceRoot('screenshot-');
+  context.diagnostic(`Native Open screenshot failure evidence: ${root}`);
+  const input = await h1NativeInput(root), outputDirectory = join(root, 'native-attempt');
+  // Through the seam: only the first screenshot of the page (the one before Open) fails.
+  const seam = installLaunchSeam({ page: page => {
+    const screenshot = page.screenshot.bind(page); let first = true;
+    page.screenshot = (options => { if (first) { first = false; return Promise.reject(new Error('independently assigned screenshot failure')); } return screenshot(options); }) as typeof page.screenshot;
+  } });
+  try { await nativeFileTransfer({ inputPath: input.inputPath, expectedInputSha256: input.expectedInputSha256, outputDirectory, stepId: 'transfer-step-0' }); }
+  finally { seam.uninstall(); }
+  const terminal = JSON.parse(await readFile(join(outputDirectory, 'terminal.json'), 'utf8')) as { status: string; diagnostics: { beforeOpenScreenshot: { message: string } | null } };
+  assert.equal(terminal.status, 'succeeded');
+  assert.equal(terminal.diagnostics.beforeOpenScreenshot?.message, 'independently assigned screenshot failure');
+  const files = await readdir(outputDirectory);
+  assert.equal(files.includes('00-before-open.png'), false); assert.equal(files.includes('01-opened.png'), true);
+});
+
 test('H1 native file: genuine Open, visible edit, native Undo, completed Save As and entire-file checker', { timeout: 90_000 }, async context => {
-  const root = await mkdtemp(join(await realpath(tmpdir()), 'pn-native-transfer-'));
+  const root = await nativeEvidenceRoot('h1-');
   // Keep attempt originals on success and failure; no re-run silently replaces this directory.
   context.diagnostic(`Native file attempt evidence: ${root}`);
-    const worldPath = join(root, 'flow.pnworld'), bundlePath = join(root, 'flow.pncheck');
-    await writeFile(worldPath, await packWorld('examples/worlds/flow-diagram')); await writeFile(bundlePath, await packChecker('examples/worlds/flow-diagram.check'));
-    const request = { worldPath, bundlePath, taskId: 'H1', seed: 42 }, assigned = await checkerRequest({ ...request, mode: 'assignment', instantiated: true }) as AssignmentReply;
-    const initial = structuredClone(assigned.assignment.initialState), frame = Object.values(initial.objects).find(object => object.type === 'frame' && !object.deleted)!;
-    // Self-created inactive history, retained in Practonaut transport and removed by actual Native Open.
-    initial.objects.b = { id: 'b', type: 'step', frameId: frame.id, label: 'Discard', x: 520, y: 300, width: 180, height: 100, fontFamily: 3, deleted: true };
-    initial.objects.bc = { id: 'bc', type: 'arrow', frameId: frame.id, from: null, to: null, deleted: true };
-    const exported = await exportAgentSolution(initial, { steps: [{ label: 'Review', x: 300, y: 300 }, { label: 'Archive', x: 750, y: 300 }], arrows: [{ from: 0, to: 1 }] });
-    const inputPath = join(root, 'transport.excalidraw'); await writeFile(inputPath, exported.native, { flag: 'wx' });
-    const inputBytes = await readFile(inputPath), expectedInputSha256 = createHash('sha256').update(inputBytes).digest('hex');
+    const { request, assigned, exported, inputPath, inputBytes, expectedInputSha256 } = await h1NativeInput(root);
     assert.equal(inputBytes.toString('utf8'), exported.native, 'Transport preserves the whole opaque native bytes');
     const transportVerdict = await checkerRequest({ ...request, mode: 'verdict', input: inputBytes.toString('utf8'), expectedBundleSha256: assigned.bundleSha256 }) as VerdictReply;
     assert.equal(transportVerdict.verdict.passed, true);

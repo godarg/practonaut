@@ -136,3 +136,63 @@ test('the example pins Practonaut, skips forks, takes a pull request\'s baseline
   assert.equal(compare.step.if, undefined, 'compare does not run after a failed agent');
   assert.ok(all.some(step => step.run !== undefined && words(String(step.run)).slice(-2).join(' ') === 'practonaut setup'));
 });
+
+// Issue #45: native Open evidence on every platform, and the repeat workflow that measures the fix.
+const CI = '.github/workflows/ci.yml', REPEAT = '.github/workflows/native-open-repeat.yml';
+const PLATFORMS = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
+const evidenceUpload = (step: Mapping): boolean => String(step.uses ?? '').startsWith('actions/upload-artifact@') && step.with !== undefined && map(step.with).path === '.local/native-transfer/';
+
+const runWords = (step: Mapping): string[] => typeof step.run === 'string' ? words(step.run) : [];
+
+test('the required checks keep their names and every CI platform uploads native-transfer evidence after its tests fail', () => {
+  const jobs = map(workflow(CI).jobs), matrixJob = map(jobs.test);
+  assert.equal(matrixJob.name, 'test (${{ matrix.os }})');
+  assert.deepEqual(map(map(matrixJob.strategy).matrix).os, PLATFORMS);
+  assert.equal(map(jobs.secrets).name, 'secret scan');
+  for (const job of [matrixJob, map(jobs.node)]) {
+    const all = list(job.steps).map(map), uploads = all.filter(evidenceUpload);
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0]!.if, '${{ failure() }}', 'on failure and on no single platform');
+    const integration = all.findIndex(step => runWords(step).join(' ') === 'npm run test:integration');
+    assert.ok(integration >= 0 && all.indexOf(uploads[0]!) > integration, 'the upload comes after the step that runs the native transfer tests');
+  }
+});
+
+test('the native Open repeat runs only the H1 native file test, by hand, 20 times on each CI platform, and fails unless it passed', () => {
+  const doc = workflow(REPEAT);
+  assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
+  assert.deepEqual(doc.permissions, { contents: 'read' });
+  const jobs = Object.values(map(doc.jobs)).map(map);
+  assert.equal(jobs.length, 1);
+  for (const job of jobs) assert.equal(/^test \(|^secret scan$/.test(String(job.name)), false, String(job.name));
+  const job = jobs[0]!, strategy = map(job.strategy), matrix = map(strategy.matrix);
+  assert.deepEqual(matrix.os, PLATFORMS);
+  assert.ok(new Set(list(matrix.repeat)).size >= 20, 'at least 20 runs per platform');
+  assert.equal(strategy['fail-fast'], 'false', 'one failed run does not cancel the others');
+  const all = list(job.steps).map(map);
+  const build = all.findIndex(step => runWords(step).join(' ') === 'node tools/build-engine.ts');
+  const runs = all.flatMap((step, index) => runWords(step).includes('--test') ? [index] : []);
+  assert.equal(runs.length, 1, 'one test command');
+  const run = runs[0]!, argv = runWords(all[run]!);
+  const option = (name: string): string[] => argv.filter(arg => arg.startsWith(`${name}=`)).map(arg => arg.slice(name.length + 1));
+  const pattern = option('--test-name-pattern')[0]!;
+  assert.deepEqual(argv.filter(arg => arg.endsWith('.test.ts')), ['tests/integration/transfer.test.ts']);
+  assert.ok(build >= 0 && build < run, 'the engine is built before the test');
+  // The two H1 tests in that file, named literally: only the native file test is selected.
+  const NATIVE = 'H1 native file: genuine Open, visible edit, native Undo, completed Save As and entire-file checker';
+  const OTHER = 'H1 transfer: scripted human genuine editor input and adapter fixture exports judged only after editing';
+  assert.equal(new RegExp(pattern).test(NATIVE), true);
+  assert.equal(new RegExp(pattern).test(OTHER), false);
+  // A pattern that selects nothing exits 0: the next step reads the TAP report and requires the pass.
+  const reporters = option('--test-reporter'), destinations = option('--test-reporter-destination'), tap = destinations[reporters.indexOf('tap')]!;
+  assert.ok(tap, 'the test writes a TAP report');
+  const check = all.findIndex(step => runWords(step).slice(0, 2).join(' ') === 'node tools/require-test-passed.ts');
+  assert.equal(check, run + 1, 'the check directly follows the test');
+  assert.equal(all[check]!.if, undefined);
+  const [, , report, prefix] = runWords(all[check]!);
+  assert.equal(report, tap);
+  assert.equal(NATIVE.startsWith(prefix!), true); assert.equal(OTHER.startsWith(prefix!), false);
+  const uploads = all.filter(evidenceUpload);
+  assert.equal(uploads.length, 1); assert.equal(uploads[0]!.if, '${{ failure() }}');
+  assert.ok(all.indexOf(uploads[0]!) > check, 'the upload comes after the test and its check');
+});
