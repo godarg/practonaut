@@ -55,7 +55,7 @@ import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { LibraryEntry } from '../library/index.ts';
 import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, BenchReportError, type BenchErrorCode, type BenchReportV1, type BenchReportV2, type BenchReportV3, type BenchRun, type BenchRunV2, type SessionRunV3 } from './report.ts';
 import { hashFile, mutationCounts, parseMutations, readLogHead, RUN_EVIDENCE, timelineOf, type MutationLogFormat } from './evidence.ts';
-import { AGENT_PRESETS, clientInit, displayCommand, type AgentSpec } from './agents.ts';
+import { AGENT_PRESETS, clientInit, displayCommand, PRESET_INFO, type AgentSpec } from './agents.ts';
 import { readClientEvidence, type ClientEvidence } from './client-evidence.ts';
 import { apiKeySourceValue, SHIPPED_PARSERS } from './parsers.ts';
 import { taskIdentity } from './identity.ts';
@@ -360,7 +360,9 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
       if (bound === null) throw new BenchReportError(cliText('verifyArtifactMissing', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       if (bound.sha256 !== run.stdout.sha256 || bound.bytes !== run.stdout.bytes) throw new BenchReportError(cliText('verifyArtifactHash', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       const parser = run.client?.parser;
-      if (parser !== undefined && !SHIPPED_PARSERS.has(parser)) { notShipped.add(parser); continue; }
+      // A parser this Practonaut does not ship, or a preset whose client (and so its tool naming) it does not
+      // know, as in an older report after a preset was renamed: the values are named as not re-derived.
+      if (parser !== undefined && (!SHIPPED_PARSERS.has(parser) || (report.agent.kind === 'preset' && !Object.hasOwn(PRESET_INFO, report.agent.name)))) { notShipped.add(SHIPPED_PARSERS.has(parser) ? `${parser} (preset ${report.agent.name})` : parser); continue; }
       const read = await readClientEvidence(spec, path, tools);
       if (read.stdout?.sha256 !== run.stdout.sha256) throw new BenchReportError(cliText('verifyArtifactHash', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       verifyClientValues(report, run, read);

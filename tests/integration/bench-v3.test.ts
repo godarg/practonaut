@@ -71,6 +71,11 @@ test('a preset bench writes /3 with evidenced identity, bound stdout and isolati
     assert.equal(refused.status, 2); assert.match(refused.stderr, /run connect-s1-r1: the report names model claude-haiku-5-5, but the agent's own output names claude-opus-5-5 \[bench_report_invalid\]/);
     refused = verify(await edited('billing', value => { value.runs[1].client.billing.class = 'api-key'; }));
     assert.equal(refused.status, 2); assert.match(refused.stderr, /run connect-s2-r1: its client is not what the parser reads from the run's bound stdout \[bench_report_invalid\]/);
+    // A preset this Practonaut does not know, in a report of another version: read, its values named as not re-derived.
+    const renamed = cli(['report', await edited('renamed', value => { value.agent.name = 'claude-code-next'; value.environment.practonaut = '0.3.1'; }), '--verify']);
+    assert.equal(renamed.status, 0, renamed.stderr);
+    assert.match(renamed.stdout, /not re-derived: values read by the parser claude-code-stream\/1 \(preset claude-code-next\)/);
+    assert.match(renamed.stdout, /the preset's name and command were not checked: the report was made with Practonaut 0\.3\.1/);
     refused = verify(await edited('command', value => { value.agent.command = [...value.agent.command, '--dangerously-skip-permissions']; }));
     assert.equal(refused.status, 2); assert.match(refused.stderr, /the report names preset claude-code with a command this Practonaut does not ship for it/);
     const stdoutChanged = await edited('stdout', () => {});
