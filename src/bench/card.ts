@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
 import { fill, TEXT, type Words } from './report-text.ts';
-import { headline, instanceOutcome, type Verification } from './render.ts';
+import { headline, instanceOutcome, verificationFacts, type VerificationInput } from './render.ts';
 import { displayText, xmlEscape } from './junit.ts';
 
 /** The card's pixel size (a 2:1 social-preview image). */
@@ -196,16 +196,18 @@ function column(blocks: readonly Block[], gap: number, x: number, top: number, r
 
 interface Fact { kind: 'confirmed' | 'open'; text: string }
 /** The evidence of a report, in words: verification, mirror, isolation, model, runs without a verdict, interruption. */
-function facts(report: BenchReportView, verification: Verification, language: Language): Fact[] {
+function facts(report: BenchReportView, verification: VerificationInput, language: Language): Fact[] {
   const t = TEXT[language], out: Fact[] = [];
   // Only a re-verified report confirms what it says about the mirror and the isolation;
   // otherwise these are claims of the file, with the same words and the open mark.
-  const confirmed = verification === 're-verified' ? 'confirmed' : 'open';
-  out.push(verification === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
+  const v = verificationFacts(verification), confirmed = v.level === 're-verified' ? 'confirmed' : 'open';
+  out.push(v.level === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
+  // Values a parser this Practonaut does not ship read stay the report's claims: never a confirmed mark.
+  if (v.claims) out.push({ kind: 'open', text: t.cardClientClaims });
   if (report.verdictLevel === 'session') out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
   if (report.toolchain.kind === 'foreign-mcp') out.push({ kind: 'open', text: t.cardNoSandbox });
-  const isolation = report.agent.isolation;
-  out.push(isolation === 'builtin-baseline' ? { kind: confirmed, text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: confirmed, text: t.cardIsolationPreset }
+  const isolation = report.agent.isolation, presetConfirmed = v.claims ? 'open' : confirmed;
+  out.push(isolation === 'builtin-baseline' ? { kind: confirmed, text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: presetConfirmed, text: t.cardIsolationPreset }
     : isolation === 'template-unrestricted' ? { kind: 'open', text: t.cardIsolationTemplate } : { kind: 'open', text: t.cardIsolationUnrecorded });
   if (report.agent.kind !== 'builtin') {
     const model = report.agent.model;
@@ -230,10 +232,10 @@ const worldLine = (report: BenchReportView, t: Words, language: Language): strin
   return fill(language, world.source === 'library' ? t.cardWorldLibrary : t.cardWorldOwn, { world: world.worldId, version: world.version });
 };
 /** The accessible name: the report's whole header line, as the terminal prints it. */
-const accessibleName = (report: BenchReportView, language: Language, verification: Verification): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
+const accessibleName = (report: BenchReportView, language: Language, verification: VerificationInput): string => `${TEXT[language].title}: ${report.agent.name} · ${headline(report, language, verification).join(' · ')}`;
 
 /** The card of a report in one theme: an SVG of 1280 × 640 px. */
-export function renderCard(input: ReportInput, tokensCss: string, theme: Theme, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderCard(input: ReportInput, tokensCss: string, theme: Theme, language: Language = 'en', verification: VerificationInput = 'consistency-checked'): string {
   const report = asView(input);
   const t = TEXT[language], tokens = tokenThemes(tokensCss)[theme], all = rules();
   const m = (className: string): Metrics => metricsOf(className, tokens, all);
@@ -308,7 +310,7 @@ export function renderCard(input: ReportInput, tokensCss: string, theme: Theme, 
 }
 
 /** The badge: one line in a chip, light, and dark where the reader's system prefers it. */
-export function renderBadge(input: ReportInput, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked'): string {
+export function renderBadge(input: ReportInput, tokensCss: string, language: Language = 'en', verification: VerificationInput = 'consistency-checked'): string {
   const report = asView(input);
   const t = TEXT[language], themes = tokenThemes(tokensCss), tokens = themes.light, all = rules();
   const metrics = metricsOf('badge-text', tokens, all), name = { ...metrics, bold: true };
@@ -317,7 +319,7 @@ export function renderBadge(input: ReportInput, tokensCss: string, language: Lan
   const isolation = report.agent.isolation === null ? t.badgeUnrecorded : { 'builtin-baseline': t.badgeBuiltin, 'tool-restricted-preset': t.badgePreset, 'template-unrestricted': t.badgeTemplate }[report.agent.isolation];
   const unjudged = (report.runs as readonly ViewRun[]).filter(run => run.checker === null).length;
   const level = report.verdictLevel === 'session' ? t.badgeLevelSession : t.badgeLevelArtifact;
-  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), level, verification === 're-verified' ? t.badgeReverified : t.badgeConsistency, isolation,
+  const parts = [fraction, fill(language, t.badgeInterval, { low: interval.low, high: interval.high }), level, verificationFacts(verification).level === 're-verified' ? (verificationFacts(verification).claims ? t.badgeReverifiedClaims : t.badgeReverified) : t.badgeConsistency, isolation,
     ...(report.toolchain.kind === 'foreign-mcp' ? [t.badgeNoSandbox] : []), ...(report.environment.mirror === 'off' ? [t.badgeModelOnly] : []), ...(unjudged ? [fill(language, t.badgeUnjudged, { n: unjudged })] : []), ...(report.interrupted ? [t.badgeInterrupted] : [])];
   const rest = ` · ${parts.join(' · ')}`;
   const pad = numeric('--pn-space-2', tokens), height = numeric('--pn-space-6', tokens), hairline = numeric('--pn-stroke-hairline', tokens);

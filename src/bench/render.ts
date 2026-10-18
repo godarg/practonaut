@@ -25,6 +25,18 @@ import type { BoardObject } from './schematic.ts';
 import { styleNames } from '../world/style-names.ts';
 
 export type Verification = 'consistency-checked' | 're-verified';
+/** What `--verify` established beyond its level (PADR-0044): the parsers whose values it could not
+ * re-derive (a newer Practonaut's parser, an unknown preset), and whether a preset's name and command
+ * were checked against this Practonaut's. */
+export interface VerificationDetail { level: Verification; notRederived?: readonly string[]; preset?: 'checked' | 'not-checked' | null }
+export type VerificationInput = Verification | VerificationDetail;
+/** `claims`: re-verified, but the client's own values (model, offered tools and so a preset's isolation,
+ * billing) are the report's claims — no surface marks them confirmed. */
+export interface VerificationFacts { level: Verification; claims: boolean; notRederived: readonly string[]; preset: 'checked' | 'not-checked' | null }
+export function verificationFacts(input: VerificationInput): VerificationFacts {
+  const detail: VerificationDetail = typeof input === 'string' ? { level: input } : input, notRederived = detail.notRederived ?? [], preset = detail.preset ?? null;
+  return { level: detail.level, notRederived, preset, claims: detail.level === 're-verified' && (notRederived.length > 0 || preset === 'not-checked') };
+}
 
 /** Report text is data from a file: control, format and bidi characters are shown escaped, never interpreted by a terminal. */
 const shown = (value: string): string => readableText(value);
@@ -132,16 +144,19 @@ export function headlineResult(report: BenchReportView, language: Language): str
   return parts;
 }
 /** The provenance half: verdict level, verification, mirror (session level), isolation, a foreign
- * server's missing sandbox, and the self-reported model. */
-export function provenance(report: BenchReportView, language: Language, verification: Verification): string[] {
-  const t = TEXT[language];
+ * server's missing sandbox, and the self-reported model. When the client's own values were not
+ * re-derived, the verification says so and a preset's isolation and the model read as the report's claims. */
+export function provenance(report: BenchReportView, language: Language, verification: VerificationInput): string[] {
+  const t = TEXT[language], v = verificationFacts(verification);
   const mirror = report.verdictLevel === 'session' ? [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff] : [];
-  const parts = [levelText(report.verdictLevel, language), verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, ...mirror, isolationText(report, t), ...noSandbox(report, language)];
-  if (report.agent.kind !== 'builtin') parts.push(modelHeadline(report, language));
+  const claim = (fact: string): string => v.claims ? fill(language, t.claimNotRederived, { fact }) : fact;
+  const isolation = report.agent.kind === 'preset' ? claim(isolationText(report, t)) : isolationText(report, t);
+  const parts = [levelText(report.verdictLevel, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, ...mirror, isolation, ...noSandbox(report, language)];
+  if (report.agent.kind !== 'builtin') parts.push(claim(modelHeadline(report, language)));
   return parts;
 }
 /** The whole header line (terminal): result, interval, verification, mirror, isolation, model. */
-export function headline(report: BenchReportView, language: Language, verification: Verification): string[] {
+export function headline(report: BenchReportView, language: Language, verification: VerificationInput): string[] {
   return [...headlineResult(report, language), ...provenance(report, language, verification)];
 }
 /** The reported model with where it came from (never verified): the preset client's own init event,
@@ -280,7 +295,7 @@ export function runStates(run: ViewSessionRun, detail: RunDetail | undefined, de
   return states;
 }
 
-export function renderTable(input: ReportInput, language: Language = 'en', details?: ReportDetails, verification: Verification = 'consistency-checked'): string {
+export function renderTable(input: ReportInput, language: Language = 'en', details?: ReportDetails, verification: VerificationInput = 'consistency-checked'): string {
   const report = asView(input);
   if (report.verdictLevel === 'artifact') return renderArtifactTable(report, language, verification);
   const t = TEXT[language], s = report.summary, lines: string[] = [];
@@ -488,7 +503,7 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
   return `<details class="run" id="run-${esc(run.id)}"${opensByDefault(run) ? ' open' : ''}><summary>${summary}</summary><div class="run-body">${parts.join('')}</div></details>`;
 }
 
-export function renderHtml(input: ReportInput, tokensCss: string, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+export function renderHtml(input: ReportInput, tokensCss: string, language: Language = 'en', verification: VerificationInput = 'consistency-checked', details?: ReportDetails): string {
   const report = asView(input);
   if (report.verdictLevel === 'artifact') return renderArtifactHtml(report, tokensCss, language, verification);
   const t: Words = TEXT[language], s = report.summary, e = report.environment;
@@ -528,7 +543,7 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
 <dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
-<dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
+<dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
 <dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
@@ -550,7 +565,7 @@ const judgedFileText = (run: ViewArtifactRun, t: Words): string => run.checker =
 
 /** An artifact-judged report in the terminal (PADR-0044 decision 1): no session, so no action figures,
  * trajectory or board; the proxy's forwarded calls, the judged file of each run, and the missing sandbox. */
-function renderArtifactTable(report: ArtifactReportView, language: Language, verification: Verification): string {
+function renderArtifactTable(report: ArtifactReportView, language: Language, verification: VerificationInput): string {
   const t = TEXT[language], s = report.summary, lines: string[] = [];
   lines.push(`${t.title}  ${shown(report.agent.name)}`, shown(headline(report, language, verification).join(' · ')));
   if (report.label !== undefined) lines.push(`${t.label}: ${shown(report.label)}`);
@@ -578,7 +593,7 @@ function renderArtifactTable(report: ArtifactReportView, language: Language, ver
 
 /** An artifact-judged report as one static page: header with the level and the missing sandbox, the
  * summary without action figures, by task, the runs with the file each was judged on, the settings. */
-function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, language: Language, verification: Verification): string {
+function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, language: Language, verification: VerificationInput): string {
   const t: Words = TEXT[language], s = report.summary;
   const passHat = allRepeats(report, language), repeated = allRepeatsCount(report);
   const cards = [
@@ -612,7 +627,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
 <dt>${esc(t.agent)}</dt><dd>${esc(report.agent.name)} (${esc(kind)})</dd>
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
-<dt>${esc(t.verification)}</dt><dd>${esc(verification === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
+<dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
 <dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>

@@ -6,16 +6,16 @@
  * design system v1, like the report; two reports that cannot be compared get a page that names every
  * difference. Text from the reports is escaped.
  */
-import { agentKindDiffers, isolationOf, levelsDiffer, type Comparison, type Difference, type InstancePair } from './compare.ts';
+import { isolationOf, refusalHint, type CompareOptions, type Comparison, type Difference, type InstancePair } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
-import { banner, chips, escapeHtml as esc, levelText, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, type Verification } from './render.ts';
+import { banner, chips, escapeHtml as esc, levelText, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
 import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
 
 /** One side: its report (read through the view, any version), how it was verified and the name it goes by (label or file name). */
-export interface CompareInput { report: ReportInput; verification: Verification; name?: string }
-interface Side { report: BenchReportView; verification: Verification; name?: string }
+export interface CompareInput { report: ReportInput; verification: VerificationInput; name?: string }
+interface Side { report: BenchReportView; verification: VerificationInput; name?: string }
 const toSide = (input: CompareInput): Side => ({ ...input, report: asView(input.report) });
 
 const nameOf = (input: Side): string => input.name ?? input.report.label ?? input.report.agent.name;
@@ -45,15 +45,17 @@ function sideText(side: Comparison['baseline'], language: Language): string {
 function sideFacts(input: Side, t: Words, language: Language): string[] {
   const report = input.report;
   // A built-in has no model: its isolation chip already says "no language model", once.
-  const model = report.agent.kind === 'builtin' ? [] : [modelHeadline(report, language)];
-  const isolation = { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[isolationOf(report)];
+  const v = verificationFacts(input.verification), claim = (fact: string): string => v.claims ? fill(language, t.claimNotRederived, { fact }) : fact;
+  const model = report.agent.kind === 'builtin' ? [] : [claim(modelHeadline(report, language))];
+  const level = { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[isolationOf(report)];
+  const isolation = report.agent.kind === 'preset' ? claim(level) : level;
   const mirror = report.verdictLevel === 'artifact' ? [] : [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff];
-  return [report.agent.name, ...(report.label !== undefined ? [report.label] : []), levelText(report.verdictLevel, language), ...model, ...mirror, isolation, ...noSandbox(report, language), input.verification === 're-verified' ? t.reverifiedShort : t.consistencyShort, report.createdAt.slice(0, 10)];
+  return [report.agent.name, ...(report.label !== undefined ? [report.label] : []), levelText(report.verdictLevel, language), ...model, ...mirror, isolation, ...noSandbox(report, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, report.createdAt.slice(0, 10)];
 }
 /** The side of a flip that had no verdict at all (every run unjudged), if any: it did not fail, it was
  * not judged, and it counts as not passed. */
 const noVerdictSide = (pair: InstancePair): 'baseline' | 'candidate' | null => {
-  const down = pair.flip === 'single-down' || pair.flip === 'changed-down', up = pair.flip === 'single-up' || pair.flip === 'changed-up';
+  const down = pair.flip === 'single-down' || pair.flip === 'changed-down' || pair.flip === 'config-down', up = pair.flip === 'single-up' || pair.flip === 'changed-up' || pair.flip === 'config-up';
   return down && pair.candidate!.judged === 0 ? 'candidate' : up && pair.baseline!.judged === 0 ? 'baseline' : null;
 };
 /** How a pair is named: its task and seed, or across worlds each side's task ids and seeds. */
@@ -160,7 +162,7 @@ ${comparison.caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveat
 }
 
 /** The page for two reports that cannot be compared: every difference, and what to do. */
-export function renderIncomparableHtml(baselineInput: CompareInput, candidateInput: CompareInput, found: readonly Difference[], tokensCss: string, language: Language = 'en'): string {
+export function renderIncomparableHtml(baselineInput: CompareInput, candidateInput: CompareInput, found: readonly Difference[], tokensCss: string, language: Language = 'en', options: CompareOptions = {}): string {
   const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language];
   const field = (difference: Difference): string => (t as unknown as Record<string, string>)[`field_${difference.field}`] ?? difference.field;
@@ -170,7 +172,7 @@ export function renderIncomparableHtml(baselineInput: CompareInput, candidateInp
 <h1>${esc(heading(baseline, candidate, language))}</h1>
 <p class="headline">${esc(sentence(t.incomparableTitle))}</p>
 </header>
-${banner('warning', t.incomparableDiffers, `<p>${esc(t.incomparableLead)}</p>${list(items, 'fail')}<p>${esc(levelsDiffer(found) ? t.incomparableFixLevel : agentKindDiffers(found) ? t.incomparableFixAgentKind : t.incomparableFix)}</p>`)}
+${banner('warning', t.incomparableDiffers, `<p>${esc(t.incomparableLead)}</p>${list(items, 'fail')}<p>${esc({ level: t.incomparableFixLevel, agentKind: t.incomparableFixAgentKind, gate: t.incomparableFixGate, settings: t.incomparableFix }[refusalHint(found, baseline.report, candidate.report, options)])}</p>`)}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides"><div class="figure"><dt>${esc(t.baseline)}</dt><dd class="detail">${chips(t.baseline, sideFacts(baseline, t, language))}</dd></div><div class="figure"><dt>${esc(t.candidate)}</dt><dd class="detail">${chips(t.candidate, sideFacts(candidate, t, language))}</dd></div></dl></section>
 <section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${esc(t.compareRules)}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);

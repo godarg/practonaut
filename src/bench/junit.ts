@@ -27,7 +27,7 @@ import { readableText } from '../cli/output.ts';
 import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { fill, TEXT } from './report-text.ts';
 import type { Language } from './rates.ts';
-import { errorClassesOf, headline, runStates, statusWords, type State, type Verification } from './render.ts';
+import { errorClassesOf, headline, runStates, statusWords, verificationFacts, type State, type VerificationInput } from './render.ts';
 import type { ReportDetails } from './details.ts';
 
 /** Text from a report, safe for XML 1.0 content and attributes: every control, format and private-use
@@ -76,13 +76,15 @@ function testcase(run: ViewRun, report: BenchReportView, worldId: string, detail
 }
 
 /** The facts every suite carries (vision principle 4: n, isolation, verification travel with every surface). */
-function properties(report: BenchReportView, verification: Verification, language: Language): Array<[string, string]> {
+function properties(report: BenchReportView, verification: VerificationInput, language: Language): Array<[string, string]> {
+  const v = verificationFacts(verification);
   const world = report.environment.world, app = report.environment.app;
   const unjudged = (report.runs as readonly ViewRun[]).filter(run => run.checker === null).length;
   const facts: Array<[string, string]> = [
     ['practonaut.report', report.readFrom], ['practonaut.version', report.environment.practonaut], ['practonaut.created', report.createdAt],
     ['practonaut.verdictLevel', report.verdictLevel],
-    ['practonaut.verification', verification], ['practonaut.runs', String(report.runs.length)], ['practonaut.runs.passed', String(report.summary.passed)],
+    ['practonaut.verification', v.level], ...(v.level === 're-verified' ? [['practonaut.verification.clientValues', v.claims ? 'not re-derived: the report\'s claims' : 're-derived'] as [string, string]] : []),
+    ...(v.notRederived.length ? [['practonaut.verification.parsersNotShipped', v.notRederived.join(', ')] as [string, string]] : []), ...(v.preset === 'not-checked' ? [['practonaut.verification.preset', 'not checked'] as [string, string]] : []), ['practonaut.runs', String(report.runs.length)], ['practonaut.runs.passed', String(report.summary.passed)],
     ['practonaut.runs.unjudged', String(unjudged)], ['practonaut.agent', report.agent.name], ['practonaut.agent.kind', report.agent.kind],
     ['practonaut.isolation', report.agent.isolation ?? 'not-recorded'], ...(report.environment.mirror !== undefined ? [['practonaut.mirror', report.environment.mirror] as [string, string]] : []),
     ['practonaut.app', `${app.adapterId} ${app.version}`], ['practonaut.toolchain', report.toolchain.id],
@@ -98,7 +100,7 @@ function properties(report: BenchReportView, verification: Verification, languag
 
 /** The JUnit XML of a validated report. `details` (the bench folder) names the unmet conditions; without
  * it a failure still names its error classes and says where the conditions are shown. */
-export function renderJunit(input: ReportInput, language: Language = 'en', verification: Verification = 'consistency-checked', details?: ReportDetails): string {
+export function renderJunit(input: ReportInput, language: Language = 'en', verification: VerificationInput = 'consistency-checked', details?: ReportDetails): string {
   const report = asView(input);
   const t = TEXT[language];
   const worldId = report.environment.world.worldId;

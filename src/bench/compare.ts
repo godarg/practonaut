@@ -87,6 +87,16 @@ export function differences(baselineInput: ReportInput, candidateInput: ReportIn
 export function agentKindDiffers(found: readonly Difference[]): boolean { return found.some(difference => difference.field === 'isolation'); }
 /** True when the verdict levels differ: no setting makes the two comparable. */
 export function levelsDiffer(found: readonly Difference[]): boolean { return found.some(difference => difference.field === 'verdictLevel'); }
+/** The one hint a refusal gives, on the terminal and on the page: different levels are never paired; a
+ * different isolation level is a different agent kind; a regression gate refuses a pair across worlds
+ * (paired by task identity) or across reading rules; anything else, the candidate's settings. */
+export type RefusalHint = 'level' | 'agentKind' | 'gate' | 'settings';
+export function refusalHint(found: readonly Difference[], baseline: ReportInput, candidate: ReportInput, options: CompareOptions = {}): RefusalHint {
+  if (levelsDiffer(found)) return 'level';
+  if (agentKindDiffers(found)) return 'agentKind';
+  const gate = options.regressionGate && (found.some(difference => difference.field === 'rules') || (found.some(difference => difference.field === 'world') && identityPaired(asView(baseline), asView(candidate))));
+  return gate ? 'gate' : 'settings';
+}
 
 export type PairKind = 'paired' | 'missing';
 /** `config-down`/`config-up`: across worlds, a different outcome of one task identity on the two
