@@ -24,7 +24,7 @@ breaks a test by itself.
 | `npm run test:a11y` | cached Chromium | axe-core and overflow on actual Player states and on every bench report and compare page state (from fixture runs, `tests/support/report-states.ts`), EN/DE, light/dark, 1280/320 px, reduced motion, no external requests. Writes ignored `.local/player-a11y/`. |
 | `npm run amplify:native-open` | cached Chromium, local engine | Opt-in, in no other command: the native Open leg under CPU throttling, repeated ([Native Open ordering](#native-open-ordering)). |
 | `npm run test:pack` | npm registry for dependencies | Tarball file list, `npm install` of the tarball into an empty project, installed CLI pack/validate/run/check, Chromium setup, installed Player and MCP smoke, `npx practonaut mcp --task excalidraw/connect` initialize/tools list, installed `bench --agent oracle`, `report --html` (with the report stylesheet) and `compare`, byte-identical repack. |
-| `npm run clean` | — | Removes `dist/`, `coverage/` and `.local/demo/` only; idempotent. |
+| `npm run clean` | — | Removes `dist/`, `coverage/`, `.local/demo/` and `.local/native-transfer/` only; idempotent. |
 
 Supply chain: `npm ci` with `package-lock.json` is the only dependency pin. The engine build
 patches the installed Excalidraw by name (each patch must match exactly once) and
@@ -49,42 +49,58 @@ file with Excalidraw's own shortcut, Ctrl/Cmd+O. The engine page has a non-secur
 Excalidraw clicks a detached `<input type=file>`, and the test takes the file dialog as Playwright's
 `filechooser` event. That event exists only while Chromium intercepts file dialogs
 (`Page.setInterceptFileChooserDialog`). Playwright turns the interception on when the first
-`filechooser` listener is added and does not wait for it. When the renderer is busy, a key sent right
-after that command can be handled before the interception takes effect: the page opens a dialog that
-is not intercepted, headless Chromium cancels it, and no event arrives. In 0.2.0 this failed the test
-on five CI runs after 10 s (issue #45).
+`filechooser` listener is added and does not wait for it. In 0.2.0 the test failed on five CI runs
+after 10 s without that event (issue #45). The measurements below are consistent with this
+mechanism, which is inferred, not read from Chromium's source: when the renderer is busy, a key sent
+right after the interception command can be handled before the interception takes effect, the page
+opens a dialog that is not intercepted, headless Chromium cancels it, and no event arrives.
 
 The contract, `armBarrierTrigger` in `src/evaluation/native-trigger.ts`: **arm** the waiter first,
 run any preparation (the click on the editor), complete one page round trip after arming
 (**barrier**), and only then send the input (**trigger**). The Open's round trip also checks that
 keyboard focus is inside the editor container; otherwise the attempt fails at once with
 `transfer_invalid` and names the focused element, instead of a lost shortcut and a timeout. The
-10 s cap per step is unchanged.
+input is never sent once the wait has ended or a dialog event has already arrived.
+
+Time limit: the whole Open, from arming through click, round trip and shortcut to the dialog event,
+runs under one limit, the per-step cap of at most 10 s counted from arming. A part that hangs ends
+the Open at that limit with a `transfer_invalid` naming the phase and whether the shortcut was sent.
+Before the fix the click and the shortcut-plus-dialog had 10 s each. The 60 s attempt limit is
+unchanged.
 
 - `tests/integration/transfer.test.ts`, "native Open ordering", runs the real transfer through a
   launch seam (`tests/support/native-open.ts` patches `chromium.launch`) and records the calls: a
   `filechooser` listener, then a page round trip that starts after it and completes, then the
   shortcut. The old order (listener and key press in one tick) fails it. "native Open refuses by
   name" moves focus out of the editor on the first pointer release and expects the named refusal.
-- Attempt evidence: `00-before-open.png` (the page before Open) and the page console from readiness
-  on (`console` in `terminal.json`, at most 200 messages of 2,000 characters). The integration tests
-  keep their originals under `.local/native-transfer/`; CI uploads that folder on failure on every
-  platform (`native-transfer-evidence-*`).
+  `tests/unit/native-trigger.test.ts` covers a wait that ends during the click, a hanging round
+  trip, a hanging shortcut and an event before the shortcut.
+- Attempt evidence: `00-before-open.png` (the page before the click and the shortcut; best effort, a
+  failed screenshot is recorded under `diagnostics` in `terminal.json` and does not fail the attempt)
+  and the page console from readiness on (`console` in `terminal.json`, at most 200 messages of 2,000
+  characters, the rest counted as `dropped`, uncaught page errors included). The integration tests
+  keep their originals under `.local/native-transfer/` (`npm run clean` removes it); CI uploads that
+  folder on failure on every platform (`native-transfer-evidence-*`).
 - `npm run amplify:native-open -- [--runs 30] [--cpu 20]` (opt-in) repeats the real transfer with the
   renderer throttled (`Emulation.setCPUThrottlingRate`) from the ready editor until the first
   `filechooser` wait settles. A probe logs every file-input click with
   `navigator.userActivation.isActive` and where focus was; each attempt is classified from its
   terminal record; `keydownToFileInputClickMs` (the page's own time between the two) shows that the
   throttling took effect. It writes `.local/amplify-native-open/<time>-<commit>-<random>.json`.
+  Re-run it when Playwright or its Chromium is upgraded: the mechanism above is inferred, and a new
+  version can change it.
 - `.github/workflows/native-open-repeat.yml` (by hand) runs the H1 native file test alone in 20 jobs
-  per CI platform.
+  per CI platform. A name pattern that selects no test still exits 0 in Node's runner, so the job
+  also writes a TAP report and `tools/require-test-passed.ts` fails it unless the H1 native file test
+  ran and passed.
 
-Measured 2026-10-18 on macOS 27 (Apple M4, Node 22), `--runs 30 --cpu 20`: with the old order
-(9c6a1e9) 28 of 30 attempts lost the dialog at Open; in each of them the probe saw the shortcut and
-the file-input click with user activation and focus inside the editor, so the page did its part.
-With the fix, 0 of 30. The page's own time from the shortcut keydown to the file-input click was
-22–104 ms in both runs (1–2 ms unthrottled), so both ran throttled. The 20 CI runs per platform are
-a maintainer step with the repeat workflow.
+Measured 2026-10-18 on one machine, macOS 27 (Apple M4, Node 22), `--runs 30 --cpu 20`: with the old
+order (9c6a1e9) 28 of 30 attempts lost the dialog at Open; in each of them the probe saw the shortcut
+and the file-input click with user activation and focus inside the editor, so the page did its part.
+With the fix, 0 of 30, and 0 of 30 again with the final limit handling (b5c5a4c). The page's own
+time from the shortcut keydown to the file-input click was 18–104 ms in these three runs (1–2 ms
+unthrottled), so they ran throttled. The 20 CI runs per platform are a maintainer step with the
+repeat workflow and are still to come.
 
 ## Platform matrix
 

@@ -8,15 +8,18 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
-- The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file") no
-  longer loses its file dialog on a busy machine (issue #45). The shortcut was sent in the same tick
-  as Playwright's `filechooser` listener; with a busy renderer the key was handled before Chromium's
-  file-chooser interception took effect, and the chooser it opened was cancelled without an event
-  (28 of 30 attempts with the renderer throttled 20x before, 0 of 30 after). Open now arms the waiter, clicks the editor, completes one page round trip that also checks
-  keyboard focus is inside the editor (refused by name otherwise), then sends the shortcut. The 10 s
-  step cap is unchanged. A failed attempt keeps a screenshot from before Open and the page console in
-  its evidence; CI uploads that evidence on failure on every platform, and
-  `.github/workflows/native-open-repeat.yml` repeats the test by hand ([testing](docs/testing.md#native-open-ordering)).
+- The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
+  #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
+  renderer throttled 20x, 28 of 30 Opens lost their file dialog before the change and 0 of 30 after;
+  the 20 CI runs per platform are still to come. The measurements are consistent with the key being
+  handled before Chromium's file-chooser interception took effect. Open now arms the waiter, clicks
+  the editor, completes one page round trip that also checks keyboard focus is inside the editor
+  (refused by name otherwise), then sends the shortcut, never after the wait has ended. The whole
+  Open shares one limit of at most 10 s from arming (before: 10 s for the click and 10 s for the
+  shortcut and dialog). An attempt keeps a best-effort screenshot from before Open and the page
+  console in its evidence; CI uploads that evidence on failure on every platform;
+  `.github/workflows/native-open-repeat.yml` repeats the test by hand and fails unless it ran and
+  passed; `npm run clean` removes `.local/native-transfer/` ([testing](docs/testing.md#native-open-ordering)).
 
 ### Changed
 
