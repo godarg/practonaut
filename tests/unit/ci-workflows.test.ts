@@ -136,3 +136,45 @@ test('the example pins Practonaut, skips forks, takes a pull request\'s baseline
   assert.equal(compare.step.if, undefined, 'compare does not run after a failed agent');
   assert.ok(all.some(step => step.run !== undefined && words(String(step.run)).slice(-2).join(' ') === 'practonaut setup'));
 });
+
+// Issue #45: native Open evidence on every platform, and the repeat workflow that measures the fix.
+const CI = '.github/workflows/ci.yml', REPEAT = '.github/workflows/native-open-repeat.yml';
+const PLATFORMS = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
+const evidenceUpload = (step: Mapping): boolean => String(step.uses ?? '').startsWith('actions/upload-artifact@') && step.with !== undefined && map(step.with).path === '.local/native-transfer/';
+
+test('the required checks keep their names and every CI platform uploads native-transfer evidence on failure', () => {
+  const jobs = map(workflow(CI).jobs), matrixJob = map(jobs.test);
+  assert.equal(matrixJob.name, 'test (${{ matrix.os }})');
+  assert.deepEqual(map(map(matrixJob.strategy).matrix).os, PLATFORMS);
+  assert.equal(map(jobs.secrets).name, 'secret scan');
+  for (const job of [matrixJob, map(jobs.node)]) {
+    const uploads = list(job.steps).map(map).filter(evidenceUpload);
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0]!.if, '${{ failure() }}', 'on failure and on no single platform');
+  }
+});
+
+test('the native Open repeat runs only the H1 native file test, by hand, 20 times on each CI platform', () => {
+  const doc = workflow(REPEAT);
+  assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
+  assert.deepEqual(doc.permissions, { contents: 'read' });
+  const jobs = Object.values(map(doc.jobs)).map(map);
+  assert.equal(jobs.length, 1);
+  for (const job of jobs) assert.equal(/^test \(|^secret scan$/.test(String(job.name)), false, String(job.name));
+  const job = jobs[0]!, strategy = map(job.strategy), matrix = map(strategy.matrix);
+  assert.deepEqual(matrix.os, PLATFORMS);
+  assert.ok(new Set(list(matrix.repeat)).size >= 20, 'at least 20 runs per platform');
+  assert.equal(strategy['fail-fast'], 'false', 'one failed run does not cancel the others');
+  const all = list(job.steps).map(map), commands = all.filter(step => typeof step.run === 'string').map(step => words(String(step.run)));
+  const build = commands.findIndex(argv => argv.join(' ') === 'node tools/build-engine.ts');
+  const runs = commands.flatMap((argv, index) => argv.includes('--test') ? [index] : []);
+  assert.equal(runs.length, 1, 'one test command');
+  const argv = commands[runs[0]!]!, pattern = argv.find(arg => arg.startsWith('--test-name-pattern='))!.slice('--test-name-pattern='.length);
+  assert.deepEqual(argv.filter(arg => arg.endsWith('.test.ts')), ['tests/integration/transfer.test.ts']);
+  assert.ok(build >= 0 && build < runs[0]!, 'the engine is built before the test');
+  // The two H1 tests in that file, named literally: only the native file test is selected.
+  assert.equal(new RegExp(pattern).test('H1 native file: genuine Open, visible edit, native Undo, completed Save As and entire-file checker'), true);
+  assert.equal(new RegExp(pattern).test('H1 transfer: scripted human genuine editor input and adapter fixture exports judged only after editing'), false);
+  const uploads = all.filter(evidenceUpload);
+  assert.equal(uploads.length, 1); assert.equal(uploads[0]!.if, '${{ failure() }}');
+});
