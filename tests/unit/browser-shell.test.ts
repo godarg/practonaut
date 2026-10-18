@@ -173,10 +173,14 @@ test('the sink proxy refuses every connection, reads and records nothing, and a 
   const sink = new URL(launched.proxy!.server);
   assert.equal(sink.hostname, '127.0.0.1');
   const port = Number(sink.port);
-  // What the browser sends (a TURN connection, a preconnect) and what any other local process can.
-  for (const request of ['CONNECT turn.example:3478 HTTP/1.1\r\nHost: turn.example:3478\r\n\r\n', 'GET http://user:secret@blocked.invalid/x?token=SECRET HTTP/1.1\r\n\r\n', 'GET / HTTP/1.1\r\n\r\n', 'not http at all\r\n']) {
-    const answer = await askSink(port, request);
-    assert.match(answer.reply, /^HTTP\/1\.1 403 Forbidden/, request);
+  // What the browser sends (a TURN connection, a preconnect) and what any other local process can,
+  // down to a client that sends nothing and stays half-open: each is answered and closed. (A peer
+  // that left nothing unread is closed with a FIN that a half-open client may ignore, on every
+  // platform; with unread data, Windows ignores it too. Only a reset closes such a client.)
+  const requests = ['CONNECT turn.example:3478 HTTP/1.1\r\nHost: turn.example:3478\r\n\r\n', 'GET http://user:secret@blocked.invalid/x?token=SECRET HTTP/1.1\r\n\r\n', 'GET / HTTP/1.1\r\n\r\n', 'not http at all\r\n', ''];
+  for (const [index, answer] of (await Promise.all(requests.map(request => askSink(port, request)))).entries()) {
+    assert.match(answer.reply, /^HTTP\/1\.1 403 Forbidden/, JSON.stringify(requests[index]));
+    assert.ok(answer.closedAfterMs < 2_000, `${JSON.stringify(requests[index])} closed after ${answer.closedAfterMs} ms`);
   }
   // A client that never stops sending is answered and closed, not buffered.
   const flood = await askSink(port, 'CONNECT flood.example:443 HTTP/1.1\r\n', true);

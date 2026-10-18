@@ -159,8 +159,9 @@ async function within<T>(work: () => Promise<T>, limits: OperationLimits, errors
  *
  * Any local process can connect to it too (it has no token: Chromium cannot be configured with one
  * for these connections). So it treats every connection alike and as untrusted: it reads nothing,
- * records nothing, answers 403 and closes, at most `SINK_LIMITS.connections` at a time. A foreign
- * client can neither reach the browser, nor fill the shell's records, nor close the shell. */
+ * records nothing, answers 403 and resets the connection, at most `SINK_LIMITS.connections` at a
+ * time. A foreign client can neither reach the browser, nor fill the shell's records, nor close the
+ * shell. */
 interface Sink { readonly server: string; close(): Promise<void> }
 export const SINK_LIMITS = Object.freeze({ connections: 64, lingerMs: 1_000 });
 const FORBIDDEN = 'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n';
@@ -169,10 +170,15 @@ async function startSink(): Promise<Sink> {
   // Paused from the start: nothing the client sends is ever read into this process.
   const server = createServer({ pauseOnConnect: true }, socket => {
     sockets.add(socket);
-    const linger = setTimeout(() => socket.destroy(), SINK_LIMITS.lingerMs); linger.unref();
-    socket.on('close', () => { clearTimeout(linger); sockets.delete(socket); });
     socket.on('error', () => undefined);
-    socket.end(FORBIDDEN, () => socket.destroy());
+    // Answer, then reset, without a graceful close in between. A client that keeps its side open
+    // ignores a FIN: one that left nothing unread on any platform, on Windows also one whose data
+    // the sink never read. Once it has the FIN it no longer reads, so not even a later reset reaches
+    // it. A reset (RST) while it still reads ends every client on every platform; the answer has the
+    // linger time to arrive first.
+    const reset = setTimeout(() => socket.resetAndDestroy(), SINK_LIMITS.lingerMs); reset.unref();
+    socket.on('close', () => { clearTimeout(reset); sockets.delete(socket); });
+    socket.write(FORBIDDEN);
   });
   server.maxConnections = SINK_LIMITS.connections;
   server.unref();
@@ -180,7 +186,7 @@ async function startSink(): Promise<Sink> {
   const { port } = server.address() as AddressInfo;
   return {
     server: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>(resolve => { for (const socket of sockets) socket.destroy(); server.close(() => resolve()); }),
+    close: () => new Promise<void>(resolve => { for (const socket of sockets) socket.resetAndDestroy(); server.close(() => resolve()); }),
   };
 }
 /** Below the page: WebRTC may not send UDP (and proxied TCP only reaches the sink), and no host name

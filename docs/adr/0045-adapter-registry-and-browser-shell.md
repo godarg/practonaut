@@ -162,7 +162,11 @@ with what is about the app.
      shared worker, which the routing cannot see. The sink has no token — Chromium cannot be given
      one for these connections — so any local process, also of another OS user, can connect to it
      as well. It therefore trusts no connection: it reads nothing (the socket starts paused), records
-     nothing, answers 403 and closes, at most 64 connections at a time. A foreign client can neither
+     nothing, answers 403 and resets the connection (RST) a second later, at most 64 connections at
+     a time. It never closes gracefully: a client that keeps its side open ignores a FIN — one that
+     left nothing unread on every platform, on Windows also one whose data was never read (the
+     first Windows CI run of this change) — and then no longer notices a later reset; a reset while
+     it still reads ends it everywhere. A foreign client can neither
      reach the browser, nor fill the shell's records, nor close the shell or make its adapter fail;
      the sink only holds the port, so nothing else can listen there and receive the browser's
      connections. The price: the browser's own attempts through the sink (TURN, a shared worker's
