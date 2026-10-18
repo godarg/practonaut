@@ -6,6 +6,21 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
+  #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
+  renderer throttled 20x, 28 of 30 Opens lost their file dialog before the change and 0 of 30 after;
+  the 20 CI runs per platform are still to come. The measurements are consistent with the key being
+  handled before Chromium's file-chooser interception took effect. Open now arms the waiter, clicks
+  the editor, completes one page round trip that also checks keyboard focus is inside the editor
+  (refused by name otherwise), then sends the shortcut, never after the wait has ended or the limit
+  has passed. The whole Open shares one limit of at most 10 s from arming, checked by timer and by
+  clock (before: 10 s for the click and 10 s for the shortcut and dialog). An attempt keeps a best-effort screenshot from before Open and the page
+  console in its evidence; CI uploads that evidence on failure on every platform;
+  `.github/workflows/native-open-repeat.yml` repeats the test by hand and fails unless it ran and
+  passed; `npm run clean` removes `.local/native-transfer/` ([testing](docs/testing.md#native-open-ordering)).
+
 ### Changed
 
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
