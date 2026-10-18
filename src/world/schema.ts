@@ -3,7 +3,9 @@ import { ACTION_NAMES, V2_ACTION_NAMES, SHAPES, STROKE_COLORS, FILL_COLORS, type
 import { RUNTIME_LIMITS } from "./limits.ts";
 import { preflightJson, preflightPredicate, WorldError } from "./preflight.ts";
 import { isDisplayText } from './display-text.ts';
-import { adapterIdsFor, appVersionsFor, checkWorldApp, type AdapterId, type AppVersion } from "./apps.ts";
+import { adapterIdsFor, appVersionsFor, checkWorldApp, structuralConstraintsOf, type AdapterId, type AppVersion } from "./apps.ts";
+import { constraintViolation } from "./constraints.ts";
+import { substituteTokens, variantTokens } from "./tokens.ts";
 
 export { WorldError } from "./preflight.ts";
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
@@ -278,6 +280,18 @@ export function validateWorld(raw: unknown): World {
     for (const o of Object.values(state.objects)) {
       if (!w.objectTypes.some(t => t.type === o.type)) throw new WorldError(`undeclared object type ${o.type}`);
       if (o.type === "step" && !v2 && !w.app.fontFamilies.includes((o as { fontFamily: number }).fontFamily)) throw new WorldError(`font family ${(o as { fontFamily: number }).fontFamily} not declared`);
+    }
+  }
+  // The structural constraints of the world's application (PADR-0049 decision 5.2) hold for every
+  // stated state in every variant case, after its labels are substituted.
+  const constraints = structuralConstraintsOf(w.app.adapterId);
+  if (constraints.length) for (const variant of w.variants.cases) {
+    const tokens = variantTokens(variant);
+    for (const state of states) {
+      const shown = structuredClone(state);
+      for (const o of Object.values(shown.objects)) { if (o.type === "frame") o.name = substituteTokens(o.name, tokens); else if (o.type === "step") o.label = substituteTokens(o.label, tokens); }
+      const violation = constraintViolation(shown, constraints);
+      if (violation) throw new WorldError(`adapter ${w.app.adapterId} cannot hold this state (constraint ${violation.constraint}, object ${violation.objectId}, variant ${variant.id})`);
     }
   }
   for (const rule of w.rules) if (!w.actions.some(a => a.name === rule.action)) throw new WorldError("rule references undeclared action");

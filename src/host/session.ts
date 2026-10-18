@@ -16,6 +16,7 @@ import { interpretEditorGesture, reconcileCreatedIdentity } from './editor-input
 import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAINING_MS } from './mirror.ts';
 import type { MirrorFactory, PracticeMirror } from './mirror.ts';
 import {buildExportEnvelope,nativeMatchesState,type CurrentSessionExport} from './export-pair.ts';
+import { STRUCTURAL_CONSTRAINTS } from '../world/constraints.ts';
 import {HOST_LIMITS} from './limits.ts';
 import { libraryTaskInfo } from '../library/index.ts';
 
@@ -374,6 +375,10 @@ export async function createPracticeController(input: World, options: PracticeSe
       // A step that no longer matches (the core's baseStep check) is as stale as an old revision:
       // name what is current, as the revision guard does.
       if (!timedOut && failure.code === 'stale_base') return rejected({ ok: false, error: { code: 'stale_base', message: `${failure.message ?? 'Board changed since this request'}; the current step is ${session.step} and the current revision ${revision}`, details: { step: session.step, revision } } });
+      // A known limit of the world's application keeps the one detail that names it, so the Player and
+      // MCP give the same explanation (PADR-0049 decision 5.2).
+      const constraint = (failure as { details?: { constraint?: unknown } }).details?.constraint;
+      if (!timedOut && failure.code === 'constraint_refused' && (STRUCTURAL_CONSTRAINTS as readonly unknown[]).includes(constraint)) return rejected({ ok: false, error: { code: 'constraint_refused', message: failure.message ?? 'The application cannot hold the result', details: { constraint: constraint as string } } });
       return rejected(reject(timedOut?'mirror_timeout':failure.code ?? 'replay_mismatch',timedOut?'Transaction deadline reached; committed board restored or mirror disposed':failure.message ?? 'Transaction failed'));
     } finally { busy = false; }
   };

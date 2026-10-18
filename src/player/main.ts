@@ -197,6 +197,11 @@ async function request<T>(route: string, payload?: unknown, signal?:AbortSignal,
     return await response.json() as HostReply<T>;
   } catch { return { ok: false, error: { code: 'mirror_unavailable', message: 'Host unavailable' } }; }
 }
+/** The catalog key for a refusal: a known limit of the application names its constraint (PADR-0049). */
+function rejectionMessage(error: { code: string; details?: Record<string, unknown> }): string {
+  if (error.code !== 'constraint_refused') return error.code;
+  return error.details?.constraint === 'group-within-one-frame' ? 'constraintGroupWithinOneFrame' : error.details?.constraint === 'xml-text' ? 'constraintXmlText' : 'constraint_refused';
+}
 function rejected(code: string): void {
   pending = undefined; errorCode = code; render(); restoreFocus(selected);
   say(msg(Object.hasOwn(catalogs.en, code) ? code as Message : 'genericError'));
@@ -217,7 +222,7 @@ async function mutate(route: string, extra: Record<string, unknown> = {}, feedba
   working = false;
   if (!reply.ok) {
     if (reply.error.code === 'stale_base') { const latest = await request<HostView>('observe'); if (latest.ok) absorb(latest.value); }
-    rejected(reply.error.code); return;
+    rejected(rejectionMessage(reply.error)); return;
   }
   absorb(reply.value.view);
   const added = Object.values(current!.state.objects).find(object => !oldIds.has(object.id) && !object.deleted);

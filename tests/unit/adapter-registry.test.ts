@@ -49,13 +49,25 @@ test('Excalidraw is registered at the pinned package version, bundled, with the 
   assert.equal(resolveAdapter(EXCALIDRAW_APP, 'practonaut.world/2'), entry);
 });
 
+test('draw.io is registered at the pinned release, downloaded, compared on live objects, world/2 only', () => {
+  // Expected values from the spike's committed pin (spikes/drawio/pin.json) and PADR-0049 decision 1.1.
+  const pin = JSON.parse(readFileSync(join(root, 'spikes/drawio/pin.json'), 'utf8')) as { tag: string; size: number; sha256: string };
+  const entry = resolveAdapter({ adapterId: 'drawio', versionRange: pin.tag.slice(1) }, 'practonaut.world/2');
+  assert.deepEqual([...entry.appVersions], [pin.tag.slice(1)]);
+  assert.deepEqual([...entry.schemas], ['practonaut.world/2']);
+  assert.equal(entry.runtime, 'downloaded'); assert.equal(entry.readBack, 'live');
+  assert.throws(() => resolveAdapter({ adapterId: 'drawio', versionRange: pin.tag.slice(1) }, 'practonaut.world/1'), code('E_ADAPTER_SCHEMA_UNSUPPORTED'));
+  assert.throws(() => resolveAdapter({ adapterId: 'drawio', versionRange: '0.18.1' }, 'practonaut.world/2'), code('E_ADAPTER_VERSION_UNSUPPORTED'));
+  assert.equal(NATIVE_FORMATS.drawio.extension, '.drawio');
+});
+
 test('the registry refuses an unknown adapter, an unknown version and an unsupported schema by name, without creating anything', () => {
   let created = 0;
   const create = async (): Promise<never> => { created++; throw new Error('must not start'); };
-  // Test-only stub: an adapter that runs world/2 only, as draw.io will (Must 2).
+  // Test-only stub: an adapter that runs world/2 only, as draw.io does.
   const stubbed: AdapterRegistry = { ...ADAPTER_REGISTRY, stub: { id: 'excalidraw', appVersions: ['1.0.0'] as never, schemas: ['practonaut.world/2'], runtime: 'downloaded', readBack: 'live', create } };
-  assert.throws(() => resolveAdapter({ adapterId: 'drawio', versionRange: '32.4.1' }, 'practonaut.world/2', stubbed), code('E_ADAPTER_UNKNOWN'));
-  assert.throws(() => resolveAdapter({ adapterId: 'drawio', versionRange: '32.4.1' }, 'practonaut.world/2'), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_UNKNOWN' && /"drawio"/.test(error.message));
+  assert.throws(() => resolveAdapter({ adapterId: 'bpmnjs', versionRange: '18.0.0' }, 'practonaut.world/2', stubbed), code('E_ADAPTER_UNKNOWN'));
+  assert.throws(() => resolveAdapter({ adapterId: 'bpmnjs', versionRange: '18.0.0' }, 'practonaut.world/2'), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_UNKNOWN' && /"bpmnjs"/.test(error.message));
   assert.throws(() => resolveAdapter({ adapterId: 'excalidraw', versionRange: '0.19.0' }, 'practonaut.world/1'), code('E_ADAPTER_VERSION_UNSUPPORTED'));
   assert.throws(() => resolveAdapter({ adapterId: 'stub', versionRange: '1.0.0' }, 'practonaut.world/1', stubbed), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_SCHEMA_UNSUPPORTED' && /"stub"/.test(error.message));
   assert.equal(resolveAdapter({ adapterId: 'stub', versionRange: '1.0.0' }, 'practonaut.world/2', stubbed).runtime, 'downloaded');
@@ -81,6 +93,6 @@ test('play, serve, mcp --task and run ask the registry themselves: a world it la
 
 test('the mirror factory refuses an unknown app by name before it starts a browser', async () => {
   const world = v2World();
-  const unknown = { ...world, app: { ...world.app, adapterId: 'drawio' } } as unknown as World;
+  const unknown = { ...world, app: { ...world.app, adapterId: 'bpmnjs' } } as unknown as World;
   await assert.rejects(createPracticeMirror(world.initialState, unknown), code('E_ADAPTER_UNKNOWN'));
 });

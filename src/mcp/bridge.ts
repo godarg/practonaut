@@ -8,6 +8,7 @@ import { HOST_ROUTES, HOST_ERROR_CODES, TOKEN_HEADER, type HostReply, type HostE
 import { parseJsonEntry } from "../package/json.ts";
 import { ActionDefinitionSchemaV2, AnyStateSchema, RuleSchemaV2, WorldSchema } from "../world/schema.ts";
 import { ERROR_CODES } from "../world/types.ts";
+import { STRUCTURAL_CONSTRAINTS } from "../world/constraints.ts";
 import { agentClientName, inputProblems, TOOL_SCHEMAS, type McpBridge, type McpCallContext, type McpBridgeConfig, type McpToolName, type McpToolInputs, type McpToolValues } from "./contracts.ts";
 import { checkResult, compactView, fullView, localize, mutationResult, type Lang } from "./replies.ts";
 import {HOST_TRANSACTION_MS} from '../host/mirror.ts';
@@ -90,6 +91,8 @@ const errorSchema = z.union([
  z.strictObject({ ok: z.literal(false), error: z.strictObject({ code: z.enum([...HOST_ERROR_CODES, ...ERROR_CODES]), message: z.string().max(8192), details: z.strictObject({}).optional() }) }),
  // A stale request learns the current step and revision, nothing else.
  z.strictObject({ ok: z.literal(false), error: z.strictObject({ code: z.literal('stale_base'), message: z.string().max(8192), details: z.strictObject({ step: integer, revision: integer }) }) }),
+ // A known limit of the world's application names the constraint it hit (PADR-0049 decision 5.2).
+ z.strictObject({ ok: z.literal(false), error: z.strictObject({ code: z.literal('constraint_refused'), message: z.string().max(8192), details: z.strictObject({ constraint: z.enum(STRUCTURAL_CONSTRAINTS) }) }) }),
  z.strictObject({ok:z.literal(false),error:z.strictObject({code:z.literal('outcome_unknown'),message:z.string().max(256),details:z.strictObject({observedRevision:integer,observedHash:z.string().regex(/^[a-f0-9]{64}$/)})})}),
 ]);
 function failure(code: HostErrorCode, message: string): HostReply<never> { return { ok: false, error: { code, message } }; }

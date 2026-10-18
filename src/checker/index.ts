@@ -8,6 +8,7 @@ import { validateSubmissionState, parseSession } from "./state.ts";
 import { nativeFormat, type NativeFormatId } from "./formats.ts";
 import { validateCheckerData } from "./bundle.ts";
 import { verifySessionHistory } from './replay.ts';
+import { refuseConstraintViolation } from "./constraints.ts";
 export { CheckerError } from "./errors.ts";
 export { parseExcalidraw } from "./excalidraw.ts";
 export { parseScene, type SceneReport, type Unmodeled } from "./scene.ts";
@@ -60,6 +61,7 @@ export function checkState(world: World, input: State, options: CheckOptions = {
   const bundle = options.bundle ? generateCheckerVariant(validated, options.bundle, seed) : undefined;
   const v2 = validated.schema === "practonaut.world/2";
   const state = validateSubmissionState(input, v2 ? undefined : variant.app.fontFamilies, v2 ? 2 : 1);
+  if (v2) refuseConstraintViolation(state, validated.app.adapterId);
   const allTasks = [...variant.tasks, ...(bundle?.heldOutTasks ?? [])];
   const tasks = options.taskId ? allTasks.filter(t => t.id === options.taskId) : variant.tasks;
   if (tasks.length === 0) throw new CheckerError("checker_invalid", "unknown task");

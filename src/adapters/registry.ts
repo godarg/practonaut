@@ -10,6 +10,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { refuseUnknownApp, type KnownApp } from '../world/apps.ts';
 import type { AdapterId, AppVersion, State, WorldApp, WorldSchemaId } from '../world/types.ts';
 import type { EngineLifecycleProbe } from './browser/shell.ts';
+import { createDrawioAdapter } from './drawio/index.ts';
 import { createExcalidrawAdapter } from './excalidraw/index.ts';
 import type { AdapterOptions, MirrorAdapter } from './types.ts';
 
@@ -34,7 +35,13 @@ const EXCALIDRAW = Object.freeze({
   id: 'excalidraw', appVersions: Object.freeze(['0.18.1'] as const), schemas: Object.freeze(['practonaut.world/1', 'practonaut.world/2'] as const),
   runtime: 'bundled', readBack: 'full', create: createExcalidrawAdapter,
 } as const);
-export const ADAPTER_REGISTRY = Object.freeze({ excalidraw: EXCALIDRAW } satisfies { readonly [K in AdapterId]: AdapterRegistration });
+// draw.io: downloaded by `setup --app drawio`, compared on live objects (it keeps no deleted cells),
+// world/2 only (PADR-0049 decision 1.1).
+const DRAWIO = Object.freeze({
+  id: 'drawio', appVersions: Object.freeze(['32.4.1'] as const), schemas: Object.freeze(['practonaut.world/2'] as const),
+  runtime: 'downloaded', readBack: 'live', create: createDrawioAdapter,
+} as const);
+export const ADAPTER_REGISTRY = Object.freeze({ excalidraw: EXCALIDRAW, drawio: DRAWIO } satisfies { readonly [K in AdapterId]: AdapterRegistration });
 export type AdapterRegistry = Readonly<Record<string, AdapterRegistration>>;
 
 /**

@@ -3,6 +3,8 @@ import { evaluate } from "../predicate/index.ts";
 import { preflightJson, WorldError } from "../world/preflight.ts";
 import { derivedArrowFrame, validateState, validateWorld, V2_PARAMETERS } from "../world/schema.ts";
 import { RUNTIME_LIMITS } from "../world/limits.ts";
+import { structuralConstraintsOf } from "../world/apps.ts";
+import { constraintViolation } from "../world/constraints.ts";
 import { isDisplayText } from '../world/display-text.ts';
 import { deepFreeze } from './freeze.ts';
 import { worldEra } from "../world/types.ts";
@@ -27,8 +29,8 @@ export function failure(code: Failure["code"], message: string, details: Failure
   return { ok: false, error: { code, message, details } };
 }
 class TransitionError extends Error {
-  readonly code: Failure["code"];
-  constructor(code: Failure["code"], message: string) { super(message); this.code = code; }
+  readonly code: Failure["code"]; readonly details: Failure["details"];
+  constructor(code: Failure["code"], message: string, details: Failure["details"] = {}) { super(message); this.code = code; this.details = details; }
 }
 /** Stable semantic id: identical prefix denotes the same object; an undo branch gets a new id. */
 export function creationId(world: World, action: Action, context: ApplyContext = { seed: 0, prefix: [] }): string {
@@ -136,7 +138,7 @@ function transition(world: World, state: State, action: Action, context: ApplyCo
     validateState(next, 1);
     return { ok: true, state: next, effects: REQUIRED_EFFECTS[name].map(kind => ({ kind, id })) };
   } catch (error) {
-    if (error instanceof TransitionError) return failure(error.code, error.message);
+    if (error instanceof TransitionError) return failure(error.code, error.message, error.details);
     if (error instanceof WorldError) return failure("invalid_argument", error.message);
     throw error;
   }
@@ -219,6 +221,10 @@ function transitionV2(world: World, state: State, action: Action, name: ActionNa
   // Arrow frames follow their ends after every transition; one rule shared by every world/2 state.
   for (const arrow of Object.values(next.objects)) if (arrow.type === "arrow" && !arrow.deleted) arrow.frameId = derivedArrowFrame(next, arrow.from, arrow.to, arrow.frameId);
   validateState(next, 2);
+  // A successor the world's application cannot hold is refused by name, the same for every actor and
+  // with or without the mirror (PADR-0049 decision 5.2); the constraints are the table's data.
+  const violation = constraintViolation(next, structuralConstraintsOf(world.app.adapterId));
+  if (violation) throw new TransitionError("constraint_refused", violation.message, { constraint: violation.constraint, object: violation.objectId });
   return { ok: true, state: next, effects: REQUIRED_EFFECTS[name].map(kind => ({ kind, id })) };
 }
 

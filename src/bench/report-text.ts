@@ -73,7 +73,7 @@ const en = {
   clientLine: 'Self-reported by the client: {parts}.', clientModel: 'model {model}',
   // Refusals of the host, in words.
   code_precondition_failed: 'the action did not fit the board at that moment', code_invalid_argument: 'a parameter was outside the action’s contract', code_invalid_request: 'the call did not match the tool’s input schema',
-  code_stale_base: 'the call named an outdated step or revision', code_action_budget_exhausted: 'the run’s action budget was used up', code_unmodeled: 'no confirmed rule covers this action',
+  code_stale_base: 'the call named an outdated step or revision', code_action_budget_exhausted: 'the run’s action budget was used up', code_unmodeled: 'no confirmed rule covers this action', code_constraint_refused: 'the application cannot hold the result',
   code_limit_exceeded: 'a limit of the world was reached', code_real_tool_disagrees: 'the real Excalidraw did not confirm the action', code_mirror_timeout: 'the real Excalidraw did not answer in time',
   code_mirror_unavailable: 'the real Excalidraw was not available', code_session_busy: 'another change was still in progress',
   failuresHead: 'Failures ({n} of {runs})', moreFailures: '… and {n} more (practonaut report <report.json> --html <out.html>)',
@@ -184,7 +184,7 @@ const de: Catalog = {
   callsMissingNone: 'die Bridge des Agenten hat keines geschrieben', callsNote: 'Aufgezeichnet vom Bridge-Prozess des Agenten selbst: ein Beleg über den Lauf, kein Beweis.',
   clientLine: 'Selbstauskunft des Clients: {parts}.', clientModel: 'Modell {model}',
   code_precondition_failed: 'die Aktion passte in dem Moment nicht zur Arbeitsfläche', code_invalid_argument: 'ein Parameter lag außerhalb des Vertrags der Aktion', code_invalid_request: 'der Aufruf passte nicht zum Eingabeschema des Werkzeugs',
-  code_stale_base: 'der Aufruf nannte einen veralteten Schritt oder eine veraltete Revision', code_action_budget_exhausted: 'das Aktionsbudget des Laufs war aufgebraucht', code_unmodeled: 'keine bestätigte Regel deckt diese Aktion ab',
+  code_stale_base: 'der Aufruf nannte einen veralteten Schritt oder eine veraltete Revision', code_action_budget_exhausted: 'das Aktionsbudget des Laufs war aufgebraucht', code_unmodeled: 'keine bestätigte Regel deckt diese Aktion ab', code_constraint_refused: 'die Anwendung kann das Ergebnis nicht speichern',
   code_limit_exceeded: 'eine Grenze der Welt war erreicht', code_real_tool_disagrees: 'das echte Excalidraw hat die Aktion nicht bestätigt', code_mirror_timeout: 'das echte Excalidraw hat nicht rechtzeitig geantwortet',
   code_mirror_unavailable: 'das echte Excalidraw war nicht verfügbar', code_session_busy: 'eine andere Änderung lief noch',
   failuresHead: 'Nicht bestanden ({n} von {runs})', moreFailures: '… und {n} weitere (practonaut report <bericht.json> --html <out.html>)',

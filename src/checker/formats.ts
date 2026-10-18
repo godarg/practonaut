@@ -32,6 +32,12 @@ export const NATIVE_FORMATS = Object.freeze({
       ? canonicalJson(live(parseScene(input).state)) === canonicalJson(live(state))
       : canonicalJson(parseExcalidraw(input)) === canonicalJson(state),
   }),
+  /** draw.io's `.drawio` file, read by the checker's own reader (PADR-0049 decision 6). */
+  drawio: Object.freeze({
+    id: "drawio", extension: ".drawio",
+    parse: (_schema: WorldSchemaId, _input: string | Uint8Array): State => { throw new CheckerError("artifact_invalid", "the checker's draw.io reader is not available in this build"); },
+    matches: (): boolean => false,
+  }),
 } satisfies Record<string, NativeFormat>);
 export type NativeFormatId = keyof typeof NATIVE_FORMATS;
 export const NATIVE_FORMAT_IDS = Object.freeze(Object.keys(NATIVE_FORMATS) as NativeFormatId[]);
