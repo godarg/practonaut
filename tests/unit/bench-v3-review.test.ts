@@ -150,7 +150,11 @@ test('A: values a parser this Practonaut does not ship read are never shown as c
   // Fully re-derived, the same report's preset isolation is confirmed by re-verification.
   assert.ok(renderCard(preset, tokens, 'light', 'en', 're-verified').includes('class="mark-confirmed"/><path d="M7.7 12.4l3 3 5.6-6" class="mark-check"/></g><text class="card-fact"><tspan x="24" y="15.4">Tool-restricted preset'));
   assert.match(renderBadge(preset, tokens, 'en', claims), /re-verified, client values not re-derived/);
-  assert.match(renderHtml(preset, tokens, 'en', claims), /the client’s own values \(model, offered tools and so a preset’s isolation, billing\) were not re-derived and are the report’s claims/);
+  const page = renderHtml(preset, tokens, 'en', claims);
+  assert.match(page, /the client’s own values \(model, offered tools and so a preset’s isolation, billing\) were not re-derived and are the report’s claims/);
+  // The settings say it too, and the note does not claim the client's values were read again.
+  assert.match(page, /<dt>Isolation<\/dt><dd>tool-restricted preset \(the report’s claim, not re-derived\)<\/dd>/);
+  assert.equal(page.includes('is read again from its bound output'), false);
   const junit = renderJunit(preset, 'en', claims);
   assert.match(junit, /<property name="practonaut\.verification\.clientValues" value="not re-derived: the report&apos;s claims"\/>/);
   assert.match(junit, /<property name="practonaut\.verification\.parsersNotShipped" value="claude-code-stream\/2"\/>/);

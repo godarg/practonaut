@@ -117,6 +117,10 @@ function worldText(report: BenchReportView, t: Words): string {
   if (world.package === null) return `${world.worldId} ${world.version}`;
   return `${world.worldId} ${world.version} (${world.source === 'library' ? t.worldLibrary : t.worldOwn})`;
 }
+/** The isolation row of the settings: a preset's isolation is the report's claim when its runs' evidence
+ * was not re-derived (as on the header line). */
+const settingsIsolation = (report: BenchReportView, language: Language, verification: VerificationInput): string =>
+  report.agent.kind === 'preset' && verificationFacts(verification).claims ? fill(language, TEXT[language].claimNotRederived, { fact: isolationText(report, TEXT[language]) }) : isolationText(report, TEXT[language]);
 /** The verdict level in words (PADR-0044 decision 1): named on every surface, also for session reports. */
 export const levelText = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifact;
 /** Applications by adapter id, as their own names spell them; another adapter shows its id. */
@@ -545,11 +549,11 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
 <dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? (e.world.package !== null ? t.reverifiedWorld : t.reverified) : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
-<dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.isolation)}</dt><dd>${esc(settingsIsolation(report, language, verification))}</dd>
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(report.readFrom === BENCH_SCHEMA_V3 ? t.selfReportedV3 : t.selfReported)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 
@@ -629,7 +633,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
 <dt>${esc(t.runsLabel)}</dt><dd>${esc(planLine(report, language))}</dd>
 <dt>${esc(t.verification)}</dt><dd>${esc(verificationFacts(verification).claims ? t.reverifiedClaims : verificationFacts(verification).level === 're-verified' ? t.reverifiedWorld : t.consistency)}</dd>
 <dt>${esc(t.levelLabel)}</dt><dd>${esc(levelText(report.verdictLevel, language))}</dd>
-<dt>${esc(t.isolation)}</dt><dd>${esc(isolationText(report, t))}</dd>
+<dt>${esc(t.isolation)}</dt><dd>${esc(settingsIsolation(report, language, verification))}</dd>
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
