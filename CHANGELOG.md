@@ -6,6 +6,18 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file") no
+  longer loses its file dialog on a busy machine (issue #45). The shortcut was sent in the same tick
+  as Playwright's `filechooser` listener, whose interception Chromium applies on the renderer's main
+  thread; a key handled first opened a chooser that was not intercepted and was cancelled without an
+  event. Open now arms the waiter, clicks the editor, completes one page round trip that also checks
+  keyboard focus is inside the editor (refused by name otherwise), then sends the shortcut. The 10 s
+  step cap is unchanged. A failed attempt keeps a screenshot from before Open and the page console in
+  its evidence; CI uploads that evidence on failure on every platform, and
+  `.github/workflows/native-open-repeat.yml` repeats the test by hand ([testing](docs/testing.md#native-open-ordering)).
+
 ### Changed
 
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on

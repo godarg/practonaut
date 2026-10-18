@@ -73,9 +73,16 @@ try {
 
 const outcomes: Record<string, number> = {};
 for (const row of rows) outcomes[row.outcome] = (outcomes[row.outcome] ?? 0) + 1;
+// Evidence that the throttling took effect: the page's own time from the shortcut keydown to the
+// file-input click (a few ms unthrottled, tens of ms at 20x; measured values in docs/testing.md).
+const gaps = rows.flatMap(row => {
+  const keydown = row.probe.find(entry => entry.kind === 'open-keydown'), click = row.probe.find(entry => entry.kind.startsWith('file-input'));
+  return keydown && click ? [click.ms - keydown.ms] : [];
+}).sort((a, b) => a - b);
+const keydownToFileInputClickMs = gaps.length ? { median: gaps[Math.floor(gaps.length / 2)]!, min: gaps[0]!, max: gaps.at(-1)!, attempts: gaps.length } : null;
 const summary = { tool: 'amplify-native-open/1', commit, dirty, srcChanged, platform: process.platform, node: process.version, runs, cpuThrottlingRate: cpu,
   failures: rows.filter(row => row.outcome !== 'passed').length, openFailures: rows.filter(row => row.stage === 'open' && row.outcome !== 'passed').length,
-  outcomes, seamErrors, evidence: root, rows };
+  outcomes, keydownToFileInputClickMs, seamErrors, evidence: root, rows };
 const file = `${root}.json`;
 await writeFile(file, JSON.stringify(summary, null, 2) + '\n', { flag: 'wx' });
-console.log(JSON.stringify({ commit, dirty, srcChanged, runs, cpuThrottlingRate: cpu, failures: summary.failures, openFailures: summary.openFailures, outcomes, seamErrors: seamErrors.length, file }));
+console.log(JSON.stringify({ commit, dirty, srcChanged, runs, cpuThrottlingRate: cpu, failures: summary.failures, openFailures: summary.openFailures, outcomes, keydownToFileInputClickMs, seamErrors: seamErrors.length, file }));
