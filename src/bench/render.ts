@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import type { VerdictLevel } from './report.ts';
+import { BENCH_SCHEMA_V3, type VerdictLevel } from './report.ts';
 import { asView, type ArtifactReportView, type BenchReportView, type ReportInput, type SessionReportView, type ViewArtifactRun, type ViewRun, type ViewSessionRun } from './view.ts';
 import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
@@ -534,7 +534,7 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.toolchain)}</dt><dd>${esc(toolchainText(report, language))}</dd>
 <dt>${esc(t.world)}</dt><dd>${esc(worldText(report, t))}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(t.selfReported)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${esc(report.readFrom === BENCH_SCHEMA_V3 ? t.selfReportedV3 : t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 
