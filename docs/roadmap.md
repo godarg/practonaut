@@ -321,8 +321,8 @@ are accepted whenever they are ready.
   application-independent task identity for comparing the same tasks across apps and toolchains.
   Optional fields may be added until 0.3.0 ships; then it is frozen, with a migration note. Readers
   keep reading `/1` and `/2`. *Acceptance:* every committed `/1` and `/2` report still verifies; a
-  stored `/2` report rewritten as `/3` keeps every shared field deep-equal; `compare` names the
-  reason when it refuses a mixed pair.
+  stored `/2` report read as `/3` through the view keeps every shared field deep-equal; `compare`
+  names the reason when it refuses a mixed pair ([PADR-0044](adr/0044-bench-report-v3.md)).
 - **P4. More presets** (L, moved from 0.4.0): Codex CLI and local open-weight models (through
   `codex --oss` or opencode, loopback endpoint only, a run whose client does not name the loopback
   endpoint counts as a subscription run and is refused); Gemini moves to 0.4.0, because Gemini CLI

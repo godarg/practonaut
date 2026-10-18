@@ -6,6 +6,40 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Bench report `practonaut.bench/3` ([PADR-0044](docs/adr/0044-bench-report-v3.md), issue #46; schema
+  `schemas/bench.v3.json`): `bench` writes it at the session verdict level. It names the verdict level
+  (on every run, and on the header line, card, badge, JUnit properties and compare page), the
+  application (`environment.app`, replacing `environment.excalidraw`) and the toolchain with the tool
+  names Practonaut's bridge advertised; a task identity per instance; the agent's vendor, client,
+  client version, requested model, settings and requested billing class, each with its evidence
+  source; per external run the SHA-256 of its whole `agent.stdout`, the versioned parser that read it
+  (`claude-code-stream/1`), the tools its client offered and the billing class its own output attests;
+  a structured `failure` for every run that was not judged (reason, parser, the client's own code,
+  whether it came before model work); and the agent's own action count. A preset is "tool-restricted"
+  only from its runs' evidence of the tools its client offered. The validator also holds the
+  artifact-judged level that artifact mode will write.
+- `report --verify` re-verifies /3 reports: the application adapter and every task identity against
+  the stored world, every stdout against its hash, and every value the shipped parser reads from it.
+- `compare` refuses reports of different verdict levels by name, and different `--checks`; it pairs
+  the same tasks benched on two applications or toolchains by task identity (the distinct identity is
+  the unit, rate claims only at equal run counts, no regression labels; `--fail-on-regression`
+  refuses such a pair), and names more caveats (report format, isolation basis, toolchain, client
+  version and settings, shared identities).
+- World/2 may name its task set (`taskSet: { id, version }`): variant selection then hashes the task
+  set's id and version instead of the world's own, so two worlds of one task set select the same cases
+  for the same seeds. Worlds without it are unchanged.
+
+### Changed
+
+- Migration from `/2` to `/3`: nothing to convert. `report`, `--verify`, `compare`, `--junit`,
+  `--card` and `--badge` read `/1`, `/2` and `/3` through one read-only view that keeps every `/2`
+  field (tested leaf by leaf on the committed reports) and says what an older report did not record;
+  `/1` and `/2` keep their schemas and rules unchanged ([benchmarks](docs/benchmarks/README.md) §5).
+  `bench --recover` writes `/3` and refuses a folder an earlier Practonaut wrote. The 0.2.0 challenge
+  gate reads `/2` and session-level `/3` reports.
+
 ### Fixed
 
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
