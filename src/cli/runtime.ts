@@ -9,7 +9,7 @@ import { readWorldPackageFile, readArchiveFile } from "../package/index.ts";
 import { parseJsonEntry } from "../package/json.ts";
 import { loadWorldPackage } from "../world/index.ts";
 import { Session, apply } from "../core/index.ts";
-import { resolveAdapter } from "../adapters/registry.ts";
+import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from "../adapters/registry.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
@@ -55,12 +55,12 @@ export async function checkInProcess(world:World,input:string,settings:{seed?:nu
   child.stdin.on("error",()=>{});child.stdin.end(JSON.stringify({world,input,options:settings}));
  });
 }
-export async function commandRun(args:string[]):Promise<number>{
+export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_REGISTRY):Promise<number>{
  const {path,flags}=options(args,["--seed","--actions","--task","--state-out","--export","--mirror"]);
  if(!flags["--seed"]||!flags["--actions"])throw new RuntimeError("usage",cliText("runUsage"));
  const world=loadWorldPackage(await readWorldPackageFile(path));const seed=integer(flags["--seed"]);
  // The adapter comes from the registry by the world's app, refused by name before any browser starts (PADR-0045).
- const registration=resolveAdapter(world.app,world.schema);
+ const registration=resolveAdapter(world.app,world.schema,registry);
  const taskId=flags["--task"]??world.tasks[0]!.id;
  const session=new Session(world,seed,taskId);const initialHash=session.hash;
  const bytes=await readArchiveFile(flags["--actions"]);if(bytes.length>4*1024*1024)throw new RuntimeError("invalid_argument",cliText("actionsSize"));

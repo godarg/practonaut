@@ -1,12 +1,14 @@
-// PADR-0045: the host compares the mirror's read-back as the adapter declares. `full` (Excalidraw,
-// and every mirror that declares nothing) compares the whole state, tombstones included; `live`
-// (an app that keeps no deleted objects, like draw.io) compares live objects only, and is still a
-// check: a deleted object the app shows as live is refused.
+// PADR-0045: the host compares the mirror's read-back the way the adapter's registry entry declares.
+// `full` (Excalidraw) compares the whole state, tombstones included; `live` (an app that keeps no
+// deleted objects, as draw.io will declare) compares live objects only, and is still a check: a
+// deleted object the app shows as live is refused. The mirrors here are the production mirror
+// (createProductionMirror) over a registry entry whose factory returns a browser-free app.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPracticeController } from '../../src/host/session.ts';
-import type { MirrorWorld, PracticeMirror } from '../../src/host/mirror.ts';
-import { readBackAgrees, type ReadBackComparison } from '../../src/adapters/registry.ts';
+import { createProductionMirror } from '../../src/host/mirror.ts';
+import { ADAPTER_REGISTRY, readBackAgrees, type AdapterRegistration, type AdapterRegistry, type ReadBackComparison } from '../../src/adapters/registry.ts';
+import type { AdapterResult, MirrorAdapter } from '../../src/adapters/types.ts';
 import type { Action, State } from '../../src/world/types.ts';
 import { stepV2, v2World } from '../support/world-v2.ts';
 
@@ -15,19 +17,29 @@ const afterDelete = (start: State): State => ({ objects: { ...structuredClone(st
 const live = (state: State): State => ({ objects: Object.fromEntries(Object.entries(state.objects).filter(([, object]) => !object.deleted)) });
 const deleteShip: Action = { name: 'delete_step', params: { id: 'c' } };
 
-/** A mirror of an app that keeps no deleted objects; `ignoreDeletes` makes it keep `c` live. */
-function appWithoutTombstones(initial: State, readBack: ReadBackComparison | undefined, ignoreDeletes = false): PracticeMirror & { state: State; worlds: MirrorWorld[] } {
-  const hold = (state: State, before: State): State => ignoreDeletes ? { objects: { ...live(state).objects, ...Object.fromEntries(Object.entries(before.objects).filter(([id, o]) => !o.deleted && state.objects[id]?.deleted)) } } : live(state);
-  const mirror = {
-    state: live(initial), worlds: [] as MirrorWorld[],
-    async apply(transition: { before: State; after: State }) { this.state = hold(transition.after, transition.before); return { ok: true as const, state: structuredClone(this.state), warnings: [] }; },
-    async replace(state: State) { this.state = live(state); return { ok: true as const, state: structuredClone(this.state), warnings: [] }; },
-    async recover(state: State) { this.state = live(state); },
-    async snapshot() { return structuredClone(this.state); }, async png() { return new Uint8Array([137, 80, 78, 71]); }, async close() {},
-    ...(readBack ? { readBack } : {}),
+/** An app that keeps no deleted objects; `ignoreDeletes` makes it keep a deleted step live. */
+function appWithoutTombstones(ignoreDeletes = false): { create: AdapterRegistration['create']; held: () => State | undefined } {
+  let held: State | undefined;
+  const hold = (state: State, before: State): State => ignoreDeletes
+    ? { objects: { ...live(state).objects, ...Object.fromEntries(Object.entries(before.objects).filter(([id, o]) => !o.deleted && state.objects[id]?.deleted)) } }
+    : live(state);
+  const result = (): AdapterResult => ({ ok: true, state: structuredClone(held!), warnings: [] });
+  const create = async (initial: State): Promise<MirrorAdapter> => {
+    held = live(initial);
+    return {
+      describe: () => { throw new Error('unused'); },
+      snapshot: async () => structuredClone(held!),
+      apply: async transition => { held = hold(transition.after, transition.before); return result(); },
+      restoreState: async state => { held = live(state); return result(); },
+      exportArtifact: async () => { throw new Error('unused'); }, importArtifact: async () => { throw new Error('unused'); },
+      renderPng: async () => new Uint8Array([137, 80, 78, 71]), networkAttempts: () => [], terminate: async () => {}, close: async () => {},
+    };
   };
-  return mirror;
+  return { create, held: () => held };
 }
+/** The registry with the Excalidraw entry's factory swapped for `app`, and optionally its comparison. */
+const registryWith = (app: ReturnType<typeof appWithoutTombstones>, readBack?: ReadBackComparison): AdapterRegistry =>
+  ({ excalidraw: { ...ADAPTER_REGISTRY.excalidraw, create: app.create, ...(readBack ? { readBack } : {}) } });
 
 test('read-back comparison: full includes tombstones, live compares live objects only', () => {
   const start = v2World().initialState, deleted = afterDelete(start);
@@ -39,25 +51,14 @@ test('read-back comparison: full includes tombstones, live compares live objects
   assert.equal(readBackAgrees('live', moved, deleted), false, 'a changed live attribute is a difference under live');
 });
 
-test('a mirror that declares live read-back commits a delete its app holds without the tombstone', async () => {
-  let mirror: ReturnType<typeof appWithoutTombstones> | undefined;
-  const world = v2World();
-  const controller = await createPracticeController(world, { taskId: 'T1' }, async (initial, mirrored) => { mirror = appWithoutTombstones(initial, 'live'); mirror.worlds.push(mirrored); return mirror; });
-  try {
-    assert.equal(mirror!.worlds[0]!.app.adapterId, 'excalidraw', 'the factory receives the world\'s app');
-    const reply = await controller.act({ expectedRevision: 0, action: deleteShip });
-    assert.equal(reply.ok, true, JSON.stringify(reply));
-    assert.deepEqual(controller.view().state, afterDelete(world.initialState), 'the core keeps the tombstone');
-    assert.equal(mirror!.state.objects.c, undefined, 'the app holds none');
-    const checked = await controller.check({ expectedRevision: 1 });
-    assert.equal(checked.ok, true, JSON.stringify(checked));
-    assert.equal((await controller.png()).ok, true);
-  } finally { await controller.close(); }
-});
-
-test('without a declaration the host compares the full state: the same app is refused (Excalidraw keeps this check)', async () => {
-  const world = v2World();
-  const controller = await createPracticeController(world, { taskId: 'T1' }, async initial => appWithoutTombstones(initial, undefined));
+test('the Excalidraw entry\'s full comparison reaches the host: an app that drops tombstones is refused', async () => {
+  assert.equal(ADAPTER_REGISTRY.excalidraw.readBack, 'full', 'Excalidraw keeps deleted elements (PADR-0045)');
+  const world = v2World(), app = appWithoutTombstones(), registry = registryWith(app);
+  const controller = await createPracticeController(world, { taskId: 'T1' }, async (initial, mirrored) => {
+    const mirror = await createProductionMirror(initial, undefined, mirrored, registry);
+    assert.equal(mirror.readBack, 'full', 'the mirror carries its registry entry\'s comparison');
+    return mirror;
+  });
   try {
     const reply = await controller.act({ expectedRevision: 0, action: deleteShip });
     assert.equal(reply.ok, false); if (!reply.ok) assert.equal(reply.error.code, 'real_tool_disagrees');
@@ -65,9 +66,23 @@ test('without a declaration the host compares the full state: the same app is re
   } finally { await controller.close(); }
 });
 
+test('an entry that declares live commits a delete its app holds without the tombstone', async () => {
+  const world = v2World(), app = appWithoutTombstones();
+  const controller = await createPracticeController(world, { taskId: 'T1' }, (initial, mirrored) => createProductionMirror(initial, undefined, mirrored, registryWith(app, 'live')));
+  try {
+    const reply = await controller.act({ expectedRevision: 0, action: deleteShip });
+    assert.equal(reply.ok, true, JSON.stringify(reply));
+    assert.deepEqual(controller.view().state, afterDelete(world.initialState), 'the core keeps the tombstone');
+    assert.equal(app.held()!.objects.c, undefined, 'the app holds none');
+    const checked = await controller.check({ expectedRevision: 1 });
+    assert.equal(checked.ok, true, JSON.stringify(checked));
+    assert.equal((await controller.png()).ok, true);
+  } finally { await controller.close(); }
+});
+
 test('live read-back is still a check: an app that keeps the deleted step live is refused', async () => {
   const world = v2World();
-  const controller = await createPracticeController(world, { taskId: 'T1' }, async initial => appWithoutTombstones(initial, 'live', true));
+  const controller = await createPracticeController(world, { taskId: 'T1' }, (initial, mirrored) => createProductionMirror(initial, undefined, mirrored, registryWith(appWithoutTombstones(true), 'live')));
   try {
     const reply = await controller.act({ expectedRevision: 0, action: deleteShip });
     assert.equal(reply.ok, false); if (!reply.ok) assert.equal(reply.error.code, 'real_tool_disagrees');

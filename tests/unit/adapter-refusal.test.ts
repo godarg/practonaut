@@ -13,7 +13,12 @@ import { KNOWN_APPS, checkWorldApp } from '../../src/world/apps.ts';
 import { validateWorld, WorldError } from '../../src/world/schema.ts';
 import { checkSubmission, CheckerError } from '../../src/checker/index.ts';
 import { checkInProcess, RuntimeError } from '../../src/cli/runtime.ts';
-import { packWorldWithManifest } from '../../src/package/packer.ts';
+import { packWorld, packWorldWithManifest } from '../../src/package/packer.ts';
+import { readWorldPackage } from '../../src/package/reader.ts';
+import { loadWorldPackage } from '../../src/world/index.ts';
+import { worldContentHash } from '../../src/bench/world.ts';
+import { LIBRARY_WORLD_DIR } from '../../src/library/index.ts';
+import { generateSet } from '../../src/challenge/build.ts';
 import { v2World } from '../support/world-v2.ts';
 import type { World } from '../../src/world/types.ts';
 
@@ -56,6 +61,22 @@ test('world/2 fills an omitted provenance.appVersion from app.versionRange', () 
   const world = v2World();
   assert.equal(world.provenance.appVersion, '0.18.1');
   assert.deepEqual(validateWorld(structuredClone(world)), world, 'a validated world validates to itself');
+});
+
+test('content hashes recorded by earlier releases are unchanged, with and without provenance.appVersion', async () => {
+  // Recorded by others, not computed here: the 0.1.0 example report names the library world's
+  // hash, and the 0.2.0 repair gate declaration names its development world's (a world the
+  // generator builds without provenance.appVersion, so it holds the default).
+  const report = JSON.parse(readFileSync(join(root, 'docs/benchmarks/example-report.json'), 'utf8'));
+  const library = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
+  assert.equal(worldContentHash(library), report.environment.library.contentHash);
+  const source = JSON.parse(readFileSync(join(LIBRARY_WORLD_DIR, 'world.json'), 'utf8'));
+  delete source.provenance.appVersion;
+  assert.equal(worldContentHash(validateWorld(source)), report.environment.library.contentHash, 'the default gives the hash an explicit 0.18.1 gave');
+  const declaration = JSON.parse(readFileSync(join(root, 'docs/benchmarks/challenge/repair-round-1.declaration.json'), 'utf8'));
+  const development = generateSet('repair', declaration.development.seeds, declaration.difficulty, 'dev').world;
+  assert.equal(development.id, declaration.development.world.id);
+  assert.equal(worldContentHash(development), declaration.development.world.contentHash);
 });
 
 test('the checker reads exports through its own format table and refuses an adapter it has no parser for', () => {
@@ -110,6 +131,10 @@ test('validate, pack and play refuse a world naming an unknown adapter by name, 
     refused(cli('play', archive, '--mirror', 'required', '--no-open', '--json'), 'play package');
     refused(cli('play', source, '--mirror', 'required', '--no-open', '--json'), 'play');
     refused(cli('play', source, '--mirror', 'auto', '--no-open', '--json'), 'play auto');
+    // mcp --task keeps stdout for JSON-RPC: the named refusal goes to stderr, with exit 2.
+    const mcp = cli('mcp', '--task', source, '--mirror', 'required', '--json');
+    assert.equal(mcp.stdout, '', 'nothing on the JSON-RPC channel');
+    refused(mcp, 'mcp --task');
     // Control: a known world with the same empty browser directory does reach the browser check.
     const control = cli('play', FLOW, '--mirror', 'required', '--no-open', '--json');
     assert.equal(control.status, 3, control.stdout + control.stderr);

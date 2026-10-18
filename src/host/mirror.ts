@@ -1,4 +1,4 @@
-import { EXCALIDRAW_APP, readBackAgrees, resolveAdapter, type ReadBackComparison } from '../adapters/registry.ts';
+import { ADAPTER_REGISTRY, EXCALIDRAW_APP, readBackAgrees, resolveAdapter, type AdapterRegistry, type ReadBackComparison } from '../adapters/registry.ts';
 import type { EngineLifecycleProbe } from '../adapters/browser/shell.ts';
 import type { AdapterResult, MirrorAdapter, Transition } from '../adapters/types.ts';
 import type { State, World } from '../world/types.ts';
@@ -36,8 +36,8 @@ const PROBE_WORLD: MirrorWorld = { app: { ...EXCALIDRAW_APP, fontFamilies: [3], 
 /** Production mirror and test probe share the same lifecycle; the probe controls a real process.
  * The adapter is resolved through the registry before anything starts: a world naming an app this
  * Practonaut does not have is refused by name (`E_ADAPTER_*`), and no browser is launched. */
-export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe, world: MirrorWorld = PROBE_WORLD): Promise<PracticeMirror> {
-  const registration = resolveAdapter(world.app, world.schema);
+export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe, world: MirrorWorld = PROBE_WORLD, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<PracticeMirror> {
+  const registration = resolveAdapter(world.app, world.schema, registry);
   const agrees = (readBack: State, expected: State): boolean => readBackAgrees(registration.readBack, readBack, expected);
   let adapter: MirrorAdapter | undefined = await registration.create(initial, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
   let interrupted = false, closed = false;

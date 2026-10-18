@@ -5,7 +5,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { resolvePracticeSource } from '../../src/cli/serve.ts';
+import { commandRun } from '../../src/cli/runtime.ts';
+import { packWorld } from '../../src/package/packer.ts';
 import { fileURLToPath } from 'node:url';
 import { ADAPTER_REGISTRY, EXCALIDRAW_APP, resolveAdapter, type AdapterRegistry } from '../../src/adapters/registry.ts';
 import { KNOWN_APPS } from '../../src/world/apps.ts';
@@ -57,6 +62,21 @@ test('the registry refuses an unknown adapter, an unknown version and an unsuppo
   // Prototype names are not adapters.
   for (const id of ['constructor', '__proto__', 'toString']) assert.throws(() => resolveAdapter({ adapterId: id, versionRange: '0.18.1' }, 'practonaut.world/2'), code('E_ADAPTER_UNKNOWN'));
   assert.equal(created, 0);
+});
+
+test('play, serve, mcp --task and run ask the registry themselves: a world it lacks is refused by name', async () => {
+  // World validation knows Excalidraw; this registry does not. Only the entry points' own registry
+  // lookup can refuse, before any browser check (run with --mirror off would otherwise succeed).
+  const empty: AdapterRegistry = {};
+  const flow = join(root, 'examples/worlds/flow-diagram');
+  await assert.rejects(resolvePracticeSource(flow, undefined, empty), code('E_ADAPTER_UNKNOWN'));
+  await assert.rejects(resolvePracticeSource('excalidraw/connect', undefined, empty), code('E_ADAPTER_UNKNOWN'));
+  const dir = await mkdtemp(join(await realpath(tmpdir()), 'pn-registry-entry-'));
+  try {
+    const world = join(dir, 'flow.pnworld'), actions = join(dir, 'actions.json');
+    await writeFile(world, await packWorld(flow)); await writeFile(actions, '[]');
+    await assert.rejects(commandRun([world, '--seed', '1', '--actions', actions, '--mirror', 'off'], empty), code('E_ADAPTER_UNKNOWN'));
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test('the mirror factory refuses an unknown app by name before it starts a browser', async () => {
