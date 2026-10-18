@@ -9,7 +9,7 @@ import { readWorldPackageFile, readArchiveFile } from "../package/index.ts";
 import { parseJsonEntry } from "../package/json.ts";
 import { loadWorldPackage } from "../world/index.ts";
 import { Session, apply } from "../core/index.ts";
-import { createExcalidrawAdapter } from "../adapters/excalidraw/index.ts";
+import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from "../adapters/registry.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
@@ -55,10 +55,12 @@ export async function checkInProcess(world:World,input:string,settings:{seed?:nu
   child.stdin.on("error",()=>{});child.stdin.end(JSON.stringify({world,input,options:settings}));
  });
 }
-export async function commandRun(args:string[]):Promise<number>{
+export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_REGISTRY):Promise<number>{
  const {path,flags}=options(args,["--seed","--actions","--task","--state-out","--export","--mirror"]);
  if(!flags["--seed"]||!flags["--actions"])throw new RuntimeError("usage",cliText("runUsage"));
  const world=loadWorldPackage(await readWorldPackageFile(path));const seed=integer(flags["--seed"]);
+ // The adapter comes from the registry by the world's app, refused by name before any browser starts (PADR-0045).
+ const registration=resolveAdapter(world.app,world.schema,registry);
  const taskId=flags["--task"]??world.tasks[0]!.id;
  const session=new Session(world,seed,taskId);const initialHash=session.hash;
  const bytes=await readArchiveFile(flags["--actions"]);if(bytes.length>4*1024*1024)throw new RuntimeError("invalid_argument",cliText("actionsSize"));
@@ -72,7 +74,7 @@ export async function commandRun(args:string[]):Promise<number>{
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
  try{
-  if(mirror==="required")adapter=await createExcalidrawAdapter(session.state);
+  if(mirror==="required")adapter=await registration.create(session.state);
   for(const input of raw){const action=input as Action;const before=session.state;const tentative=apply(session.world,before,action,{seed,prefix:session.log.map(e=>e.action)});
    if(!tentative.ok)throw new RuntimeError(tentative.error.code,tentative.error.message);
    if(adapter){const real=await adapter.apply({before,after:tentative.state,action});if(!real.ok)throw new RuntimeError(real.error.code,real.error.message);}
@@ -83,7 +85,7 @@ export async function commandRun(args:string[]):Promise<number>{
   const data=session.serialize();if(flags["--state-out"])await atomicFile(flags["--state-out"],JSON.stringify(data)+"\n");
   let exported:Record<string,string>|undefined;
   if(adapter&&flags["--export"]){const artifact=await adapter.exportArtifact();const prefix=flags["--export"];
-   if(!nativeMatchesState(world.schema,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+   if(!nativeMatchesState(world,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
    const pair=buildExportEnvelope(data,steps.length,artifact.native);
    await atomicFile(prefix+".excalidraw",artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
    exported={native:prefix+".excalidraw",svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
@@ -101,7 +103,7 @@ export async function commandCheck(args:string[]):Promise<number>{
   let pair;
   try{pair=parseExportPair(await readArchiveFile(flags['--pair']),world,input);}catch(error){if(error instanceof ExportPairError)throw new RuntimeError(error.code,cliText('pairInvalid'));throw error;}
   if((flags['--seed']!==undefined&&integer(flags['--seed'])!==pair.seed)||(flags['--task']!==undefined&&flags['--task']!==pair.taskId))throw new RuntimeError('artifact_invalid',cliText('exportContradiction'));
-  if(!nativeMatchesState(world.schema,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+  if(!nativeMatchesState(world,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
   const settings={seed:pair.seed,taskId:pair.taskId,...(bundle?{bundle}:{})};
   // This separate process runs the independent history interpreter, not the production Session replay.
   await checkInProcess(world,canonicalJson(pair.session),settings);

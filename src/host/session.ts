@@ -11,6 +11,7 @@ import type { Action, Effect, Localized, Predicate, Task, World, State, Value } 
 import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PracticeLimits, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
 import { TASK_LIMITS } from '../world/schema.ts';
 import { toRaw } from '../adapters/excalidraw/raw.ts';
+import { readBackAgrees } from '../adapters/registry.ts';
 import { interpretEditorGesture, reconcileCreatedIdentity } from './editor-input.ts';
 import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAINING_MS } from './mirror.ts';
 import type { MirrorFactory, PracticeMirror } from './mirror.ts';
@@ -215,7 +216,7 @@ export async function createPracticeController(input: World, options: PracticeSe
   let session = new Session(original, options.seed ?? 0, options.taskId ?? original.tasks[0]!.id);
   const mode = options.mirror ?? 'required';
   const listInfo = options.taskInfo ?? libraryTaskInfo(original);
-  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state) : undefined;
+  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state, original) : undefined;
   const sessionId = randomUUID();
   let revision = 0, attempt = 1, hintsOpened = 0;
   let history: HistoryItem[] = [], result: PublicCheck | null = null;
@@ -305,6 +306,9 @@ export async function createPracticeController(input: World, options: PracticeSe
     catch { await current.close(); if (mirror === current) mirror = undefined; if(!preserveResult)result = null; }
     if (!closed) emit({ type: 'changed', view: view() });
   };
+  /** The mirror's read-back against a session state, compared as its adapter declares (PADR-0045):
+   * the whole state, tombstones included, unless the app keeps no deleted objects (`live`). */
+  const agrees = (readBack: State, expected: State): boolean => readBackAgrees(mirror?.readBack ?? 'full', readBack, expected);
   const synchronize = async (candidate: Session,context:TransactionContext, action?: Action): Promise<HostReply<boolean>> => {
     if (!mirror) return mode === 'off' ? { ok: true, value: false } : reject('mirror_unavailable', 'Mirror is unavailable; restart the session');
     let code: MirrorDiagnostic['code'] | undefined, readback: State | null = null;
@@ -318,8 +322,8 @@ export async function createPracticeController(input: World, options: PracticeSe
         try { readback = await mirror.snapshot(); } catch { /* Unavailable engine read-back is explicit null. */ }
       } else {
         readback = await mirror.snapshot(context);deadline(context);
-        if (!isDeepStrictEqual(mirrored.state, candidate.state) || !isDeepStrictEqual(readback, candidate.state)) {
-          code = 'real_tool_disagrees'; if (!isDeepStrictEqual(mirrored.state, candidate.state)) readback = mirrored.state;
+        if (!agrees(mirrored.state, candidate.state) || !agrees(readback, candidate.state)) {
+          code = 'real_tool_disagrees'; if (!agrees(mirrored.state, candidate.state)) readback = mirrored.state;
         } else return { ok: true, value: true };
       }
     } catch (error) { code = error instanceof MirrorFault ? error.code : 'mirror_unavailable'; }
@@ -428,7 +432,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       if (checkLimit && checkLimit.used >= checkLimit.limit) return rejected(reject('check_budget_exhausted', `This attempt's check limit (${checkLimit.limit}) is used up`));
       busy = true;
       try {
-        deadline(context);if (mirror && !isDeepStrictEqual(await mirror.snapshot(context), session.state)) { await recoverMirror(true);return rejected(reject('real_tool_disagrees', 'The real tool disagrees')); }deadline(context);
+        deadline(context);if (mirror && !agrees(await mirror.snapshot(context), session.state)) { await recoverMirror(true);return rejected(reject('real_tool_disagrees', 'The real tool disagrees')); }deadline(context);
         if (closed) return rejected(reject('mirror_unavailable', 'Session closed'));
         if (mode === 'required' && !mirror) return rejected(reject('mirror_unavailable', 'Mirror unavailable'));
         const full = evaluate(task().goal, session.state); if (!full.ok) return rejected(reject(full.error.code, full.error.message));
@@ -446,7 +450,7 @@ export async function createPracticeController(input: World, options: PracticeSe
       if (closed) return reject('mirror_unavailable', 'Session closed');
       if (!mirror) return reject('mirror_unavailable', 'Model-only session has no real tool image');
       busy = true;
-      try {deadline(context);if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);const png=await mirror.png(context);deadline(context);return { ok: true, value: png }; }
+      try {deadline(context);if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);const png=await mirror.png(context);deadline(context);return { ok: true, value: png }; }
       catch (error) { await recoverMirror(); return reject(error instanceof MirrorFault ? error.code : 'mirror_unavailable', mirror ? 'Real tool image unavailable; mirror restored' : 'Mirror unavailable; restart the session'); }
       finally { busy = false; }
     },
@@ -456,12 +460,12 @@ export async function createPracticeController(input: World, options: PracticeSe
       busy=true;
       try{
         const boundRevision=revision,boundHash=session.hash;
-        deadline(context);if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
+        deadline(context);if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const native=await mirror.exportNative(context);deadline(context);
         if(Buffer.byteLength(native,'utf8')>HOST_LIMITS.replyBytes)throw {code:'result_too_large'};
         // Parse the exact adapter bytes through the separate checker import path (the era's parser).
-        if(session.hash!==boundHash||!nativeMatchesState(session.world.schema,native,session.state))throw {code:'real_tool_disagrees'};
-        deadline(context);if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
+        if(session.hash!==boundHash||!nativeMatchesState(session.world,native,session.state))throw {code:'real_tool_disagrees'};
+        deadline(context);if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const replay=session.checkReplay({continue:()=>continues(context)});deadline(context);if(!replay.ok)throw replay.error;
         const data=session.serialize({continue:()=>continues(context)});deadline(context);
         const envelope=buildExportEnvelope(data,boundRevision,native);
@@ -471,7 +475,7 @@ export async function createPracticeController(input: World, options: PracticeSe
           if(!mirror.exportPicture)throw {code:'mirror_unavailable'};
           const svg=await mirror.exportPicture(context);deadline(context);
           if(Buffer.byteLength(svg,'utf8')>HOST_LIMITS.replyBytes)throw {code:'result_too_large'};
-          if(!isDeepStrictEqual(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
+          if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
           value={...envelope,picture:{file:'practonaut.svg',utf8:svg,sha256:sha256Hex(svg)}};
         }
         if(revision!==boundRevision||session.hash!==boundHash||value.hash!==data.hash||value.seed!==data.seed||value.taskId!==data.taskId||!isDeepStrictEqual(value.world,data.world))throw {code:'replay_mismatch'};

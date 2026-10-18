@@ -355,8 +355,9 @@ are accepted whenever they are ready.
 
 1. **Adapter registry and browser shell** (M): adapters chosen by the world's `app.adapterId`; the
    literal `"excalidraw"`/`"0.18.1"` types widened in the adapter contract, world schema, mirror and
-   checker dispatch; mirror equality defined on live objects for every adapter (draw.io keeps no
-   deleted cells); the reusable browser shell (Chromium start with deadline, fail-closed routing,
+   checker dispatch; mirror equality declared per adapter (Excalidraw keeps the full comparison
+   including deleted objects; draw.io, which keeps no deleted cells, compares live objects); the
+   reusable browser shell (Chromium start with deadline, fail-closed routing,
    transaction with timeout and rollback, PNG render, hash export, the native file dialog helper,
    moved unchanged) extracted while the second adapter is built. *Acceptance:* the Excalidraw
    conformance suite passes unchanged through the registry; a world naming an unknown adapter is

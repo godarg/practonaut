@@ -1,5 +1,5 @@
 import {lstatSync} from 'node:fs';
-import {closeBrowser,bounded} from '../../src/adapters/excalidraw/bounded.ts';
+import {closeBrowser,bounded} from '../../src/adapters/browser/bounded.ts';
 
 
 import {createHash} from 'node:crypto';

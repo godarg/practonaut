@@ -144,6 +144,20 @@ Every rejection carries exactly one code. The list below is checked against
 | `E_SOURCE_INVALID` | Packer source directory invalid. |
 <!-- error-codes:end -->
 
+The world entry itself (section 2) is refused with one of these codes, checked against
+`WORLD_ERROR_CODES` in `src/world/preflight.ts` by the same test. The adapter codes are decided
+before the content schema runs, so a world for an application this Practonaut does not have is
+named as such, not reported as malformed ([PADR-0045](adr/0045-adapter-registry-and-browser-shell.md)).
+
+<!-- world-error-codes:start -->
+| Code | Meaning |
+|---|---|
+| `E_WORLD_INVALID` | World content violates its schema, a limit or a cross-field rule. |
+| `E_ADAPTER_UNKNOWN` | `app.adapterId` names no application this Practonaut has. |
+| `E_ADAPTER_VERSION_UNSUPPORTED` | The adapter exists, but not for `app.versionRange` or `provenance.appVersion`. |
+| `E_ADAPTER_SCHEMA_UNSUPPORTED` | The adapter exists, but does not run worlds of this schema (for example a world/1 naming an adapter that runs world/2 only). |
+<!-- world-error-codes:end -->
+
 ### 1.5 Known limits of the package layer
 
 - Image validation checks magic bytes only; a polyglot file with a valid image header passes.
@@ -170,7 +184,7 @@ validation alone does not establish that an entry is a runnable world.
 
 | Part | Content |
 |---|---|
-| `app` | shipped adapter id `excalidraw`, exact confirmed app version `0.18.1`, licensed font-family allowlist and reasoned exclusions |
+| `app` | a known adapter id and one of its exact confirmed app versions (today `excalidraw` and `0.18.1`; anything else is refused by name, §1.4), licensed font-family allowlist and reasoned exclusions |
 | `units` | integer units per geometry attribute (pixel × 1 in flow-diagram) |
 | `objectTypes` | closed frame/step/arrow types and typed attributes |
 | `initialState` | `{objects: {semanticId: object}}`; key equals object id; deleted objects remain tombstones |
@@ -251,7 +265,8 @@ entry that uses world/2 vocabulary (a `near` predicate, a step `shape`) is rejec
 Optional parts receive explicit defaults when the world is validated, so a validated world
 validates to itself: `app.fontFamilies` `[3]`, `excludedAttributes`, `units` and `rules` empty,
 `objectTypes` all three, `initialState` empty, `actions` all thirteen built-in actions, `variants`
-one case `default`, and `provenance` needs only `authors`.
+one case `default`, and `provenance` needs only `authors` (an omitted `provenance.appVersion` is the
+world's `app.versionRange`).
 
 | Object | world/2 fields |
 |---|---|

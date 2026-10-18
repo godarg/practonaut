@@ -20,6 +20,7 @@ import { formatChecks, requiredOk, runChecks } from "./doctor.ts";
 import { displayPath, readableText, safeJson, safeText } from "./output.ts";
 import { commandRun, commandCheck, RuntimeError } from "./runtime.ts";
 import { loadWorldPackage, WorldError } from "../world/index.ts";
+import { WORLD_ERROR_CODES } from "../world/preflight.ts";
 import { commandRecord, commandCompile } from './authoring.ts';
 import { AuthoringError } from '../authoring/index.ts';
 import { CheckerError } from '../checker/index.ts';
@@ -267,7 +268,9 @@ export async function main(argv: string[]): Promise<number> {
         throw new UsageError(cliText("commandUnknown", { command: safeText(cmd) }));
     }
   } catch (e) {
-    if (e instanceof RuntimeError || e instanceof AuthoringError || e instanceof CheckerError || (e instanceof Error && "code" in e && e.code === "E_WORLD_INVALID")) {
+    // A refused world (including one naming an application this Practonaut does not have) is a
+    // rejection, exit 2, never an environment failure.
+    if (e instanceof RuntimeError || e instanceof AuthoringError || e instanceof CheckerError || e instanceof WorldError || (e instanceof Error && "code" in e && (WORLD_ERROR_CODES as readonly unknown[]).includes(e.code))) {
       const code = String((e as Error & { code: string }).code);
       reportError(code, e.message);
       return code === 'browser_runtime_missing' || code === 'browser_start_failed' ? EXIT.ENVIRONMENT : code === "usage" ? EXIT.USAGE : EXIT.REJECTED;

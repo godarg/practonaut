@@ -1,5 +1,8 @@
-/** Wall-clock bounds for browser work owned by the adapter, the checker render and transfer runs. */
-export const BROWSER_BOUNDS = Object.freeze({ launch: 15_000, inspect: 2_000, graceful: 3_000, forced: 5_000 });
+/** Wall-clock bounds for browser work owned by the adapter, the checker render and transfer runs.
+ * `initialize` bounds an adapter's own start after the browser exists (opening the app, writing the
+ * first scene, the probe) so a stalled start can never hold its owner for good. It is longer than
+ * the native transfer's 60-second attempt, whose own deadline and evidence end a stalled transfer. */
+export const BROWSER_BOUNDS = Object.freeze({ launch: 15_000, initialize: 60_000, inspect: 2_000, graceful: 3_000, forced: 5_000 });
 export class BrowserDeadlineError extends Error {
   constructor() { super('Browser operation exceeded its deadline'); this.name = 'BrowserDeadlineError'; }
 }

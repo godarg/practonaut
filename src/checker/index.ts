@@ -5,13 +5,13 @@ import { evaluate } from "../predicate/index.ts";
 import type { CheckerData, CheckerVerdict, Predicate, State, Task, World } from "../world/types.ts";
 import { CheckerError } from "./errors.ts";
 import { validateSubmissionState, parseSession } from "./state.ts";
-import { parseExcalidraw } from "./excalidraw.ts";
-import { parseScene } from "./scene.ts";
+import { nativeFormat, type NativeFormatId } from "./formats.ts";
 import { validateCheckerData } from "./bundle.ts";
 import { verifySessionHistory } from './replay.ts';
 export { CheckerError } from "./errors.ts";
 export { parseExcalidraw } from "./excalidraw.ts";
 export { parseScene, type SceneReport, type Unmodeled } from "./scene.ts";
+export { NATIVE_FORMATS, NATIVE_FORMAT_IDS, nativeFormat, type NativeFormat, type NativeFormatId } from "./formats.ts";
 export { parseSession, validateSubmissionState } from "./state.ts";
 export { loadCheckerBundle, checkerDataFromBundle, validateCheckerData } from "./bundle.ts";
 export interface CheckOptions { seed?: number; taskId?: string; bundle?: CheckerData; fuel?: number }
@@ -91,7 +91,7 @@ export function checkState(world: World, input: State, options: CheckOptions = {
   });
   return { ok: true, scope: "end-state-only", passed: judgments.every(t => t.passed), tasks: judgments, counterprobes: { empty: false, unchanged: false, wrongArtifact: false } };
 }
-export function checkSubmission(world: World, input: string | Uint8Array, options: CheckOptions & { format?: "session" | "excalidraw" } = {}): CheckerVerdict {
+export function checkSubmission(world: World, input: string | Uint8Array, options: CheckOptions & { format?: "session" | NativeFormatId } = {}): CheckerVerdict {
   const bytes = typeof input === "string" ? Buffer.from(input) : input;
   if (bytes.length > 16 * 1024 * 1024) throw new CheckerError("artifact_invalid", "submission exceeds 16 MiB");
   let isSession = options.format === "session";
@@ -111,6 +111,9 @@ export function checkSubmission(world: World, input: string | Uint8Array, option
     verifySessionHistory(variant, task, session);
     return checkState(world, session.state, { ...options, seed: session.seed, taskId: session.taskId });
   }
-  // world/2 accepts any drawing through the tolerant parser; world/1 keeps its strict native format.
-  return checkState(world, world.schema === "practonaut.world/2" ? parseScene(input).state : parseExcalidraw(input), options);
+  // The parser is the native format of the world's adapter, from the checker's own table (PADR-0045).
+  // For Excalidraw, world/2 accepts any drawing through the tolerant parser; world/1 keeps its strict format.
+  const format = nativeFormat(world?.app);
+  if (options.format !== undefined && options.format !== format.id) throw new CheckerError("artifact_invalid", `a ${options.format} file is not the native format of this world's adapter (${format.id})`);
+  return checkState(world, format.parse(world.schema, input), options);
 }

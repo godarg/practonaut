@@ -36,11 +36,13 @@ every change keeps. Security view: [threat model](security/threat-model.md). Ter
 |---|---|---|
 | `src/canonical` | canonical JSON, SHA-256 state hash | Node built-ins |
 | `src/package` | safe reader, manifests, limits, deterministic packer | canonical, yauzl, zod |
-| `src/world` | world content schemas v1 and the additive v2, loading, finite seeded variant generation; trusted freeze tooling verifies solvability | canonical, package, zod |
+| `src/world` | world content schemas v1 and the additive v2, the table of applications a world may name (`apps.ts`, refusal by name, PADR-0045), loading, finite seeded variant generation; trusted freeze tooling verifies solvability | canonical, package, zod |
 | `src/predicate` | goal-predicate language with step budget (no regex, no code) | canonical, world |
 | `src/core` | `apply`, sessions (log, undo, reset, replay), structured errors | canonical, world, predicate |
-| `src/checker` | independent result check on final state or export with its own export parser; counter-probes; the condition trace of a run's mutations (PADR-0039) | canonical, package, predicate, world — **never** `src/core` or `src/adapters` |
-| `src/adapters/excalidraw` | PADR-0007 capabilities for the pinned app | canonical, world; browser automation only in its node-side harness |
+| `src/checker` | independent result check on final state or export with its own export parsers, chosen by the world's adapter through its own format table (`formats.ts`); counter-probes; the condition trace of a run's mutations (PADR-0039) | canonical, package, predicate, world — **never** `src/core` or `src/adapters` |
+| `src/adapters` | the registry (`registry.ts`: adapters by the world's `app.adapterId`, with app versions, world schemas, runtime kind and read-back comparison, PADR-0045) and the contracts (`types.ts`: PADR-0007's `ApplicationAdapter`, the mirror's `MirrorAdapter`) | canonical, world, the adapter folders |
+| `src/adapters/browser` | the shared browser shell: the one Chromium start (PADR-0032), launch and start deadlines and abort, the network boundary (HTTP routing over named origins, every WebSocket closed, a content security policy on every served response, no WebRTC UDP, a sink proxy that refuses every connection the browser opens itself, no host resolution), operations that end on timeout and roll back on a fresh page, PNG capture, artifact hashes | canonical, world; Playwright |
+| `src/adapters/excalidraw` | PADR-0007 capabilities for the pinned app: read, write, projection, integrity, SVG, recorder | canonical, world, package, the browser shell; browser automation only in its node-side harness |
 | `src/host` | session host, HTTP+SSE guard, token handling, limits, step transaction with the host-side live mirror (PADR-0011) | core, world, package, adapters; data-only EN/DE history catalog |
 | `src/player` | browser UI from `design/`, i18n catalogs EN/DE, board mode; shows the host-rendered mirror image; editor mode embeds the engine as untrusted input only | browser APIs; host API only (never verifies or writes state itself) |
 | `src/authoring` | recordings, hypotheses, model questions, confirmation, compile; `from-scenes`: a world/2 task from two drawings, verified by the checker | world, adapters, package, checker, core; optional model provider |
@@ -115,8 +117,9 @@ unchanged. The package limits are already code (`src/package/limits.ts`).
 - Package manifest: `schemaVersion` semver; readers accept their major only (PADR-0003).
 - World content: `schema: "practonaut.world/<major>"`; a new major ships a migration tool
   (`practonaut migrate`) and keeps reading the previous major for one minor release line.
-- Worlds pin the adapter id and the app version range they were confirmed against; the player
-  refuses a mirror/editor session when the bundled app version is outside that range.
+- Worlds pin the adapter id and the app version they were confirmed against; a world naming an
+  adapter, version or world schema this Practonaut does not have is refused by name when it is
+  loaded, before any browser starts (PADR-0045).
 - Session logs record world id, world version, seed and tool version; replay across tool
   versions is guaranteed only within the same world major.
 - npm package follows semver; pre-1.0 minors may break APIs with changelog notes.
@@ -140,7 +143,11 @@ Entry condition → risk → migration path. None of these is claimed to be full
 
 ## 8. Extension points
 
-New apps: an adapter implementing PADR-0007 plus conformance tests ([adapter guide](adapter-guide.md)). New world versions: semver on
+New apps: an adapter implementing PADR-0007's contract and `MirrorAdapter` on the shared browser
+shell, registered in the world's table of apps, the adapter registry and the checker's format table
+(a test keeps the three equal), plus conformance tests ([adapter guide](adapter-guide.md),
+[PADR-0045](adr/0045-adapter-registry-and-browser-shell.md)). An app runtime is bundled in the npm
+package or downloaded unmodified by an explicit setup step, never redistributed. New world versions: semver on
 the world, schema major on the format. Authors: rights and provenance metadata in each world.
 Languages: message catalogs (EN, DE first); task texts are localized fields in the world.
 Agent clients: anything that speaks MCP over stdio; HTTP transport later behind the same guard.
@@ -152,7 +159,9 @@ contract. The host serializes mutations; a request carries the observed revision
 cannot replay a discarded branch. A candidate Session forks the committed one (sharing its
 once-validated, frozen world; [PADR-0037](adr/0037-fork-the-committed-session-for-candidates.md)),
 computes the proposed action and confirms coverage; its full history is replayed before it can be
-published. Only exact adapter read-back and integrity agreement commits it. Undo/reset/variant replace both committed scenes atomically. Timeout or crash kills
+published. Only exact adapter read-back and integrity agreement commits it; the read-back is
+compared on what the app holds — the whole state with tombstones, or live objects only for an app
+that keeps no deleted objects, as its registry entry declares (PADR-0045). Undo/reset/variant replace both committed scenes atomically. Timeout or crash kills
 the stale engine before recovery. Rejected steps preserve state, log and hash. The latency
 target is 2 seconds and each mirror operation has a 5-second deadline.
 

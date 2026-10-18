@@ -11,7 +11,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import yauzl from 'yauzl';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
-import { launchChromium } from '../../src/adapters/excalidraw/chromium.ts';
+import { launchChromium } from '../../src/adapters/browser/chromium.ts';
 import { DOWNLOAD_DIR, LOCAL_DIR, PIN_FILE, WEBAPP_DIR, type Pin } from './paths.ts';
 
 export const HOST_ORIGIN = 'http://practonaut.invalid';
