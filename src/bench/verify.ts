@@ -77,7 +77,7 @@ async function rejudge(run: BenchRun, world: World, directory: string, artifactC
   try { sessionRaw = await checkInProcess(world, sessionText, settings); }
   catch { throw new BenchReportError(cliText('verifyCheckerSession', { run: run.id })); }
   if (nativeText !== null) {
-    if (!nativeMatchesState(world.schema, nativeText, session.state)) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
+    if (!nativeMatchesState(world, nativeText, session.state)) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
     try { nativeRaw = await checkInProcess(world, nativeText, settings); }
     catch { throw new BenchReportError(cliText('verifyCheckerNative', { run: run.id })); }
   }

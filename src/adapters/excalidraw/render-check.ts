@@ -1,7 +1,7 @@
 import type { Artifact } from '../types.ts';
 import type { RawElement } from './raw.ts';
-import { BROWSER_BOUNDS, bounded } from './bounded.ts';
-import { launchChromium } from './chromium.ts';
+import { BROWSER_BOUNDS, bounded } from '../browser/bounded.ts';
+import { launchChromium } from '../browser/chromium.ts';
 /** Step containers of world/1 (rectangle) and world/2 (also ellipse, diamond); checked by their box. */
 const STEP_SHAPES = ['rectangle', 'ellipse', 'diamond'];
 export interface RenderReport { ok: boolean; arrows: Array<{ id: string; end: string; gap: number | null; ok: boolean }>; labels: Array<{ text: string; overflow: number | null; ok: boolean }> }

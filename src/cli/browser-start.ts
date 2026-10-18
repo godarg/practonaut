@@ -5,7 +5,7 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import { launchChromium } from '../adapters/excalidraw/chromium.ts';
+import { launchChromium } from '../adapters/browser/chromium.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
 

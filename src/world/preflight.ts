@@ -1,8 +1,12 @@
 import { RUNTIME_LIMITS } from "./limits.ts";
 
+/** World-content rejection codes ([world format](../../docs/world-format.md) §1.4, test-enforced).
+ * The adapter codes name an application this Practonaut does not have (PADR-0045). */
+export const WORLD_ERROR_CODES = ["E_WORLD_INVALID", "E_ADAPTER_UNKNOWN", "E_ADAPTER_VERSION_UNSUPPORTED", "E_ADAPTER_SCHEMA_UNSUPPORTED"] as const;
+export type WorldErrorCode = typeof WORLD_ERROR_CODES[number];
 export class WorldError extends Error {
-  readonly code = "E_WORLD_INVALID";
-  constructor(message: string) { super(message.slice(0, 4000)); this.name = "WorldError"; }
+  readonly code: WorldErrorCode;
+  constructor(message: string, code: WorldErrorCode = "E_WORLD_INVALID") { super(message.slice(0, 4000)); this.name = "WorldError"; this.code = code; }
 }
 
 /** Iterative inspection before Zod/canonical recursion; never invokes input accessors. */

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { stateHash } from '../../src/canonical/index.ts';
 import { apply } from '../../src/core/index.ts';
-import { createExcalidrawAdapter, renderCheck } from '../../src/adapters/excalidraw/index.ts';
+import { renderCheck } from '../../src/adapters/excalidraw/index.ts';
+import { resolveAdapter } from '../../src/adapters/registry.ts';
 import { parseScene } from '../../src/checker/index.ts';
 import type { Action, State, StepV2 } from '../../src/world/types.ts';
 import { stepV2, v2World } from '../support/world-v2.ts';
@@ -37,7 +38,7 @@ const sequence: Action[] = [
 const evidence: Array<{ repetition: number; case: string; hash: string; render: boolean }> = [];
 test('world/2 actions conform 3 times to the real pinned engine', { timeout: 240000 }, async () => {
   for (let repetition = 1; repetition <= 3; repetition++) {
-    const adapter = await createExcalidrawAdapter(base);
+    const adapter = await resolveAdapter(world.app, world.schema).create(base);
     try {
       let before = structuredClone(base); const prefix: Action[] = [];
       for (const [index, action] of sequence.entries()) {
@@ -67,7 +68,7 @@ test('world/2 actions conform 3 times to the real pinned engine', { timeout: 240
   await writeFile('.local/adapter/conformance-v2.json', JSON.stringify({ app: '@excalidraw/excalidraw@0.18.1', runs: evidence }, null, 2) + '\n');
 });
 test('world/2: a wrong prediction and an invalid transition reject atomically', { timeout: 60000 }, async () => {
-  const adapter = await createExcalidrawAdapter(base);
+  const adapter = await resolveAdapter(world.app, world.schema).create(base);
   try {
     const styled = apply(world, base, { name: 'set_style', params: { id: 'b', shape: 'ellipse', stroke: 'blue', fill: 'none' } });
     assert.equal(styled.ok, true); if (!styled.ok) return;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createExcalidrawAdapter } from '../../src/adapters/excalidraw/index.ts';
+import { resolveAdapter } from '../../src/adapters/registry.ts';
 import type { ExcalidrawAdapter } from '../../src/adapters/excalidraw/index.ts';
 import { runOracle, type OracleStep } from '../../src/authoring/from-scenes.ts';
 import { checkSubmission } from '../../src/checker/index.ts';
@@ -31,7 +31,7 @@ async function play(adapter: ExcalidrawAdapter, slice: World, seed: number, task
 for (const entry of library.tasks) {
   test(`library ${entry.id}: real engine confirms the solution passes, near misses and the start fail`, { timeout: 120_000 }, async () => {
     const seed = entry.oracle.seeds.drawn!, slice = taskWorld(world, entry.id);
-    const adapter = await createExcalidrawAdapter(new Session(slice, seed, entry.id).state);
+    const adapter = await resolveAdapter(slice.app, slice.schema).create(new Session(slice, seed, entry.id).state);
     try {
       const verdict = (native: string): boolean => checkSubmission(slice, native, { seed, taskId: entry.id }).passed;
       assert.equal(verdict(await play(adapter, slice, seed, entry.id, [])), false, 'start');

@@ -12,8 +12,9 @@ import { RuntimeError } from './runtime.ts';
 import { chromiumCheck } from './doctor.ts';
 import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
-import { chromiumSandboxFallbackActive } from '../adapters/excalidraw/chromium.ts';
-import { AdapterError, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
+import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
+import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
+import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from '../adapters/registry.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { startHost } from '../host/server.ts';
@@ -122,26 +123,30 @@ export function modelOnlyNotice(choice: MirrorChoice, mirror: MirrorResolution):
   return { reason: 'missing', command: `${invocationName()} setup`, download: { name: download.name, megabytes: download.size } };
 }
 
-async function loadSource(source: string): Promise<World> {
+async function loadSource(source: string, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<World> {
   const input = await stat(source).catch(() => { throw new RuntimeError('usage', cliText('worldMissing', { path: source })); });
-  return loadWorldPackage(input.isDirectory() ? await readWorldPackage(await packWorld(source)) : await readWorldPackageFile(source));
+  const world = loadWorldPackage(input.isDirectory() ? await readWorldPackage(await packWorld(source)) : await readWorldPackageFile(source));
+  // The world's app needs an adapter in the registry; refused by name before any browser check or
+  // start (PADR-0045). `play`, `serve` and `mcp --task` load their world here.
+  resolveAdapter(world.app, world.schema, registry);
+  return world;
 }
 
 /** A world path (directory or package) or a library task (`excalidraw/<id>` or `<id>`); an existing path wins.
  * Returns the loaded world and the task to open (the explicit task, the library task or the world's first). */
-export async function resolvePracticeSource(source: string, taskId?: string): Promise<{ world: World; taskId: string; library: boolean }> {
+export async function resolvePracticeSource(source: string, taskId?: string, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<{ world: World; taskId: string; library: boolean }> {
   const libraryTask = source !== BUNDLED_WORLD && !existsSync(source) ? libraryTaskId(source) : undefined;
   if (libraryTask !== undefined) {
     if (taskId !== undefined) throw new RuntimeError('usage', cliText('playTaskConflict'));
-    return { world: await loadSource(LIBRARY_WORLD_DIR), taskId: libraryTask, library: true };
+    return { world: await loadSource(LIBRARY_WORLD_DIR, registry), taskId: libraryTask, library: true };
   }
-  const world = await loadSource(source);
+  const world = await loadSource(source, registry);
   if (taskId !== undefined && !world.tasks.some(task => task.id === taskId)) throw new RuntimeError('task_unknown', cliText('taskUnknown', { id: taskId }));
   return { world, taskId: taskId ?? world.tasks[0]!.id, library: false };
 }
 
 /** Runs one local session until Ctrl+C (or SIGTERM/SIGHUP). The browser is the user's own. */
-export async function commandServe(args: string[]): Promise<number> {
+export async function commandServe(args: string[], registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<number> {
   const options = parseServeArguments(args);
   // A library task id (`connect` or `excalidraw/connect`) opens the bundled library on that task;
   // an existing path always wins.
@@ -150,7 +155,7 @@ export async function commandServe(args: string[]): Promise<number> {
     if (options.taskId) throw new RuntimeError('usage', cliText('playTaskConflict'));
     options.taskId = libraryTask; options.source = LIBRARY_WORLD_DIR;
   }
-  const world = await loadSource(options.source);
+  const world = await loadSource(options.source, registry);
   const paths = await resolvedDataPaths();
   // Only the example that ships with the package offers the demonstration (never a library task).
   const demonstration = options.source === BUNDLED_WORLD;

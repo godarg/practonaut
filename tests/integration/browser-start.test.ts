@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
 import { chromium } from 'playwright-core';
 import { readFileSync } from 'node:fs';
-import { SANDBOX_ENV } from '../../src/adapters/excalidraw/chromium.ts';
+import { SANDBOX_ENV } from '../../src/adapters/browser/chromium.ts';
 
 const main = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const FAKE = '#!/bin/sh\necho "[0101/000000.000000:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md" >&2\nexit 1\n';

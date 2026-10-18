@@ -12,7 +12,7 @@ import {validateWorld} from '../../src/world/schema.ts';
 import {TOKEN_HEADER,type RunningHost,type HostReply,type HostView} from '../../src/host/protocol.ts';
 import type {AuthorView} from '../../src/host/author-protocol.ts';
 import {TAB_SESSION_KEY} from '../../src/player/tab-session.ts';
-import {bounded,BROWSER_BOUNDS,closeBrowser} from '../../src/adapters/excalidraw/bounded.ts';
+import {bounded,BROWSER_BOUNDS,closeBrowser} from '../../src/adapters/browser/bounded.ts';
 
 type Language='en'|'de';
 type CaseId='practice-author-enabled'|'author'|'practice-resume-only'|'cached-loss-without-parent-reload'|'active-author';

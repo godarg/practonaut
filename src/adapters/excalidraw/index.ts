@@ -1,29 +1,28 @@
-import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { State, Failure } from '../../world/types.ts';
 import { V2_ACTION_NAMES, isStepV2 } from '../../world/types.ts';
 import type { StepV2 } from '../../world/types.ts';
-import type { ApplicationAdapter, AdapterOptions, AdapterResult, Artifact, Transition } from '../types.ts';
+import type { AdapterOptions, AdapterResult, Artifact, MirrorAdapter, Transition } from '../types.ts';
 import { validateState } from '../../world/schema.ts';
 import { parseJsonEntry } from '../../package/json.ts';
 import { RUNTIME_LIMITS } from '../../world/limits.ts';
 import { toRaw, project, integrity } from './raw.ts';
 import type { RawElement } from './raw.ts';
-import { BROWSER_BOUNDS, bounded, closeBrowser as closeWithDeadline } from './bounded.ts';
-import { launchChromium } from './chromium.ts';
+import { AdapterError, MAX_ADAPTER_MS, artifactOf, capturePng, operationMs, serialQueue, startShell, type BrowserShell, type EngineLifecycleProbe, type Fulfilment, type OperationLimits, type SceneIO } from '../browser/shell.ts';
+// The start, routing, transaction and capture mechanics are the shared browser shell's (PADR-0045);
+// these names stay importable from here.
+export { AdapterError, AdapterInitializationError, MAX_ADAPTER_MS, type EngineLifecycleProbe } from '../browser/shell.ts';
 /** The pinned Excalidraw release this adapter drives (package.json devDependency and engine bundle). */
 export const EXCALIDRAW_APP_VERSION = '0.18.1';
 export { renderCheck } from './render-check.ts';
 export const EXCLUDED_ATTRIBUTES = {
   seed: 'App random seed; not semantic identity', versionNonce: 'Random app edit nonce', version: 'Edit counter', updated: 'App edit timestamp', index: 'App ordering key', points: 'Derived arrow geometry checked on exports', arrowGeometry: 'Derived from endpoint relations, independently render-checked', bindingFocusGap: 'Pointer-dependent focus and gap', textGeometry: 'Derived font layout, independently render-checked', wrappedText: 'Derived wrapping; originalText is content', frameGeometry: 'Adapter layout envelope; excluded from semantic comparison', boundElements: 'App cache, integrity-checked; UI stale cache reported as warning', style: 'Fixed adapter styling; edits outside this phase are unmodeled', selection: 'Transient UI selection'
 };
-const sha = (text: string) => createHash('sha256').update(text).digest('hex');
-const failure = (code: Failure['code'], message: string): AdapterResult => ({ ok: false, error: { code, message, details: {} } });
+const failure =(code: Failure['code'], message: string): AdapterResult => ({ ok: false, error: { code, message, details: {} } });
 function checkState(state: State): void {
   validateState(state);
   for (const object of Object.values(state.objects)) {
@@ -92,33 +91,13 @@ function actionPrediction(transition: Transition): State {
   return state;
 }
 export const MAX_NATIVE_BYTES = 10 * 1024 * 1024;
-export const MAX_ADAPTER_MS = 10_000;
-export class AdapterError extends Error { readonly code: Failure['code']; constructor(code: Failure['code'], message: string) { super(message); this.code = code; } }
-/** Preserve startup failure separately from disposal failure for the owning attempt. */
-export class AdapterInitializationError extends AdapterError {
-  readonly primaryError: unknown; readonly cleanupError: unknown; readonly networkAttempts: string[];
-  readonly pendingInitializationOperations: number;
-  constructor(primaryError: unknown, cleanupError: unknown, networkAttempts: string[], pendingInitializationOperations = 0) {
-    super(primaryError instanceof AdapterError ? primaryError.code : String(primaryError).includes('cancelled') ? 'cancelled' : 'mirror_unavailable', 'Engine initialization failed');
-    this.primaryError = primaryError; this.cleanupError = cleanupError; this.networkAttempts = [...networkAttempts];
-    this.pendingInitializationOperations = pendingInitializationOperations;
-    this.cause = primaryError;
-  }
-}
-export interface ExcalidrawAdapter extends ApplicationAdapter {
+export interface ExcalidrawAdapter extends MirrorAdapter {
   /** Test/conformance capability: select a real app object and press the real UI Delete key. */
   deleteStepViaUI(id: string): Promise<AdapterResult>;
-  networkAttempts(): string[];
-  /** Host-only resynchronisation, always checked against real engine read-back. */
-  restoreState(state: State, options?: AdapterOptions): Promise<AdapterResult>;
-  renderPng(): Promise<Uint8Array>;
-  /** Cancel pending browser work before recovery; deliberately bypasses the write queue. */
-  terminate(): Promise<void>;
 }
-/** Host-only real-process observation seam. Never exposed to the player or world package. */
-export interface EngineLifecycleProbe {
-  ready(browser: Browser, page: Page): void | Promise<void>;
-}
+/** The engine page's own origin; the shell serves nothing else (PADR-0012: no local listener). */
+const ENGINE_ORIGIN = 'http://practonaut.invalid';
+const CONTENT_TYPES: Record<string, string> = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.json': 'application/json' };
 export async function createExcalidrawAdapter(initialState: State, options: AdapterOptions = {}, probe?: EngineLifecycleProbe): Promise<ExcalidrawAdapter> {
   checkState(initialState);
   if (options.signal?.aborted) throw new Error('cancelled');
@@ -127,96 +106,36 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
   const sourceFile = import.meta.url.endsWith('/src/adapters/excalidraw/index.ts');
   const root = sourceFile ? fileURLToPath(new URL('../../../.local/engine/', import.meta.url)) : installed;
   if (!existsSync(resolve(root, 'engine.js'))) throw new Error('Engine bundle missing: run npm run engine:build');
-  const launchDeadline = performance.now() + BROWSER_BOUNDS.launch;
-  const { chromium } = await bounded(import('playwright-core'), launchDeadline - performance.now());
-  if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
-  const { browser } = await launchChromium(chromium, () => ({ headless: true, timeout: Math.max(1, launchDeadline - performance.now()), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-  const closeBrowser = (): Promise<void> => closeWithDeadline(browser);
-  const denied: string[] = [];
-  let context: BrowserContext, page: Page;
-  // The browser belongs to this factory before a ready adapter exists. Capture precedes app work.
-  let initializing = true, pendingInitializationOperations = 0;
-  const requireInitialization = (): void => { if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled'); };
-  // Abort settles the owner even when the browser API reply never settles. Its loser remains observed.
-  const initializationWait = async <T>(operation: () => Promise<T>): Promise<T> => {
-    if (!initializing) return operation();
-    requireInitialization();
-    let cancel: (() => void) | undefined;
-    const aborted = new Promise<never>((_, reject) => {
-      cancel = () => reject(new AdapterError('cancelled', 'Engine initialization cancelled'));
-      options.signal?.addEventListener('abort', cancel, { once: true });
-    });
-    pendingInitializationOperations++;
-    const pending = Promise.resolve().then(() => { requireInitialization(); return operation(); }).then(
-      value => { pendingInitializationOperations--; requireInitialization(); return value; },
-      error => { pendingInitializationOperations--; throw error; });
-    try { return await Promise.race([pending, aborted]); }
-    finally { if (cancel) options.signal?.removeEventListener('abort', cancel); }
-  };
   const html = '<!doctype html><html><head><link rel="stylesheet" href="/engine.css"><style>@font-face{font-family:Cascadia;src:url(/fonts/Cascadia/CascadiaCode-Regular.woff2)}html,body,#root{height:100%;margin:0}</style></head><body><div id="root"></div><script>window.EXCALIDRAW_ASSET_PATH="/"</script><script type="module" src="/engine.js"></script></body></html>';
-  try {
-    requireInitialization(); // Includes abort while launch/capture was pending.
-    context = await initializationWait(() => bounded(browser.newContext({ viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block' }), launchDeadline - performance.now()));
-    requireInitialization();
-    await initializationWait(() => context.route('**/*', async route => {
-    if (options.signal?.aborted) { await route.abort(); return; }
-    const url = new URL(route.request().url());
-    const path = decodeURIComponent(url.pathname);
-    if (url.origin !== 'http://practonaut.invalid' || path.includes('..') || !/^\/[a-zA-Z0-9_./-]*$/.test(path)) { denied.push(url.href); await route.abort(); return; }
-    if (path === '/') { await route.fulfill({ body: html, contentType: 'text/html' }); return; }
-    try { const body = await readFile(resolve(root, '.' + path)); if (options.signal?.aborted) { await route.abort(); return; } await route.fulfill({ body, contentType: ({ '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.json': 'application/json' } as Record<string,string>)[extname(path)] ?? 'application/octet-stream' }); }
-    catch { denied.push(url.href); await route.abort(); }
-    }));
-    requireInitialization();
-    page = await initializationWait(() => bounded(context.newPage(), launchDeadline - performance.now()));
-    requireInitialization();
-  } catch (primaryError) {
-    let cleanupError: unknown; try { await closeBrowser(); } catch (error) { cleanupError = error; }
-    initializing = false;
-    throw new AdapterInitializationError(primaryError, cleanupError, denied, pendingInitializationOperations);
-  }
-  const evaluate = async <T>(expression: string, input?: unknown): Promise<T> => initializationWait(() => page.evaluate(`(${expression})(${JSON.stringify(input ?? null)})`)) as Promise<T>;
+  // Only the bundled engine's own files; a missing file is refused and recorded by the shell.
+  const serve = async (path: string): Promise<Fulfilment> => path === '/' ? { body: html, contentType: 'text/html' } : { body: await readFile(resolve(root, '.' + path)), contentType: CONTENT_TYPES[extname(path)] ?? 'application/octet-stream' };
+  let shell: BrowserShell | undefined;
+  const current = (): BrowserShell => shell!;
+  const evaluate = async <T>(expression: string, input?: unknown): Promise<T> => current().wait(() => current().page.evaluate(`(${expression})(${JSON.stringify(input ?? null)})`)) as Promise<T>;
   const raw = () => evaluate<RawElement[]>('() => window.__pn.read()');
   const write = (elements: RawElement[]) => evaluate<RawElement[]>('(els) => window.__pn.write(els)', elements);
+  const disallowed = (): boolean => current().networkAttempts().length > 0;
   const startPage = async (elements: RawElement[]) => {
-    await initializationWait(() => page.goto('http://practonaut.invalid/', { timeout: MAX_ADAPTER_MS }));
-    await initializationWait(() => page.waitForFunction('window.__pn?.api', undefined, { timeout: Math.min(options.timeoutMs ?? MAX_ADAPTER_MS, MAX_ADAPTER_MS) }));
+    await current().wait(() => current().page.goto(`${ENGINE_ORIGIN}/`, { timeout: MAX_ADAPTER_MS }));
+    await current().wait(() => current().page.waitForFunction('window.__pn?.api', undefined, { timeout: operationMs(options.timeoutMs) }));
     await write(elements);
-    if (denied.length) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
+    if (disallowed()) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
   };
-  try {
-    requireInitialization(); await startPage(toRaw(initialState)); requireInitialization();
-    await initializationWait(() => Promise.resolve(probe?.ready(browser, page))); requireInitialization();
-  } catch (primaryError) {
-    let cleanupError: unknown; try { await closeBrowser(); } catch (error) { cleanupError = error; }
-    throw new AdapterInitializationError(primaryError, cleanupError, denied, pendingInitializationOperations);
-  } finally { initializing = false; }
-  let tail: Promise<unknown> = Promise.resolve();
-  const serial = <T>(fn: () => Promise<T>): Promise<T> => { const promise = tail.then(fn, fn); tail = promise.catch(() => undefined); return promise; };
-  const transaction = async (fn: () => Promise<AdapterResult>, opts: AdapterOptions = {}): Promise<AdapterResult> => {
-    if (opts.signal?.aborted) return failure('cancelled', 'Operation cancelled before write');
-    const beforeRaw = await raw();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let cancel: (() => void) | undefined;
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('mirror_timeout')), Math.min(opts.timeoutMs ?? options.timeoutMs ?? MAX_ADAPTER_MS, MAX_ADAPTER_MS));
-        cancel = () => reject(new Error('cancelled')); opts.signal?.addEventListener('abort', cancel, { once: true });
-      });
-      const result = await Promise.race([fn(), timeout]);
-      if (!result.ok) await write(beforeRaw);
-      return result;
-    } catch (error) {
-      // Closing the page cancels any pending JS write before restoring, so late writes cannot race rollback.
-      await page.close(); page = await context.newPage(); await startPage(beforeRaw);
-      return failure(String(error).includes('mirror_timeout') ? 'mirror_timeout' : String(error).includes('cancelled') ? 'cancelled' : 'integrity_failed', String(error));
-    } finally { if (timer) clearTimeout(timer); if (cancel) opts.signal?.removeEventListener('abort', cancel); }
-  };
+  const ready = await startShell({ signal: options.signal, origins: { [ENGINE_ORIGIN]: serve } }, async started => {
+    shell = started;
+    await startPage(toRaw(initialState));
+    await started.wait(() => Promise.resolve(probe?.ready(started.browser, started.page)));
+  });
+  shell = ready;
+  const serial = serialQueue();
+  const scene: SceneIO<RawElement[]> = { read: raw, write, load: startPage };
+  const limits = (opts: AdapterOptions = {}): OperationLimits => ({ timeoutMs: operationMs(opts.timeoutMs, options.timeoutMs), signal: opts.signal });
+  const transaction = (fn: () => Promise<AdapterResult>, opts: AdapterOptions = {}): Promise<AdapterResult> => ready.transaction(fn, scene, limits(opts));
   const uiDelete = async (id: string): Promise<AdapterResult> => {
-    await page.locator('.excalidraw').first().click({ position: { x: 1450, y: 850 } });
+    await ready.page.locator('.excalidraw').first().click({ position: { x: 1450, y: 850 } });
     await evaluate('(id) => window.__pn.api.updateScene({appState:{selectedElementIds:{[id]:true}, selectedGroupIds:{}}})', id);
     await evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-    await page.keyboard.press('Delete');
+    await ready.page.keyboard.press('Delete');
     await evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     const elements = await raw(), report = integrity(elements, false);
     if (report.errors.length) return failure('integrity_failed', report.errors.join('; '));
@@ -225,8 +144,8 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
   return {
     describe: () => ({ id: 'excalidraw', appVersion: EXCALIDRAW_APP_VERSION, adapterVersion: '1.0.0', capabilities: ['describe','snapshot','apply','exportArtifact','importArtifact'], fontFamilies: [3], excludedAttributes: EXCLUDED_ATTRIBUTES }),
     snapshot: () => serial(async () => project(await raw())),
-    networkAttempts: () => [...denied],
-    terminate: closeBrowser,
+    networkAttempts: () => ready.networkAttempts(),
+    terminate: () => ready.close(),
     restoreState: (state, opts) => serial(() => transaction(async () => {
       checkState(state);
       const elements = await write(toRaw(state));
@@ -234,14 +153,14 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
       if (report.errors.length) return failure('integrity_failed', report.errors.join('; '));
       const actual = project(elements);
       if (!isDeepStrictEqual(actual, state)) return failure('real_tool_disagrees', 'Restore differs after engine read-back');
-      if (denied.length) return failure('mirror_unavailable', 'Engine made disallowed requests');
+      if (disallowed()) return failure('mirror_unavailable', 'Engine made disallowed requests');
       return { ok: true, state: actual, warnings: report.warnings };
     }, opts)),
     renderPng: () => serial(async () => {
-      if (denied.length) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
+      if (disallowed()) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
       await evaluate('() => window.__pn.api.scrollToContent(window.__pn.read(), {fitToContent:true})');
       await evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-      return new Uint8Array(await page.screenshot({ type: 'png', timeout: MAX_ADAPTER_MS }));
+      return capturePng(ready.page);
     }),
     deleteStepViaUI: id => serial(() => transaction(() => uiDelete(id))),
     apply: (transition, opts) => serial(() => transaction(async () => {
@@ -253,30 +172,19 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
       const report = integrity(elements, true);
       if (report.errors.length) return failure('integrity_failed', report.errors.join('; '));
       const state = project(elements);
-      if (denied.length) return failure('mirror_unavailable', 'Engine made disallowed requests');
+      if (disallowed()) return failure('mirror_unavailable', 'Engine made disallowed requests');
       if (!isDeepStrictEqual(state, transition.after)) return failure('real_tool_disagrees', 'Real app read-back differs from predicted transition');
       return { ok: true, state, warnings: report.warnings };
     }, opts)),
     exportArtifact: (opts = {}) => serial(async () => {
       if (opts.signal?.aborted) throw new AdapterError('cancelled', 'Export cancelled before reading');
-      const snapshot = await raw();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let cancel: (() => void) | undefined;
-      try {
-        const deadline = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new AdapterError('mirror_timeout', 'Export time limit reached')), Math.min(opts.timeoutMs ?? options.timeoutMs ?? MAX_ADAPTER_MS, MAX_ADAPTER_MS));
-          cancel = () => reject(new AdapterError('cancelled', 'Export cancelled')); opts.signal?.addEventListener('abort', cancel, { once: true });
-        });
-        return await Promise.race([(async (): Promise<Artifact> => {
-      const elements = await raw();
-      const native = JSON.stringify({ type: 'excalidraw', version: 2, source: 'practonaut', elements, appState: { viewBackgroundColor: '#ffffff' }, files: {} });
-      const svg = await evaluate<string>('() => window.__pn.svg()');
-      if (denied.length) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
-      return { native, svg, nativeSha256: sha(native), svgSha256: sha(svg) };
-        })(), deadline]);
-      } catch (error) {
-        await page.close(); page = await context.newPage(); await startPage(snapshot); throw error;
-      } finally { if (timer) clearTimeout(timer); if (cancel) opts.signal?.removeEventListener('abort', cancel); }
+      return ready.guarded(async (): Promise<Artifact> => {
+        const elements = await raw();
+        const native = JSON.stringify({ type: 'excalidraw', version: 2, source: 'practonaut', elements, appState: { viewBackgroundColor: '#ffffff' }, files: {} });
+        const svg = await evaluate<string>('() => window.__pn.svg()');
+        if (disallowed()) throw new AdapterError('mirror_unavailable', 'Engine made disallowed requests');
+        return artifactOf(native, svg);
+      }, scene, limits(opts), { timeout: () => new AdapterError('mirror_timeout', 'Export time limit reached'), cancel: () => new AdapterError('cancelled', 'Export cancelled') });
     }),
     importArtifact: (native, opts) => serial(() => transaction(async () => {
       if (Buffer.byteLength(native) > MAX_NATIVE_BYTES) return failure('limit_exceeded', 'Artifact exceeds limit');
@@ -303,6 +211,6 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
       if (!isDeepStrictEqual(actual, expected)) return failure('real_tool_disagrees', 'Import differs after real engine restoration');
       return { ok: true, state: actual, warnings: report.warnings };
     }, opts)),
-    close: closeBrowser
+    close: () => ready.close()
   };
 }

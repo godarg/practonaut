@@ -8,7 +8,7 @@
  * (tests/integration/bench-card.test.ts), across machines the system font can differ.
  */
 import type { Browser, LaunchOptions } from 'playwright-core';
-import { launchChromium } from '../adapters/excalidraw/chromium.ts';
+import { launchChromium } from '../adapters/browser/chromium.ts';
 import { CARD_SIZE } from './card.ts';
 
 /** Never resolved: the request is answered by the route below before anything reaches a network. */

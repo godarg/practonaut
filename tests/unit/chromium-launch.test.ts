@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Browser, LaunchOptions } from 'playwright-core';
-import { SANDBOX_ENV, SandboxPolicyError, chromiumSandboxFallbackActive, chromiumSandboxPolicy, isSandboxStartFailure, launchChromium, type SandboxMemo } from '../../src/adapters/excalidraw/chromium.ts';
+import { SANDBOX_ENV, SandboxPolicyError, chromiumSandboxFallbackActive, chromiumSandboxPolicy, isSandboxStartFailure, launchChromium, type SandboxMemo } from '../../src/adapters/browser/chromium.ts';
 
 const SANDBOX_REFUSED = 'browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n[pid=1][err] [0101/000000.000000:FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see …\nChromium sandboxing failed!';
 const MISSING_LIBRARIES = 'browserType.launch: Host system is missing dependencies to run browsers.\n  libnss3.so: cannot open shared object file';

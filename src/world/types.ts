@@ -1,4 +1,6 @@
 /** Shared contract for world/1 and the additive world/2. Runtime values are validated by src/world/schema.ts. */
+import type { AdapterId, AppVersion } from "./apps.ts";
+export type { AdapterId, AppVersion } from "./apps.ts";
 export type Scalar = string | number | boolean | null;
 export type ObjectType = "frame" | "step" | "arrow";
 export interface BaseObject { id: string; type: ObjectType; deleted: boolean }
@@ -79,18 +81,21 @@ export interface PrivateWorldSource {
 export type WorldSchemaId = "practonaut.world/1" | "practonaut.world/2";
 export interface World {
   schema: WorldSchemaId; id: string; version: string;
-  app: { adapterId: "excalidraw"; versionRange: "0.18.1"; fontFamilies: number[]; excludedAttributes: Record<string, string> };
+  /** The application and its pinned version (PADR-0045: one of the known apps of src/world/apps.ts). */
+  app: WorldApp & { fontFamilies: number[]; excludedAttributes: Record<string, string> };
   units: Record<string, string>;
   objectTypes: Array<{ type: ObjectType; attributes: Record<string, "string" | "integer" | "id" | "nullable-id" | "boolean"> }>;
   initialState: State; actions: ActionDefinition[]; rules: Rule[]; tasks: Task[];
   variants: { generator: "finite-seeded-v1"; cases: Variant[] };
-  provenance: { authors: string[]; adapterVersion: string; appVersion: "0.18.1"; compileToolVersion: string; recordings: string[]; privateSource?: PrivateWorldSource; coalescingVersion?: string };
+  provenance: { authors: string[]; adapterVersion: string; appVersion: AppVersion; compileToolVersion: string; recordings: string[]; privateSource?: PrivateWorldSource; coalescingVersion?: string };
   rights: { license: "CC0-1.0" | "LicenseRef-Private"; assets: Array<{ path: string; source: string; license: string }>; recordings: Array<{ id: string; source: string; license: string; consent: string }> };
 }
+/** What names a world's application: the adapter id and the exact app version it runs against. */
+export interface WorldApp { adapterId: AdapterId; versionRange: AppVersion }
 export type Era = 1 | 2;
 export const worldEra = (world: Pick<World, "schema">): Era => world.schema === "practonaut.world/2" ? 2 : 1;
 export const isStepV2 = (step: Step): step is StepV2 => Object.hasOwn(step, "shape");
-export const ERROR_CODES = ["E_WORLD_INVALID", "invalid_argument", "precondition_failed", "limit_exceeded", "stale_base", "unmodeled", "replay_mismatch", "checker_fuel_exhausted", "checker_timeout", "checker_invalid", "counterprobe_failed", "artifact_invalid", "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "integrity_failed", "cancelled"] as const;
+export const ERROR_CODES = ["E_WORLD_INVALID", "E_ADAPTER_UNKNOWN", "E_ADAPTER_VERSION_UNSUPPORTED", "E_ADAPTER_SCHEMA_UNSUPPORTED", "invalid_argument", "precondition_failed", "limit_exceeded", "stale_base", "unmodeled", "replay_mismatch", "checker_fuel_exhausted", "checker_timeout", "checker_invalid", "counterprobe_failed", "artifact_invalid", "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "integrity_failed", "cancelled"] as const;
 export type ErrorCode = typeof ERROR_CODES[number];
 export interface Failure { code: ErrorCode; message: string; details: Record<string, Scalar> }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: Failure };

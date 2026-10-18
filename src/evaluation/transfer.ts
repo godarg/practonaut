@@ -9,7 +9,7 @@ import type { Page } from 'playwright-core';
 import type { Action, State } from '../world/types.ts';
 import type { ExcalidrawAdapter } from '../adapters/excalidraw/index.ts';
 import { createExcalidrawAdapter, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
-import { bounded, BROWSER_BOUNDS } from '../adapters/excalidraw/bounded.ts';
+import { bounded, BROWSER_BOUNDS } from '../adapters/browser/bounded.ts';
 import { parseExcalidraw } from '../checker/excalidraw.ts';
 import { RuntimeError } from '../cli/runtime.ts';
 import { openNativeFileChooser } from './native-trigger.ts';
