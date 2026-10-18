@@ -35,6 +35,9 @@ export interface AdapterRegistration<A extends MirrorAdapter = MirrorAdapter> ex
   readonly readBack: ReadBackComparison;
   /** How its browser may start (PADR-0049 decision 7). */
   readonly sandbox: AdapterSandboxPolicy;
+  /** Whether the Player's editor and author workspaces are offered: they embed Excalidraw, so a world of
+   * another app gets the board workspace only (PADR-0049 decision 10.1). */
+  readonly editor: boolean;
   /** A `downloaded` runtime: what `setup --app <id>` fetches, and its check under a Practonaut home
    * (present, then size and SHA-256 against the pin), run before any browser starts (PADR-0049 decision 1.3). */
   readonly download?: Readonly<{ name: string; bytes: number }>;
@@ -44,13 +47,13 @@ export interface AdapterRegistration<A extends MirrorAdapter = MirrorAdapter> ex
 
 const EXCALIDRAW = Object.freeze({
   id: 'excalidraw', appVersions: Object.freeze(['0.18.1'] as const), schemas: Object.freeze(['practonaut.world/1', 'practonaut.world/2'] as const),
-  runtime: 'bundled', readBack: 'full', sandbox: 'linux-fallback', create: createExcalidrawAdapter,
+  runtime: 'bundled', readBack: 'full', sandbox: 'linux-fallback', editor: true, create: createExcalidrawAdapter,
 } as const);
 // draw.io: downloaded by `setup --app drawio`, compared on live objects (it keeps no deleted cells),
 // world/2 only (PADR-0049 decision 1.1).
 const DRAWIO = Object.freeze({
   id: 'drawio', appVersions: Object.freeze(['32.4.1'] as const), schemas: Object.freeze(['practonaut.world/2'] as const),
-  runtime: 'downloaded', readBack: 'live', sandbox: 'required', create: createDrawioAdapter,
+  runtime: 'downloaded', readBack: 'live', sandbox: 'required', editor: false, create: createDrawioAdapter,
   download: Object.freeze({ name: `draw.io ${DRAWIO_PIN.version} (${DRAWIO_PIN.asset})`, bytes: DRAWIO_PIN.size }),
   runtimeStatus: (home: string): Promise<RuntimeStatus> => drawioRuntimeStatus(drawioRuntimePath(home)),
 } as const);

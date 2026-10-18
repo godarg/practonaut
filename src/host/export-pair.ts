@@ -8,6 +8,9 @@ import type {SessionData,State,World} from '../world/types.ts';
 import {HOST_LIMITS} from './limits.ts';
 
 export interface ExportRouting {world:SessionData['world'];seed:number;taskId:string}
+export type NativeFileName=`practonaut${string}`;
+/** The native file's name for a world's app: `practonaut` plus the checker table's extension. */
+export function nativeFileName(app:World['app']):NativeFileName{return `practonaut${nativeFormat(app).extension}`;}
 export interface ExportPair extends ExportRouting {
  schema:'practonaut.export-pair/1';revision:number;hash:string;session:SessionData;
  /** Hash of canonical UTF-8 Session payload; not a self-hash of this manifest. */
@@ -16,7 +19,8 @@ export interface ExportPair extends ExportRouting {
 export interface CurrentSessionExport extends ExportRouting {
  schema:'practonaut.export/1';revision:number;hash:string;
  session:{file:'practonaut-session.json';utf8:string;sha256:string};
- native:{file:'practonaut.excalidraw';utf8:string;sha256:string};
+ /** The app's own file, named by its native format's extension (PADR-0049 decision 10.1). */
+ native:{file:NativeFileName;utf8:string;sha256:string};
  /** Only when an in-process caller asked for it (the bench, PADR-0039): the real engine's SVG
   * export of the same confirmed scene. The HTTP route never asks for it. */
  picture?:{file:'practonaut.svg';utf8:string;sha256:string};
@@ -27,11 +31,11 @@ const schema=z.strictObject({schema:z.literal('practonaut.export-pair/1'),revisi
  session:z.unknown(),sessionSha256:hash,nativeSha256:hash});
 export class ExportPairError extends Error {readonly code='checker_invalid';constructor(){super('Export pair manifest or artifact binding is invalid');}}
 export function sessionPayloadSha256(data:SessionData):string{return sha256Hex(canonicalJson(data));}
-export function buildExportEnvelope(data:SessionData,revision:number,native:string):CurrentSessionExport {
+export function buildExportEnvelope(data:SessionData,revision:number,native:string,app:World['app']):CurrentSessionExport {
  const routing={world:structuredClone(data.world),seed:data.seed,taskId:data.taskId},nativeSha256=sha256Hex(native);
  const manifest:ExportPair={schema:'practonaut.export-pair/1',revision,hash:data.hash,...routing,session:data,sessionSha256:sessionPayloadSha256(data),nativeSha256};
  const utf8=canonicalJson(manifest);
- return {schema:'practonaut.export/1',revision,hash:data.hash,...routing,session:{file:'practonaut-session.json',utf8,sha256:sha256Hex(utf8)},native:{file:'practonaut.excalidraw',utf8:native,sha256:nativeSha256}};
+ return {schema:'practonaut.export/1',revision,hash:data.hash,...routing,session:{file:'practonaut-session.json',utf8,sha256:sha256Hex(utf8)},native:{file:nativeFileName(app),utf8:native,sha256:nativeSha256}};
 }
 /** Strict manifest admission; CLI independently replays this parsed Session afterwards. */
 export function parseExportPair(input:string|Uint8Array,world:World,native:string|Uint8Array):ExportPair {

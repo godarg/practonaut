@@ -9,6 +9,14 @@ interface Context{
  /** The attempt belongs to the bundled example's demonstration: never saved as anyone's result. */
  demonstration():boolean;
 }
+/** Each app's own file: the name the host gives it (`practonaut` plus the checker table's extension)
+ * and its media type. The Player bundle keeps this copy; a unit test keeps the names equal. */
+export const NATIVE_FILES:Readonly<Record<string,{name:string;type:string}>>=Object.freeze({
+ excalidraw:Object.freeze({name:'practonaut.excalidraw',type:'application/vnd.excalidraw+json'}),
+ drawio:Object.freeze({name:'practonaut.drawio',type:'application/vnd.jgraph.mxfile'}),
+});
+/** An app the Player has no entry for gets no download: its name matches nothing the host sends. */
+const nativeFile=(adapterId:string):{name:string;type:string}=>Object.hasOwn(NATIVE_FILES,adapterId)?NATIVE_FILES[adapterId]!:{name:'',type:'application/octet-stream'};
 async function bytesHash(utf8:string):Promise<string>{
  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(utf8));
  return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -27,7 +35,7 @@ export function createExportControl(context:Context):{view():HTMLElement}{
    const reply=await context.request(before.revision);
    if(!reply.ok){error=reply.error.code==='result_too_large'?'exportTooLarge':reply.error.code==='stale_base'?'exportStale':reply.error.code==='mirror_unavailable'||reply.error.code==='mirror_timeout'?'exportNeedsReal':'exportFailed';return;}
    const value=reply.value;
-   if(value.schema!=='practonaut.export/1'||value.revision!==before.revision||value.hash!==before.hash||value.session.file!=='practonaut-session.json'||value.native.file!=='practonaut.excalidraw'
+   if(value.schema!=='practonaut.export/1'||value.revision!==before.revision||value.hash!==before.hash||value.session.file!=='practonaut-session.json'||value.native.file!==nativeFile(before.world.adapterId).name
     ||typeof value.session.utf8!=='string'||typeof value.native.utf8!=='string'||!/^[a-f0-9]{64}$/.test(value.session.sha256)||!/^[a-f0-9]{64}$/.test(value.native.sha256)
     ||await bytesHash(value.session.utf8)!==value.session.sha256||await bytesHash(value.native.utf8)!==value.native.sha256){error='exportMismatch';return;}
    prepared=value;
@@ -40,8 +48,9 @@ export function createExportControl(context:Context):{view():HTMLElement}{
  }
  function download(which:'session'|'native'):void{
   const current=context.current();if(!prepared||!current||context.working()||prepared.revision!==current.revision||prepared.hash!==current.hash)return;
-  const artifact=prepared[which],url=URL.createObjectURL(new Blob([artifact.utf8],{type:which==='session'?'application/json':'application/vnd.excalidraw+json'}));urls.add(url);
-  const anchor=document.createElement('a');anchor.hidden=true;anchor.href=url;anchor.download=which==='session'?'practonaut-session.json':'practonaut.excalidraw';
+  const own=nativeFile(current.world.adapterId);
+  const artifact=prepared[which],url=URL.createObjectURL(new Blob([artifact.utf8],{type:which==='session'?'application/json':own.type}));urls.add(url);
+  const anchor=document.createElement('a');anchor.hidden=true;anchor.href=url;anchor.download=which==='session'?'practonaut-session.json':own.name;
   document.body.append(anchor);anchor.click();anchor.remove();
   setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},1000);
  }

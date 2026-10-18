@@ -19,7 +19,7 @@ async function fixture() {
  const world=loadWorldPackage(await readWorldPackage(bytes)),session=new Session(world,42,'T3');
  for(const action of solution(world,42,'T3'))assert.equal(session.act(action).ok,true);
  const native=JSON.stringify({type:'excalidraw',version:2,source:'practonaut',elements:toRaw(session.state),appState:{viewBackgroundColor:'#ffffff'},files:{}});
- const envelope=buildExportEnvelope(session.serialize(),7,native);
+ const envelope=buildExportEnvelope(session.serialize(),7,native,world.app);
  const paths={world:join(dir,'world.pnworld'),native:join(dir,'native.excalidraw'),pair:join(dir,'pair.json')};
  await writeFile(paths.world,bytes);await writeFile(paths.native,native);await writeFile(paths.pair,envelope.session.utf8);
  const run=(extra:string[]=[])=>spawnSync(process.execPath,['src/cli/main.ts','check',paths.native,'--world',paths.world,'--pair',paths.pair,...extra],{encoding:'utf8',timeout:30_000});

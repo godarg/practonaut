@@ -473,7 +473,7 @@ export async function createPracticeController(input: World, options: PracticeSe
         deadline(context);if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const replay=session.checkReplay({continue:()=>continues(context)});deadline(context);if(!replay.ok)throw replay.error;
         const data=session.serialize({continue:()=>continues(context)});deadline(context);
-        const envelope=buildExportEnvelope(data,boundRevision,native);
+        const envelope=buildExportEnvelope(data,boundRevision,native,session.world.app);
         // The picture is taken from the same confirmed scene and read back again before it is published.
         let value:CurrentSessionExport=envelope;
         if(options?.picture){

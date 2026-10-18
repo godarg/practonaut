@@ -19,6 +19,7 @@ import type { ConditionTrace, TraceEntry } from "../checker/trace.ts";
 import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
+import {nativeFormat} from '../checker/formats.ts';
 import { inlineOptionValues } from './options.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import { appRuntimeFailure, appRuntimeMessage } from './app-runtime.ts';
@@ -92,9 +93,10 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
   let exported:Record<string,string>|undefined;
   if(adapter&&flags["--export"]){const artifact=await adapter.exportArtifact();const prefix=flags["--export"];
    if(!nativeMatchesState(world,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
-   const pair=buildExportEnvelope(data,steps.length,artifact.native);
-   await atomicFile(prefix+".excalidraw",artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
-   exported={native:prefix+".excalidraw",svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
+   // The native file keeps its app's own extension (`.excalidraw`, `.drawio`; PADR-0049 decision 10.1).
+   const pair=buildExportEnvelope(data,steps.length,artifact.native,world.app),extension=nativeFormat(world.app).extension;
+   await atomicFile(prefix+extension,artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
+   exported={native:prefix+extension,svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
   process.stdout.write(safeJson({ok:true,world:{id:world.id,version:world.version},taskId,seed,mode:mirror==="required"?"real-engine":"model-only",initialHash,steps,endHash:session.hash,state:data,...(exported?{exported}:{})})+"\n");return 0;
  }finally{await adapter?.close();}
 }
@@ -103,9 +105,13 @@ export async function commandCheck(args:string[]):Promise<number>{
  if(!flags["--world"])throw new RuntimeError("usage",cliText("checkUsage"));
  const world=loadWorldPackage(await readWorldPackageFile(flags["--world"]));
  const input=await readArchiveFile(path);const bundle=flags["--bundle"]?await loadCheckerBundle(flags["--bundle"],world):undefined;
- const parsed=parseJsonEntry(input,"submission.json",64) as Record<string,unknown>;
+ // A draw.io file is XML and never a session file; anything else is bounded JSON (PADR-0049 decision 6).
+ const xml=nativeFormat(world.app).id==='drawio'&&/^\s*</.test(input.subarray(0,64).toString('utf8'));
+ const parsed=xml?undefined:parseJsonEntry(input,"submission.json",64) as Record<string,unknown>;
+ /** The world app's own native file, without Practonaut's annotation. */
+ const native=xml||(nativeFormat(world.app).id==='excalidraw'&&parsed?.type==='excalidraw'&&parsed.practonaut===undefined);
  if(flags['--pair']) {
-  if(!parsed||parsed.type!=='excalidraw'||parsed.practonaut!==undefined)throw new RuntimeError('artifact_invalid',cliText('pairNativeRequired'));
+  if(!native)throw new RuntimeError('artifact_invalid',cliText('pairNativeRequired',{app:appDisplayName(world.app.adapterId,getCliLanguage())}));
   let pair;
   try{pair=parseExportPair(await readArchiveFile(flags['--pair']),world,input);}catch(error){if(error instanceof ExportPairError)throw new RuntimeError(error.code,cliText('pairInvalid'));throw error;}
   if((flags['--seed']!==undefined&&integer(flags['--seed'])!==pair.seed)||(flags['--task']!==undefined&&flags['--task']!==pair.taskId))throw new RuntimeError('artifact_invalid',cliText('exportContradiction'));
@@ -124,8 +130,9 @@ export async function commandCheck(args:string[]):Promise<number>{
   if((flags["--seed"]!==undefined&&integer(flags["--seed"])!==routing.seed)||(flags["--task"]!==undefined&&flags["--task"]!==routing.taskId))throw new RuntimeError("artifact_invalid",cliText("exportContradiction"));
  }
  const settings={...(routing??{}),...(flags["--seed"]===undefined?{}:{seed:integer(flags["--seed"])}),...(flags["--task"]===undefined?{}:{taskId:flags["--task"]}),...(bundle===undefined?{}:{bundle})};
- if(parsed?.type==='excalidraw'&&!routing&&(flags['--seed']===undefined||flags['--task']===undefined))throw new RuntimeError('artifact_invalid',cliText('nativeRoutingRequired'));
+ const nativeFile=xml||parsed?.type==='excalidraw';
+ if(nativeFile&&!routing&&(flags['--seed']===undefined||flags['--task']===undefined))throw new RuntimeError('artifact_invalid',cliText('nativeRoutingRequired'));
  const verdict=await checkInProcess(world,input.toString("utf8"),settings);
- const binding=parsed?.type==='excalidraw'?{kind:'manual-unbound',origin:'unattested'}:{kind:'session-history',origin:'unattested'};
+ const binding=nativeFile?{kind:'manual-unbound',origin:'unattested'}:{kind:'session-history',origin:'unattested'};
  process.stdout.write(safeJson({...verdict,binding})+"\n");return verdict.passed?0:2;
 }

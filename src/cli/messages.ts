@@ -91,7 +91,7 @@ export const CLI_CATALOG = {
   },
 
   "pairStateMismatch": {"en": "Native artifact does not encode the bound Session state", "de": "Nativer Export bildet den gebundenen Sitzungszustand nicht ab"},
-  "pairNativeRequired": {"en": "--pair requires an unannotated native Excalidraw artifact", "de": "--pair benötigt einen nativen Excalidraw-Export ohne nachträgliche Metadaten"},
+  "pairNativeRequired": {"en": "--pair requires an unannotated native {app} artifact", "de": "--pair benötigt einen nativen {app}-Export ohne nachträgliche Metadaten"},
   "pairInvalid": {"en": "Export pair manifest or artifact binding is invalid", "de": "Exportpaar-Manifest oder Artefaktbindung ist ungültig"},
   "nativeRoutingRequired": {"en": "Unbound native checks require explicit --seed and --task, or use --pair with the export manifest", "de": "Ungebundene native Prüfung benötigt --seed und --task; alternativ --pair mit dem Exportmanifest verwenden"},
   "languageInvalid": {
