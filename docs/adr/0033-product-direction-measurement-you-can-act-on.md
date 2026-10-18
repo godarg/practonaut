@@ -1,6 +1,7 @@
 # PADR-0033 — Product direction: measurement you can act on
 
-Status: accepted · Date: 2026-10-14 (maintainer acceptance the same day)
+Status: accepted · Date: 2026-10-14 (maintainer acceptance the same day) · First checkpoint and the
+headroom branch amended by [PADR-0041](0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) (2026-10-18)
 
 ## Context
 

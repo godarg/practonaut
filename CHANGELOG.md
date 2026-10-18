@@ -6,6 +6,14 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
+  Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
+  tier); headroom is sought per family and toolchain and in new family types, each behind a
+  pre-probe; vendor-neutral presets move from 0.4.0 into 0.3.0; the first North Star checkpoint moves
+  to six weeks after the 0.3.0 launch (PADR-0041; PADR-0042 and PADR-0043 proposed).
+
 ## [0.2.0] - 2026-10-16
 
 "Real signal" ([roadmap](docs/roadmap.md#020--real-signal-target-december-2026)): bench your own

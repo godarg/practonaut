@@ -125,6 +125,11 @@ seed, six runs: it shows the format, it does not rank a model. Details:
 
 ## Task library
 
+**Library, not a challenge tier.** These tasks are an example set and a shared smoke test, not a
+measure of ability: current Claude models solve them, and five harder candidate families found no
+headroom on Practonaut's own actions in 0.2.0 ([gate reports](docs/benchmarks/challenge/README.md)).
+A family becomes a challenge tier only after it passes a preregistered ladder gate.
+
 16 tasks for Excalidraw 0.18.1, each in English and German with three label variants, a reference
 solution and near misses. List them with `npx practonaut tasks list`; open one with
 `npx practonaut play <task>`; address them as `excalidraw/<task>` in `mcp` and `bench`.

@@ -1,8 +1,10 @@
 # Vision
 
 Status: **accepted** 2026-10-14 by the maintainer
-([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)); it changes only by a new
-PADR. Milestones and exit criteria: [roadmap](roadmap.md). Evidence behind every claim here:
+([PADR-0033](adr/0033-product-direction-measurement-you-can-act-on.md)), amended 2026-10-18 by
+[PADR-0041](adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) (§5 first
+checkpoint, §7 B2 and B3); it changes only by a new PADR. Milestones and exit criteria:
+[roadmap](roadmap.md). Evidence behind every claim here:
 [landscape 2026-10](research/landscape-2026-10.md).
 
 This page says where Practonaut is going and why. It is written for the people and the AI coding
@@ -71,10 +73,11 @@ pull requests from people outside the project, external task packs, Practonaut b
 READMEs.
 
 Targets are hypotheses, reviewed at the checkpoints in the [roadmap](roadmap.md): the first
-external project within six weeks after 0.2.0 ships (at the latest 2027-02-28), 10 by 2027-06-30,
-50 by 2027-12-31, 300 by 2028-12-31. A thousand regular users needs several integrations whose users
-keep the workflow; it is a direction, not a forecast. If the first checkpoint fails, the roadmap's
-narrowed plan applies.
+external project within six weeks after the 0.3.0 launch — the maintainer's first public
+announcement of Practonaut — at the latest 2027-04-30; 10 by 2027-06-30, 50 by 2027-12-31, 300 by
+2028-12-31. A thousand regular users needs several integrations whose users keep the workflow; it is
+a direction, not a forecast. If the first checkpoint fails, the maintainer decides that day between
+the plan and the roadmap's narrowed plan.
 
 ## 6. Product principles
 
@@ -108,8 +111,8 @@ These add to the invariants in [architecture](architecture.md) §10; they do not
 | # | Bet | Why now | How it could fail | Cheapest test |
 |---|---|---|---|---|
 | B1 | **Measurement you can act on:** bench your own tasks, compare two agent configurations with honest statistics, see why a run failed, gate CI on instance regressions (a task that always passed now always fails) | Models, prompts, tool schemas and clients change monthly; developers lack state-based regression checks; agents repeat the same action sequence in most repeats, so instance regressions are meaningful at small n | Developers prefer their existing eval stack; rate differences stay "not distinguishable" at affordable n | One external project uses `compare` to make a change decision on its own task |
-| B2 | **Headroom by design:** harder task families (repair, prompt injection in content, long horizon with distractors, limited checks, tight budgets; later a human editing mid-run), a seeded generator with a difficulty knob | The library is saturated; labs retire tasks near 70 % success | New families still do not spread agents; two failed ladder rounds stop the bet | Ladder run on a prototype family before building more |
-| B3 | **Same task, any hands:** the same task and checker for Practonaut's actions, for the user's own tools (any MCP server, judged on the native artifact), later for GUI agents | Official app MCP servers exist; nobody compares interfaces on identical tasks | Third-party tools leave no readable state | Judge one official-server run on its exported `.excalidraw` |
+| B2 | **Headroom where agents fail:** task families gated per toolchain — the same families through the tools agents use in production (artifact mode), spatial layout judged by geometry, a human editing mid-run — each from a seeded generator with a difficulty knob | The library is saturated, and five harder families on Practonaut's own actions found no headroom in 0.2.0 (round 1, Opus and Sonnet 26 of 26 each); labs retire tasks near 70 % success | No unit passes its pre-probe or its gate; the bet is re-assessed before 0.4.0 | A pre-probe of the strongest configuration (10–80 %) before any gate round |
+| B3 | **Same task, any hands:** the same task and checker for Practonaut's actions, for the user's own tools (any MCP server, judged on the native artifact at its own verdict level, "artifact-judged"), later for GUI agents | Official app MCP servers exist; nobody compares interfaces on identical tasks | Third-party tools leave no readable state | Done in 0.2.0: three official-server runs judged after normalisation (spike); next: two toolchains scored in 0.3.0 |
 | B4 | **Meet agents where they live:** results inside chat clients (MCP Apps), export to Harbor/OpenEnv, verdict files for host evals, a GitHub Actions recipe | MCP Apps render in Claude, ChatGPT, VS Code, Cursor; Harbor and OpenEnv are where trainers look | Maintenance of bridges without demand | One bridge at a time, each with a user |
 | B5 | **Proven skills:** measure whether a skill, playbook or tool description helps, on held-out variants, against a same-length placebo | Skills are a cross-vendor format; their effect is mostly unmeasured | Effects are noise at small n | One paired A/B with an interval |
 | B6 | **Breadth along the vocabulary, then beyond diagrams:** draw.io next (same diagram vocabulary, so every task runs on two apps), then spreadsheets after an identity spike, then documents or Git — a new domain only after the action-vocabulary decision | "One app" reads as a toy; draw.io has about 4.2 M VS Code installs and an official MCP server, Excalidraw's extension about 0.56 M; spreadsheets are the largest agent demand | The local embed path breaks with an upstream release; diagram authors are a small pool; a new domain costs as much as the first app | Preregistered spikes with hard abort criteria (draw.io in 0.2.0, spreadsheets in 0.4.0) |
