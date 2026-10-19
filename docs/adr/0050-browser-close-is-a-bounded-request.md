@@ -596,3 +596,11 @@ only where a Player build happened to exist:
 | Codex re-review | major — a stopped child start's rejection was taken as a clean close, so a failed cleanup (a browser close that failed, a credential that could not be removed) left the parent's shutdown reported clean | Fixed: an expected abort is *cancelled* (or its browser's *abandoned* under the deadline handed down); a cleanup that did not close is a *failed* step. |
 | Codex re-review | minor — the signal handlers came after the end-of-command output, so a signal right after it killed Node past Playwright's exit handler | Fixed: the handlers are in place before any output. |
 | CI (node 24 and 26 on Ubuntu, macOS) | the real-CLI checks of `mcp`, `bench` and `play` and the bench's budget count started a session host in the unit layer, which has no Player build (`npm test` runs before `npm run build`) | Moved to the integration layer, which builds the Player first; the unit layer now passes without any build. |
+| CI (Windows) | the real-CLI tests passed absolute preload paths to `node --import`, which Windows refuses (`ERR_UNSUPPORTED_ESM_URL_SCHEME`) | Preloads go to `--import` as file URLs. |
+| CI (Windows) | the rejected-launch test looked at the slot after its own slow process-table read (PowerShell), after the 35 s hold had ended | Slot, sink and directories are read at once; the hold is judged by the ledger's own release time. |
+
+On that CI run the Linux jobs passed every real-Chromium test of this record (the rejected launch,
+(A), (B), (C) and the cleanup without a stall); Windows passed the cleanup without a stall, with its
+directories seen appearing. One Player end-to-end test (`create: starting a recording keeps the record
+step in place`, a 16 px layout shift) failed once on Ubuntu and passed three times locally; this
+change touches no Player or recording code.
