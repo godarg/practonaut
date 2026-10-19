@@ -12,7 +12,7 @@ import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drawioRuntimePath, drawioRuntimeStatus } from '../../src/adapters/drawio/runtime.ts';
 import { chromiumStarts } from '../../src/cli/browser-start.ts';
-import { loadLibrary, taskWorld, type LibraryFile } from '../../src/library/index.ts';
+import { loadLibraryOf, taskWorld, type LibraryFile } from '../../src/library/index.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { World } from '../../src/world/types.ts';
 
@@ -43,9 +43,8 @@ export async function drawioAvailability(runtime: DrawioTestRuntime = drawioTest
   return { ok: false, skip };
 }
 
-/** The library's tasks in a draw.io world: the Excalidraw library's world with draw.io's app entry. */
+/** The committed draw.io library (`tasks/drawio/`): its world and its oracle file. */
 export function drawioLibrary(): { world: World; library: LibraryFile } {
-  const { world, library } = loadLibrary();
-  return { world: validateWorld({ ...structuredClone(world), id: 'drawio-library', app: { adapterId: 'drawio', versionRange: '32.4.1' }, provenance: { ...world.provenance, appVersion: '32.4.1' } }), library };
+  return loadLibraryOf('drawio');
 }
 export const drawioTaskWorld = (world: World, taskId: string): World => validateWorld(taskWorld(world, taskId));

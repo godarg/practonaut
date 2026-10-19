@@ -32,6 +32,7 @@
     "schemas/",
     "examples/worlds/flow-diagram/",
     "tasks/excalidraw/",
+    "tasks/drawio/",
     "README.md",
     "LICENSE",
     "NOTICE",
