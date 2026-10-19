@@ -40,12 +40,15 @@ import { sha256Hex } from '../../canonical/index.ts';
 import type { Failure } from '../../world/types.ts';
 import type { AdapterResult, Artifact } from '../types.ts';
 import { BROWSER_BOUNDS, BrowserDeadlineError, bounded } from './bounded.ts';
-import { launchChromium, type LaunchContext } from './chromium.ts';
+import { chromiumSandboxPolicy, launchChromium, type LaunchContext } from './chromium.ts';
 import { closeDeadline, closeErrorOf, deadlineOf, type CloseResult } from './close.ts';
 import { processLedger, type BrowserLease, type BrowserLedger } from './ledger.ts';
 
 /** The longest single adapter operation; a caller's timeout can only shorten it. */
 export const MAX_ADAPTER_MS = 10_000;
+/** What a mirror start that waited for a browser slot keeps of its launch bound for the launch itself
+ * (PADR-0050): its slot wait ends when only this much is left. */
+export const LAUNCH_AFTER_WAIT_MS = 5_000;
 export class AdapterError extends Error { readonly code: Failure['code']; constructor(code: Failure['code'], message: string) { super(message); this.code = code; } }
 /** Preserve startup failure separately from disposal failure for the owning attempt. */
 export class AdapterInitializationError extends AdapterError {
@@ -248,9 +251,13 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const beforeLaunch = (): AdapterError => new AdapterError('cancelled', 'Engine initialization cancelled before launch');
   if (options.signal?.aborted) throw beforeLaunch();
   const denied: string[] = [];
+  // A sandbox setting that is refused launches nothing, so it takes no slot.
+  chromiumSandboxPolicy(options.launchContext?.env ?? process.env);
   // The slot first, within the launch bound (a full budget is refused by name, PADR-0050); the sink
-  // belongs to it and closes only when the slot is released.
-  const lease = await (options.ledger ?? processLedger).reserve('mirror', { waitMs: remaining(), signal: options.signal, cancelled: beforeLaunch });
+  // belongs to it and closes only when the slot is released. The wait ends while the launch still has
+  // LAUNCH_AFTER_WAIT_MS of its bound: a slot granted later would launch with too little time, fail as
+  // a launch timeout and hold the slot for the launch wait.
+  const lease = await (options.ledger ?? processLedger).reserve('mirror', { waitMs: Math.max(0, remaining() - LAUNCH_AFTER_WAIT_MS), signal: options.signal, cancelled: beforeLaunch });
   let sink: Sink;
   try { sink = await startSink(); } catch (error) { await lease.close(); throw error; }
   lease.onRelease(() => sink.close());
@@ -304,8 +311,17 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const shutDown = (deadline: number = closeDeadline()): Promise<CloseResult> => { closed = true; return lease.close(deadline); };
   // A start stopped by a close settles its browser's close by that close's deadline (decision 8).
   const closeOwned = async (primaryError: unknown): Promise<never> => {
-    const requested = performance.now(), deadline = deadlineOf(options.signal) ?? closeDeadline(requested);
-    const closeResult = await shutDown(deadline);
+    const requested = performance.now(), own = deadlineOf(options.signal) ?? closeDeadline(requested);
+    // A close that stops this start while it is already closing after its own failure hands down its
+    // deadline through the abort: the browser's one close then settles by the earlier one.
+    let detach = (): void => {};
+    const sooner = new Promise<{ result: CloseResult; deadline: number }>(resolve => {
+      const handed = (): void => { const later = deadlineOf(options.signal); if (later !== undefined && later < own) void lease.close(later).then(result => resolve({ result, deadline: later })); };
+      options.signal?.addEventListener('abort', handed, { once: true });
+      detach = () => options.signal?.removeEventListener('abort', handed);
+    });
+    const { result: closeResult, deadline } = await Promise.race([shutDown(own).then(result => ({ result, deadline: own })), sooner]);
+    detach();
     initializing = false;
     throw new AdapterInitializationError(primaryError, closeErrorOf(closeResult, deadline - requested), denied, pendingInitializationOperations, closeResult);
   };

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { BrowserBudgetError, BrowserLedger, type BrowserLease } from '../../src/adapters/browser/ledger.ts';
 import type { ChromiumLaunch } from '../../src/adapters/browser/chromium.ts';
 import { closeBy } from '../../src/adapters/browser/close.ts';
+import { budgetNote, budgetOutcome } from '../../src/bench/run.ts';
 import type { Browser } from 'playwright-core';
 import { FakeBrowser, advance, flush } from '../support/fake-browser.ts';
 
@@ -171,4 +172,29 @@ test('a close whose deadline has already passed is abandoned at once, not cut by
   void closeBy(deadline => lease.close(deadline), performance.now() - 1_000).then(result => outcomes.push(result.outcome));
   await advance(t, () => outcomes.length > 0, 2_000, 1);
   assert.deepEqual(outcomes, ['abandoned']);
+});
+
+// Review of PR #69 (effects-8, effects-3): refusals are counted, so a bench run that lost its mirror to
+// the budget in a recovery names it; and how long a start waited for its slot is recorded.
+test('the ledger counts its refusals and records how long a start waited for its slot; a bench run lost to one names it', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ledger = new BrowserLedger(1), held = await ledger.reserve('mirror', { waitMs: 1 });
+  let refused: unknown;
+  ledger.reserve('mirror', { waitMs: 1_000 }).catch(error => { refused = error; });
+  await advance(t, () => refused !== undefined, 2_000);
+  assert.deepEqual([refused instanceof BrowserBudgetError, ledger.refusals], [true, 1]);
+  const waiting = ledger.reserve('render-check', { waitMs: 15_000 });
+  await advance(t, () => false, 3_000);
+  await held.close();
+  await waiting;
+  const record = ledger.records().at(-1)!;
+  assert.ok(record.at.reserved >= record.at.asked, 'when the start asked and when it got its slot');
+  assert.equal(budgetNote('error: native export failed: mirror_unavailable'), 'browser_budget_exhausted: a browser start was refused during the run; error: native export failed: mirror_unavailable');
+  assert.equal(budgetNote('browser_budget_exhausted: No browser slot became free'), 'browser_budget_exhausted: No browser slot became free', 'a note that already names it stays');
+  // A recovery refused during the run: the run ends without a mirror and its note names the budget.
+  const lost = { status: 'infra_error', note: 'error: native export failed: mirror_unavailable' };
+  assert.match(budgetOutcome(lost, 0, ledger).note ?? '', /^browser_budget_exhausted: /);
+  assert.equal(budgetOutcome(lost, ledger.refusals, ledger), lost, 'no refusal during the run, no change');
+  const judged: { status: string; note?: string } = { status: 'completed' };
+  assert.equal(budgetOutcome(judged, 0, ledger), judged, 'a judged run is unchanged');
 });

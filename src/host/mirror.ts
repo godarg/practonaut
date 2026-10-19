@@ -31,7 +31,8 @@ export interface PracticeMirror {
 /** What a mirror needs to know about its world: the app it names and the world schema. */
 export type MirrorWorld = Pick<World, 'app' | 'schema'>;
 /** Creates the mirror for a world's app; the adapter comes from the registry (PADR-0045). */
-export type MirrorFactory = (state: State, world: MirrorWorld) => Promise<PracticeMirror>;
+/** `start.signal` stops the mirror's first start (its owner closing while it starts). */
+export type MirrorFactory = (state: State, world: MirrorWorld, start?: { signal?: AbortSignal }) => Promise<PracticeMirror>;
 export class MirrorFault extends Error {
   readonly code: 'mirror_timeout' | 'mirror_unavailable';
   constructor(code: MirrorFault['code'], message: string) { super(message); this.code = code; }
@@ -50,10 +51,10 @@ const PROBE_WORLD: MirrorWorld = { app: { ...EXCALIDRAW_APP, fontFamilies: [3], 
  * replacement), then the replacement's start within the shell's launch and start bounds and its
  * read-back within `MIRROR_DEADLINE_MS`. The start gets an abort signal: the mirror's close does not
  * wait behind a recovery but stops its start and closes what exists under the close's own deadline. */
-export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe, world: MirrorWorld = PROBE_WORLD, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<PracticeMirror> {
+export async function createProductionMirror(initial: State, probe?: EngineLifecycleProbe, world: MirrorWorld = PROBE_WORLD, registry: AdapterRegistry = ADAPTER_REGISTRY, signal?: AbortSignal): Promise<PracticeMirror> {
   const registration = resolveAdapter(world.app, world.schema, registry);
   const agrees = (readBack: State, expected: State): boolean => readBackAgrees(registration.readBack, readBack, expected);
-  let adapter: MirrorAdapter | undefined = await registration.create(initial, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
+  let adapter: MirrorAdapter | undefined = await registration.create(initial, { timeoutMs: MIRROR_DEADLINE_MS, ...(signal ? { signal } : {}) }, probe);
   let interrupted = false, closed = false;
   /** The deadline of the mirror's close, once it was asked to close. */
   let closing: number | undefined;
@@ -85,8 +86,16 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
   };
   /** An adapter's close under the contract, with the mirror's safety timer after the deadline. */
   const closeAdapter = (engine: MirrorAdapter, deadline: number): Promise<CloseResult> => closeBy(by => engine.terminate(by), deadline);
+  /** Adapters a dispose is still closing (a recovery's old browser, a replacement it gave up): the
+   * mirror's close joins their one close under its own deadline and reports how it settled. */
+  const disposing = new Set<MirrorAdapter>();
   // The current adapter is gone from the mirror at once; its close settles by the deadline.
-  const dispose = async (deadline: number = closing ?? closeDeadline()): Promise<CloseResult> => { const old = adapter; adapter = undefined; return old ? closeAdapter(old, deadline) : CLOSED; };
+  const dispose = async (deadline: number = closing ?? closeDeadline()): Promise<CloseResult> => {
+    const old = adapter; adapter = undefined;
+    if (!old) return CLOSED;
+    disposing.add(old);
+    try { return await closeAdapter(old, deadline); } finally { disposing.delete(old); }
+  };
   /** A stopped start, settled under the close's deadline: a replacement that arrived goes to its one
    * close; a start that failed reports its own browser's close, or *cancelled* when no browser existed. */
   const startClosed = (start: Promise<MirrorAdapter>, deadline: number): Promise<CloseResult> => closeBy(() => start.then(
@@ -127,11 +136,12 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
     // start, closes the current adapter and a replacement that has arrived under its own deadline.
     close: async (deadline = closeDeadline()) => {
       closed = true; closing ??= deadline; // Synchronous terminal marker; queued recovery can never relaunch.
-      const closes: Array<Promise<CloseResult>> = adapter ? [dispose(deadline)] : [];
+      const closes: Array<Promise<CloseResult>> = [...disposing].map(engine => closeAdapter(engine, deadline));
+      if (adapter) closes.push(dispose(deadline));
       const running = starting;
       if (running) { running.stop.abort(new CloseRequested(deadline)); closes.push(startClosed(running.start, deadline)); }
       return closes.length > 0 ? worstOutcome(await Promise.all(closes)) : CLOSED;
     },
   };
 }
-export const createPracticeMirror: MirrorFactory = (initial, world) => createProductionMirror(initial, undefined, world);
+export const createPracticeMirror: MirrorFactory = (initial, world, start) => createProductionMirror(initial, undefined, world, ADAPTER_REGISTRY, start?.signal);

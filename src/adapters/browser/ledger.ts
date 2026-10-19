@@ -28,7 +28,7 @@ import type { Browser, LaunchOptions } from 'playwright-core';
 import { HOST_LIMITS } from '../../host/limits.ts';
 import { BROWSER_BOUNDS } from './bounded.ts';
 import { CANCELLED, closeDeadline, settleBy, type CloseOutcome, type CloseResult } from './close.ts';
-import { launchChromium, type ChromiumLaunch, type LaunchContext } from './chromium.ts';
+import { chromiumSandboxPolicy, launchChromium, type ChromiumLaunch, type LaunchContext } from './chromium.ts';
 
 export type BrowserOwner = 'mirror' | 'start-check' | 'render-check' | 'report-card';
 /** Playwright's close bound (30 s) plus 5 s: how long a launch that rejected holds its slot. */
@@ -65,8 +65,9 @@ export interface LedgerRecord {
   /** The slot: still held, or released by proof, by the launch wait, or because no launch ran. */
   readonly slot: 'held' | 'proof' | 'launch-wait' | 'unused';
   readonly cleanup: 'unconfirmed';
-  /** `performance.now()` times. */
-  readonly at: Readonly<{ reserved: number; launchSettled?: number; closeRequested?: number; disconnected?: number; closeSettled?: number; released?: number }>;
+  /** `performance.now()` times; `asked` is when the start asked for its slot, so `reserved - asked` is
+   * how long it waited for one. */
+  readonly at: Readonly<{ asked: number; reserved: number; launchSettled?: number; closeRequested?: number; disconnected?: number; closeSettled?: number; released?: number }>;
 }
 
 /** A reserved slot and the browser it is for. */
@@ -87,10 +88,10 @@ interface Entry {
   id: number; owner: BrowserOwner;
   launch: LedgerRecord['launch']; close: LedgerRecord['close']; end: LedgerRecord['end']; slot: LedgerRecord['slot'];
   callers: Record<CloseOutcome, number>; connectedAtRequest?: boolean;
-  at: { reserved: number; launchSettled?: number; closeRequested?: number; disconnected?: number; closeSettled?: number; released?: number };
+  at: { asked: number; reserved: number; launchSettled?: number; closeRequested?: number; disconnected?: number; closeSettled?: number; released?: number };
   browser?: LedgerBrowser; closing?: Promise<void>; closeWanted: boolean; released: Array<() => unknown>;
 }
-interface Waiter { owner: BrowserOwner; grant(lease: BrowserLease): void }
+interface Waiter { owner: BrowserOwner; asked: number; grant(lease: BrowserLease): void }
 
 export class BrowserLedger {
   readonly budget: number; readonly holdMs: number;
@@ -98,6 +99,7 @@ export class BrowserLedger {
   private readonly waiting: Waiter[] = [];
   private next = 1;
   private lastRequest: number | undefined;
+  private refused = 0;
   constructor(budget: number = HOST_LIMITS.browsers, holdMs: number = LAUNCH_HOLD_MS) { this.budget = budget; this.holdMs = holdMs; }
 
   /** Entries whose slot is still held: launching, running, closing, or held without proof. */
@@ -111,30 +113,32 @@ export class BrowserLedger {
   /** The latest close request or launch rejection (Playwright's own close after it), if any. */
   get lastCloseRequestAt(): number | undefined { return this.lastRequest; }
   records(): LedgerRecord[] { return this.entries.map(snapshot); }
+  /** How many starts this ledger refused with `BrowserBudgetError`, so far. */
+  get refusals(): number { return this.refused; }
 
   /** A slot now, or `undefined` when the budget is full. */
-  tryReserve(owner: BrowserOwner): BrowserLease | undefined {
-    return this.unreleased() < this.budget && this.waiting.length === 0 ? this.lease(owner) : undefined;
+  tryReserve(owner: BrowserOwner, asked: number = performance.now()): BrowserLease | undefined {
+    return this.unreleased() < this.budget && this.waiting.length === 0 ? this.lease(owner, asked) : undefined;
   }
   /** A slot now when one is free (reserved synchronously), otherwise the first one that frees within
    * `waitMs`, in call order; then refused with `BrowserBudgetError`. An abort refuses with `cancelled()`. */
   reserve(owner: BrowserOwner, options: { waitMs: number; signal?: AbortSignal | undefined; cancelled?: () => Error }): Promise<BrowserLease> {
     const cancelled = options.cancelled ?? (() => new Error('Browser start cancelled'));
     if (options.signal?.aborted) return Promise.reject(cancelled());
-    const now = this.tryReserve(owner);
+    const asked = performance.now(), now = this.tryReserve(owner, asked);
     if (now) return Promise.resolve(now);
     return new Promise<BrowserLease>((resolve, reject) => {
       const done = (): void => { clearTimeout(timer); options.signal?.removeEventListener('abort', abort); const index = this.waiting.indexOf(waiter); if (index >= 0) this.waiting.splice(index, 1); };
-      const waiter: Waiter = { owner, grant: lease => { done(); resolve(lease); } };
+      const waiter: Waiter = { owner, asked, grant: lease => { done(); resolve(lease); } };
       const abort = (): void => { done(); reject(cancelled()); };
-      const timer = setTimeout(() => { done(); reject(new BrowserBudgetError(this.counts(), this.budget)); }, Math.max(0, options.waitMs));
+      const timer = setTimeout(() => { done(); this.refused++; reject(new BrowserBudgetError(this.counts(), this.budget)); }, Math.max(0, options.waitMs));
       options.signal?.addEventListener('abort', abort, { once: true });
       this.waiting.push(waiter);
     });
   }
 
-  private lease(owner: BrowserOwner): BrowserLease {
-    const entry: Entry = { id: this.next++, owner, launch: 'unused', close: 'none', end: 'pending', slot: 'held', callers: { closed: 0, failed: 0, abandoned: 0, cancelled: 0 }, at: { reserved: performance.now() }, closeWanted: false, released: [] };
+  private lease(owner: BrowserOwner, asked: number): BrowserLease {
+    const entry: Entry = { id: this.next++, owner, launch: 'unused', close: 'none', end: 'pending', slot: 'held', callers: { closed: 0, failed: 0, abandoned: 0, cancelled: 0 }, at: { asked, reserved: performance.now() }, closeWanted: false, released: [] };
     this.entries.push(entry); this.trim();
     const release = (how: Exclude<LedgerRecord['slot'], 'held'>): void => {
       if (entry.slot !== 'held') return;
@@ -190,7 +194,7 @@ export class BrowserLedger {
   }
   /** Hands freed slots to waiting starts, in call order. */
   private grant(): void {
-    while (this.waiting.length > 0 && this.unreleased() < this.budget) { const waiter = this.waiting[0]!; waiter.grant(this.lease(waiter.owner)); }
+    while (this.waiting.length > 0 && this.unreleased() < this.budget) { const waiter = this.waiting[0]!; waiter.grant(this.lease(waiter.owner, waiter.asked)); }
   }
   /** Keeps every unreleased entry and, of the released ones, the latest up to `LEDGER_KEEP` in all. */
   private trim(): void {
@@ -220,6 +224,8 @@ export interface StartSettings {
 /** Reserves a slot, then starts Chromium the one way (PADR-0032). A launch that rejects keeps its slot
  * for the launch wait; the caller closes the browser through the lease. */
 export async function startBrowser(owner: BrowserOwner, chromium: ChromiumLauncher, options: () => LaunchOptions, settings: StartSettings = {}): Promise<ChromiumLaunch & { lease: BrowserLease }> {
+  // A sandbox setting that is refused launches nothing, so it takes no slot (it would be held 35 s).
+  chromiumSandboxPolicy(settings.context?.env ?? process.env);
   const lease = await (settings.ledger ?? processLedger).reserve(owner, { waitMs: settings.waitMs ?? BROWSER_BOUNDS.launch, signal: settings.signal, ...(settings.cancelled ? { cancelled: settings.cancelled } : {}) });
   const launched = await lease.launch(() => launchChromium(chromium, options, settings.context));
   return { ...launched, lease };
