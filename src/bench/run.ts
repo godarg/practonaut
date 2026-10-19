@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { packWorld, readWorldPackage } from '../package/index.ts';
 import { loadWorldPackage } from '../world/index.ts';
-import { loadLibrary, LIBRARY_WORLD_DIR, type LibraryEntry } from '../library/index.ts';
+import { LIBRARIES, loadLibraryOf, type LibraryApp, type LibraryEntry } from '../library/index.ts';
 import { startHost } from '../host/server.ts';
 import { createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
 import type { ActRequest, Actor, ControllerFactory, HostReply, MirrorMode, MutationReply, PracticeController, RunningHost } from '../host/protocol.ts';
@@ -133,9 +133,12 @@ export function benchId(now = new Date()): string { return now.toISOString().rep
 /** The bundled library as a bench/1 report names it: `report --verify` of a /1 report re-judges
  * against this (PADR-0030); /2 reports carry their own stored world. `contentHash` is the SHA-256 of
  * the world's canonical JSON. */
-export async function libraryWorld(): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
-  const world = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
-  return { world, entries: new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
+export async function libraryWorld(app: string = 'excalidraw'): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
+  // The library this Practonaut ships for an application (PADR-0049 decision 8.2); /1 reports name Excalidraw's.
+  if (!Object.hasOwn(LIBRARIES, app)) throw new Error(`no bundled library for ${app}`);
+  const library = LIBRARIES[app as LibraryApp];
+  const world = loadWorldPackage(await readWorldPackage(await packWorld(library.worldDir)));
+  return { world, entries: new Map(loadLibraryOf(library.app).library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
 }
 
 /** The public limits of the benched tasks that have them (PADR-0040), as a report records them. */

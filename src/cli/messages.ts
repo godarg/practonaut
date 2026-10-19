@@ -18,8 +18,8 @@ export const CLI_CATALOG = {
     "de": "{path} existiert bereits; --force ersetzt die Datei"
   },
   "tasksListHead": {
-    "en": "Excalidraw task library: {count} {count:task|tasks} (world {world} {version})\n",
-    "de": "Excalidraw-Aufgabenbibliothek: {count} {count:Aufgabe|Aufgaben} (Welt {world} {version})\n"
+    "en": "{app} task library: {count} {count:task|tasks} (world {world} {version})\n",
+    "de": "{app}-Aufgabenbibliothek: {count} {count:Aufgabe|Aufgaben} (Welt {world} {version})\n"
   },
   "tasksAction": {
     "en": "action ",
@@ -30,8 +30,8 @@ export const CLI_CATALOG = {
     "de": "Aktionen"
   },
   "tasksListFoot": {
-    "en": "Difficulty ●○○ to ●●●; actions = length of the reference solution.\nOpen one: {cli} play <task-id>   Details: {cli} tasks show <task-id>\n",
-    "de": "Schwierigkeit ●○○ bis ●●●; Aktionen = Länge der Referenzlösung.\nÖffnen: {cli} play <Aufgaben-ID>   Details: {cli} tasks show <Aufgaben-ID>\n"
+    "en": "Difficulty ●○○ to ●●●; actions = length of the reference solution.\nOpen one: {cli} play {prefix}<task-id>   Details: {cli} tasks show {prefix}<task-id>\n",
+    "de": "Schwierigkeit ●○○ bis ●●●; Aktionen = Länge der Referenzlösung.\nÖffnen: {cli} play {prefix}<Aufgaben-ID>   Details: {cli} tasks show {prefix}<Aufgaben-ID>\n"
   },
   "tasksUnknown": {
     "en": "unknown library task: {id} (see {cli} tasks list)",
@@ -54,8 +54,8 @@ export const CLI_CATALOG = {
     "de": "Öffnen: {cli} play {id}\n"
   },
   "tasksUsage": {
-    "en": "usage: {cli} tasks list | show <task-id> [--oracle] | from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>",
-    "de": "Verwendung: {cli} tasks list | show <Aufgaben-ID> [--oracle] | from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>"
+    "en": "usage: {cli} tasks list [drawio/all] | show [drawio/]<task-id> [--oracle] | from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>",
+    "de": "Verwendung: {cli} tasks list [drawio/all] | show [drawio/]<Aufgaben-ID> [--oracle] | from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>"
   },
   "tasksScenesUsage": {
     "en": "usage: {cli} tasks from-scenes <start.excalidraw> <goal.excalidraw> --out <dir> [--task <id>] [--layout relative] [--align] [--tolerance <px>] [--force] [--json]",
@@ -410,6 +410,10 @@ export const CLI_CATALOG = {
   "benchNumber": {
     "en": "{option} must be a whole number from 1 to {max}",
     "de": "{option} muss eine ganze Zahl von 1 bis {max} sein"
+  },
+  "benchLibraryMixed": {
+    "en": "--tasks names tasks of two libraries (excalidraw/ and drawio/); a bench runs one world, so bench each library on its own",
+    "de": "--tasks nennt Aufgaben zweier Bibliotheken (excalidraw/ und drawio/); ein Bench läuft auf einer Welt, also jede Bibliothek für sich benchen"
   },
   "benchTasks": {
     "en": "--tasks needs all or a comma-separated list of distinct library task ids",
@@ -902,6 +906,10 @@ export const CLI_CATALOG = {
   "verifyReferencesFormat": {
     "en": "the stored references {file} are not a practonaut.bench-references/1 file",
     "de": "die gespeicherten Referenzen {file} sind keine practonaut.bench-references/1-Datei"
+  },
+  "verifyReferenceLibrary": {
+    "en": "the stored reference of {task} is not the reference solution of the library this Practonaut ships",
+    "de": "die gespeicherte Referenz von {task} ist nicht die Referenzlösung der Bibliothek, die dieses Practonaut mitbringt"
   },
   "verifyReferenceTask": {
     "en": "the stored references do not hold exactly the tasks the report names (task {task})",

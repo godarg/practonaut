@@ -198,7 +198,10 @@ async function libraryExplanations(report: BenchReportView): Promise<Map<string,
   const explanations = new Map<string, Localized>();
   if (report.environment.world.source !== 'library') return explanations;
   const { libraryWorld } = await import('./run.ts');
-  const library = await libraryWorld();
+  // The library of the report's application (a /1 or /2 report names Excalidraw's).
+  const adapterId = (report.environment as { app?: { adapterId?: unknown } }).app?.adapterId;
+  const library = await libraryWorld(typeof adapterId === 'string' ? adapterId : 'excalidraw').catch(() => undefined);
+  if (!library) return explanations;
   if (library.contentHash !== report.environment.world.contentHash) return explanations;
   for (const seed of new Set((report.runs as ReadonlyArray<{ seed: number }>).map(run => run.seed))) {
     for (const task of generateVariant(library.world, seed).tasks) for (const error of task.errorClasses) explanations.set(explanationKey(task.id, seed, error.id), error.explanation);

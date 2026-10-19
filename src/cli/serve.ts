@@ -3,7 +3,7 @@ import { readableText, safeText } from './output.ts';
 import { substituteTokens, variantIndex, variantTokens } from '../world/variant.ts';
 import { stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { libraryTaskId, LIBRARY_WORLD_DIR } from '../library/index.ts';
+import { LIBRARIES, libraryTask } from '../library/index.ts';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { packWorld, readWorldPackage, readWorldPackageFile } from '../package/index.ts';
@@ -174,13 +174,14 @@ async function loadSource(source: string, registry: AdapterRegistry = ADAPTER_RE
   return world;
 }
 
-/** A world path (directory or package) or a library task (`excalidraw/<id>` or `<id>`); an existing path wins.
- * Returns the loaded world and the task to open (the explicit task, the library task or the world's first). */
+/** A world path (directory or package) or a library task (`excalidraw/<id>` or `<id>`, `drawio/<id>` for the
+ * draw.io library); an existing path wins. Returns the loaded world and the task to open (the explicit
+ * task, the library task or the world's first). */
 export async function resolvePracticeSource(source: string, taskId?: string, registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<{ world: World; taskId: string; library: boolean }> {
-  const libraryTask = source !== BUNDLED_WORLD && !existsSync(source) ? libraryTaskId(source) : undefined;
-  if (libraryTask !== undefined) {
+  const named = source !== BUNDLED_WORLD && !existsSync(source) ? libraryTask(source) : undefined;
+  if (named !== undefined) {
     if (taskId !== undefined) throw new RuntimeError('usage', cliText('playTaskConflict'));
-    return { world: await loadSource(LIBRARY_WORLD_DIR, registry), taskId: libraryTask, library: true };
+    return { world: await loadSource(LIBRARIES[named.app].worldDir, registry), taskId: named.taskId, library: true };
   }
   const world = await loadSource(source, registry);
   if (taskId !== undefined && !world.tasks.some(task => task.id === taskId)) throw new RuntimeError('task_unknown', cliText('taskUnknown', { id: taskId }));
@@ -190,12 +191,12 @@ export async function resolvePracticeSource(source: string, taskId?: string, reg
 /** Runs one local session until Ctrl+C (or SIGTERM/SIGHUP). The browser is the user's own. */
 export async function commandServe(args: string[], registry: AdapterRegistry = ADAPTER_REGISTRY): Promise<number> {
   const options = parseServeArguments(args);
-  // A library task id (`connect` or `excalidraw/connect`) opens the bundled library on that task;
-  // an existing path always wins.
-  const libraryTask = options.source !== BUNDLED_WORLD && !existsSync(options.source) ? libraryTaskId(options.source) : undefined;
-  if (libraryTask !== undefined) {
+  // A library task id (`connect`, `excalidraw/connect` or `drawio/connect`) opens that bundled library on
+  // that task; an existing path always wins.
+  const named = options.source !== BUNDLED_WORLD && !existsSync(options.source) ? libraryTask(options.source) : undefined;
+  if (named !== undefined) {
     if (options.taskId) throw new RuntimeError('usage', cliText('playTaskConflict'));
-    options.taskId = libraryTask; options.source = LIBRARY_WORLD_DIR;
+    options.taskId = named.taskId; options.source = LIBRARIES[named.app].worldDir;
   }
   const world = await loadSource(options.source, registry);
   const paths = await resolvedDataPaths();

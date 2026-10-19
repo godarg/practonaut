@@ -2,7 +2,8 @@ import { lstat, mkdir, open, realpath, rename, stat, unlink, writeFile } from 'n
 import { constants } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fromScenesBounded } from '../authoring/from-scenes-runner.ts';
-import { loadLibrary } from '../library/index.ts';
+import { LIBRARIES, libraryPrefix, loadLibraryOf, type LibraryApp } from '../library/index.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { publicConditions } from '../host/session.ts';
 import { generateVariant } from '../world/variant.ts';
 import { cliText, getCliLanguage } from './messages.ts';
@@ -73,23 +74,27 @@ async function writeOutput(path: string, text: string, force: boolean): Promise<
   catch (error) { await unlink(temporary).catch(() => {}); throw error; }
 }
 
-function list(json: boolean): number {
-  const { world, library } = loadLibrary(), language = getCliLanguage();
+/** The prefix a library's tasks are named with in commands: none for Excalidraw's, `drawio/` for draw.io's. */
+const shownPrefix = (app: LibraryApp): string => app === 'excalidraw' ? '' : LIBRARIES[app].prefix;
+
+function list(json: boolean, app: LibraryApp = 'excalidraw'): number {
+  const { world, library } = loadLibraryOf(app), language = getCliLanguage();
   if (json) { process.stdout.write(safeJson({ ok: true, world: { id: world.id, version: world.version }, tasks: library.tasks.map(({ id, difficulty, title, actions }) => ({ id, difficulty, title, actions })) }) + '\n'); return 0; }
   const variant = generateVariant(world, library.tasks[0]!.oracle.seeds.drawn!);
-  process.stdout.write(cliText('tasksListHead', { count: library.tasks.length, world: world.id, version: world.version }));
+  process.stdout.write(cliText('tasksListHead', { app: appDisplayName(world.app.adapterId, language), count: library.tasks.length, world: world.id, version: world.version }));
   for (const entry of library.tasks) {
     const title = variant.tasks.find(task => task.id === entry.id)!.title[language];
     process.stdout.write(`  ${entry.id.padEnd(16)} ${'●'.repeat(entry.difficulty)}${'○'.repeat(3 - entry.difficulty)}  ${String(entry.actions).padStart(2)} ${cliText(entry.actions === 1 ? 'tasksAction' : 'tasksActions').trim()}  ${readableText(title)}\n`);
   }
-  process.stdout.write(cliText('tasksListFoot'));
+  process.stdout.write(cliText('tasksListFoot', { prefix: shownPrefix(app) }));
   return 0;
 }
 
-function show(id: string, json: boolean, withOracle: boolean): number {
-  const { world, library } = loadLibrary(), language = getCliLanguage();
+function show(named: string, json: boolean, withOracle: boolean): number {
+  const { app, rest: id } = libraryPrefix(named);
+  const { world, library } = loadLibraryOf(app), language = getCliLanguage();
   const entry = library.tasks.find(task => task.id === id);
-  if (!entry) throw new RuntimeError('task_unknown', cliText('tasksUnknown', { id: safeText(id) }));
+  if (!entry) throw new RuntimeError('task_unknown', cliText('tasksUnknown', { id: safeText(named) }));
   const variant = generateVariant(world, entry.oracle.seeds.drawn!), task = variant.tasks.find(t => t.id === id)!;
   const conditions = publicConditions(task).map(condition => condition.text);
   const facts = { id, difficulty: entry.difficulty, title: task.title, prompt: task.prompt, conditions, hints: task.hints.length, errorClasses: task.errorClasses.length, variants: world.variants.cases.length, oracleActions: entry.actions, nearMisses: entry.oracle.nearMisses.length };
@@ -99,7 +104,7 @@ function show(id: string, json: boolean, withOracle: boolean): number {
   conditions.forEach((condition, index) => process.stdout.write(`  ${index + 1}. ${readableText(condition[language])}\n`));
   process.stdout.write(cliText('tasksShowFacts', { hints: facts.hints, errors: facts.errorClasses, variants: facts.variants, actions: facts.oracleActions, near: facts.nearMisses }));
   if (withOracle) entry.oracle.steps.forEach((step, index) => process.stdout.write(`  ${index}. ${step.name} ${readableText(JSON.stringify(step.params))}\n`));
-  process.stdout.write(cliText('tasksShowPlay', { id }));
+  process.stdout.write(cliText('tasksShowPlay', { id: shownPrefix(app) + id }));
   return 0;
 }
 
@@ -147,7 +152,14 @@ async function scenes(given: string[]): Promise<number> {
 export async function commandTasks(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   const json = rest.includes('--json');
-  if (sub === 'list') { if (rest.some(arg => arg !== '--json')) throw new RuntimeError('usage', cliText('tasksUsage')); return list(json); }
+  if (sub === 'list') {
+    // `tasks list` is the Excalidraw library; `drawio/all` (or `excalidraw/all`) names a library (PADR-0049 decision 8.2).
+    const positional = rest.filter(arg => arg !== '--json');
+    if (positional.length > 1) throw new RuntimeError('usage', cliText('tasksUsage'));
+    const named = positional[0] === undefined ? { app: 'excalidraw' as const, rest: 'all' } : libraryPrefix(positional[0]);
+    if (named.rest !== 'all' || (positional[0] !== undefined && !positional[0].includes('/'))) throw new RuntimeError('usage', cliText('tasksUsage'));
+    return list(json, named.app);
+  }
   if (sub === 'show') {
     const positional = rest.filter(arg => !arg.startsWith('--')), options = rest.filter(arg => arg.startsWith('--'));
     if (positional.length !== 1 || options.some(arg => arg !== '--json' && arg !== '--oracle')) throw new RuntimeError('usage', cliText('tasksUsage'));

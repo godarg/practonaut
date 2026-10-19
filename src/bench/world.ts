@@ -20,7 +20,7 @@ import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { displayPath, safeText } from '../cli/output.ts';
 import { checkInProcess, RuntimeError } from '../cli/runtime.ts';
-import { loadLibrary, LIBRARY_WORLD_DIR } from '../library/index.ts';
+import { LIBRARIES, loadLibraryOf, type LibraryApp } from '../library/index.ts';
 import { PackageError, packWorld, readArchiveFile, readWorldPackage } from '../package/index.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
@@ -42,9 +42,10 @@ export async function worldFromPackage(bytes: Uint8Array): Promise<World> {
   return loadWorldPackage(await readWorldPackage(bytes));
 }
 
-/** The bundled library, packed from its source like `play` and `mcp` load it. */
-export async function libraryBenchWorld(): Promise<BenchWorld> {
-  const bytes = await packWorld(LIBRARY_WORLD_DIR), world = await worldFromPackage(bytes);
+/** A bundled library (by default the Excalidraw one; `drawio/` tasks name the draw.io one), packed from
+ * its source like `play` and `mcp` load it. */
+export async function libraryBenchWorld(app: LibraryApp = 'excalidraw'): Promise<BenchWorld> {
+  const bytes = await packWorld(LIBRARIES[app].worldDir), world = await worldFromPackage(bytes);
   return { source: 'library', bytes, world, contentHash: worldContentHash(world) };
 }
 
@@ -163,8 +164,8 @@ export async function readOracleFile(path: string): Promise<TaskOracle> {
 }
 
 /** The library's references for the benched tasks (its reference solutions, checked when it is built). */
-export function libraryReferences(tasks: readonly string[]): Map<string, BenchReference> {
-  const entries = new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry]));
+export function libraryReferences(tasks: readonly string[], app: LibraryApp = 'excalidraw'): Map<string, BenchReference> {
+  const entries = new Map(loadLibraryOf(app).library.tasks.map(entry => [entry.id, entry]));
   return new Map(tasks.map(taskId => { const oracle = entries.get(taskId)!.oracle; return [taskId, { taskId, source: 'library' as const, worldId: oracle.worldId, steps: oracle.steps }]; }));
 }
 
