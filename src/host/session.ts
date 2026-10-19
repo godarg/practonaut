@@ -43,6 +43,8 @@ export interface PracticeSessionOptions extends ServeOptions {
   onMirrorDiagnostic?: (record: MirrorDiagnostic) => void | Promise<void>;
   /** Host-only: a browser close of this session's mirror that was abandoned or failed (PADR-0050). */
   onBrowserClose?: (record: BrowserCloseDiagnostic) => void | Promise<void>;
+  /** Stops the mirror's start (a closing author host stopping a practice host it was starting). */
+  signal?: AbortSignal;
 }
 function actionDescription(action: Action, before: State, after: State): Localized {
   const p = action.params;
@@ -227,7 +229,7 @@ export async function createPracticeController(input: World, options: PracticeSe
   let session = new Session(original, options.seed ?? 0, options.taskId ?? original.tasks[0]!.id);
   const mode = options.mirror ?? 'required';
   const listInfo = options.taskInfo ?? libraryTaskInfo(original);
-  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state, original) : undefined;
+  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state, original, options.signal ? { signal: options.signal } : {}) : undefined;
   const sessionId = randomUUID();
   let revision = 0, attempt = 1, hintsOpened = 0;
   let history: HistoryItem[] = [], result: PublicCheck | null = null;
@@ -514,7 +516,9 @@ export async function createPracticeController(input: World, options: PracticeSe
       closed = true; listeners.clear();
       const current = mirror;
       const closeResult = current ? await closeBy(by => current.close(by), deadline) : CLOSED;
-      await reportClose('close', closeResult);
+      // Handed to the host's writer, never awaited: a slow write cannot delay the outcome past the
+      // deadline; the host's diagnostics close waits for it (review of PR #69, effects-1).
+      void reportClose('close', closeResult);
       return closeResult;
     },
   };

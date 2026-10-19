@@ -15,7 +15,7 @@ export const HOST_ERROR_CODES = [
   "bootstrap_used", "token_file_unsafe", "not_found", "method_not_allowed", "session_busy",
   "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "replay_mismatch", "stale_base",
   "E_NETWORK_AVAILABLE", "result_too_large", "diagnostic_limit", "diagnostic_unavailable", "editor_divergence", "author_required", "outcome_unknown", "action_budget_exhausted",
-  "check_budget_exhausted", "demonstration_running", "demonstration_attempt",
+  "check_budget_exhausted", "demonstration_running", "demonstration_attempt", "browser_budget_exhausted",
 ] as const;
 export type HostErrorCode = typeof HOST_ERROR_CODES[number] | Failure["code"];
 export interface PublicCondition {
