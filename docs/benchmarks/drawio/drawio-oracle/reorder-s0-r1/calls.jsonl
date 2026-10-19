@@ -1,0 +1,6 @@
+{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":6510,"bridgeMs":18.3,"clientMs":23.4}
+{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":860,"bridgeMs":27.4,"clientMs":27.8}
+{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":858,"bridgeMs":24.6,"clientMs":25.1}
+{"seq":3,"id":5,"tool":"act","code":"ok","resultBytes":860,"bridgeMs":21.8,"clientMs":22.5}
+{"seq":4,"id":6,"tool":"act","code":"ok","resultBytes":864,"bridgeMs":24.9,"clientMs":25.4}
+{"seq":5,"id":7,"tool":"check_result","code":"ok","resultBytes":4616,"bridgeMs":14,"clientMs":14.6}

@@ -1,0 +1,1 @@
+{"schema":"practonaut.condition-trace/1","taskId":"rename-step","seed":2,"conditions":["goal-1","goal-2","goal-3","goal-4","goal-5"],"start":"11100","points":[{"seq":0,"step":1,"met":"11111"}]}

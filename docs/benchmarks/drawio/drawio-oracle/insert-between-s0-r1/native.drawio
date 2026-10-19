@@ -1,0 +1,25 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="2AFyv8P65eC1uD4xQQ9C" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Receive order" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Ship order" vertex="1">
+          <mxGeometry height="90" width="180" x="700" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-66062f06b0986fa0b153c89b5d5f5123f7c1f2ceb3488ea5f17f8c09b087" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Check payment" vertex="1">
+          <mxGeometry height="90" width="180" x="400" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a-c0db9fc2776b2ba8d8c14d9251e3f08ba522e5f8da4e11a00107795530a1" edge="1" parent="pn:layer" source="s-66062f06b0986fa0b153c89b5d5f5123f7c1f2ceb3488ea5f17f8c09b087" style="endArrow=classic;html=0;" target="c" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-df9d88653ca2ef8fac2b65a1525bf5d4cc3b31cd4fcaa6e888895cad705f" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="s-66062f06b0986fa0b153c89b5d5f5123f7c1f2ceb3488ea5f17f8c09b087" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

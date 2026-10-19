@@ -1,0 +1,25 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="Lmi2QwL4xFrBGvd7KFxQ" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Take sample" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Analyse" vertex="1">
+          <mxGeometry height="90" width="180" x="700" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-13065bccac589a35071076daa85a931d2ffe7572e2043bf7682d8fd39241" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Label sample" vertex="1">
+          <mxGeometry height="90" width="180" x="400" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a-0d08f4a5c686389876e330cda2ea2a492dfd8dad51785a01bb7149ad5c34" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="s-13065bccac589a35071076daa85a931d2ffe7572e2043bf7682d8fd39241" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-7215c773f9795b805798c295b472668ee42fd09d183fa1a478b19a1ae77d" edge="1" parent="pn:layer" source="s-13065bccac589a35071076daa85a931d2ffe7572e2043bf7682d8fd39241" style="endArrow=classic;html=0;" target="c" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

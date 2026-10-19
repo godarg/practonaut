@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-rXQuwku/CAOYzb277OERoAr8gDu8MNGpLqWdfn6nFfM='; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Practonaut compare: Excalidraw library, oracle (baseline) → draw.io library, oracle (candidate)</title>
+<style>/*
+ * Practonaut design tokens, v1.0 (2026-10-07)
+ *
+ * Spec, rationale and the decision protocol: docs/design/design-language.md
+ * Contrast pairs are listed in its section 7.2 and measured by `npm run design:contrast`.
+ * Measured ratios are recorded by the run, never in this file.
+ *
+ * Rules
+ * - Components use semantic tokens only. Raw colour, size, radius, shadow and duration values
+ *   live in this file and nowhere else (`npm run design:lint` enforces this).
+ * - No webfonts, no network. The font stack resolves to fonts already on the device
+ *   (SF Pro on Apple systems).
+ * - Light is the default. Dark applies by system preference or by [data-theme="dark"];
+ *   [data-theme="light"] forces light. The two dark blocks must stay identical (checked).
+ */
+
+/* ------------------------------------------------------------------ */
+/* Theme-independent tokens                                            */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Type */
+  --pn-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --pn-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --pn-text-caption: 0.75rem;     /* 12: eyebrow labels, chips, key caps */
+  --pn-text-footnote: 0.8125rem;  /* 13: secondary lines, hints, meta */
+  --pn-text-subhead: 0.9375rem;   /* 15: controls, list rows, dense text */
+  --pn-text-body: 1.0625rem;      /* 17: reading text, prompts, explanations */
+  --pn-text-title3: 1.25rem;      /* 20 */
+  --pn-text-title2: 1.5rem;       /* 24 */
+  --pn-text-title1: 1.75rem;      /* 28 */
+  --pn-text-large: 2.125rem;      /* 34 */
+  --pn-text-display: 2.75rem;     /* 44: hero and empty states only */
+
+  --pn-leading-caption: 1rem;
+  --pn-leading-footnote: 1.125rem;
+  --pn-leading-subhead: 1.25rem;
+  --pn-leading-body: 1.5rem;
+  --pn-leading-title3: 1.625rem;
+  --pn-leading-title2: 1.875rem;
+  --pn-leading-title1: 2.125rem;
+  --pn-leading-large: 2.5rem;
+  --pn-leading-display: 3rem;
+  --pn-leading-none: 1;           /* glyph box only: key caps whose height is set by the box */
+
+  --pn-tracking-caption: 0.01em;
+  --pn-tracking-footnote: -0.003em;
+  --pn-tracking-subhead: -0.008em;
+  --pn-tracking-body: -0.014em;
+  --pn-tracking-title3: -0.017em;
+  --pn-tracking-title2: -0.02em;
+  --pn-tracking-title1: -0.024em;
+  --pn-tracking-large: -0.028em;
+  --pn-tracking-display: -0.032em;
+  --pn-tracking-eyebrow: 0.06em;
+
+  --pn-weight-regular: 400;
+  --pn-weight-medium: 500;
+  --pn-weight-semibold: 600;
+  --pn-weight-bold: 700;
+
+  --pn-measure: 62ch;
+
+  /* Space: 4 px base */
+  --pn-space-1: 0.25rem;
+  --pn-space-2: 0.5rem;
+  --pn-space-3: 0.75rem;
+  --pn-space-4: 1rem;
+  --pn-space-5: 1.25rem;
+  --pn-space-6: 1.5rem;
+  --pn-space-8: 2rem;
+  --pn-space-10: 2.5rem;
+  --pn-space-12: 3rem;
+  --pn-space-16: 4rem;
+  --pn-nudge: 0.0625rem;          /* 1 px optical nudge: an icon or mark to the first text line; never spacing */
+
+  /* Shape: nested radii are concentric (inner = outer - padding); pills only for capsules */
+  --pn-radius-xs: 0.375rem;
+  --pn-radius-sm: 0.625rem;
+  --pn-radius-md: 0.875rem;
+  --pn-radius-lg: 1.25rem;
+  --pn-radius-xl: 1.75rem;
+  --pn-radius-full: 62.4375rem;
+
+  /* Controls */
+  --pn-control-sm: 2rem;
+  --pn-control-md: 2.5rem;
+  --pn-control-lg: 3rem;
+  --pn-target-coarse: 2.75rem;
+  --pn-icon-sm: 1rem;
+  --pn-icon-md: 1.25rem;
+  --pn-icon-lg: 1.5rem;
+  --pn-stroke-hairline: 1px;
+  --pn-stroke-control: 1.5px;
+  --pn-stroke-content: 2px;
+  --pn-stroke-strong: 2px;
+  --pn-stroke-icon: 1.75;
+
+  /* Layout */
+  --pn-appbar-height: 3.5rem;
+  --pn-inspector-width: 24rem;
+  /* As wide as the inspector: one side column in every workspace. At 1280 px the real editor beside
+     it gets 800 px, enough for Excalidraw's desktop top bar (it needs 766 px in German; ER-05). */
+  --pn-guide-width: 24rem;
+  --pn-page-max: 96rem;
+  --pn-gutter: var(--pn-space-8);
+
+  /* Elevation: one light source, above. Two layers per level. */
+  --pn-shadow-raised: 0 0 0 1px var(--pn-color-shadow-ambient), 0 1px 2px var(--pn-color-shadow-ambient), 0 4px 16px var(--pn-color-shadow-ambient);
+  --pn-shadow-floating: 0 0 0 0.5px var(--pn-color-glass-edge), 0 2px 6px var(--pn-color-shadow-ambient), 0 12px 32px var(--pn-color-shadow-key);
+  --pn-shadow-sheet: 0 0 0 0.5px var(--pn-color-glass-edge), 0 8px 24px var(--pn-color-shadow-key), 0 32px 96px var(--pn-color-shadow-deep);
+
+  --pn-shadow-bar: 0 0.5px 0 var(--pn-color-glass-edge);
+  --pn-shadow-thumb: 0 0 0 0.5px var(--pn-color-glass-edge), 0 1px 3px var(--pn-color-shadow-key);
+  --pn-shadow-keycap: 0 0 0 1px var(--pn-color-separator-strong), 0 1px 0 var(--pn-color-separator-strong);
+  --pn-shadow-glass: inset 0 0 0 0.5px var(--pn-color-glass-border), var(--pn-shadow-floating);
+
+  /* Material (translucent chrome only: app bar, floating palette, sheets) */
+  --pn-blur: 1.5rem;
+  --pn-saturate: 1.8;
+
+  /* Layering */
+  --pn-z-sticky: 10;
+  --pn-z-floating: 20;
+  --pn-z-dialog: 40;
+
+  /* Focus */
+  --pn-focus-width: 3px;
+  --pn-focus-offset: 2px;
+
+  /* Motion: instant feedback, fast state change, base entrance, slow emphasis */
+  --pn-duration-instant: 80ms;
+  --pn-duration-fast: 140ms;
+  --pn-duration-base: 240ms;
+  --pn-duration-slow: 400ms;
+  --pn-duration-pulse: 1600ms;
+  --pn-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --pn-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --pn-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --pn-ease-settle: linear(0, 0.42 14%, 0.9 30%, 1.06 42%, 1.02 56%, 1 72%, 1);
+  --pn-ease-pulse: ease-in-out;   /* breathing loops: recording dot, loading shimmer */
+
+  /* Hatch for "not yet modelled": decorative carrier next to words, never behind text */
+  --pn-pattern-dots: radial-gradient(circle, var(--pn-color-canvas-dot) 1.1px, transparent 1.6px);
+  --pn-pattern-dots-size: 1.25rem;
+  --pn-pattern-unmodeled: repeating-linear-gradient(135deg, var(--pn-color-hatch) 0 1.5px, transparent 1.5px 6px);
+}
+
+@media (max-width: 47.99em) {
+  :root {
+    --pn-gutter: var(--pn-space-4);
+    --pn-appbar-height: 3.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pn-duration-instant: 0.01ms;
+    --pn-duration-fast: 0.01ms;
+    --pn-duration-base: 0.01ms;
+    --pn-duration-slow: 0.01ms;
+    --pn-duration-pulse: 0.01ms;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: light (default)                                             */
+/* ------------------------------------------------------------------ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --pn-color-bg: #F5F5F7;
+  --pn-color-surface: #FFFFFF;
+  --pn-color-surface-raised: #FFFFFF;
+  --pn-color-fill: #F0F0F3;
+  --pn-color-fill-hover: #E8E8ED;
+  --pn-color-fill-pressed: #DEDEE4;
+  --pn-color-thumb: #FFFFFF;
+  --pn-color-canvas: #FAFAFC;
+  --pn-color-canvas-dot: #D6D6DC;
+  --pn-color-object-bg: #FFFFFF;
+  --pn-color-frame-bg: #F4F4F7;
+  --pn-color-text: #1D1D1F;
+  --pn-color-text-secondary: #5E5E63;
+  --pn-color-text-tertiary: #8E8E93;
+  --pn-color-text-on-accent: #FFFFFF;
+  --pn-color-separator: #E3E3E8;
+  --pn-color-separator-strong: #D2D2D7;
+  --pn-color-border: #86868D;
+  --pn-color-object-border: #8A8A90;
+  --pn-color-line: #6E6E73;
+  --pn-color-accent: #0071E3;
+  --pn-color-accent-hover: #0066CC;
+  --pn-color-accent-pressed: #005BB8;
+  --pn-color-accent-text: #0066CC;
+  --pn-color-accent-tint: #E6F1FD;
+  --pn-color-focus: #0071E3;
+  --pn-color-success-fg: #17642F;
+  --pn-color-success-bg: #E6F4EA;
+  --pn-color-success-icon: #248A3D;
+  --pn-color-danger-fg: #A8201A;
+  --pn-color-danger-bg: #FDECEA;
+  --pn-color-danger-icon: #D70015;
+  --pn-color-danger-border: #D70015;
+  --pn-color-warning-fg: #7A4A00;
+  --pn-color-warning-bg: #FFF3D6;
+  --pn-color-warning-icon: #B26A00;
+  --pn-color-info-fg: #00478F;
+  --pn-color-info-bg: #E6F1FD;
+  --pn-color-info-icon: #0071E3;
+  --pn-color-unknown-fg: #55555A;
+  --pn-color-unknown-bg: #F0F0F3;
+  --pn-color-unknown-icon: #6E6E73;
+  --pn-color-unknown-border: #8E8E93;
+  --pn-color-record: #E5251B;
+  --pn-color-danger-solid: #C5161E;
+  --pn-color-danger-solid-hover: #A8121A;
+  --pn-color-scrim: rgba(0, 0, 0, 0.32);
+  --pn-color-glass: rgba(255, 255, 255, 0.72);
+  --pn-color-glass-border: rgba(255, 255, 255, 0.6);
+  --pn-color-glass-edge: rgba(0, 0, 0, 0.08);
+  --pn-color-shadow-ambient: rgba(0, 0, 0, 0.06);
+  --pn-color-shadow-key: rgba(0, 0, 0, 0.10);
+  --pn-color-shadow-deep: rgba(0, 0, 0, 0.22);
+  --pn-color-hatch: #B9B9C0;
+  /* Drawing content: the world/2 palette in Excalidraw 0.18.1's own picker values (never UI status colours). */
+  --pn-color-content-line-black: #1E1E1E;
+  --pn-color-content-line-red: #E03131;
+  --pn-color-content-line-green: #2F9E44;
+  --pn-color-content-line-blue: #1971C2;
+  --pn-color-content-line-orange: #F08C00;
+  --pn-color-content-fill-red: #FFC9C9;
+  --pn-color-content-fill-green: #B2F2BB;
+  --pn-color-content-fill-blue: #A5D8FF;
+  --pn-color-content-fill-yellow: #FFEC99;
+  --pn-color-content-text: #1E1E1E;
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark by system preference (unless light is forced)          */
+/* ------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --pn-color-bg: #0A0A0B;
+    --pn-color-surface: #1C1C1E;
+    --pn-color-surface-raised: #2C2C2E;
+    --pn-color-fill: #2C2C2E;
+    --pn-color-fill-hover: #38383B;
+    --pn-color-fill-pressed: #444448;
+    --pn-color-thumb: #636366;
+    --pn-color-canvas: #1C1C1E;
+    --pn-color-canvas-dot: #38383A;
+    --pn-color-object-bg: #2C2C2E;
+    --pn-color-frame-bg: #161618;
+    --pn-color-text: #F5F5F7;
+    --pn-color-text-secondary: #A1A1A6;
+    --pn-color-text-tertiary: #6E6E73;
+    --pn-color-text-on-accent: #FFFFFF;
+    --pn-color-separator: #38383A;
+    --pn-color-separator-strong: #48484A;
+    --pn-color-border: #7A7A80;
+    --pn-color-object-border: #86868C;
+    --pn-color-line: #A1A1A6;
+    --pn-color-accent: #0071E3;
+    --pn-color-accent-hover: #0066CC;
+    --pn-color-accent-pressed: #005BB8;
+    --pn-color-accent-text: #4DA3FF;
+    --pn-color-accent-tint: #0E2A47;
+    --pn-color-focus: #4DA3FF;
+    --pn-color-success-fg: #62D78B;
+    --pn-color-success-bg: #12261A;
+    --pn-color-success-icon: #32D74B;
+    --pn-color-danger-fg: #FF8A80;
+    --pn-color-danger-bg: #2E1816;
+    --pn-color-danger-icon: #FF6961;
+    --pn-color-danger-border: #FF6961;
+    --pn-color-warning-fg: #FFD060;
+    --pn-color-warning-bg: #2B2210;
+    --pn-color-warning-icon: #FFB340;
+    --pn-color-info-fg: #6CB6FF;
+    --pn-color-info-bg: #0F2438;
+    --pn-color-info-icon: #4DA3FF;
+    --pn-color-unknown-fg: #A1A1A6;
+    --pn-color-unknown-bg: #242426;
+    --pn-color-unknown-icon: #A1A1A6;
+    --pn-color-unknown-border: #7A7A80;
+    --pn-color-record: #FF453A;
+    --pn-color-danger-solid: #D92D20;
+    --pn-color-danger-solid-hover: #BF241A;
+    --pn-color-scrim: rgba(0, 0, 0, 0.55);
+    --pn-color-glass: rgba(44, 44, 46, 0.72);
+    --pn-color-glass-border: rgba(255, 255, 255, 0.14);
+    --pn-color-glass-edge: rgba(0, 0, 0, 0.5);
+    --pn-color-shadow-ambient: rgba(0, 0, 0, 0.30);
+    --pn-color-shadow-key: rgba(0, 0, 0, 0.40);
+    --pn-color-shadow-deep: rgba(0, 0, 0, 0.60);
+    --pn-color-hatch: #4A4A50;
+    /* Drawing content as Excalidraw shows it in dark mode (its invert(93%) hue-rotate(180deg), measured in Chromium). */
+    --pn-color-content-line-black: #D3D3D3;
+    --pn-color-content-line-red: #FF8383;
+    --pn-color-content-line-green: #3A994C;
+    --pn-color-content-line-blue: #56A2E8;
+    --pn-color-content-line-orange: #B76100;
+    --pn-color-content-fill-red: #5B2D2D;
+    --pn-color-content-fill-green: #043B0C;
+    --pn-color-content-fill-blue: #154163;
+    --pn-color-content-fill-yellow: #362600;
+    --pn-color-content-text: #D3D3D3;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colour: dark, explicit. Must stay identical to the block above.     */
+/* ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pn-color-bg: #0A0A0B;
+  --pn-color-surface: #1C1C1E;
+  --pn-color-surface-raised: #2C2C2E;
+  --pn-color-fill: #2C2C2E;
+  --pn-color-fill-hover: #38383B;
+  --pn-color-fill-pressed: #444448;
+  --pn-color-thumb: #636366;
+  --pn-color-canvas: #1C1C1E;
+  --pn-color-canvas-dot: #38383A;
+  --pn-color-object-bg: #2C2C2E;
+  --pn-color-frame-bg: #161618;
+  --pn-color-text: #F5F5F7;
+  --pn-color-text-secondary: #A1A1A6;
+  --pn-color-text-tertiary: #6E6E73;
+  --pn-color-text-on-accent: #FFFFFF;
+  --pn-color-separator: #38383A;
+  --pn-color-separator-strong: #48484A;
+  --pn-color-border: #7A7A80;
+  --pn-color-object-border: #86868C;
+  --pn-color-line: #A1A1A6;
+  --pn-color-accent: #0071E3;
+  --pn-color-accent-hover: #0066CC;
+  --pn-color-accent-pressed: #005BB8;
+  --pn-color-accent-text: #4DA3FF;
+  --pn-color-accent-tint: #0E2A47;
+  --pn-color-focus: #4DA3FF;
+  --pn-color-success-fg: #62D78B;
+  --pn-color-success-bg: #12261A;
+  --pn-color-success-icon: #32D74B;
+  --pn-color-danger-fg: #FF8A80;
+  --pn-color-danger-bg: #2E1816;
+  --pn-color-danger-icon: #FF6961;
+  --pn-color-danger-border: #FF6961;
+  --pn-color-warning-fg: #FFD060;
+  --pn-color-warning-bg: #2B2210;
+  --pn-color-warning-icon: #FFB340;
+  --pn-color-info-fg: #6CB6FF;
+  --pn-color-info-bg: #0F2438;
+  --pn-color-info-icon: #4DA3FF;
+  --pn-color-unknown-fg: #A1A1A6;
+  --pn-color-unknown-bg: #242426;
+  --pn-color-unknown-icon: #A1A1A6;
+  --pn-color-unknown-border: #7A7A80;
+  --pn-color-record: #FF453A;
+  --pn-color-danger-solid: #D92D20;
+  --pn-color-danger-solid-hover: #BF241A;
+  --pn-color-scrim: rgba(0, 0, 0, 0.55);
+  --pn-color-glass: rgba(44, 44, 46, 0.72);
+  --pn-color-glass-border: rgba(255, 255, 255, 0.14);
+  --pn-color-glass-edge: rgba(0, 0, 0, 0.5);
+  --pn-color-shadow-ambient: rgba(0, 0, 0, 0.30);
+  --pn-color-shadow-key: rgba(0, 0, 0, 0.40);
+  --pn-color-shadow-deep: rgba(0, 0, 0, 0.60);
+  --pn-color-hatch: #4A4A50;
+  /* Drawing content as Excalidraw shows it in dark mode (its invert(93%) hue-rotate(180deg), measured in Chromium). */
+  --pn-color-content-line-black: #D3D3D3;
+  --pn-color-content-line-red: #FF8383;
+  --pn-color-content-line-green: #3A994C;
+  --pn-color-content-line-blue: #56A2E8;
+  --pn-color-content-line-orange: #B76100;
+  --pn-color-content-fill-red: #5B2D2D;
+  --pn-color-content-fill-green: #043B0C;
+  --pn-color-content-fill-blue: #154163;
+  --pn-color-content-fill-yellow: #362600;
+  --pn-color-content-text: #D3D3D3;
+}
+/* Bench report and compare pages (PADR-0039 B.5): one static page, design system v1, values from
+   design/tokens.css only. Linted by `npm run design:lint` (report profile). The page is inlined with
+   tokens.css into one hashed <style>; no script, no external asset. The kit's pieces (chip, banner,
+   status marks, card, disclosure chevron, heading roles) are reproduced here, since the page loads no
+   other stylesheet. Status is spelled out in words and shaped; colour only repeats it. */
+*,*::before,*::after{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;background:var(--pn-color-bg);color:var(--pn-color-text);font-family:var(--pn-font-sans);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead)}
+/* Long words break with a hyphen in the page's language; a word is split only when it cannot fit a line,
+   so punctuation stays with its word. */
+.page{max-width:var(--pn-page-max);margin:0 auto;padding:var(--pn-space-10) var(--pn-gutter) var(--pn-space-16);hyphens:auto;overflow-wrap:break-word}
+.eyebrow{margin:0 0 var(--pn-space-2);font-size:var(--pn-text-caption);line-height:var(--pn-leading-caption);letter-spacing:var(--pn-tracking-eyebrow);text-transform:uppercase;color:var(--pn-color-text-secondary)}
+h1{margin:0;font-size:var(--pn-text-title1);line-height:var(--pn-leading-title1);letter-spacing:var(--pn-tracking-title1);font-weight:var(--pn-weight-bold);hyphens:manual}
+h2{margin:0 0 var(--pn-space-4);font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);letter-spacing:var(--pn-tracking-title2);font-weight:var(--pn-weight-semibold)}
+h3{margin:var(--pn-space-6) 0 var(--pn-space-2);font-size:var(--pn-text-body);line-height:var(--pn-leading-body);letter-spacing:var(--pn-tracking-body);font-weight:var(--pn-weight-semibold)}
+.headline{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-title3);line-height:var(--pn-leading-title3);letter-spacing:var(--pn-tracking-title3);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums}
+.verdict{margin:var(--pn-space-2) 0 0;max-width:var(--pn-measure);font-size:var(--pn-text-body);line-height:var(--pn-leading-body)}
+.lead{margin:0;font-size:var(--pn-text-body);line-height:var(--pn-leading-body)}
+.meta{margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.note{max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+section{margin-top:var(--pn-space-12)}
+a{color:var(--pn-color-accent-text)}
+a:focus-visible,summary:focus-visible,.scroll:focus-visible,.board-scroll:focus-visible{outline:var(--pn-focus-width) solid var(--pn-color-focus);outline-offset:var(--pn-focus-offset)}
+code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:none;overflow-wrap:anywhere}
+/* Data inside prose (a quoted label, a task id) is never hyphenated. */
+.data{hyphens:none}
+/* An identifier (a task, a model, a world, an error class) is one word that never breaks, not even at its
+   own hyphens (§10.5, design review R2); only a word longer than a line, such as a hash, may wrap. */
+.id{white-space:nowrap;hyphens:none}
+/* A quoted label is the author's text: it wraps like text, but is never hyphenated. */
+.quoted{overflow-wrap:break-word}
+/* A proper name is never hyphenated ("Practonaut", "McNemar"). */
+.name{hyphens:manual}
+/* A command-line flag stays on one line: a reader who copies it gets it whole (design review R1). */
+.flag{white-space:nowrap;hyphens:none}
+/* The way to the failed runs, right under the headline. */
+.jump{margin:var(--pn-space-3) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.jump-title{font-weight:var(--pn-weight-semibold);color:var(--pn-color-text)}
+
+/* Chip: a small fact, never an action. */
+.chips{display:flex;flex-wrap:wrap;gap:var(--pn-space-2);margin:var(--pn-space-3) 0 0;padding:0;list-style:none}
+.chip{display:inline-flex;align-items:center;min-height:var(--pn-space-6);max-width:100%;padding:0 var(--pn-space-2);border-radius:var(--pn-radius-full);background:var(--pn-color-fill);color:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-caption)/var(--pn-leading-caption) var(--pn-font-sans);letter-spacing:var(--pn-tracking-caption)}
+
+/* Banner: a statement about the situation, with tone. Unknown carries the hatch (something is not known here). */
+.banner{--_bg:var(--pn-color-fill);--_fg:var(--pn-color-text);--_icon:var(--pn-color-text-secondary);display:flex;align-items:flex-start;gap:var(--pn-space-3);margin:var(--pn-space-3) 0;padding:var(--pn-space-3) var(--pn-space-4);border-radius:var(--pn-radius-md);background:var(--_bg);color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead)}
+.banner.neutral{--_bg:var(--pn-color-fill)}
+.banner.warning{--_bg:var(--pn-color-warning-bg);--_fg:var(--pn-color-warning-fg);--_icon:var(--pn-color-warning-icon)}
+.banner.unknown{--_bg:var(--pn-color-unknown-bg);--_fg:var(--pn-color-unknown-fg);--_icon:var(--pn-color-unknown-icon);position:relative;overflow:clip;padding-left:var(--pn-space-6)}
+.banner.unknown::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--pn-space-2);background:var(--pn-pattern-unmodeled)}
+.banner-icon{width:var(--pn-icon-md);height:var(--pn-icon-md);flex:none;margin-top:var(--pn-nudge);fill:none;stroke:var(--_icon);stroke-width:var(--pn-stroke-icon);stroke-linecap:round;stroke-linejoin:round}
+.banner-body{display:grid;gap:var(--pn-space-2);min-width:0}
+.banner-body p{margin:0}
+.banner-title{font-weight:var(--pn-weight-semibold);color:var(--_fg)}
+
+/* Status marks: shape first, colour second, always beside a word. */
+.status-icon{width:var(--pn-icon-md);height:var(--pn-icon-md);flex:none;fill:none;stroke:currentColor;stroke-width:var(--pn-stroke-icon);stroke-linecap:round;stroke-linejoin:round}
+.status-icon.pass{color:var(--pn-color-success-icon)}
+.status-icon.fail{color:var(--pn-color-danger-icon)}
+.status-icon.unknown{color:var(--pn-color-unknown-icon)}
+.result.unknown{align-items:flex-start;color:var(--pn-color-unknown-fg);white-space:normal}
+.result.unknown .status-icon{margin-top:var(--pn-nudge)}
+.result{display:inline-flex;align-items:center;gap:var(--pn-space-1);font-weight:var(--pn-weight-semibold);white-space:nowrap}
+.result.pass{color:var(--pn-color-success-fg)}
+.result.fail{color:var(--pn-color-danger-fg)}
+.outcome{display:inline-flex;align-items:flex-start;gap:var(--pn-space-1)}
+
+/* Cards: summary figures, tables and run panels. */
+.figures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pn-space-3);margin:0}
+.figures.n3 .figure:first-child,.figures.n5 .figure:first-child{grid-column:1/-1}
+@media (min-width:40rem){.figures.n3{grid-template-columns:repeat(3,minmax(0,1fr))}.figures.n3 .figure:first-child{grid-column:auto}.figures.n4{grid-template-columns:repeat(4,minmax(0,1fr))}.figures.n5{grid-template-columns:repeat(6,minmax(0,1fr))}.figures.n5 .figure{grid-column:span 2}.figures.n5 .figure:nth-child(-n+2){grid-column:span 3}}
+@media (min-width:60rem){.figures.n5{grid-template-columns:repeat(5,minmax(0,1fr))}.figures.n5 .figure,.figures.n5 .figure:nth-child(-n+2){grid-column:auto}}
+.figure{background:var(--pn-color-surface);border-radius:var(--pn-radius-lg);box-shadow:var(--pn-shadow-raised);padding:var(--pn-space-4) var(--pn-space-5);min-width:0}
+.figure dt{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);color:var(--pn-color-text-secondary)}
+.figure dd{margin:var(--pn-space-1) 0 0;font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums}
+.figure dd.detail{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-regular);color:var(--pn-color-text-secondary)}
+.scroll{overflow-x:auto;border-radius:var(--pn-radius-lg);background:var(--pn-color-surface);box-shadow:var(--pn-shadow-raised)}
+/* A table of few columns is as wide as its content, so its numbers sit next to their labels. */
+@media (min-width:40rem){.scroll.compact{width:fit-content;max-width:100%}}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;vertical-align:top;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
+tbody tr:last-child td{border-bottom:0}
+th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold);color:var(--pn-color-text-secondary);white-space:normal;hyphens:manual}
+/* A column of lists (error classes) wraps at this width instead of widening the table. */
+th.capped{width:12rem}
+td.text,th.text{text-align:left;white-space:normal;hyphens:none}
+/* A column of sentences (a change between two sides) may hyphenate: a stacked cell is narrow. */
+td.text.prose{hyphens:auto}
+td.text code{overflow-wrap:anywhere}
+/* Below 40rem a table becomes one block per row, two cells side by side, each under its column's name;
+   a cell with long text (an action, error classes) takes the whole row. */
+@media (max-width:40rem){
+  .stack table,.stack tbody{display:block;width:100%}
+  .stack thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .stack tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pn-space-2) var(--pn-space-4);padding:var(--pn-space-3) var(--pn-space-4);border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
+  .stack tbody tr:last-child{border-bottom:0}
+  .stack td,.stack td.text{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0}
+  .stack td.wide{grid-column:1/-1}
+  .stack td::before{content:attr(data-label);display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+}
+/* A table with many columns (the runs) stacks the same way already below 60rem. */
+@media (max-width:60rem){
+  .stack-many table,.stack-many tbody{display:block;width:100%}
+  .stack-many thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .stack-many tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:var(--pn-space-2) var(--pn-space-4);padding:var(--pn-space-3) var(--pn-space-4);border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
+  .stack-many tbody tr:last-child{border-bottom:0}
+  .stack-many td,.stack-many td.text{display:block;padding:0;border:0;text-align:left;white-space:normal;min-width:0}
+  .stack-many td.wide{grid-column:1/-1}
+  .stack-many td::before{content:attr(data-label);display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+}
+
+/* Settings and technical details. */
+.settings{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--pn-space-1) var(--pn-space-4);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.settings dt{color:var(--pn-color-text-secondary)}
+.settings dd{margin:0;min-width:0}
+@media (max-width:30rem){.settings{grid-template-columns:minmax(0,1fr)}.settings dd{margin-bottom:var(--pn-space-2)}}
+.tech{margin-top:var(--pn-space-4)}
+.tech>summary{display:inline-flex;align-items:center;gap:var(--pn-space-2);min-height:var(--pn-control-sm);cursor:pointer;list-style:none;border-radius:var(--pn-radius-sm);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-medium);color:var(--pn-color-accent-text)}
+.tech .settings{margin-top:var(--pn-space-2)}
+
+/* Run details: one card per run, failures and runs that did not end normally first and open. The
+   disclosure shows the kit's chevron, never the browser's triangle. */
+.run{margin-top:var(--pn-space-3);background:var(--pn-color-surface);border-radius:var(--pn-radius-lg);box-shadow:var(--pn-shadow-raised)}
+.run>summary{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--pn-space-1) var(--pn-space-3);padding:var(--pn-space-4) var(--pn-space-5);cursor:pointer;list-style:none;border-radius:var(--pn-radius-lg)}
+.run-meta{grid-column:2}
+.run>summary::-webkit-details-marker,.tech>summary::-webkit-details-marker{display:none}
+.run>summary::before,.tech>summary::before{content:"";width:0.4375rem;height:0.4375rem;flex:none;margin:0 var(--pn-space-1);border:solid currentColor;border-width:0 var(--pn-stroke-strong) var(--pn-stroke-strong) 0;rotate:-45deg;transition:rotate var(--pn-duration-base) var(--pn-ease-spring)}
+.run>summary::before{color:var(--pn-color-text-secondary)}
+.run[open]>summary::before,.tech[open]>summary::before{rotate:45deg}
+.run-title{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pn-space-1) var(--pn-space-3);font-size:var(--pn-text-body);line-height:var(--pn-leading-body);font-weight:var(--pn-weight-semibold);min-width:0}
+.run-meta{color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.run-body{padding:0 var(--pn-space-5) var(--pn-space-5);min-width:0}
+.run-body>h3:first-child{margin-top:var(--pn-space-1)}
+.reasons,.legend{margin:0;padding-left:var(--pn-space-5);display:grid;gap:var(--pn-space-2)}
+.reasons li,.legend li{min-width:0}
+.state{font-weight:var(--pn-weight-semibold)}
+.sublist{margin:var(--pn-space-1) 0 0;padding-left:var(--pn-space-5)}
+.conditions{margin:0;padding:0;list-style:none;display:grid;gap:var(--pn-space-2)}
+.condition{display:flex;align-items:flex-start;gap:var(--pn-space-2);min-width:0}
+.condition .status-icon{margin-top:var(--pn-nudge)}
+/* The trajectory names conditions by these numbers. */
+.condition-number{min-width:var(--pn-space-5);flex:none;text-align:right;color:var(--pn-color-text-secondary);font-variant-numeric:tabular-nums}
+.condition>div,.flips li>span{min-width:0}
+.condition-status{font-weight:var(--pn-weight-semibold)}
+.condition-status.pass{color:var(--pn-color-success-fg)}
+.condition-status.fail{color:var(--pn-color-danger-fg)}
+.condition-status.unknown{color:var(--pn-color-unknown-fg)}
+.formal{display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);hyphens:none;overflow-wrap:break-word}
+.history{color:var(--pn-color-text-secondary)}
+
+/* Boards: the final board above the example target, one column, one shared scale. A picture is never
+   drawn below 0.6 px per board unit (20-unit text at 12 px) nor above 1 px per unit; past the column
+   its frame scrolls, with a faded edge and a line that says so. */
+.boards{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-6)}
+.board-figure{margin:0;min-width:0}
+.board-figure figcaption{margin-bottom:var(--pn-space-2);max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.board-figure .figure-title{display:block;color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-semibold)}
+.board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-canvas)}
+.schematic,.engine-board{display:block;width:100%;height:auto;margin:0 auto}
+.scroll-hint{display:none;margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.scroll-hint.overflows-desktop{display:block}
+.board-scroll.overflows-desktop{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+@media (max-width:48rem){
+  .scroll-hint.overflows-phone{display:block}
+  .board-scroll.overflows-phone{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+}
+.board-scroll.fits{mask-image:none}
+/* A pair whose first difference lies at the right end opens there: both frames scroll from the right
+   (the drawing itself stays left to right), and the fade moves to the left edge. */
+.board-scroll.from-end{direction:rtl}
+.board-scroll.from-end>svg{direction:ltr}
+.board-scroll.overflows-desktop.from-end{mask-image:linear-gradient(to left,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
+@media (max-width:48rem){.board-scroll.overflows-phone.from-end{mask-image:linear-gradient(to left,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}}
+.legend{margin-top:var(--pn-space-2);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
+.legend-title{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold)}
+
+/* The real engine's export keeps its own paint; in dark mode it gets Excalidraw's own dark-mode filter,
+   which the content tokens of the schematic reproduce, so a pair shows one palette. Its text keeps
+   Excalidraw's monospace look, like the schematic's step labels. */
+.engine-board text{font-family:var(--pn-font-mono)}
+.engine-board .sch-group-label{font-family:var(--pn-font-sans)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board{filter:invert(93%) hue-rotate(180deg)}}
+:root[data-theme="dark"] .engine-board{filter:invert(93%) hue-rotate(180deg)}
+
+/* Schematic of a judged state: content tokens carry Excalidraw's own palette; corners are sharp and
+   arrows black, as Excalidraw draws them here. */
+.sch-frame{fill:var(--pn-color-frame-bg);stroke:var(--pn-color-object-border);stroke-width:1.5}
+.sch-frame-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+.sch-group{fill:var(--pn-color-accent-tint);stroke:var(--pn-color-accent);stroke-width:1.5}
+/* The judged state's group outline laid over an export (outline only: the drawing stays visible). */
+.sch-group-outline{fill:var(--pn-color-accent);fill-opacity:0.08;stroke:var(--pn-color-accent);stroke-width:1.5}
+.sch-group-label{fill:var(--pn-color-accent-text);font:var(--pn-weight-semibold) var(--pn-text-title3) var(--pn-font-sans)}
+.sch-step{fill:none;stroke:var(--pn-color-object-border);stroke-width:2}
+.sch-fill-red{fill:var(--pn-color-content-fill-red)}
+.sch-fill-green{fill:var(--pn-color-content-fill-green)}
+.sch-fill-blue{fill:var(--pn-color-content-fill-blue)}
+.sch-fill-yellow{fill:var(--pn-color-content-fill-yellow)}
+.sch-line-black{stroke:var(--pn-color-content-line-black)}
+.sch-line-red{stroke:var(--pn-color-content-line-red)}
+.sch-line-green{stroke:var(--pn-color-content-line-green)}
+.sch-line-blue{stroke:var(--pn-color-content-line-blue)}
+.sch-line-orange{stroke:var(--pn-color-content-line-orange)}
+.sch-label{fill:var(--pn-color-text);font:var(--pn-weight-regular) var(--pn-text-title3) var(--pn-font-mono)}
+.sch-label--on-fill{fill:var(--pn-color-content-text)}
+.sch-edge{stroke:var(--pn-color-content-line-black);stroke-width:2;fill:none;stroke-linecap:round}
+.sch-tip{fill:var(--pn-color-content-line-black)}
+.sch-loose{fill:var(--pn-color-canvas);stroke:var(--pn-color-danger-icon);stroke-width:2.5}
+.sch-loose-label{fill:var(--pn-color-danger-fg);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+
+/* compare */
+.sides{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-3);margin:0}
+@media (min-width:40rem){.sides{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.flips{margin:0;padding:0;list-style:none;display:grid;gap:var(--pn-space-2)}
+.flips li{display:flex;align-items:flex-start;gap:var(--pn-space-2);min-width:0}
+.flips .status-icon{margin-top:var(--pn-nudge)}
+
+@media (prefers-reduced-motion:reduce){.run>summary::before,.tech>summary::before{transition:none}}
+@media (forced-colors:active){.chip,.banner,.figure,.scroll,.run{border:var(--pn-stroke-hairline) solid CanvasText}}
+
+/* Picture sizes by viewBox width (schematic.ts pictureSizeClass): pw-k is k × 100 board units wide,
+   at least 0.6 px and at most 1 px per unit. */
+.pw-3{min-width:11.25rem;max-width:18.75rem}
+.pw-4{min-width:15rem;max-width:25rem}
+.pw-5{min-width:18.75rem;max-width:31.25rem}
+.pw-6{min-width:22.5rem;max-width:37.5rem}
+.pw-7{min-width:26.25rem;max-width:43.75rem}
+.pw-8{min-width:30rem;max-width:50rem}
+.pw-9{min-width:33.75rem;max-width:56.25rem}
+.pw-10{min-width:37.5rem;max-width:62.5rem}
+.pw-11{min-width:41.25rem;max-width:68.75rem}
+.pw-12{min-width:45rem;max-width:75rem}
+.pw-13{min-width:48.75rem;max-width:81.25rem}
+.pw-14{min-width:52.5rem;max-width:87.5rem}
+.pw-15{min-width:56.25rem;max-width:93.75rem}
+.pw-16{min-width:60rem;max-width:100rem}
+.pw-17{min-width:63.75rem;max-width:106.25rem}
+.pw-18{min-width:67.5rem;max-width:112.5rem}
+.pw-19{min-width:71.25rem;max-width:118.75rem}
+.pw-20{min-width:75rem;max-width:125rem}
+.pw-21{min-width:78.75rem;max-width:131.25rem}
+.pw-22{min-width:82.5rem;max-width:137.5rem}
+.pw-23{min-width:86.25rem;max-width:143.75rem}
+.pw-24{min-width:90rem;max-width:150rem}
+.pw-25{min-width:93.75rem;max-width:156.25rem}
+.pw-26{min-width:97.5rem;max-width:162.5rem}
+.pw-27{min-width:101.25rem;max-width:168.75rem}
+.pw-28{min-width:105rem;max-width:175rem}
+.pw-29{min-width:108.75rem;max-width:181.25rem}
+.pw-30{min-width:112.5rem;max-width:187.5rem}
+.pw-31{min-width:116.25rem;max-width:193.75rem}
+.pw-32{min-width:120rem;max-width:200rem}
+.pw-33{min-width:123.75rem;max-width:206.25rem}
+.pw-34{min-width:127.5rem;max-width:212.5rem}
+.pw-35{min-width:131.25rem;max-width:218.75rem}
+.pw-36{min-width:135rem;max-width:225rem}
+.pw-37{min-width:138.75rem;max-width:231.25rem}
+.pw-38{min-width:142.5rem;max-width:237.5rem}
+.pw-39{min-width:146.25rem;max-width:243.75rem}
+.pw-40{min-width:150rem;max-width:250rem}
+.pw-41{min-width:153.75rem;max-width:256.25rem}
+.pw-42{min-width:157.5rem;max-width:262.5rem}
+.pw-43{min-width:161.25rem;max-width:268.75rem}
+.pw-44{min-width:165rem;max-width:275rem}
+.pw-45{min-width:168.75rem;max-width:281.25rem}
+.pw-46{min-width:172.5rem;max-width:287.5rem}
+.pw-47{min-width:176.25rem;max-width:293.75rem}
+.pw-48{min-width:180rem;max-width:300rem}
+.pw-49{min-width:183.75rem;max-width:306.25rem}
+.pw-50{min-width:187.5rem;max-width:312.5rem}
+.pw-51{min-width:191.25rem;max-width:318.75rem}
+.pw-52{min-width:195rem;max-width:325rem}
+.pw-53{min-width:198.75rem;max-width:331.25rem}
+.pw-54{min-width:202.5rem;max-width:337.5rem}
+.pw-55{min-width:206.25rem;max-width:343.75rem}
+.pw-56{min-width:210rem;max-width:350rem}
+.pw-57{min-width:213.75rem;max-width:356.25rem}
+.pw-58{min-width:217.5rem;max-width:362.5rem}
+.pw-59{min-width:221.25rem;max-width:368.75rem}
+.pw-60{min-width:225rem;max-width:375rem}
+</style>
+</head>
+<body>
+<main class="page">
+<header>
+<p class="eyebrow">Practonaut compare</p>
+<h1>Excalidraw library, oracle (baseline) → draw.io library, oracle (candidate)</h1>
+<p class="headline">48 of 48 task identities paired across worlds.</p>
+<p class="verdict">Rate difference not distinguishable at this n (exact <span class="name">McNemar</span> p = 1.000; 0 only on the baseline, 0 only on the candidate).</p>
+</header>
+
+<section aria-labelledby="sides"><h2 id="sides">Sides</h2><dl class="sides"><div class="figure"><dt>Baseline</dt><dd>48/48</dd><dd class="detail">48/48 instances passed · 95 % interval 92–⁠100 % over the 48 instances on both sides</dd><dd class="detail"><ul class="chips" aria-label="Baseline"><li class="chip"><span><span class="name">Excalidraw</span></span></li><li class="chip"><span>world <span class="data id">excalidraw-library</span> 1.1.0</span></li><li class="chip"><span><span class="data id">oracle</span></span></li><li class="chip"><span><span class="data id">Excalidraw</span> <span class="data id">library,</span> <span class="data id">oracle</span></span></li><li class="chip"><span>session verdict</span></li><li class="chip"><span>real <span class="name">Excalidraw</span> mirror</span></li><li class="chip"><span>built-in baseline: no language model, MCP only</span></li><li class="chip"><span>re-verified from the artifacts</span></li><li class="chip"><span>2026-10-19</span></li></ul></dd></div><div class="figure"><dt>Candidate</dt><dd>48/48</dd><dd class="detail">48/48 instances passed · 95 % interval 92–⁠100 % over the 48 instances on both sides</dd><dd class="detail"><ul class="chips" aria-label="Candidate"><li class="chip"><span><span class="name">draw.io</span></span></li><li class="chip"><span>world <span class="data id">drawio-library</span> 1.1.0</span></li><li class="chip"><span><span class="data id">oracle</span></span></li><li class="chip"><span><span class="data id">draw.io</span> <span class="data id">library,</span> <span class="data id">oracle</span></span></li><li class="chip"><span>session verdict</span></li><li class="chip"><span>real <span class="name">draw.io</span> mirror</span></li><li class="chip"><span>built-in baseline: no language model, MCP only</span></li><li class="chip"><span>re-verified from the artifacts</span></li><li class="chip"><span>2026-10-19</span></li></ul></dd></div></dl></section>
+<section aria-labelledby="regressions"><h2 id="regressions">Outcomes per task identity</h2><p class="lead">Across worlds a different outcome is a difference between the two configurations, never an instance regression.</p></section>
+<section aria-labelledby="instances"><h2 id="instances">Instances</h2><div class="scroll stack" role="region" aria-labelledby="instances" tabindex="0"><table><thead><tr><th scope="col" class="text">instance</th><th scope="col" class="text">baseline</th><th scope="col" class="text">candidate</th><th scope="col" class="text">change</th></tr></thead><tbody><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">add-step</code> · seed 0</span> (baseline) · <span class="id"><code class="id">add-step</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">add-step</code> · seed 2</span> (baseline) · <span class="id"><code class="id">add-step</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">add-step</code> · seed 4</span> (baseline) · <span class="id"><code class="id">add-step</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">connect</code> · seed 0</span> (baseline) · <span class="id"><code class="id">connect</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">connect</code> · seed 2</span> (baseline) · <span class="id"><code class="id">connect</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">connect</code> · seed 4</span> (baseline) · <span class="id"><code class="id">connect</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">disconnect</code> · seed 0</span> (baseline) · <span class="id"><code class="id">disconnect</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">disconnect</code> · seed 2</span> (baseline) · <span class="id"><code class="id">disconnect</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">disconnect</code> · seed 4</span> (baseline) · <span class="id"><code class="id">disconnect</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">recolor</code> · seed 0</span> (baseline) · <span class="id"><code class="id">recolor</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">recolor</code> · seed 2</span> (baseline) · <span class="id"><code class="id">recolor</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">recolor</code> · seed 4</span> (baseline) · <span class="id"><code class="id">recolor</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">remove-step</code> · seed 0</span> (baseline) · <span class="id"><code class="id">remove-step</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">remove-step</code> · seed 2</span> (baseline) · <span class="id"><code class="id">remove-step</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">remove-step</code> · seed 4</span> (baseline) · <span class="id"><code class="id">remove-step</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-frame</code> · seed 0</span> (baseline) · <span class="id"><code class="id">rename-frame</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-frame</code> · seed 2</span> (baseline) · <span class="id"><code class="id">rename-frame</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-frame</code> · seed 4</span> (baseline) · <span class="id"><code class="id">rename-frame</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-step</code> · seed 0</span> (baseline) · <span class="id"><code class="id">rename-step</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-step</code> · seed 2</span> (baseline) · <span class="id"><code class="id">rename-step</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">rename-step</code> · seed 4</span> (baseline) · <span class="id"><code class="id">rename-step</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">align</code> · seed 0</span> (baseline) · <span class="id"><code class="id">align</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">align</code> · seed 2</span> (baseline) · <span class="id"><code class="id">align</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">align</code> · seed 4</span> (baseline) · <span class="id"><code class="id">align</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">close-chain</code> · seed 0</span> (baseline) · <span class="id"><code class="id">close-chain</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">close-chain</code> · seed 2</span> (baseline) · <span class="id"><code class="id">close-chain</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">close-chain</code> · seed 4</span> (baseline) · <span class="id"><code class="id">close-chain</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">group</code> · seed 0</span> (baseline) · <span class="id"><code class="id">group</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">group</code> · seed 2</span> (baseline) · <span class="id"><code class="id">group</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">group</code> · seed 4</span> (baseline) · <span class="id"><code class="id">group</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">insert-between</code> · seed 0</span> (baseline) · <span class="id"><code class="id">insert-between</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">insert-between</code> · seed 2</span> (baseline) · <span class="id"><code class="id">insert-between</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">insert-between</code> · seed 4</span> (baseline) · <span class="id"><code class="id">insert-between</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reconnect</code> · seed 0</span> (baseline) · <span class="id"><code class="id">reconnect</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reconnect</code> · seed 2</span> (baseline) · <span class="id"><code class="id">reconnect</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reconnect</code> · seed 4</span> (baseline) · <span class="id"><code class="id">reconnect</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reorder</code> · seed 0</span> (baseline) · <span class="id"><code class="id">reorder</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reorder</code> · seed 2</span> (baseline) · <span class="id"><code class="id">reorder</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">reorder</code> · seed 4</span> (baseline) · <span class="id"><code class="id">reorder</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">decision</code> · seed 0</span> (baseline) · <span class="id"><code class="id">decision</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">decision</code> · seed 2</span> (baseline) · <span class="id"><code class="id">decision</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">decision</code> · seed 4</span> (baseline) · <span class="id"><code class="id">decision</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">restyle-flow</code> · seed 0</span> (baseline) · <span class="id"><code class="id">restyle-flow</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">restyle-flow</code> · seed 2</span> (baseline) · <span class="id"><code class="id">restyle-flow</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">restyle-flow</code> · seed 4</span> (baseline) · <span class="id"><code class="id">restyle-flow</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">two-frames</code> · seed 0</span> (baseline) · <span class="id"><code class="id">two-frames</code> · seed 0</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">two-frames</code> · seed 2</span> (baseline) · <span class="id"><code class="id">two-frames</code> · seed 2</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr><tr><td data-label="instance" class="text wide"><span class="id"><code class="id">two-frames</code> · seed 4</span> (baseline) · <span class="id"><code class="id">two-frames</code> · seed 4</span> (candidate)</td><td data-label="baseline" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon pass" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.7 12.4l3 3 5.6-6" stroke="var(--pn-color-surface)" stroke-width="2.2"/></svg>pass 1/1</span></td><td data-label="change" class="text prose">same outcome</td></tr></tbody></table></div></section>
+<section aria-labelledby="caveats"><h2 id="caveats">Differences that do not refuse a comparison</h2><ul class="flips"><li><span>Paired by task identity: <span class="data id">excalidraw-library</span> <span class="data id">1.1.0</span> on the baseline, <span class="data id">drawio-library</span> <span class="data id">1.1.0</span> on the candidate</span></li></ul></section>
+<section aria-labelledby="rules"><h2 id="rules">How this is compared</h2><p class="note">Paired across worlds by task identity: the unit is the distinct identity, and every run of one identity on a side gives one outcome (a pass when at least half of them passed). Rate claims use only the identities with the same number of runs on both sides. A different outcome is a difference between the two configurations, never an instance regression or fix. Titles, prompts, hints, actions and behaviour rules are not compared and may differ; the identities are the reports’ claims unless <code class="flag">--verify</code> re-derived them.</p></section>
+</main>
+</body>
+</html>

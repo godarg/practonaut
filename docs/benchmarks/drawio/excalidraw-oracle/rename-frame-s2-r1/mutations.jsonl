@@ -1,0 +1,2 @@
+{"seq":0,"op":"act","action":{"name":"rename_frame","params":{"id":"f","name":"Onboarding"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"check","client":null,"outcome":"accepted","step":1,"revision":1,"actor":"agent"}

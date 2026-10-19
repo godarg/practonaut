@@ -1,0 +1,3 @@
+{"id":2,"tool":"observe","code":"ok","resultBytes":5072,"bridgeMs":23.6}
+{"id":3,"tool":"act","code":"ok","resultBytes":610,"bridgeMs":54}
+{"id":4,"tool":"check_result","code":"ok","resultBytes":3690,"bridgeMs":20.3}

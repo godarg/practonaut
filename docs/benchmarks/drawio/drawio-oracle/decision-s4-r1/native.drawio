@@ -1,0 +1,31 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="2YGvZZ0islIvlOefA2h-" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Read form" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-2af5397f68e147f2172c34586d8f5f5c05c3c6fd08c95718572284d5b70a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Ask back" vertex="1">
+          <mxGeometry height="90" width="180" x="740" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="s-461558c7e217c27a9c85e1a20f0d00fb6e08e325490c63cc75c68d610f2c" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Accept" vertex="1">
+          <mxGeometry height="90" width="180" x="740" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s-fefe2a648c641304ef15f9a5e4b4d09a2653e068125398b1eab7341f63c8" parent="pn:layer" style="rhombus;html=0;strokeColor=#000000;fillColor=none;" value="Complete?" vertex="1">
+          <mxGeometry height="120" width="200" x="400" y="185" as="geometry" />
+        </mxCell>
+        <mxCell id="a-171b655d37bd49ffba32fe3e83b70aa922ce461e63748222037956656dfd" edge="1" parent="pn:layer" source="s-fefe2a648c641304ef15f9a5e4b4d09a2653e068125398b1eab7341f63c8" style="endArrow=classic;html=0;" target="s-2af5397f68e147f2172c34586d8f5f5c05c3c6fd08c95718572284d5b70a" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-1d32f012c3d534feb94c333f997de7a8912779b63388e4348dfac38c1ac0" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="s-fefe2a648c641304ef15f9a5e4b4d09a2653e068125398b1eab7341f63c8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-cf1ad0065d6b05c78f6657cd3a9ab72d33f41ed4d6ebd1d0a790486ff095" edge="1" parent="pn:layer" source="s-fefe2a648c641304ef15f9a5e4b4d09a2653e068125398b1eab7341f63c8" style="endArrow=classic;html=0;" target="s-461558c7e217c27a9c85e1a20f0d00fb6e08e325490c63cc75c68d610f2c" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

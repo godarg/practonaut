@@ -1,0 +1,6 @@
+{"id":2,"tool":"observe","code":"ok","resultBytes":6578,"bridgeMs":11.2}
+{"id":3,"tool":"act","code":"ok","resultBytes":864,"bridgeMs":53.3}
+{"id":4,"tool":"act","code":"ok","resultBytes":860,"bridgeMs":20.3}
+{"id":5,"tool":"act","code":"ok","resultBytes":862,"bridgeMs":18.4}
+{"id":6,"tool":"act","code":"ok","resultBytes":866,"bridgeMs":22.4}
+{"id":7,"tool":"check_result","code":"ok","resultBytes":4664,"bridgeMs":9.4}

@@ -1,0 +1,5 @@
+{"seq":0,"op":"act","action":{"name":"disconnect","params":{"id":"ac"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"act","action":{"name":"add_step","params":{"frameId":null,"label":"Confirm date","x":400,"y":200,"width":180,"height":90,"shape":"rectangle"},"baseStep":1},"client":"practonaut-bench","outcome":"accepted","step":2,"revision":2,"actor":"agent"}
+{"seq":2,"op":"act","action":{"name":"connect","params":{"from":"a","to":"s-7d61791980838945acdc0fbcf01016feb7d6fb306e00e50fbc5e2dda75e4"},"baseStep":2},"client":"practonaut-bench","outcome":"accepted","step":3,"revision":3,"actor":"agent"}
+{"seq":3,"op":"act","action":{"name":"connect","params":{"from":"s-7d61791980838945acdc0fbcf01016feb7d6fb306e00e50fbc5e2dda75e4","to":"c"},"baseStep":3},"client":"practonaut-bench","outcome":"accepted","step":4,"revision":4,"actor":"agent"}
+{"seq":4,"op":"check","client":null,"outcome":"accepted","step":4,"revision":4,"actor":"agent"}

@@ -1,0 +1,25 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="d55SF0aj5VM-nIZ3vscA" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Book room" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Send invite" vertex="1">
+          <mxGeometry height="90" width="180" x="700" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-7d61791980838945acdc0fbcf01016feb7d6fb306e00e50fbc5e2dda75e4" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Confirm date" vertex="1">
+          <mxGeometry height="90" width="180" x="400" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a-252f1bcbd15cc90bd1e302a1d7bfc4222a6e6be98a2ddfe5ef9ad5df6b15" edge="1" parent="pn:layer" source="s-7d61791980838945acdc0fbcf01016feb7d6fb306e00e50fbc5e2dda75e4" style="endArrow=classic;html=0;" target="c" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-a730cf1a13008ff36a7339c7d4d9f39e020f7f2c5f682d6dc6e7c92024b2" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="s-7d61791980838945acdc0fbcf01016feb7d6fb306e00e50fbc5e2dda75e4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

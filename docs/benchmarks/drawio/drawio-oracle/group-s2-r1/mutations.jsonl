@@ -1,0 +1,3 @@
+{"seq":0,"op":"act","action":{"name":"group_steps","params":{"id":"b","with":"a"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"act","action":{"name":"group_steps","params":{"id":"c","with":"a"},"baseStep":1},"client":"practonaut-bench","outcome":"accepted","step":2,"revision":2,"actor":"agent"}
+{"seq":2,"op":"check","client":null,"outcome":"accepted","step":2,"revision":2,"actor":"agent"}

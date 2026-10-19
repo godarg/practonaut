@@ -1,0 +1,25 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="AQHEg_nCytuPK8R08Ahp" name="Page-1">
+    <mxGraphModel dx="1116" dy="884" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="pn:group:g-9884d9a2f268183bc2ed41286cda329131a8635c88422641736e51accd7f" connectable="0" parent="pn:layer" style="group;" value="" vertex="1">
+          <mxGeometry height="90" width="780" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a" parent="pn:group:g-9884d9a2f268183bc2ed41286cda329131a8635c88422641736e51accd7f" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Pick" vertex="1">
+          <mxGeometry height="90" width="180" as="geometry" />
+        </mxCell>
+        <mxCell id="b" parent="pn:group:g-9884d9a2f268183bc2ed41286cda329131a8635c88422641736e51accd7f" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Pack" vertex="1">
+          <mxGeometry height="90" width="180" x="300" as="geometry" />
+        </mxCell>
+        <mxCell id="c" parent="pn:group:g-9884d9a2f268183bc2ed41286cda329131a8635c88422641736e51accd7f" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Label" vertex="1">
+          <mxGeometry height="90" width="180" x="600" as="geometry" />
+        </mxCell>
+        <mxCell id="d" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Ship" vertex="1">
+          <mxGeometry height="90" width="180" x="1000" y="200" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

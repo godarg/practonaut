@@ -1,0 +1,22 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="Zi24kmmATpN89HwScbqI" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Prepare" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="b" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Send" vertex="1">
+          <mxGeometry height="90" width="180" x="400" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-0482dd21814881cb43a1a19bd217fb10b333cc331b3684c363956729a12d" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Store" vertex="1">
+          <mxGeometry height="90" width="180" x="700" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ab" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="b" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

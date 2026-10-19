@@ -1,0 +1,5 @@
+{"seq":0,"op":"act","action":{"name":"set_frame","params":{"id":"a","frameId":"fs"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"act","action":{"name":"set_frame","params":{"id":"b","frameId":"fs"},"baseStep":1},"client":"practonaut-bench","outcome":"accepted","step":2,"revision":2,"actor":"agent"}
+{"seq":2,"op":"act","action":{"name":"set_frame","params":{"id":"c","frameId":"fd"},"baseStep":2},"client":"practonaut-bench","outcome":"accepted","step":3,"revision":3,"actor":"agent"}
+{"seq":3,"op":"act","action":{"name":"set_frame","params":{"id":"d","frameId":"fd"},"baseStep":3},"client":"practonaut-bench","outcome":"accepted","step":4,"revision":4,"actor":"agent"}
+{"seq":4,"op":"check","client":null,"outcome":"accepted","step":4,"revision":4,"actor":"agent"}
