@@ -27,7 +27,7 @@ import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, generateSet, taskIdOf, type ChallengeSet } from './build.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
 import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, heldOutSeeds, reservedRuns, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
-import { computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
+import { checkOutside, computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
 import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
 import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, type Ledger } from './ledger.ts';
 import { readLedger, type LedgerPaths } from './ledger-file.ts';
@@ -451,6 +451,13 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
   const { set, seeds } = heldOutSet(declaration);
   await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
+  // The cheap refusals first: the pushed ledger and runs outside it, before any report is re-verified.
+  const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
+  const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));
+  const given = [...files.development, ...files.oracle, ...files.random, ...(files.ladder ?? [])];
+  const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
+  const outside = await scanOutside(roots, { worlds: [declaration.development.world.contentHash, worldContentHash], tasks: [...declaration.development.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
+  checkOutside(outside);
   const read = async (paths: readonly string[], sessions = false): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await readGateReport(path, sessions)); return out; };
   const development = await read(files.development, true), oracle = await read(files.oracle), random = await read(files.random);
   if (!oracle.length) refuse('baseline_missing', 'name the oracle report(s) (--oracle)');
@@ -472,11 +479,6 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
     if (declarationHash(first) !== declaration.previous?.declaration) refuse('previous_round', 'the first round\'s declaration is not the one this round names');
     previousSeeds = heldOutSeeds(first);
   }
-  const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
-  const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));
-  const given = [...files.development, ...files.oracle, ...files.random, ...(files.ladder ?? [])];
-  const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
-  const outside = await scanOutside(roots, { worlds: [declaration.development.world.contentHash, worldContentHash], tasks: [...declaration.development.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
   return {
     plan, probe, declaration, git: { declaration: commit, versions: declarationVersions(files.declaration) },
     probeWorld: declaration.development.world.contentHash, tasks: seeds.map(seed => taskIdOf(family, seed)), seeds, worldContentHash,

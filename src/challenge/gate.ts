@@ -233,6 +233,10 @@ function bestOfN(ledger: Ledger, expect: Expect, given: readonly GateReport[], l
   }
 }
 
+/** Runs outside the ledger anywhere in the bench roots refuse the round (PADR-0042 amended, 3.1). */
+export function checkOutside(outside: ReadonlyArray<{ bench: string; run: string }>): void {
+  if (outside.length) fail('run_outside_ledger', `${outside.length} model run folder${outside.length === 1 ? '' : 's'} of this round's tasks hold${outside.length === 1 ? 's' : ''} no start entry in the release ledger (first: ${outside[0]!.run} in bench folder ${outside[0]!.bench}); every model run takes its entry before its client starts`);
+}
 export interface RoundInput {
   plan: Plan; probe: ProbeRecord; declaration: Declaration;
   /** The commits that hold the plan, the pre-probe record and the declaration, and every version of the declaration. */
@@ -298,8 +302,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   const plan = [...input.tasks];
   if (plan.length !== declaration.heldOut.instances || new Set(plan).size !== plan.length || input.seeds.length !== plan.length || plan.some((task, index) => task !== taskIdOf(family as Family, input.seeds[index]!)))
     fail('set_mismatch', `the held-out set is not the ${declaration.heldOut.instances} distinct instances the declaration derives`);
-  // Runs outside the ledger anywhere in the bench roots refuse the round.
-  if (input.outside.length) fail('run_outside_ledger', `${input.outside.length} model run folder${input.outside.length === 1 ? '' : 's'} of this round's tasks hold${input.outside.length === 1 ? 's' : ''} no start entry in the release ledger (first: ${input.outside[0]!.run} in bench folder ${input.outside[0]!.bench}); every model run takes its entry before its client starts`);
+  checkOutside(input.outside);
   // The pre-probe: the declared one, from the pushed ledger.
   const pre = probeRuns({ plan: probePlan, planHash, worldContentHash: input.probeWorld, reports: input.development, ledger });
   if (pre.digest !== declaration.development.digest || pre.digest !== probe.digest) fail('development_mismatch', 'the pre-probe runs are not the ones the declaration digests');

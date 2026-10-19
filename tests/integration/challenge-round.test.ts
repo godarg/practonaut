@@ -157,7 +157,7 @@ test('a whole 0.3.0 round without a language model: pre-probe, declaration, held
     // a usage limit at its eleventh run and resumed.
     await writeFile(solve, JSON.stringify({ oracles: join(held, 'oracles'), tasks: { [OPUS]: tasks.slice(0, 15), [SONNET]: tasks.slice(0, 10), [HAIKU]: tasks.slice(0, 4) } }));
     const ladder = (model: string, extra: Record<string, string> = {}, only?: string) => p.bench(['--purpose', 'held-out', '--declaration', declaration, '--', '--agent', 'claude-code', ...(only ? p.setArgs(held, only) : args)], { ANTHROPIC_MODEL: model, PN_FAKE_MODEL: model, PN_FAKE_SOLVE: solve, ...extra });
-    const stopped = await ladder(OPUS, { PN_FAKE_LIMIT_AFTER: '17' });   // 7 pre-probe starts + 10 held-out
+    const stopped = await ladder(OPUS, { PN_FAKE_LIMIT_AFTER: '10' });   // counted from this bench's first start
     assert.equal(stopped.status, 75, stopped.stderr);
     const rest = /--tasks (\S+)/.exec(stopped.stdout)![1]!;
     assert.equal(rest.split(',').length, 16);
