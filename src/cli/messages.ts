@@ -855,6 +855,10 @@ export const CLI_CATALOG = {
     "en": "the report names application adapter {given}; the stored world is for {stored}",
     "de": "der Bericht nennt den Anwendungsadapter {given}; die gespeicherte Welt ist für {stored}"
   },
+  "verifyWorldAppVersion": {
+    "en": "the report names application version {given}; the stored world pins {stored}",
+    "de": "der Bericht nennt die Anwendungsversion {given}; die gespeicherte Welt pinnt {stored}"
+  },
   "verifyIdentity": {
     "en": "the task identity of {task} with seed {seed} is not the one the stored world gives",
     "de": "die Aufgabenidentität von {task} mit Seed {seed} ist nicht die, die die gespeicherte Welt ergibt"

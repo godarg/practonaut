@@ -16,4 +16,10 @@ test('the committed draw.io evidence re-verifies and its comparison pairs 48 ide
   const result = JSON.parse(compared.stdout) as { baseline: { verification: string }; candidate: { verification: string }; comparison: { pairing: string; paired: number; discordant: { baselineOnly: number; candidateOnly: number } } };
   assert.deepEqual([result.baseline.verification, result.candidate.verification], ['re-verified', 're-verified']);
   assert.deepEqual([result.comparison.pairing, result.comparison.paired, result.comparison.discordant.baselineOnly, result.comparison.discordant.candidateOnly], ['identity', 48, 0, 0]);
+  // Each report is anchored to the library this Practonaut ships for its own application (review m2c).
+  for (const name of ['excalidraw-oracle', 'drawio-oracle']) {
+    const verified = spawnSync(process.execPath, [CLI, 'report', join(dir, name, 'report.json'), '--verify', '--runs', join(dir, name), '--json'], { encoding: 'utf8', timeout: 840_000 });
+    assert.equal(verified.status, 0, verified.stderr);
+    assert.deepEqual((JSON.parse(verified.stdout) as { verification: { library?: unknown } }).verification.library, { status: 'same' }, name);
+  }
 });

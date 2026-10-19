@@ -4,7 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,32 @@ test('bench --tasks drawio/…: the draw.io library, its pinned version and refe
     assert.deepEqual(references.references.map(entry => [entry.taskId, entry.worldId, entry.source]), [['connect', 'drawio-library', 'library'], ['group', 'drawio-library', 'library']]);
     const verified = spawnSync(process.execPath, [CLI, 'report', out, '--verify', '--runs', folder, '--json'], { encoding: 'utf8', env });
     assert.equal(verified.status, 0, verified.stderr);
-    assert.equal(JSON.parse(verified.stdout).verification.level, 're-verified');
+    const verification = JSON.parse(verified.stdout).verification as { level: string; library?: { status: string } };
+    assert.equal(verification.level, 're-verified');
+    // Anchored to the library this Practonaut ships for draw.io, not Excalidraw's (review m2c).
+    assert.deepEqual(verification.library, { status: 'same' });
+    const refusal = (reportFile: string): { code: string; message: string } => {
+      const result = spawnSync(process.execPath, [CLI, 'report', reportFile, '--verify', '--runs', folder, '--json'], { encoding: 'utf8', env });
+      assert.notEqual(result.status, 0, result.stdout);
+      return (JSON.parse((result.stdout || result.stderr).trim()) as { error: { code: string; message: string } }).error;
+    };
+    // A report that names another app version than the stored world pins (review m2c).
+    const versioned = structuredClone(report) as typeof report & { environment: { app: { version: string } } };
+    versioned.environment.app.version = '0.18.1';
+    writeFileSync(join(dir, 'version.json'), JSON.stringify(versioned));
+    const wrongVersion = refusal(join(dir, 'version.json'));
+    assert.equal(wrongVersion.code, 'bench_world_changed'); assert.match(wrongVersion.message, /0\.18\.1.*32\.4\.1/);
+    // References that are not the draw.io library's own, with the report's hash of them updated.
+    const referencesFile = join(folder, 'references.json'), stored = JSON.parse(readFileSync(referencesFile, 'utf8')) as { references: Array<{ taskId: string; steps: Array<{ params: Record<string, unknown> }> }> };
+    const connect = stored.references.find(entry => entry.taskId === 'connect')!.steps[0]!.params;
+    [connect.from, connect.to] = [connect.to, connect.from];
+    const tampered = JSON.stringify(stored);
+    writeFileSync(referencesFile, tampered);
+    const rebound = JSON.parse(readFileSync(out, 'utf8')) as { references: { sha256: string } };
+    rebound.references.sha256 = createHash('sha256').update(tampered).digest('hex');
+    writeFileSync(join(dir, 'references.json'), JSON.stringify(rebound));
+    const wrongReference = refusal(join(dir, 'references.json'));
+    assert.equal(wrongReference.code, 'bench_reference_invalid'); assert.match(wrongReference.message, /connect is not the reference solution of the library this Practonaut ships/);
     const mixed = spawnSync(process.execPath, [CLI, 'bench', '--agent', 'oracle', '--tasks', 'connect,drawio/group', '--mirror', 'off'], { encoding: 'utf8', env });
     assert.equal(mixed.status, 1); assert.match(mixed.stderr, /two libraries/);
   } finally { rmSync(dir, { recursive: true, force: true }); }

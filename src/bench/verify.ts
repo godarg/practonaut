@@ -371,6 +371,8 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
   if (report.verdictLevel !== 'session') throw new BenchReportError(cliText('verifyArtifactLevel'));
   const world = await storedWorld(report, runsDirectory), changed = (message: string): never => { throw new BenchReportError(message, 'bench_world_changed'); };
   if (report.environment.app.adapterId !== world.app.adapterId) changed(cliText('verifyWorldApp', { given: safeText(report.environment.app.adapterId), stored: safeText(world.app.adapterId) }));
+  // The version a page shows ("exported by the real draw.io 32.4.1") is the stored world's pin (review m2c).
+  if (report.environment.app.version !== world.app.versionRange) changed(cliText('verifyWorldAppVersion', { given: safeText(String(report.environment.app.version)), stored: safeText(world.app.versionRange) }));
   if (report.environment.world.scenarios !== undefined) throw new BenchReportError(cliText('verifyCoActor', { run: report.environment.world.scenarios[0]?.taskId ?? '' }));
   const identityOf = identityCache(world);
   for (const entry of report.instances) {
