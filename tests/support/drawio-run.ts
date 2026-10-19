@@ -70,15 +70,26 @@ export function chromiumTreeRss(): number | null {
   } catch { return null; }
 }
 
-/** The command line of every process under this one (POSIX `ps`, full width), without `ps` itself; null where not measured. */
+/** Every process with its parent and full command line: POSIX `ps` at full width, or on Windows the
+ * `Win32_Process` table through PowerShell. The query's own process is left out. */
+function processTable(): Array<{ pid: number; ppid: number; args: string }> {
+  if (process.platform === 'win32') {
+    const query = 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress';
+    const parsed = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', query], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true })) as unknown;
+    const list = (Array.isArray(parsed) ? parsed : [parsed]) as Array<{ ProcessId?: unknown; ParentProcessId?: unknown; CommandLine?: unknown }>;
+    return list.map(p => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId), args: typeof p.CommandLine === 'string' ? p.CommandLine.trim() : '' })).filter(p => !p.args.includes('Get-CimInstance Win32_Process'));
+  }
+  return execFileSync('ps', ['-A', '-ww', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n')
+    .flatMap(line => { const m = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line); return m ? [{ pid: Number(m[1]), ppid: Number(m[2]), args: m[3]!.trim() }] : []; })
+    .filter(p => !/^(\S*\/)?ps\s+-A\b/.test(p.args));
+}
+/** The command line of every process under this one; null when the process table cannot be read. */
 export function descendantCommands(): string[] | null {
-  if (process.platform === 'win32') return null;
   try {
-    const rows = execFileSync('ps', ['-A', '-ww', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n').flatMap(line => { const m = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line); return m ? [{ pid: Number(m[1]), ppid: Number(m[2]), args: m[3]!.trim() }] : []; });
-    const children = new Map<number, number[]>();
+    const rows = processTable(), children = new Map<number, number[]>();
     for (const row of rows) children.set(row.ppid, [...(children.get(row.ppid) ?? []), row.pid]);
-    const args = new Map(rows.map(row => [row.pid, row.args])), out: string[] = [], queue = [...(children.get(process.pid) ?? [])];
-    while (queue.length) { const pid = queue.pop()!; if (pid === process.pid) continue; const line = args.get(pid) ?? ''; if (!/^(\S*\/)?ps\s+-A\b/.test(line)) out.push(line); queue.push(...(children.get(pid) ?? [])); }
+    const args = new Map(rows.map(row => [row.pid, row.args])), out: string[] = [], seen = new Set<number>([process.pid]), queue = [...(children.get(process.pid) ?? [])];
+    while (queue.length) { const pid = queue.pop()!; if (seen.has(pid)) continue; seen.add(pid); if (args.has(pid)) out.push(args.get(pid)!); queue.push(...(children.get(pid) ?? [])); }
     return out;
   } catch { return null; }
 }

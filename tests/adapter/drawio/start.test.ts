@@ -12,7 +12,7 @@ import { descendantCommands, observeSandbox, type SandboxObservation } from '../
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const availability = await drawioAvailability();
 
-test('the sandbox observation tells a Chromium started without its sandbox from one started with it', { skip: availability.ok ? (process.platform === 'win32' ? 'not measured on Windows' : false) : availability.skip, timeout: 120_000 }, async () => {
+test('the sandbox observation tells a Chromium started without its sandbox from one started with it', { skip: availability.ok ? false : availability.skip, timeout: 120_000 }, async () => {
   const observed: Record<string, SandboxObservation | null> = {};
   for (const chromiumSandbox of [false, true]) {
     const browser = await chromium.launch({ chromiumSandbox, headless: true });
@@ -35,7 +35,7 @@ test('five fresh starts: median to the first load within 3 s, Chromium tree with
     assert.deepEqual(start.refused, []);
     // Measured, not assumed (review m2c, runtime-1): Chromium processes ran, and none without its sandbox.
     assert.match(start.chromium ?? '', /^\d+\.\d+\.\d+\.\d+$/);
-    if (process.platform !== 'win32') { assert.ok(start.sandbox && start.sandbox.processes > 0, JSON.stringify(start.sandbox)); assert.equal(start.sandbox.noSandbox, 0); }
+    assert.ok(start.sandbox && start.sandbox.processes > 0, JSON.stringify(start.sandbox)); assert.equal(start.sandbox.noSandbox, 0);
     assert.ok(start.nodeRss <= 1024 ** 3, `Node peak RSS ${start.nodeRss}`);
     if (start.chromiumTree !== null) assert.ok(start.chromiumTree <= 1.5 * 1024 ** 3, `Chromium tree RSS ${start.chromiumTree}`);
   }

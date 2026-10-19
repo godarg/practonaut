@@ -64,7 +64,7 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
     if (record.peakRss.node > NODE_RSS_MAX) problems.push(`${where}: Node peak RSS ${record.peakRss.node} bytes`);
     if (record.peakRss.chromiumTree !== null && record.peakRss.chromiumTree > CHROMIUM_TREE_RSS_MAX) problems.push(`${where}: Chromium tree peak RSS ${record.peakRss.chromiumTree} bytes`);
     // The sandbox is measured, not assumed (review m2c, runtime-1): processes ran, none with --no-sandbox.
-    if (record.sandbox === null) { if (process.platform !== 'win32') problems.push(`${where}: the Chromium processes were not observed`); }
+    if (record.sandbox === null) problems.push(`${where}: the Chromium processes were not observed`);
     else if (record.sandbox.processes === 0) problems.push(`${where}: no Chromium process was observed`);
     else if (record.sandbox.noSandbox > 0) problems.push(`${where}: ${record.sandbox.noSandbox} Chromium processes ran with --no-sandbox`);
   }
