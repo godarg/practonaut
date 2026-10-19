@@ -1,6 +1,7 @@
 # PADR-0042 — The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget
 
-Status: proposed · Date: 2026-10-18 · Amends the gate preregistration of
+Status: accepted 2026-10-19 with the change that implements it (P1, issue #44), with the amendment
+at the end · Date: 2026-10-18 · Amends the gate preregistration of
 [PADR-0040](0040-challenge-tier-generated-families-and-gate.md) for rounds of 0.3.0; PADR-0040
 stays binding for everything this record does not change · Implements maintainer decisions D1, D2
 and D4 of 2026-10-17 (maintainer approval of the non-Claude ladder agents in the sense of
@@ -74,7 +75,7 @@ none measures these tasks, and an inverted pair almost surely fails a family tha
 **A second round.** (1) As in PADR-0040, at α = 0.05 again — two chances at the nominal level.
 (2) Allowed only with a Bonferroni-corrected α = 0.025 (chosen). (3) No second round.
 
-## Decision (proposed)
+## Decision
 
 1. **Unit.** A unit is a family on a toolchain, written `<family>.<toolchain>` (for example
    `repair.excalidraw-mcp-0.3.2`, `layout.practonaut`), part of every file name, world id and
@@ -154,3 +155,90 @@ A local agent becomes available (shape A replaces shape B); more than half
 of the funded units fail on headroom; a vendor's terms forbid automated runs through its
 subscription; a client stops reporting its model; the budget runs out before the preregistered
 units are pre-probed.
+
+## Amendment on acceptance (2026-10-19, P1)
+
+Accepted with the change that implements it (`src/challenge/`, `tools/challenge.ts`, the start guard
+in the bench runner). Each point says what changes and why; everything else above stands.
+
+1. **Shape B only in 0.3.0** ([PADR-0046](0046-vendor-neutral-presets.md) decision 7). No agent
+   other than Claude through `claude-code` is gate-eligible in 0.3.0, so shape A is unreachable. The
+   tools implement shape B: a pre-probe of Opus on 7 development instances (1–5 passes admit, no
+   extension) and 26 held-out instances run by Opus, Sonnet and Haiku through `claude-code`
+   ((26 + 7) × 3 = 99 ≤ 100; 7 + 78 = 85 runs planned). A declaration in shape A is refused by name
+   (`shape_a_refused`), and so is a ladder agent through any other preset (`ladder_preset_refused`:
+   `codex`, `codex-oss`, `opencode-local` or a name the tools do not know) or with a `local` billing
+   class. Decision 5's shape A, decision 7's 10-instance pre-probe with its edge extension and
+   decision 9's 30-instance round stay in this record for a later release. The general refusals of
+   decision 9 (fewer than 24 held-out instances, more than three subscription agents, fewer than three
+   agents, a formula above 100) are checked before the shape-B sizes, each with its own code.
+2. **[PADR-0044](0044-bench-report-v3.md) decision 8**, amending decisions 3, 4 and 7:
+   - *A probe plan, pushed before the first run.* `<unit>-round-<k>.probe-<p>.plan.json` names the
+     unit, the verdict level, the toolchain pin (at session level the Practonaut version; at artifact
+     level the server version, its archive SHA-256 and the reading-rules version), generator and
+     difficulty, the pre-probe agent and its seeds, and the bench settings. The pre-probe set is
+     generated only from a committed and pushed plan, the start guard refuses a pre-probe start
+     without one, and every pre-probe start entry names the plan's canonical SHA-256. The declaration
+     repeats the plan's values.
+   - *Two ledger records per run, both appended.* The start entry before the client starts; one
+     run-end record per start entry, appended by the runner that took the start, never by `bench
+     --recover`. A judged run without its run-end record counts, is never digested or scored, and its
+     task may be benched again.
+   - *Read only once pushed.* `declare` and `gate` read a pre-probe or held-out run only when the
+     committed release ledger holding both its records is committed, unchanged and contained in a
+     remote-tracking branch, and refuse a run whose report binds other hashes (`session.json`,
+     `agent.stdout`, `checker.json`), status, failure, toolchain or rules version than its records.
+   - *Every committed version of the release ledger is a prefix of the current one*; `declare` and
+     `gate` check it, and the gate report lists the versions.
+   - *The start guard reserves*: every start counts until its run-end record releases it.
+3. **Changes the implementation forces.**
+   1. *Where the guard runs.* In the bench runner, reached through `node tools/challenge.ts bench
+      --purpose <p> … -- <bench arguments>`. `practonaut bench` takes no release ledger: the ledger is
+      the project's, the command is everyone's. A project run started another way is outside the
+      ledger, and `declare` and `gate` refuse a round when a model-run folder of its tasks has no start
+      entry (`run_outside_ledger`).
+   2. *Built-in agents take no entry.* They start no client, and PADR-0044's records have no billing
+      class for them; the gate report lists their runs as not counted.
+   3. *The start entry also names* the purpose (`pre-probe`, `held-out`, `development`, `example`,
+      `acceptance`, `red-team`), the round, the plan or declaration it serves (`basis`), the requested
+      model, the bench folder and the run. Per-round spend, best-of-N and the pushed-records rule read
+      them from the ledger (PADR-0044's review row on the ledger naming bench folder and run).
+   4. *The run-end record also carries* the run's status, its `failure` (reason, parser, code,
+      `beforeModelWork`), Practonaut's own host-call counts and the client's token total, so that the
+      budget exemption is decided from the record's structure; the gate re-derives the failure from the
+      bound stdout for the round's runs and refuses a record that differs.
+   5. *An exempt run-end record releases the reservation*, as a run-end with both classes `local`,
+      `client-attested`, does: the maintainer's D4 exempts such runs from the 800, and the guard, the
+      declaration and the gate use one count. Exempt only when the failure is `usage_limit` or `auth`,
+      before model work, read by a shipped parser, with no host call beyond the bridge's start-up read
+      and no tokens (PADR-0044 decision 9).
+   6. *A new local ledger only by `ledger init`*, which copies the committed one; the guard refuses a
+      start when the committed ledger is not a prefix of the local one (`ledger_diverged`), and a
+      missing local ledger (`ledger_missing`). Otherwise a mistyped path would start a count at zero.
+   7. *The pre-probe belongs to its round.* Its record is `<unit>-round-<k>.probe-<p>.json`; a retune
+      is probe 2 of the same round, with a newer generator version and seeds disjoint from probe 1's,
+      once per unit. Only the probe a declaration follows from counts against the round.
+   8. *Funding in numbers.* A unit is funded when the release count, the round's 78 held-out runs,
+      the held-out runs of units admitted earlier and not yet declared, and 40 runs fit into 800; a
+      unit on Practonaut's own actions also leaves two rounds (2 × 99) for foreign toolchains while
+      artifact mode is not accepted (the four weeks after its acceptance need its date, which that
+      change records). An admitted unit that is not funded is refused at `declare` with "admitted, not
+      gated for budget".
+   9. *Units.* A unit outside the preregistered list needs `--maintainer-approved-unit <unit>`, recorded
+      in the plan and the declaration, as PADR-0040's `--maintainer-approved` records a model. A unit
+      on a foreign toolchain is refused until artifact mode ships its toolchain definitions
+      (`toolchain_unavailable`); the draw.io units are named when its server is pinned.
+   10. *Attestation and exemption from evidence only* (two bench/3 review findings). A run counts as
+       attested for the gate pair and the ladder only when a shipped parser re-derived its client
+       values from its bound stdout and they name the declared model; otherwise it is not passed and
+       counts toward the void rule. A run is exempt from a budget only by the structure above, never
+       by note text, tool-call counts or missing tokens.
+   11. *Version pin at session level.* The plan pins the Practonaut version; every report of the round
+       and the gate itself use that version.
+   12. *Requested and attested model.* Each ladder agent is declared by preset and model id
+       (`--ladder`); its reports must request that model (`ANTHROPIC_MODEL`) and every judged run must
+       attest it. The pre-probe gives Opus's attested id.
+   13. *Gate report /2*: Markdown and JSON (`practonaut.challenge-gate/2`) in
+       `docs/benchmarks/challenge/0.3.0/`; the release ledger `release-ledger.jsonl` there replaces
+       0.2.0's per-round ledger files. `/1` declarations and 0.2.0 ledgers stay readable and are never
+       counted: 0.3.0 counts its own ledger from zero.

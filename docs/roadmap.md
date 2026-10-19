@@ -305,10 +305,11 @@ are accepted whenever they are ready.
 
 - **P1. Gate tool for 0.3.0** (M–L): `src/challenge/`, `tools/challenge.ts` and the release-run
   guard, after the bench/3 frame (P3) and before any model run; artifact-mode and co-actor support
-  in later changes. *Acceptance:* a whole 0.3.0 round without a language model (stand-ins, shapes A
-  and B of PADR-0042) runs through pre-probe, declaration, held-out set, preflight, gate and ledger;
-  the count starts at zero although the 0.2.0 rounds are committed; every refusal PADR-0042 names has
-  a test that fails without it; a start past 800 is refused before the client starts.
+  in later changes. *Acceptance:* a whole 0.3.0 round without a language model (stand-ins, shape B
+  of PADR-0042; shape A is refused by name in 0.3.0, PADR-0046) runs through pre-probe,
+  declaration, held-out set, preflight, gate and ledger; the count starts at zero although the 0.2.0
+  rounds are committed; every refusal PADR-0042 names has a test that fails without it; a start past
+  800 is refused before the client starts.
 - **P2. "H1 native file" fixed at its cause** (S–M): the integration test whose native file dialog
   did not open within 10 s on several runners in 0.2.0, fixed at the cause, not the timeout.
   *Acceptance:* a deterministic ordering test fails on the old code and passes on the new; an opt-in
