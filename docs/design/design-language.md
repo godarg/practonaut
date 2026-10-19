@@ -783,3 +783,13 @@ line boxes, red on the reviewed commit. Consciously not done: a page title (the 
 quoted board label may still wrap at their own hyphens, since a title or an author's label longer
 than a phone's line has to wrap somewhere; "Wilson score interval" became "Wilson interval" rather
 than a rule question about the term of art. A short round R3 looks at the major's states again.
+
+Round R3 looked at the R2 major's states on 2026-10-19, an independent agent from fresh context: 20
+captures from commit `75c99cf`. R2-F1 was resolved on every image; verdict conditional: no blocker,
+1 major and 4 minor findings. The major (in the session compare's stacked table at 320 px the
+instance name, joined into one unit by R2, was cut inside "Seed" in its half-width cell) was fixed:
+every compare gives the instance cell the full stacked row, an instance name that fits a line is one
+unit, and `test:a11y` measures every word of the instance cell, red on the reviewed commit. The
+minors were fixed (run-count lines name their pair as the table does; "Wilson", "McNemar" and
+"Practonaut" are never hyphenated in notes and notices; a formal line wraps between its words; the
+compact table applies only where the table does not stack). Nothing was consciously left undone.
