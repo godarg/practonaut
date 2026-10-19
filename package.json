@@ -59,6 +59,7 @@
     "demo": "node tools/demo.ts",
     "engine:build": "node tools/build-engine.ts",
     "test:adapter": "npm run engine:build && node --import ./tests/support/test-home.ts --test --test-timeout=180000 --test-reporter=spec \"tests/adapter/*.test.ts\"",
+    "test:drawio": "node --import ./tests/support/test-home.ts --test --test-concurrency=1 --test-timeout=2700000 --test-reporter=spec \"tests/adapter/drawio/*.test.ts\"",
     "test:integration": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts --test --test-concurrency=2 --test-timeout=480000 --test-reporter=spec \"tests/integration/*.test.ts\"",
     "world:freeze": "node tools/freeze-world.ts",
     "player:build": "node tools/build-player.ts",

@@ -1,7 +1,7 @@
 // PADR-0049 decision 6: the checker's own `.drawio` reader. Every fixture is written by hand from the
 // draw.io file format; the expected states are derived from the record's reading rules, not from the
 // reader. Each refusal is asserted by its reason. Differential fixtures through the real app are in
-// tests/adapter/drawio-reader-conformance.test.ts.
+// tests/adapter/drawio/cases.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
