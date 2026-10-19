@@ -24,7 +24,7 @@ import { CheckerError } from '../checker/index.ts';
 import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
-import { BROWSER_BOUNDS } from '../adapters/browser/bounded.ts';
+import { BROWSER_BOUNDS, closeAfterFailure } from '../adapters/browser/bounded.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string;
   /** Test seam: how the demonstration waits before each step (real timers when absent; the CLI never sets it). */
@@ -134,6 +134,17 @@ function headers(response: ServerResponse): void {
 function requireReplyBudget(value: unknown): void {
   if (Buffer.byteLength(JSON.stringify(value)) > HOST_LIMITS.replyBytes - 2048) throw new HostError('result_too_large', 'Result exceeds HTTP budget before admission');
 }
+/** After a failed start, every cleanup step is tried on its own, each within the close bound, and none
+ * of them replaces the start's failure; their failures are kept next to it (issue #64). */
+async function cleanUpAfterStart(failure: unknown, ...steps: Array<() => unknown>): Promise<unknown> {
+  for (const step of steps) await closeAfterFailure(failure, async () => { await step(); });
+  return failure;
+}
+/** A practice host started for the author is answered only when its reply fits the budget; one that
+ * does not is closed again within the close bound, and the budget's refusal stays the error (issue #64). */
+export async function admitChildHost(child: Pick<RunningHost, 'close'>, value: unknown): Promise<void> {
+  try { requireReplyBudget({ ok: true, value }); } catch (error) { throw await closeAfterFailure(error, () => child.close()); }
+}
 function json(response: ServerResponse, code: number, value: unknown): void {
   let bytes = Buffer.from(JSON.stringify(value));
   if (bytes.length > HOST_LIMITS.replyBytes) { code = 413; bytes = Buffer.from(JSON.stringify({ ok: false, error: { code: "result_too_large", message: "Result exceeds HTTP budget" } })); }
@@ -197,7 +208,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   let controller: PracticeController;
   const sessionOptions: PracticeSessionOptions = { ...options, onMirrorDiagnostic: record => diagnostics.write(record), admitView: view => requireReplyBudget({ ok: true, value: { view } }) };
   try { controller = await (options.controllerFactory ?? createPracticeSession)(world, sessionOptions); }
-  catch (error) { await diagnostics.discard(); await credential.remove(); throw error; }
+  catch (error) { throw await cleanUpAfterStart(error, () => diagnostics.discard(), () => credential.remove()); }
   // The bundled example's demonstration owns the session while it runs; every surface goes through it.
   // Under a check limit (`--checks`, PADR-0040) it would spend the attempt's changes and checks: none.
   let demonstration: DemonstrationControl | undefined;
@@ -210,7 +221,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   let editorAssets: Awaited<ReturnType<typeof startEditorAssets>> | undefined;
   if (options.phase3) {
     try { author = await createAuthorController(options.localDirectory ?? dataPaths().home); }
-    catch (error) { await controller.close(); await diagnostics.discard(); await credential.remove(); throw error; }
+    catch (error) { throw await cleanUpAfterStart(error, () => controller.close(), () => diagnostics.discard(), () => credential.remove()); }
   }
   let origin = ""; let busy = false;
   const children = new Set<RunningHost>();
@@ -353,7 +364,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
             const compiledWorld = await author!.compiledWorld(parsed.expectedRevision, parsed.worldSha256);
             const child = await startHost(compiledWorld, { mirror: 'required', tokenDirectory: options.tokenDirectory ?? dataPaths().host, assetDirectory: assetDir, phase3: false });
             const value = { url: child.url, worldSha256: parsed.worldSha256 };
-            try { requireReplyBudget({ ok: true, value }); } catch (error) { await child.close(); throw error; }
+            await admitChildHost(child, value);
             children.add(child); reply = { ok: true, value }; break;
           }
           case AUTHOR_ROUTES.fromScenes: {
@@ -369,7 +380,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
             const child = await startHost(made.world, { mirror: options.mirror ?? 'required', tokenDirectory: options.tokenDirectory ?? dataPaths().host, assetDirectory: assetDir, phase3: false });
             const value: AuthorFromScenesReply = { url: child.url, task: { title: made.task.title, prompt: made.task.prompt, conditions: made.task.conditionTexts ?? [] },
               summary: { ...made.summary, oracleActions: made.oracle.steps.length, nearMisses: made.oracle.nearMisses.length, unmodeled: made.unmodeled.start.length + made.unmodeled.goal.length } };
-            try { requireReplyBudget({ ok: true, value }); } catch (error) { await child.close(); throw error; }
+            await admitChildHost(child, value);
             children.add(child); reply = { ok: true, value }; break;
           }
           case AUTHOR_ROUTES.editor: {
@@ -396,12 +407,18 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   const heartbeat = setInterval(() => { for (const response of streams) sendEvent(response, { type: "heartbeat", revision: controller.view().revision }); }, HOST_LIMITS.heartbeatMs); heartbeat.unref();
   try {
     await new Promise<void>((ready, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.off("error", reject); ready(); }); });
-  } catch (error) { clearInterval(heartbeat); unsubscribe(); await controller.close(); await diagnostics.discard(); await credential.remove(); throw error; }
+  } catch (error) { clearInterval(heartbeat); throw await cleanUpAfterStart(error, unsubscribe, () => controller.close(), () => diagnostics.discard(), () => credential.remove()); }
   const address = server.address(); if (!address || typeof address === "string") throw new HostError("host_rejected", "Listener address unavailable");
   origin = `http://127.0.0.1:${address.port}`;
   if (options.phase3) {
     try { editorAssets = await startEditorAssets(origin); }
-    catch (error) { clearInterval(heartbeat); unsubscribe(); await new Promise<void>(done => server.close(() => done())); await author?.close(); await controller.close(); await diagnostics.discard(); await credential.remove(); throw error; }
+    // The listener's close ends every connection and event stream first: an open stream must not hold it
+    // (and every step after it) for good.
+    catch (error) {
+      clearInterval(heartbeat);
+      const closeListener = (): Promise<void> => new Promise<void>(done => { for (const response of streams) response.destroy(); server.close(() => done()); server.closeAllConnections(); });
+      throw await cleanUpAfterStart(error, unsubscribe, closeListener, () => author?.close(), () => controller.close(), () => diagnostics.discard(), () => credential.remove());
+    }
   }
   let closePromise: Promise<void> | undefined;
   return { origin, url: `${origin}/#code=${code}`, port: address.port, token, code, tokenFile: credential.path, issueUrl() { return `${origin}/#code=${issueCode()}`; }, close() {

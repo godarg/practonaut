@@ -52,8 +52,30 @@ All notable changes are recorded here. The format follows
   steps) judged on step boxes and on straight lines between step centres, with a cost bound per
   clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
   the `challenge-layout` generator. No behaviour changes yet.
+- A browser that runs out of time says which operation and which bound: "Browser close exceeded its
+  deadline of 8000 ms" instead of "Browser operation exceeded its deadline" (launch, setup, start,
+  rollback, close, settlement; issue #64, where the Windows failures were the 8 s close of the real
+  browser in the host deadline tests' cleanup). Bounds and behaviour are unchanged. For developers:
+  `npm run amplify:host-deadline` repeats those two tests under load and times every browser close,
+  and the manual `host-deadline-repeat` workflow runs it on each CI platform
+  ([testing](docs/testing.md#host-deadline-tests)).
 
 ### Fixed
+
+- A browser close after a failure no longer replaces that failure (issue #64). When a session or
+  host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
+  an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
+  or a render check or report card fails, the close that follows runs within the close bound
+  (graceful 3 s + forced 5 s) and the caller gets the original failure, with the close's failure kept
+  next to it as `closeError`. A failed host start tries every cleanup step on its own (the listener,
+  ending its connections and event streams first; the author store; the session; the diagnostics;
+  the credential), and a mirror waits no longer than the close bound for an old adapter, in a
+  recovery too. Before, a close or cleanup step that failed replaced the failure (a native transfer
+  export reported "Browser close exceeded its deadline" instead of its own error; a diagnostics file
+  already gone made a failed start report `ENOENT` and keep its credential), and a close that never
+  finished held these paths forever: a failed host start never removed its credential, an open event
+  stream held a failed editor start for good, and an interrupted mirror recovery kept the session's
+  write lock.
 
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
   #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
