@@ -76,7 +76,8 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
   }
   const summary = {
     schema: 'practonaut.drawio-conformance/1',
-    commit: process.env.GITHUB_SHA ?? null,
+    // The commit the runs were made on (CI names it; a checkout asks git), never a path.
+    commit: process.env.GITHUB_SHA ?? (spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout?.trim() || null),
     platform: `${process.platform}-${process.arch}`, node: process.version,
     playwright: (JSON.parse(readFileSync(join(root, 'node_modules/playwright-core/package.json'), 'utf8')) as { version: string }).version,
     sandbox: 'required', pin: { version: DRAWIO_PIN.version, size: DRAWIO_PIN.size, sha256: DRAWIO_PIN.sha256 },
