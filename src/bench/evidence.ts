@@ -247,25 +247,28 @@ const DETAIL: Record<ClientFailure['reason'], string> = { usage_limit: 'usage or
  * `error_max_turns`) or an assistant message the client marks as an API error, whose status or words
  * name a usage or rate limit (429), an authentication or billing error (401, 403, an expired login)
  * or a server error (5xx, 529 included). A context overflow and other 4xx errors stay the agent's.
- * The detail is fixed text, never the client's own words. The failure came before model work when no
- * assistant message of the model (one the client does not mark as an API error) precedes it.
+ * The detail is fixed text, never the client's own words; the first such report is the failure. It
+ * came before model work only when no assistant message of the model (one the client does not mark as
+ * an API error) appears anywhere in the output, before or after it, and the whole output was read
+ * (`complete`): a client that worked on after a refused limit did model work, and output past the part
+ * read could hold some.
  */
-export function clientFailure(stdout: string): ClientFailure | null {
-  let modelWork = false;
+export function clientFailure(stdout: string, complete = true): ClientFailure | null {
+  let modelWork = false, failure: Omit<ClientFailure, 'beforeModelWork'> | null = null;
   for (const line of stdout.split('\n')) {
     if (!line.trimStart().startsWith('{')) continue;
     let event: Record<string, unknown>;
     try { const parsed: unknown = JSON.parse(line); if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue; event = parsed as Record<string, unknown>; } catch { continue; }
     if (event.type === 'rate_limit_event') {
       const status = (event.rate_limit_info as { status?: unknown } | undefined)?.status;
-      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') return { reason: 'usage_limit', detail: 'rate_limit_event not allowed', code: failureCode(status), beforeModelWork: !modelWork };
+      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') failure ??= { reason: 'usage_limit', detail: 'rate_limit_event not allowed', code: failureCode(status) };
       continue;
     }
     if (event.type === 'result' && event.is_error === true && event.subtype !== 'error_max_turns') {
       const text = [event.result, event.error, ...(Array.isArray(event.errors) ? event.errors : [])].filter((value): value is string => typeof value === 'string').join(' ').slice(0, 4096);
       const status = typeof event.api_error_status === 'number' ? event.api_error_status : statusIn(text);
       const reason = errorClass(status, text);
-      if (reason) return { reason, detail: `result is_error: ${DETAIL[reason]}`, code: failureCode(status) ?? failureCode(event.subtype), beforeModelWork: !modelWork };
+      if (reason) failure ??= { reason, detail: `result is_error: ${DETAIL[reason]}`, code: failureCode(status) ?? failureCode(event.subtype) };
       continue;
     }
     if (event.type === 'assistant' && (event.isApiErrorMessage === true || typeof event.error === 'string')) {
@@ -273,13 +276,15 @@ export function clientFailure(stdout: string): ClientFailure | null {
       const words = Array.isArray(content) ? content.flatMap(part => typeof (part as { text?: unknown })?.text === 'string' ? [(part as { text: string }).text] : []) : [];
       const text = [typeof event.error === 'string' ? event.error : '', ...words].join(' ').slice(0, 4096);
       const status = statusIn(text), reason = errorClass(status, text);
-      if (reason) return { reason, detail: `assistant API error: ${DETAIL[reason]}`, code: failureCode(status), beforeModelWork: !modelWork };
+      if (reason) failure ??= { reason, detail: `assistant API error: ${DETAIL[reason]}`, code: failureCode(status) };
       continue;
     }
     if (event.type === 'assistant') modelWork = true;
   }
-  return null;
+  return failure ? { ...failure, beforeModelWork: !modelWork && complete } : null;
 }
+/** Whether a log head is the whole file (no line past the part read). */
+export const wholeLog = (head: { unreadLines: number; countCapped: boolean } | null): boolean => head !== null && head.unreadLines === 0 && !head.countCapped;
 
 /** SHA-256 and size of a whole regular file, read as a stream whatever its size (PADR-0044 decision 5:
  * the run's stdout binding); null when it is missing or not a regular file. */

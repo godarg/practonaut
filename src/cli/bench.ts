@@ -388,7 +388,10 @@ export async function commandCompare(args: string[]): Promise<number> {
     const hint = cliText(({ level: 'compareHintLevel', agentKind: 'compareHintAgentKind', gate: 'compareHintGate', settings: 'compareHintSettings' } as const)[refusalHint(error.differences, views.baseline, views.candidate, options)]);
     throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: value(difference.field, difference.baseline), candidate: value(difference.field, difference.candidate) })).join('; '), hint }));
   }
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verdictLevel: views.baseline.verdictLevel, verification: sides.baseline.verification.level, ...(sides.baseline.verification.notRederived?.length ? { notRederived: sides.baseline.verification.notRederived } : {}) }, candidate: { schema: candidate.schema, verdictLevel: views.candidate.verdictLevel, verification: sides.candidate.verification.level, ...(sides.candidate.verification.notRederived?.length ? { notRederived: sides.candidate.verification.notRederived } : {}) }, comparison }) + '\n');
+  // Each side as report --json names its verification: the level, the parsers not shipped here and
+  // whether a preset was checked (a side whose client values are claims never reads as re-derived).
+  const sideJson = (schema: string, view: BenchReportView, verification: VerificationDetail): Record<string, unknown> => ({ schema, verdictLevel: view.verdictLevel, verification: verification.level, ...(verification.notRederived?.length ? { notRederived: verification.notRederived } : {}), ...(verification.preset ? { preset: verification.preset } : {}) });
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: sideJson(baseline.schema, views.baseline, sides.baseline.verification), candidate: sideJson(candidate.schema, views.candidate, sides.candidate.verification), comparison }) + '\n');
   else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));
   if (html) {
     await writeAtomic(html, renderCompareHtml(sides.baseline, sides.candidate, comparison, await readTokensCss(), language));

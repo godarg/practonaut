@@ -899,7 +899,13 @@ Choices P3b made inside the record, for the next holder:
   key or switch: `api-key`; none: `subscription`) and `requestedModel` from `ANTHROPIC_MODEL` in the
   environment the client starts with; `bench --recover` cannot know that environment and records the
   requested model as not known. `beforeModelWork` of `claude-code-stream/1` is true when no assistant
-  message of the model (one the client does not mark as an API error) precedes the failure event.
+  message of the model (one the client does not mark as an API error) appears anywhere in the run's
+  whole stdout, before or after the failure event (re-review r3: a client that worked on after a
+  refused limit did model work); output longer than the part the parser reads is never "before".
+- A version that is not SemVer 2.0.0 (a leading zero, an empty identifier) is never "newer", so a
+  report that names it may name only shipped parsers. A run whose parser is not shipped here leaves
+  only the agent values it could be the first to report as claims; those that a run read by a shipped
+  parser reports first are still checked. `agent.requestedModel` is `preset-requested` or `none`.
 - The validator also refuses `failure.reason` `no_tool_call` on a session run with host calls,
   `server_error` at session level, and `evidence_incomplete` at session level without a co-actor.
 - The card names the level beside what it is (its eyebrow) rather than as an evidence row; the badge,

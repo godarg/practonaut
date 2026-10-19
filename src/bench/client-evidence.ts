@@ -7,7 +7,7 @@
  */
 import { open } from 'node:fs/promises';
 import { clientInit, PRESET_INFO, TEMPLATE_PARSER, type AgentSpec } from './agents.ts';
-import { clientFailure, clientResult, hashFile, MAX_LOG_BYTES, readLogHead, type ClientFailure } from './evidence.ts';
+import { clientFailure, clientResult, hashFile, MAX_LOG_BYTES, readLogHead, wholeLog, type ClientFailure } from './evidence.ts';
 import { attestedBilling, STDOUT_HEAD_BYTES, STDOUT_TAIL_BYTES, toolEvidence } from './parsers.ts';
 import { ISOLATION_OF, type IsolationEvidence, type IsolationLevel, type RunClientV3 } from './report.ts';
 
@@ -42,9 +42,10 @@ export async function readClientEvidence(spec: AgentSpec, path: string, advertis
   const unread = { model: null, apiKeySource: null, version: null };
   const stdout = await hashFile(path);
   if (stdout === null) return { stdout, init: unread, isolation: spec.kind === 'preset' ? { level: ISOLATION_OF.command, evidence: 'no-evidence' } : byKind, failure: null };
-  const head = await stdoutHead(path), tail = await stdoutTail(path), body = (await readLogHead(path, MAX_LOG_BYTES))?.text ?? '';
+  const head = await stdoutHead(path), tail = await stdoutTail(path), body = await readLogHead(path, MAX_LOG_BYTES);
   const init = clientInit(head), figures = clientResult(tail), parser = preset?.parser ?? TEMPLATE_PARSER;
-  const failure = clientFailure(body);
+  // Before model work only when the whole output was read and holds no model message (Codex 1).
+  const failure = clientFailure(body?.text ?? '', wholeLog(body));
   let isolation: ClientEvidence['isolation'] = byKind, tools: RunClientV3['tools'], billing: RunClientV3['billing'];
   if (spec.kind === 'preset') {
     // A preset whose client is not known here (none ships without its info) gives no evidence.

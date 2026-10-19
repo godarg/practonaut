@@ -660,6 +660,8 @@ function checkAgentV3(report: BenchReportV3, fail: (message: string) => never): 
     if ((source === 'client-attested' || source === 'preset-requested') && kind !== 'preset') field(name);
     if (source === 'command-output' && kind !== 'command') field(name);
   }
+  // The requested model is what a preset set up (decision 5): no client output and no command reports it.
+  if (agent.requestedModel.source !== 'preset-requested' && agent.requestedModel.source !== 'none') field('requestedModel');
   if (agent.settings.length && kind !== 'preset') field('settings');
   if (new Set(agent.settings.map(setting => setting.name)).size !== agent.settings.length) field('settings');
   if ((agent.billing.source === 'preset-requested') !== (kind === 'preset') || (agent.billing.source === 'none' && agent.billing.class !== 'unknown')) field('billing');

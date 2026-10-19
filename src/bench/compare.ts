@@ -89,13 +89,17 @@ export function agentKindDiffers(found: readonly Difference[]): boolean { return
 export function levelsDiffer(found: readonly Difference[]): boolean { return found.some(difference => difference.field === 'verdictLevel'); }
 /** The one hint a refusal gives, on the terminal and on the page: different levels are never paired; a
  * different isolation level is a different agent kind; a regression gate refuses a pair across worlds
- * (paired by task identity) or across reading rules; anything else, the candidate's settings. */
+ * (paired by task identity) or across reading rules, and says so when nothing else refuses it; anything
+ * else, the candidate's settings. */
 export type RefusalHint = 'level' | 'agentKind' | 'gate' | 'settings';
 export function refusalHint(found: readonly Difference[], baseline: ReportInput, candidate: ReportInput, options: CompareOptions = {}): RefusalHint {
   if (levelsDiffer(found)) return 'level';
   if (agentKindDiffers(found)) return 'agentKind';
-  const gate = options.regressionGate && (found.some(difference => difference.field === 'rules') || (found.some(difference => difference.field === 'world') && identityPaired(asView(baseline), asView(candidate))));
-  return gate ? 'gate' : 'settings';
+  // The gate's hint ("compare without --fail-on-regression") only when the gate is all that refuses: the
+  // reading rules, or the world of a pair that is paired by task identity without the gate. Any other
+  // difference would still refuse the pair without the flag, so the candidate's settings come first.
+  const gateOnly = found.every(difference => difference.field === 'rules' || (difference.field === 'world' && identityPaired(asView(baseline), asView(candidate))));
+  return options.regressionGate && gateOnly ? 'gate' : 'settings';
 }
 
 export type PairKind = 'paired' | 'missing';

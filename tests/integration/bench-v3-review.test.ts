@@ -67,6 +67,31 @@ test('review A, B, C, E: relabelled client values, a hidden failure, edited agen
     assert.match(read.stdout, /not re-derived: values read by the parser claude-code-stream\/2/);
     assert.match(await readFile(join(dir, 'newer.xml'), 'utf8'), /<property name="practonaut\.verification\.clientValues" value="not re-derived: the report&apos;s claims"\/>/);
     await assert.rejects(readGateReport(newer), /values read by claude-code-stream\/2 were not re-derived by this Practonaut/);
+    // r3: compare --verify --json says per side what report --json says: a preset not checked here.
+    const compared = cli(['compare', newer, newer, '--verify', '--json']);
+    assert.equal(compared.status, 0, compared.stderr);
+    const sides = JSON.parse(compared.stdout) as { baseline: Json; candidate: Json };
+    for (const side of [sides.baseline, sides.candidate]) assert.deepEqual([side.verification, side.notRederived, side.preset], ['re-verified', ['claude-code-stream/2'], 'not-checked']);
+    assert.equal((JSON.parse(cli(['report', newer, '--verify', '--json']).stdout) as Json).verification.preset, 'not-checked');
+    // r3 (Codex 2): a version that is not SemVer 2.0.0 is never "newer", so its unknown parser is refused.
+    for (const version of ['0.3.0-dev..1', '0.3.0-dev.01', '00.3.0-dev.1']) {
+      const invalid = await edited(folder, `invalid-${version.replace(/\W/g, '_')}`, value => { relabel(value); value.environment.practonaut = version; });
+      refused = verify(invalid);
+      assert.equal(refused.status, 2, version); assert.match(refused.stderr, /names parser claude-code-stream\/2, which this Practonaut does not ship/);
+    }
+    // r3 (Codex 3): one run with a parser not shipped here leaves the other run's values checked. Run 1
+    // attests Opus with the shipped parser; a report that says Haiku and another vendor is refused.
+    const mixed = (change: (value: Json) => void) => async (value: Json): Promise<void> => { value.environment.practonaut = '9.9.9'; value.runs[1].client.parser = 'future/1'; change(value); };
+    assert.equal(verify(await edited(folder, 'mixed', mixed(() => {}))).status, 0, 'unchanged, the unknown run stays a claim');
+    refused = verify(await edited(folder, 'mixed-relabelled', mixed(value => { value.agent.model = 'claude-haiku-5-5'; value.agent.vendor = { value: 'openai', source: 'client-attested' }; })));
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /its agent\.model is not what the parser reads/);
+    refused = verify(await edited(folder, 'mixed-vendor', mixed(value => { value.agent.vendor = { value: 'openai', source: 'client-attested' }; })));
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /its agent\.vendor is not what the parser reads/);
+    // r3: text from a report reaches the operator's terminal escaped (an escape, a BEL and a bidi control).
+    const hostile = await edited(folder, 'hostile-version', value => { value.environment.practonaut = '0.2.9\u001b]0;x\u0007\u001b[2J‮'; });
+    await assert.rejects(readGateReport(hostile), (error: Error) => /Practonaut 0\.2\.9\\u\{001b\}\]0;x\\u\{0007\}\\u\{001b\}\[2J\\u\{202e\}\)/.test(error.message) && !/[\u0000-\u001f\u007f‮]/.test(error.message));
+    const hostileName = await edited(folder, 'hostile-name', value => { value.environment.practonaut = '9.9.9'; value.agent.name = 'cc\u001b[2Jx'; });
+    await assert.rejects(readGateReport(hostileName), (error: Error) => /\(preset cc\\u\{001b\}\[2Jx\)/.test(error.message) && !/[\u0000-\u001f\u007f‮]/.test(error.message));
 
     // B. A client failure in a judged run's own output that the report leaves out (the session kept).
     const hiddenFailure = await edited(folder, 'hidden-failure', async (value, copy) => {

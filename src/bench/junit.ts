@@ -29,6 +29,7 @@ import { fill, TEXT } from './report-text.ts';
 import type { Language } from './rates.ts';
 import { errorClassesOf, headline, runStates, statusWords, verificationFacts, type State, type VerificationInput } from './render.ts';
 import type { ReportDetails } from './details.ts';
+import { BENCH_SCHEMA_V3 } from './report.ts';
 
 /** Text from a report, safe for XML 1.0 content and attributes: every control, format and private-use
  * character (readableText) and every lone surrogate becomes a visible escape; markup characters
@@ -83,7 +84,9 @@ function properties(report: BenchReportView, verification: VerificationInput, la
   const facts: Array<[string, string]> = [
     ['practonaut.report', report.readFrom], ['practonaut.version', report.environment.practonaut], ['practonaut.created', report.createdAt],
     ['practonaut.verdictLevel', report.verdictLevel],
-    ['practonaut.verification', v.level], ...(v.level === 're-verified' ? [['practonaut.verification.clientValues', v.claims ? 'not re-derived: the report\'s claims' : 're-derived'] as [string, string]] : []),
+    // Only a /3 report's --verify re-derives the client's own values from its bound stdout; a /1 or /2
+    // report's stay self-reported (as its page says), so no property claims either.
+    ['practonaut.verification', v.level], ...(v.level === 're-verified' && report.readFrom === BENCH_SCHEMA_V3 ? [['practonaut.verification.clientValues', v.claims ? 'not re-derived: the report\'s claims' : 're-derived'] as [string, string]] : []),
     ...(v.notRederived.length ? [['practonaut.verification.parsersNotShipped', v.notRederived.join(', ')] as [string, string]] : []), ...(v.preset === 'not-checked' ? [['practonaut.verification.preset', 'not checked'] as [string, string]] : []), ['practonaut.runs', String(report.runs.length)], ['practonaut.runs.passed', String(report.summary.passed)],
     ['practonaut.runs.unjudged', String(unjudged)], ['practonaut.agent', report.agent.name], ['practonaut.agent.kind', report.agent.kind],
     ['practonaut.isolation', report.agent.isolation ?? 'not-recorded'], ...(report.environment.mirror !== undefined ? [['practonaut.mirror', report.environment.mirror] as [string, string]] : []),

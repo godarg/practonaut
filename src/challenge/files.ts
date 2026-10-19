@@ -16,7 +16,7 @@ import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { validateBenchReport, isBenchReportV2, isSessionReportV3, BENCH_REFERENCES_FILE, type BenchReportV2 } from '../bench/report.ts';
 import { verifyBenchV2, verifyBenchV3 } from '../bench/verify.ts';
-import { clientFailure, hashFile, MAX_LOG_BYTES, readLogHead } from '../bench/evidence.ts';
+import { clientFailure, hashFile, MAX_LOG_BYTES, readLogHead, wholeLog } from '../bench/evidence.ts';
 import { CLAUDE_CODE_STREAM, SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { clientInit } from '../bench/agents.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
@@ -28,6 +28,7 @@ import { generatorId, generatorVersion, type Difficulty, type Family } from './f
 import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, rejectedByClientV3, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
 import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
 import { libraryWorld } from '../bench/run.ts';
+import { safeText } from '../cli/output.ts';
 import { isDeepStrictEqual } from 'node:util';
 
 export const SET_SCHEMA = 'practonaut.challenge-set/1';
@@ -152,8 +153,9 @@ async function verifiedReport(path: string, sessions = false): Promise<GateRepor
     // A gate takes a /3 report only when every value read from its runs' output was re-derived here and
     // its preset was checked: a model or an isolation that is only the report's claim never reaches a round.
     const verified = await verifyBenchV3(report, dirname(path), libraryWorld);
-    if (verified.parsers.notShipped.length) throw new GateInputError(`${basename(path)}: values read by ${verified.parsers.notShipped.join(', ')} were not re-derived by this Practonaut; the gate takes only re-derived values`);
-    if (verified.preset === 'not-checked') throw new GateInputError(`${basename(path)}: its preset's name and command were not checked (Practonaut ${report.environment.practonaut}); the gate needs a report this Practonaut checked`);
+    // Text from the report (a parser or preset name, a version) is data: shown escaped, never interpreted by a terminal.
+    if (verified.parsers.notShipped.length) throw new GateInputError(`${basename(path)}: values read by ${safeText(verified.parsers.notShipped.join(', '))} were not re-derived by this Practonaut; the gate takes only re-derived values`);
+    if (verified.preset === 'not-checked') throw new GateInputError(`${basename(path)}: its preset's name and command were not checked (Practonaut ${safeText(report.environment.practonaut)}); the gate needs a report this Practonaut checked`);
   }
   const read = new Map<string, DigestSession>();
   if (sessions) for (const run of report.runs) {
@@ -176,7 +178,8 @@ async function rederivedFailure(runFolder: string, run: { failure?: unknown; std
   if (typeof parser !== 'string' || !SHIPPED_PARSERS.has(parser) || parser !== CLAUDE_CODE_STREAM || !bound) return null;
   const path = join(runFolder, 'agent.stdout'), hashed = await hashFile(path);
   if (!hashed || hashed.sha256 !== bound.sha256 || hashed.bytes !== bound.bytes) return null;
-  const failure = clientFailure((await readLogHead(path, MAX_LOG_BYTES))?.text ?? '');
+  // The same reading as the runner's and --verify's (client-evidence.ts): the whole output, or no exemption.
+  const body = await readLogHead(path, MAX_LOG_BYTES), failure = clientFailure(body?.text ?? '', wholeLog(body));
   return failure ? { reason: failure.reason, parser, code: failure.code, beforeModelWork: failure.beforeModelWork } : null;
 }
 /** A bench folder's report as far as the spend scan reads it (not validated: only its runs' statuses

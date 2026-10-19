@@ -319,7 +319,8 @@ What /3 adds ([PADR-0044](../adr/0044-bench-report-v3.md)):
 - Per run that was not judged: `failure` — `reason` (`usage_limit`, `auth`, `api_error`,
   `no_tool_call`, `interrupted`, `runner`), the `parser` that classified it (null for the runner's own
   reasons), the client's own `code` (a status or event identifier, never free text) and
-  `beforeModelWork` (whether it came before the model's first message). The note keeps its words.
+  `beforeModelWork` (true only when the model sent no message anywhere in the run's whole output,
+  before or after the failure). The note keeps its words.
 - `agentActions`, the agent's own actions in the final history (all of them, until a co-actor can
   edit); mean actions and efficiency count it. The mutation log names each record's `actor`.
 
@@ -531,7 +532,9 @@ for the verdict level and comparisons across worlds, in [PADR-0044](../adr/0044-
   the McNemar verdict) use only the identities with the same number of runs on both sides; the others
   are listed with both counts and carry none. A different outcome is a difference between the two
   configurations, never an instance regression or fix, and `--fail-on-regression` refuses such a pair
-  (`compare_incomparable`, field `world`): a regression gate compares one world with itself. Titles,
+  (`compare_incomparable`, field `world`): a regression gate compares one world with itself. The
+  refusal says to compare without the flag only when nothing else refuses the pair; with another
+  difference (the budget, the mirror, `--checks`) it says to bench the baseline again. Titles,
   prompts, hints, actions and behaviour rules are not compared, and the identities are the reports'
   claims unless `--verify` re-derived them. Two worlds that name one task set
   ([world format](../world-format.md) §2a) select the same variants for the same seeds, so benched
@@ -549,7 +552,8 @@ for the verdict level and comparisons across worlds, in [PADR-0044](../adr/0044-
 - The page names each side by its label or file name; with `--html`, two reports that cannot be
   compared get a page that names every difference.
 - `--verify` re-verifies each report from its own folder first; the output names both reports'
-  verification status.
+  verification status (with `--json`, per side as `report --json` does: the level, the parsers whose
+  values were not re-derived and whether a preset was checked).
 
 `compare` names a regressed instance; why its runs failed is on the candidate's own report page, with
 the unmet conditions, error classes and trajectory of each run (§5):

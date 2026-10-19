@@ -303,11 +303,15 @@ export async function verifyBenchV2(report: BenchReportV2, runsDirectory: string
   return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}) };
 }
 
-/** The order of two semantic versions (a pre-release below its release, RFC-style identifiers); null when
- * either is not a version. */
+/** A version as SemVer 2.0.0 writes it: numeric parts without leading zeros, no empty identifier (the
+ * numbers bounded so they stay exact). */
+const NUMERIC = String.raw`(?:0|[1-9]\d{0,8})`, PRE_ID = String.raw`(?:0|[1-9]\d{0,14}|\d*[A-Za-z-][0-9A-Za-z-]*)`, BUILD_ID = '[0-9A-Za-z-]+';
+const SEMVER = new RegExp(`^(${NUMERIC})\\.(${NUMERIC})\\.(${NUMERIC})(?:-(${PRE_ID}(?:\\.${PRE_ID})*))?(?:\\+${BUILD_ID}(?:\\.${BUILD_ID})*)?$`);
+/** The order of two semantic versions (a pre-release below its release, SemVer 2.0.0 precedence); null
+ * when either is not a valid SemVer 2.0.0 version. */
 export function versionOrder(a: string, b: string): number | null {
   const parse = (value: string): { core: number[]; pre: string[] } | null => {
-    const match = /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
+    const match = SEMVER.exec(value);
     return match ? { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: match[4] ? match[4].split('.') : [] } : null;
   };
   const x = parse(a), y = parse(b);
@@ -376,7 +380,7 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
   const tools = report.toolchain.kind === 'practonaut' ? report.toolchain.tools : [];
   // Artifacts, evidence and stdout are compared with their hashes before anything is re-derived.
   const evidence = new Map<string, { mutations: string | null; trace: string | null }>(), reads = new Map<string, ClientEvidence>();
-  const notShipped = new Set<string>(), newer = madeByNewer(report);
+  const notShipped = new Set<string>(), unread = new Set<string>(), newer = madeByNewer(report);
   let rederived = 0;
   for (const run of runs) {
     if (run.artifacts) {
@@ -400,29 +404,43 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
       // and every surface and the gate then treat them as the report's claims.
       if (parser !== undefined && !SHIPPED_PARSERS.has(parser)) {
         if (!newer) throw new BenchReportError(cliText('verifyParserUnknown', { run: run.id, parser: safeText(parser), version: safeText(report.environment.practonaut) }));
-        notShipped.add(parser); continue;
+        notShipped.add(parser); unread.add(run.id); continue;
       }
-      if (parser !== undefined && report.agent.kind === 'preset' && !Object.hasOwn(PRESET_INFO, report.agent.name)) { notShipped.add(`${parser} (preset ${report.agent.name})`); continue; }
+      if (parser !== undefined && report.agent.kind === 'preset' && !Object.hasOwn(PRESET_INFO, report.agent.name)) { notShipped.add(`${parser} (preset ${report.agent.name})`); unread.add(run.id); continue; }
       const read = await readClientEvidence(spec, path, tools);
       if (read.stdout?.sha256 !== run.stdout.sha256) throw new BenchReportError(cliText('verifyArtifactHash', { run: run.id, name: 'agent.stdout' }), 'bench_artifact_changed');
       verifyClientValues(report, run, read);
       reads.set(run.id, read); rederived++;
     }
   }
-  // The agent's values, each from the first run whose stdout reports it (decision 5).
-  if (!notShipped.size && report.agent.kind !== 'builtin') {
-    const first = <T>(pick: (read: ClientEvidence) => T | null): T | null => { for (const run of runs) { const value = reads.get(run.id); const picked = value ? pick(value) : null; if (picked !== null) return picked; } return null; };
-    if (report.agent.model !== first(read => read.init.model)) throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field: 'agent.model' }));
-    if (report.agent.apiKeySource !== apiKeySourceValue(first(read => read.init.apiKeySource))) throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field: 'agent.apiKeySource' }));
+  // The agent's values, each from the first run whose stdout reports it (decision 5). A run whose parser
+  // this Practonaut does not ship is read by nobody here: a value it could be the first to report stays the
+  // report's claim, but one that a run read by a shipped parser reports first is checked (Codex 3).
+  if (report.agent.kind !== 'builtin') {
+    const first = <T>(pick: (read: ClientEvidence) => T | null): { value: T | null } | null => {
+      for (const run of runs) {
+        if (unread.has(run.id)) return null;
+        const value = reads.get(run.id), picked = value ? pick(value) : null;
+        if (picked !== null) return { value: picked };
+      }
+      return { value: null };
+    };
     const agentField = (field: string): never => { throw new BenchReportError(cliText('verifyClientValue', { run: runs[0]!.id, field })); };
+    const model = first(read => read.init.model), apiKeySource = first(read => read.init.apiKeySource), version = first(read => read.init.version);
+    if (model && report.agent.model !== model.value) agentField('agent.model');
+    if (apiKeySource && report.agent.apiKeySource !== apiKeySourceValue(apiKeySource.value)) agentField('agent.apiKeySource');
     // The client version with its source, the vendor from the preset's mapping (of the attested model,
-    // else of the requested one), and the client program the preset starts (decision 5).
-    const version = first(read => read.init.version), source = report.agent.kind === 'preset' ? 'client-attested' as const : 'command-output' as const;
-    if (!isDeepStrictEqual(report.agent.clientVersion, version === null ? { value: null, source: 'none' } : { value: version, source })) agentField('agent.clientVersion');
-    if (!isDeepStrictEqual(report.agent.vendor, vendorOf(spec, first(read => read.init.model), report.agent.requestedModel))) agentField('agent.vendor');
-    if (!isDeepStrictEqual(report.agent.client, clientOf(spec))) agentField('agent.client');
-    // What the preset was set up for, as this Practonaut sets it up: only for a report of this version.
-    if (report.environment.practonaut === PACKAGE_VERSION) {
+    // else of the requested one), and the client program the preset starts (decision 5); a preset this
+    // Practonaut does not know has no mapping here.
+    const source = report.agent.kind === 'preset' ? 'client-attested' as const : 'command-output' as const;
+    if (version && !isDeepStrictEqual(report.agent.clientVersion, version.value === null ? { value: null, source: 'none' } : { value: version.value, source })) agentField('agent.clientVersion');
+    // (When every run was read, as before: this Practonaut's mapping, also for a preset it does not know.)
+    const knownPreset = !notShipped.size || report.agent.kind !== 'preset' || Object.hasOwn(PRESET_INFO, report.agent.name);
+    if (model && knownPreset &&!isDeepStrictEqual(report.agent.vendor, vendorOf(spec, model.value, report.agent.requestedModel))) agentField('agent.vendor');
+    if (knownPreset && !isDeepStrictEqual(report.agent.client, clientOf(spec))) agentField('agent.client');
+    // What the preset was set up for, as this Practonaut sets it up: only for a report of this version
+    // whose every run was read here.
+    if (!notShipped.size && report.environment.practonaut === PACKAGE_VERSION) {
       if (!isDeepStrictEqual(report.agent.billing, requestedBilling(spec, report.agent.keptEnv))) agentField('agent.billing');
       if (report.agent.settings.length) agentField('agent.settings');
     }
