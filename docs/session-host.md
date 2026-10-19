@@ -141,12 +141,19 @@ Replay is checked at each mutation checkpoint and before every result check.
 
 The mirror target is **2,000 ms** per step and its operation deadline **5,000 ms**
 (`src/host/mirror.ts`). Actual times are emitted in history and measured by the real integration
-suite; a target is not a universal latency guarantee. Timeout kills the stale browser before
-recovery, preventing late writes into the recovered session.
+suite; a target is not a universal latency guarantee. Timeout closes the stale browser before
+recovery starts a replacement, which is published only after its read-back equals the committed
+state; the old browser's close has its deadline of 8 s and a browser still closing then keeps its slot
+and sink, as another process with its own page that cannot write into the recovered session
+([PADR-0050](adr/0050-browser-close-is-a-bounded-request.md)). A session closed during a recovery
+does not wait for it: the replacement's start is stopped and what exists is closed by the close's
+deadline.
 
 Rejected mirror transactions are recorded privately alongside the token as `.mirror.jsonl`:
 error, revision, operation, before/predicted/read-back states and their hashes. Unavailable
-read-back is explicit null. The exclusive 0600 log stays in the 0700 directory, has no Player
+read-back is explicit null. A close of the session's browser that was abandoned at its deadline or
+failed, in a recovery or at the session's close, is recorded there too (`browser_close_abandoned`,
+`browser_close_failed`, with the phase and revision); later outcomes go to the command's stderr. The exclusive 0600 log stays in the 0700 directory, has no Player
 route and remains after shutdown for diagnosis. Session capabilities are redacted if they
 appear in supplied data; the `redacted` flag distinguishes that case. Hashes describe the original
 states. The host caps the diagnostic file at 4 MiB, retaining the latest records by truncating
@@ -170,6 +177,7 @@ These are fixed constants, not environment overrides. Tests exercise each releva
 | SSE | 8 clients; 4 MiB queued per client; heartbeat 15 s | rate_limited / stream closed |
 | Bootstrap | one use, 5 min, one outstanding code, at most 1000 links per session | bootstrap_used / bootstrap_expired / token_invalid / limit_exceeded |
 | Mirror operation | 5 s | mirror_timeout / mirror_unavailable / real_tool_disagrees |
+| Browsers per process (PADR-0050) | 8 running and closing; a start waits up to its 15 s launch bound for a slot; a close's deadline 8 s | browser_budget_exhausted (a required mirror: exit 3; `--mirror auto`: model-only with a notice) |
 | Private diagnostic | 4 MiB file and single-record cap | diagnostic_limit / diagnostic_unavailable |
 | Optional network startup probe | 3 s | E_NETWORK_AVAILABLE when external reachability is observed |
 | Bench action budget (bench runs only) | `--max-actions`, default 50 act/undo/reset per run | action_budget_exhausted (HTTP 429) |

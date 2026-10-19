@@ -1,6 +1,6 @@
 # PADR-0050 — A browser close is a bounded request on top of Playwright's own forced end
 
-Status: proposed · Date: 2026-10-19 · Issue #64 · Builds on
+Status: accepted · Date: 2026-10-19 · Issue #64 · Builds on
 [PADR-0032](0032-chromium-sandbox-stays-on.md) (one way to start Chromium),
 [PADR-0045](0045-adapter-registry-and-browser-shell.md) (browser shell, sink proxy, time bounds) and
 [PADR-0012](0012-excalidraw-bundling.md) (the engine is served without a local listener) · Records the
@@ -11,8 +11,8 @@ round; in the fourth also a Claude Opus reviewer with a skeptic): the first reje
 through a CDP process id, the second showed that Playwright already forces the end through the handle
 it owns, the third that neither a launch rejection nor every fulfilled `browser.close()` proves an
 end, the fourth that a process-table reader is the weak point; dispositions in *Review*, *Re-review*,
-*Re-review 2* and *Re-review 3* at the end · Design only; accepted with the pull request that
-implements it
+*Re-review 2* and *Re-review 3* at the end · Accepted with the pull request that implements it;
+what the implementation settled is in *Implementation* at the end
 
 ## Context
 
@@ -106,7 +106,7 @@ are from the installed `playwright-core` 1.64.0, `lib/coreBundle.js` line number
 | Launch rejected after the process started | timeout: the launch's close runs on with its 30 s timer, no `Browser` returned (41156–41159, 41283–41286 against the aborted race, 12981–12994); a child that exits during the launch: the launch rejects only after that close settled (41264–41275) | same | same |
 | `browser.close()` after the connection dropped | `TargetClosedError` swallowed, fulfils, no process close started (source) | same | same |
 | Process group | the browser leads its group (PGID read); three children share it; SID not read | same source; zygote and sandbox helpers UNKNOWN | no groups (source) |
-| Peak memory per browser, and during recoveries with old browsers still closing | UNKNOWN | UNKNOWN | UNKNOWN |
+| Peak memory per browser, and during recoveries with old browsers still closing | resident size summed over each browser's tree (an upper bound: shared pages count per process), two runs: a running mirror 240–411 MiB, an old one stopped while closing 229–292 MiB, the start check's 82–111 MiB; the budget's scenario at its peak (8 browsers: 5 mirrors, 2 of them recovering with their old browsers still closing, the start check's closing) 2 090–2 449 MiB, 31 processes, 8 slots, 7 sinks, 8 profile directories (Implementation) | UNKNOWN | UNKNOWN |
 | `launchServer()` | listener on `[::1]`, 32-hex path, second client drives the browser, wrong path `400`, `kill()` 7 ms | UNKNOWN | UNKNOWN |
 
 ## Options considered
@@ -204,7 +204,7 @@ Rejected; process-table reads stay in the tests.
    and the bench report says how many runs that cost (review finding F5; counted in decision 11). The
    starting value is 8: an author host with four practice hosts (five mirrors), two overlapping
    recovery replacements and the start check's browser while it may still be closing. It is
-   confirmed or changed by the memory measurement (decision 10). The browser's helpers are not
+   confirmed or changed by the memory measurement (decision 10); confirmed on macOS (*Implementation*). The browser's helpers are not
    counted and are looked for in the tests only.
 5. **Three independent statements per close, and what proves the end.** The product reads no process
    table.
@@ -492,3 +492,50 @@ The fifth round (OpenAI Codex, 2026-10-19) found no blocker or major, confirmed 
 it swallows `TargetClosedError`, 64308–64310) and found one minor: option (a)'s trade-off said the
 residual window never frees a slot early, which decision 5 accepts it does. Option (a) and the
 simpler-design row above now name that exception.
+
+## Implementation (2026-10-19)
+
+Implemented on `fix/browser-close-contract`; the decisions stand as written. What the code settled
+that the decisions left open:
+
+- **Where the slot is taken.** `launchChromium` stays the one way to start Chromium (PADR-0032);
+  every product owner starts through `startBrowser` (`src/adapters/browser/ledger.ts`), which
+  reserves the slot synchronously and then calls it. The tests' own browsers
+  (`tests/support/browser.ts`) and the packed-tarball smoke test call `launchChromium` without a slot.
+- **The safety margin.** A layer that awaits a close it handed a deadline to arms no timer of its
+  own except a safety timer `CLOSE_SAFETY_MS` = 1 s after that deadline (*failed*), for a close that
+  does not keep the contract (a stand-in, a third-party adapter); the host's overall bound stays 12 s.
+- **A close before the browser exists** answers *cancelled*: a lease whose launch never started is
+  given back at once; one still launching keeps its entry *launching*, and the late browser goes to
+  its one close.
+- **The deadline through an abort.** The mirror's close aborts a running start with
+  `CloseRequested(deadline)` as the signal's reason; the shell closes what that start owns under the
+  same deadline.
+- **The 35 s rule's "last close request"** includes a launch rejection, when Playwright's own close
+  of the spawned child starts.
+- **What a command reports.** Only entries with something to say: a close abandoned or failed, a
+  launch rejected, an end not proven. The host's private diagnostics get `browser_close_abandoned`
+  or `browser_close_failed` with the phase (`recovery` or `close`) and the revision.
+- **The report card's contexts** close under the contract with the default deadline each; one that
+  is abandoned keeps the pictures and the loop goes on, and the browser's one close ends it.
+- **Bench.** A run lost to the budget is `infra_error` with the note `browser_budget_exhausted: …`;
+  the bench's terminal output counts those runs after the table. The report file is unchanged.
+- **The rejected-launch test** adds Chromium's own `--wait-for-debugger` switch (test only), so the
+  spawned browser waits before it connects and Playwright's launch timeout reliably expires while it
+  runs, on every platform and without a signal; the repeat with a longer timeout stays (F11).
+- **The real-CLI test (A)** takes `run`'s return from `main` (its stderr lines) as the moment the
+  abandoned close came back: `run` prints its result before it asks for the close.
+- **Budget.** The measurement (decision 10) on macOS: the budget's scenario at its peak holds 8
+  browsers in 8 slots, 2 090–2 449 MiB of resident size summed over their trees (an upper bound), 7
+  sinks and 8 profile directories; every slot, sink and directory is gone after Playwright's forced
+  ends and the mirrors' closes. `HOST_LIMITS.browsers` stays 8. Linux and Windows: UNKNOWN.
+
+**Before and after (decision 11), macOS only so far** (amplifier, 60 attempts per row, the table in
+`docs/testing.md`, *Browser close contract*). With every close held 8.5 s: before (`main` with #68)
+60 of 60 attempts failed at the close; after, 60 of 60 passed, every close abandoned at its deadline
+and its end proven 0.5 s later, no forced end, no slot held at exit. Under `--cpu 20 --block 20` with
+6 and with 16 load workers: 60 of 60 passed before and after, no close reached 8 s in either, so these
+runs confirm no regression but not the cause. No start, budget, resource or shutdown failure in any
+run. Every test that decision 10 names failed with its mechanism disabled for the run. The CI repeat
+on Linux, macOS and Windows (before: run 39300134324 on `main` at aeca1c0; after: once this is
+merged) is a maintainer step; its numbers are not in this record.
