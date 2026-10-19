@@ -6,10 +6,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DrawioInstallError, INSTALL_LIMITS, installDrawio, installDrawioFrom, PRODUCT_SCHEMES, type InstallOptions, type InstallPin } from '../../src/adapters/drawio/download.ts';
 import { DrawioRuntimeError, drawioRuntimeDirectory, drawioRuntimePath, readDrawioRuntime } from '../../src/adapters/drawio/runtime.ts';
 import { DRAWIO_PIN } from '../../src/adapters/drawio/pin.ts';
@@ -166,6 +168,84 @@ test('one setup at a time: a live lock refuses by name, a stale lock and old par
   } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the lock (review m2c, runtime-2): a fresh lock not yet written is busy, two setups started together give one download, a release removes only its own lock', { timeout: 60_000 }, async () => {
+  let requests = 0, during: (() => void) | undefined, hold: Promise<void> | undefined;
+  const server = await standIn((_request, response) => { requests++; during?.(); void (hold ?? Promise.resolve()).then(() => setTimeout(() => serveFixture(response), 20)); });
+  const dir = home();
+  try {
+    const opts = options(server.origin, dir);
+    const directory = drawioRuntimeDirectory(dir, opts.pin!), lock = join(directory, '.setup.lock');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    // The window before a lock is written: another setup has created it and not yet written a byte. It
+    // is judged by its own modification time: fresh, it is busy; an hour old, it is stale.
+    writeFileSync(lock, '');
+    await assert.rejects(installDrawio(opts), reason('busy', 'app_install_busy'));
+    assert.equal(requests, 0, 'nothing was downloaded next to the other setup');
+    const hourAgo = new Date(Date.now() - 3_600_000); utimesSync(lock, hourAgo, hourAgo);
+    assert.equal((await installDrawio(opts)).status, 'installed');
+    assert.equal(existsSync(lock), false, 'the lock is released');
+    // A lock that another setup took over while this one ran is not this setup's to remove.
+    rmSync(join(directory, opts.pin!.asset));
+    const foreign = JSON.stringify({ pid: process.pid, started: Date.now(), token: 'f'.repeat(32) });
+    during = () => { writeFileSync(lock, foreign); };
+    assert.equal((await installDrawio(opts)).status, 'installed');
+    assert.equal(readFileSync(lock, 'utf8'), foreign, 'the release left the other setup\'s lock in place');
+    during = undefined; rmSync(lock); rmSync(join(directory, opts.pin!.asset));
+    // Two concurrent setups, the first held in the window before its lock is written: the second takes
+    // the lock and downloads; the first, released while the second still downloads, stops by name.
+    {
+      const outcome = (setup: Promise<{ status: string }>): Promise<string> => setup.then(r => r.status, (error: unknown) => error instanceof DrawioInstallError ? error.reason : String(error));
+      let resume!: () => void, entered!: () => void, serve!: () => void, downloading!: () => void;
+      const paused = new Promise<void>(r => { resume = r; }), inWindow = new Promise<void>(r => { entered = r; }), requested = new Promise<void>(r => { downloading = r; });
+      hold = new Promise<void>(r => { serve = r; }); during = () => downloading(); requests = 0;
+      const first = outcome(installDrawio({ ...opts, lockPause: async () => { entered(); await paused; } }));
+      await inWindow;
+      const second = outcome(installDrawio(opts));
+      await requested;
+      resume();
+      const firstOutcome = await first;
+      serve();
+      assert.deepEqual([firstOutcome, await second], ['busy', 'installed']);
+      assert.equal(requests, 1, 'one download');
+      assert.deepEqual(readdirSync(directory), [opts.pin!.asset], 'no lock, temp or partial file is left');
+      hold = undefined; during = undefined;
+    }
+    // Two setups started together on one version directory, again and again: one downloads, the other
+    // stops by name, and every lock is gone afterwards.
+    for (let trial = 0; trial < 25; trial++) {
+      const other = home(); requests = 0;
+      try {
+        const both = await Promise.allSettled([installDrawio(options(server.origin, other)), installDrawio(options(server.origin, other))]);
+        const outcomes = both.map(r => r.status === 'fulfilled' ? r.value.status : r.reason instanceof DrawioInstallError ? r.reason.reason : String(r.reason)).sort();
+        assert.deepEqual(outcomes, ['busy', 'installed'], `trial ${trial}`);
+        assert.equal(requests, 1, `trial ${trial}: one download`);
+        assert.deepEqual(readdirSync(drawioRuntimeDirectory(other, opts.pin!)), [opts.pin!.asset], `trial ${trial}: no lock, temp or partial file is left`);
+      } finally { rmSync(other, { recursive: true, force: true }); }
+    }
+  } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a retry wait keeps the process alive: a setup whose only pending work is the wait still retries and finishes (review m2c, Codex 5)', () => {
+  const dir = home();
+  try {
+    // A child process in which nothing but the setup runs: the first request fails at once, so during
+    // the retry wait no socket or other timer is left to keep Node running.
+    const module = pathToFileURL(fileURLToPath(new URL('../../src/adapters/drawio/download.ts', import.meta.url))).href;
+    const code = [
+      `const { installDrawio } = await import(${JSON.stringify(module)});`,
+      'const { createHash } = await import("node:crypto");',
+      'const body = Buffer.from("a stand-in runtime"); let calls = 0;',
+      'const failOnce = async () => { if (calls++ === 0) throw new TypeError("fetch failed"); return new Response(body, { status: 200 }); };',
+      'const pin = { version: "0.0.1-test", asset: "draw-test.war", size: body.length, sha256: createHash("sha256").update(body).digest("hex"), source: "http://127.0.0.1:9/x" };',
+      'const result = await installDrawio({ home: process.argv[1], pin, allowedSchemes: new Set(["http:"]), fetch: failOnce, limits: { retryDelaysMs: [100] } });',
+      'console.log(result.status, result.attempts);',
+    ].join('\n');
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code, dir], { encoding: 'utf8', timeout: 30_000 });
+    assert.equal(child.status, 0, `exit ${child.status}: ${child.stderr.slice(0, 400)}`);
+    assert.equal(child.stdout.trim(), 'installed 2');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('a kept file that does not verify is replaced; --from checks size and hash; a held file is retried on rename', async () => {
   const server = await standIn((_request, response) => serveFixture(response));
   const dir = home();
@@ -183,6 +263,15 @@ test('a kept file that does not verify is replaced; --from checks size and hash;
     rmSync(join(directory, opts.pin!.asset));
     const wrong = join(dir, 'wrong.war'); writeFileSync(wrong, randomBytes(fixture.length));
     await assert.rejects(installDrawioFrom(wrong, fromOptions), (error: unknown) => reason('sha256', 'app_download_mismatch')(error) && (error as DrawioInstallError).details.expectedSha256 === sha(fixture));
+    // A file of another size is hashed too, so both values can be printed (review m2c, runtime-3).
+    for (const size of [26, fixture.length + 1, 3 * 1024 * 1024 + 5]) {
+      const other = randomBytes(size), path = join(dir, `other-${size}.war`); writeFileSync(path, other);
+      await assert.rejects(installDrawioFrom(path, fromOptions), (error: unknown) => {
+        reason('size', 'app_download_mismatch')(error);
+        assert.deepEqual((error as DrawioInstallError).details, { expectedBytes: fixture.length, actualBytes: size, expectedSha256: sha(fixture), actualSha256: sha(other) });
+        return true;
+      });
+    }
     if (process.platform !== 'win32') { const link = join(dir, 'link.war'); symlinkSync(given, link); await assert.rejects(installDrawioFrom(link, fromOptions), reason('not_file', 'app_download_mismatch')); }
     nothingKept(dir, opts);
     // A reader holds the target for a moment (Windows): the rename is retried, then succeeds.
