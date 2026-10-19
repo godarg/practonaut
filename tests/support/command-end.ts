@@ -7,11 +7,13 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const CLI = join(ROOT, 'src/cli/main.ts');
-const PRELOAD = join(ROOT, 'tests/support/exit-rule-preload.ts');
+/** A test preload for `node --import`, as a file URL: Node refuses a Windows path (`D:\\…`) there. */
+export const preload = (name: string): string => pathToFileURL(join(ROOT, 'tests/support', name)).href;
+const PRELOAD = preload('exit-rule-preload.ts');
 export interface Ended { code: number | null; stdout: string; stderr: string }
 
 /** Runs the CLI with the preload, in a PRACTONAUT_HOME of its own, so the credentials counted at its

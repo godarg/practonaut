@@ -16,7 +16,7 @@ import { afterMain, deferCommandEnd, finishCommand, ledgerLines, resetCommandEnd
 import { mcpShutdown } from '../../src/cli/mcp.ts';
 import { cliText, setCliLanguage } from '../../src/cli/messages.ts';
 import { FakeBrowser, advance, flush } from '../support/fake-browser.ts';
-import { CLI, ROOT, cliUnderRule, endedThroughRule, type Ended } from '../support/command-end.ts';
+import { CLI, ROOT, cliUnderRule, endedThroughRule, preload, type Ended } from '../support/command-end.ts';
 
 /** Codex's combined path: a close that fulfils after the connection dropped, its child still alive. */
 async function unproven(ledger: BrowserLedger, browser = new FakeBrowser()): Promise<FakeBrowser> {
@@ -267,7 +267,7 @@ test('the real CLI names a full browser budget with the counts and the remedy, i
     const world = join(home, 'flow.pnworld'), actions = join(home, 'actions.json');
     await writeFile(actions, '[]');
     assert.equal(spawnSync(process.execPath, [CLI, 'pack', join(ROOT, 'examples/worlds/flow-diagram'), '--out', world], { cwd: home, encoding: 'utf8' }).status, 0);
-    const run = (...lang: string[]) => spawnSync(process.execPath, ['--import', join(ROOT, 'tests/support/budget-full-preload.ts'), CLI, ...lang, 'run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], { cwd: home, encoding: 'utf8', timeout: 60_000, env: { ...process.env, PRACTONAUT_HOME: home } });
+    const run = (...lang: string[]) => spawnSync(process.execPath, ['--import', preload('budget-full-preload.ts'), CLI, ...lang, 'run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], { cwd: home, encoding: 'utf8', timeout: 60_000, env: { ...process.env, PRACTONAUT_HOME: home } });
     const english = run(), german = run('--lang', 'de');
     assert.equal(english.status, 3, english.stderr);
     assert.equal(english.stderr.trim(), 'practonaut: no browser could start: 5 running and 3 closing of 8 allowed, and none closed within the launch bound. Wait until they have closed, or restart Practonaut. [browser_budget_exhausted]');

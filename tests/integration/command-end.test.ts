@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CLI, ROOT, cliUnderRule, endedThroughRule, type Ended } from '../support/command-end.ts';
+import { CLI, cliUnderRule, endedThroughRule, preload, type Ended } from '../support/command-end.ts';
 
 test('mcp, bench and play end through the rule only after their own shutdown (real CLI)', { timeout: 180_000 }, async () => {
   const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-exit-rule-hosts-'));
@@ -30,7 +30,7 @@ test('mcp, bench and play end through the rule only after their own shutdown (re
 test('a bench counts the runs it lost to the browser budget after its table, in English and German', { timeout: 180_000 }, async () => {
   const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-budget-'));
   try {
-    const bench = (out: string, ...lang: string[]) => spawnSync(process.execPath, ['--import', join(ROOT, 'tests/support/budget-mirror-full-preload.ts'), CLI, ...lang, 'bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'required', '--out', join(home, out)], { cwd: home, encoding: 'utf8', timeout: 120_000, env: { ...process.env, PRACTONAUT_HOME: home } });
+    const bench = (out: string, ...lang: string[]) => spawnSync(process.execPath, ['--import', preload('budget-mirror-full-preload.ts'), CLI, ...lang, 'bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'required', '--out', join(home, out)], { cwd: home, encoding: 'utf8', timeout: 120_000, env: { ...process.env, PRACTONAUT_HOME: home } });
     const english = bench('en.json'), german = bench('de.json', '--lang', 'de');
     assert.equal(english.status, 0, english.stderr);
     assert.match(english.stdout, /\n1 run could not be judged because no browser slot became free \(browser_budget_exhausted\); see each run's note\.\n/);

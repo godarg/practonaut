@@ -15,14 +15,14 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type LaunchOptions } from 'playwright-core';
 import { BrowserLedger } from '../../src/adapters/browser/ledger.ts';
 import { startShell } from '../../src/adapters/browser/shell.ts';
 import { descendantsOf, processesWith, survivors, type ProcessRow } from '../support/process-table.ts';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const CLI = join(ROOT, 'src/cli/main.ts'), PRELOAD = join(ROOT, 'tests/support/close-stall-preload.ts');
+const CLI = join(ROOT, 'src/cli/main.ts'), PRELOAD = pathToFileURL(join(ROOT, 'tests/support/close-stall-preload.ts')).href;
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 async function until(condition: () => boolean, limitMs: number, stepMs = 50): Promise<boolean> {
   const end = performance.now() + limitMs;
@@ -56,16 +56,18 @@ test('a launch rejected after Chromium started holds its slot and its sink for 3
     const failure = await startShell({ chromium: stalling, ledger, launchMs: timeoutMs, origins: {} }, async () => {}).then(() => undefined, (error: unknown) => error);
     assert.ok(failure instanceof Error, 'the launch did not fail');
     assert.ok(await until(() => ledger.records()[0]?.launch === 'rejected', 10_000), 'Playwright\'s launch promise rejected');
-    const rejectedAt = ledger.records()[0]!.at.launchSettled!;
+    const rejectedAt = ledger.records()[0]!.at.launchSettled!, port = Number(new URL(launched!.proxy!.server).port);
+    // Slot, sink and directories are read at once; the test's own process-table read can take many
+    // seconds (PowerShell on Windows), so whether the slot was held long enough is judged by the
+    // ledger's own times, not by when the test looks.
+    const held = [ledger.unreleased(), ledger.records()[0]!.end, await sinkAnswers(port)], directories = playwrightDirectories(directory).length;
     const spawned = processesWith(directory);
     if (spawned.length === 0) { t.diagnostic(`attempt with ${timeoutMs} ms: no spawned Chromium found after the rejection; not counted`); continue; }
-    const port = Number(new URL(launched!.proxy!.server).port);
-    assert.deepEqual([ledger.unreleased(), ledger.records()[0]!.end, await sinkAnswers(port)], [1, 'launch-rejected', true], 'slot and sink held after the rejection');
-    assert.equal(playwrightDirectories(directory).length, 2, 'Playwright\'s profile and artifacts directories appeared where the test put the temporary directory');
-    await sleep(Math.max(0, rejectedAt + 33_000 - performance.now()));
-    assert.deepEqual([ledger.unreleased(), await sinkAnswers(port)], [1, true], 'still held 33 s after the rejection');
-    assert.ok(await until(() => ledger.unreleased() === 0, 5_000), 'released 35 s after the rejection');
-    assert.ok(performance.now() - rejectedAt >= 35_000, 'not before 35 s');
+    assert.deepEqual(held, [1, 'launch-rejected', true], 'slot and sink held after the rejection');
+    assert.equal(directories, 2, 'Playwright\'s profile and artifacts directories appeared where the test put the temporary directory');
+    assert.ok(await until(() => ledger.unreleased() === 0, 45_000), 'released after the launch wait');
+    const releasedAfter = ledger.records()[0]!.at.released! - rejectedAt;
+    assert.ok(releasedAfter >= 35_000, `held for 35 s after the rejection, not ${Math.round(releasedAfter)} ms`);
     assert.deepEqual([ledger.records()[0]!.slot, await sinkAnswers(port)], ['launch-wait', false], 'the sink closed with the slot');
     assert.deepEqual(processesWith(directory).map(row => row.pid), [], 'no spawned Chromium remains');
     assert.deepEqual(playwrightDirectories(directory), [], 'Playwright removed its directories');
