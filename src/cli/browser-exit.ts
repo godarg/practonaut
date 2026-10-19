@@ -86,11 +86,6 @@ const processSignal = (signal: ExitSignal, handler: () => void): (() => void) =>
 export async function finishCommand(settings: CommandEndSettings = {}): Promise<ExitRule | undefined> {
   const ledger = settings.ledger ?? processLedger, now = settings.now ?? (() => performance.now());
   const write = settings.write ?? (text => written(process.stderr, text));
-  await (settings.flush ?? (() => written(process.stdout, '')))();
-  for (const line of ledgerLines(ledger)) await write(line);
-  const ending = ledger.records().filter(stillEnding).length;
-  if (ending > 0) await write(cliText('browsersWaiting', { count: ending }));
-  if (ledger.unreleased() === 0 || settings.armExit === false) return undefined;
   const exit = settings.exit ?? ((code?: number) => process.exit(code));
   const armedAt = now();
   /** The latest close request (a launch rejection included), whenever it was made. */
@@ -99,6 +94,16 @@ export async function finishCommand(settings: CommandEndSettings = {}): Promise<
   const removers: Array<() => void> = [];
   const cancel = (): void => { done = true; clearTimeout(timer); for (const remove of removers.splice(0)) remove(); };
   const end = (code: number | undefined): void => { if (done) return; cancel(); exit(code); };
+  const armed = settings.armExit !== false && ledger.unreleased() > 0;
+  // Ctrl+C while Node waits must still reach Playwright's exit handler, which ends what it tracks: the
+  // handlers are in place before any output of the command's end, which a signal may follow at once.
+  if (armed) for (const signal of Object.keys(SIGNAL_EXIT) as ExitSignal[]) removers.push((settings.onSignal ?? processSignal)(signal, () => end(SIGNAL_EXIT[signal])));
+  await (settings.flush ?? (() => written(process.stdout, '')))();
+  for (const line of ledgerLines(ledger)) await write(line);
+  const ending = ledger.records().filter(stillEnding).length;
+  if (ending > 0) await write(cliText('browsersWaiting', { count: ending }));
+  if (!armed || done) return undefined;
+  if (ledger.unreleased() === 0) { cancel(); return undefined; }
   /** Fires `delay` after now; `basis` is the latest request the delay was counted from. */
   const arm = (basis: number, delay: number): void => {
     timer = setTimeout(() => {
@@ -112,8 +117,6 @@ export async function finishCommand(settings: CommandEndSettings = {}): Promise<
   };
   const basis = latest();
   arm(basis, basis + EXIT_RULE_MS - now());
-  // Ctrl+C while Node waits must still reach Playwright's exit handler, which ends what it tracks.
-  for (const signal of Object.keys(SIGNAL_EXIT) as ExitSignal[]) removers.push((settings.onSignal ?? processSignal)(signal, () => end(SIGNAL_EXIT[signal])));
   return { cancel };
 }
 

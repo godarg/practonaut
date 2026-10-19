@@ -5,18 +5,18 @@
 // `practonaut mcp`, whose `main` returns at once, only after `stop()` closed the host.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Browser } from 'playwright-core';
 import { BrowserLedger } from '../../src/adapters/browser/ledger.ts';
 import { afterMain, deferCommandEnd, finishCommand, ledgerLines, resetCommandEnd } from '../../src/cli/browser-exit.ts';
 import { mcpShutdown } from '../../src/cli/mcp.ts';
 import { cliText, setCliLanguage } from '../../src/cli/messages.ts';
 import { FakeBrowser, advance, flush } from '../support/fake-browser.ts';
+import { CLI, ROOT, cliUnderRule, endedThroughRule, type Ended } from '../support/command-end.ts';
 
 /** Codex's combined path: a close that fulfils after the connection dropped, its child still alive. */
 async function unproven(ledger: BrowserLedger, browser = new FakeBrowser()): Promise<FakeBrowser> {
@@ -162,6 +162,25 @@ test('while the rule waits, a signal ends the command through process.exit with 
   assert.equal(quiet.signals.size, 0, 'no handler when nothing is held');
 });
 
+// Re-review of PR #69 (Codex minor): the handlers were installed only after the end-of-command
+// output, so a signal right after "Waiting for …" still killed Node past Playwright's exit handler.
+test('the signal handlers are in place before the command\'s end writes anything', async () => {
+  const ledger = new BrowserLedger(); await unproven(ledger);
+  const events: string[] = [], signals = new Map<string, () => void>();
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const finishing = finishCommand({ ledger, flush: async () => {}, write: async text => { events.push(`write ${text.trim()}`); await blocked; },
+    exit: code => { events.push(`exit ${String(code)}`); }, onSignal: (signal, handler) => { signals.set(signal, handler); return () => { signals.delete(signal); }; } });
+  await flush();
+  assert.equal(events.length, 1, 'the first line is being written');
+  assert.deepEqual([...signals.keys()].sort(), ['SIGHUP', 'SIGINT', 'SIGTERM'], 'the handlers are already there');
+  signals.get('SIGTERM')!();
+  assert.equal(events.at(-1), 'exit 143', 'a signal during the output exits through process.exit');
+  release();
+  assert.equal(await finishing, undefined, 'no rule is armed after that exit');
+  assert.equal(signals.size, 0);
+});
+
 // Review of PR #69 (effects-4): the wait line counted entries with nothing of Playwright's left.
 test('the wait line counts only browsers whose close or launch still runs', async () => {
   setCliLanguage('en');
@@ -224,54 +243,20 @@ test('the budget and wait texts agree with a count of 1 in German and English', 
   assert.match(cliText('browsersWaiting', { count: 1 }), /Waiting for 1 browser to close; Playwright ends it within/);
 });
 
-// The real CLI, per command kind: a preload puts the combined path into the process ledger with its
-// close request 40 s back and keeps Node alive as Playwright's pipes would. The command must do its
-// work, end its shutdown (a host closed, its credential removed), write the ledger's lines, and only
-// then exit through the rule with its own exit code.
-const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const CLI = join(ROOT, 'src/cli/main.ts'), PRELOAD = join(ROOT, 'tests/support/exit-rule-preload.ts');
-interface Ended { code: number | null; stdout: string; stderr: string }
-async function cli(args: string[], home: string, options: { stdin?: string; interruptWhen?: RegExp } = {}): Promise<Ended> {
-  // Each command its own PRACTONAUT_HOME: the credentials counted at its exit are its own.
-  const own = await mkdtemp(join(home, `${args[0]}-`));
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--import', PRELOAD, CLI, ...args], { cwd: home, env: { ...process.env, PRACTONAUT_HOME: own }, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', interrupted = false;
-    const limit = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`${args[0]} did not exit: ${stderr}`)); }, 60_000);
-    child.stdout.on('data', chunk => { stdout += chunk; if (options.interruptWhen && !interrupted && options.interruptWhen.test(stdout)) { interrupted = true; child.kill('SIGINT'); } });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-    if (options.stdin !== undefined) child.stdin.end(options.stdin);
-    child.on('close', code => { clearTimeout(limit); resolve({ code, stdout, stderr }); });
-  });
-}
-function endedThroughRule(name: string, ended: Ended): void {
-  assert.equal(ended.code, 0, `${name}: ${ended.stderr}`);
-  const lines = ended.stderr.split('\n');
-  const ledger = lines.findIndex(line => line.includes('browser 1 (mirror): closed; process end not proven'));
-  // The preload's browser disconnected before its close: nothing of Playwright's is left to wait for.
-  assert.equal(lines.some(line => line.includes('Waiting for')), false, `${name}: no wait promised`);
-  // Every credential under the home counts, bench runs' included (review of PR #69, effects-7).
-  const exit = lines.findIndex(line => line.startsWith('[exit-rule] process.exit(0) tokens=0'));
-  assert.ok(ledger >= 0 && exit > ledger, `${name}: the ledger's lines, then the exit, with no credential left:\n${ended.stderr}`);
-}
-
-test('every command kind ends through the rule only after its own shutdown (real CLI)', { timeout: 180_000 }, async () => {
+// The real CLI, per command kind, for the commands that start no host (the unit layer has no Player
+// build): `tests/integration/command-end.test.ts` runs mcp, bench and play the same way.
+test('every command kind that starts no host ends through the rule only after its own shutdown (real CLI)', { timeout: 180_000 }, async () => {
   const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-exit-rule-'));
   try {
     const world = join(home, 'flow.pnworld'), actions = join(home, 'actions.json');
     await writeFile(actions, '[]');
-    const packed = await cli(['pack', join(ROOT, 'examples/worlds/flow-diagram'), '--out', world, '--json'], home);
+    const packed = await cliUnderRule(['pack', join(ROOT, 'examples/worlds/flow-diagram'), '--out', world, '--json'], home);
     endedThroughRule('pack', packed);
     const kinds: Array<[string, Promise<Ended>, (ended: Ended) => void]> = [
-      ['validate', cli(['validate', world, '--json'], home), ended => assert.equal(JSON.parse(ended.stdout).ok, true)],
-      ['run', cli(['run', world, '--seed', '1', '--actions', actions, '--mirror', 'off'], home), ended => assert.equal(JSON.parse(ended.stdout).ok, true)],
-      ['tasks', cli(['tasks', 'list', '--json'], home), ended => assert.ok(ended.stdout.length > 0)],
-      // practonaut mcp: main returns at once; the session ends when stdin closes and stop() has closed the host.
-      ['mcp', cli(['mcp', '--task', 'connect', '--mirror', 'off'], home, { stdin: '' }), ended => assert.match(ended.stderr, /\n.*connect/)],
-      ['bench', cli(['bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'off', '--out', join(home, 'bench.json')], home), ended => assert.match(ended.stdout, /bench\.json/)],
+      ['validate', cliUnderRule(['validate', world, '--json'], home), ended => assert.equal(JSON.parse(ended.stdout).ok, true)],
+      ['run', cliUnderRule(['run', world, '--seed', '1', '--actions', actions, '--mirror', 'off'], home), ended => assert.equal(JSON.parse(ended.stdout).ok, true)],
+      ['tasks', cliUnderRule(['tasks', 'list', '--json'], home), ended => assert.ok(ended.stdout.length > 0)],
     ];
-    // serve and play stop on Ctrl+C (POSIX: a signal to the test's own child).
-    if (process.platform !== 'win32') kinds.push(['play', cli(['play', 'connect', '--no-open', '--mirror', 'off'], home, { interruptWhen: /#code=/ }), ended => assert.match(ended.stdout, /#code=/)]);
     for (const [name, running, check] of kinds) { const ended = await running; check(ended); endedThroughRule(name, ended); }
   } finally { await rm(home, { recursive: true, force: true }); }
 });
@@ -288,21 +273,6 @@ test('the real CLI names a full browser budget with the counts and the remedy, i
     assert.equal(english.stderr.trim(), 'practonaut: no browser could start: 5 running and 3 closing of 8 allowed, and none closed within the launch bound. Wait until they have closed, or restart Practonaut. [browser_budget_exhausted]');
     assert.equal(german.status, 3, german.stderr);
     assert.match(german.stderr, /kein Browser konnte starten: 5 laufen und 3 schließen gerade, 8 sind erlaubt.*Practonaut neu starten\. \[browser_budget_exhausted\]/);
-  } finally { await rm(home, { recursive: true, force: true }); }
-});
-
-// Review of PR #69 (effects-8): the bench's count of runs lost to the budget had no test.
-test('a bench counts the runs it lost to the browser budget after its table, in English and German', { timeout: 180_000 }, async () => {
-  const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-budget-'));
-  try {
-    const bench = (out: string, ...lang: string[]) => spawnSync(process.execPath, ['--import', join(ROOT, 'tests/support/budget-mirror-full-preload.ts'), CLI, ...lang, 'bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'required', '--out', join(home, out)], { cwd: home, encoding: 'utf8', timeout: 120_000, env: { ...process.env, PRACTONAUT_HOME: home } });
-    const english = bench('en.json'), german = bench('de.json', '--lang', 'de');
-    assert.equal(english.status, 0, english.stderr);
-    assert.match(english.stdout, /\n1 run could not be judged because no browser slot became free \(browser_budget_exhausted\); see each run's note\.\n/);
-    assert.match(german.stdout, /\n1 Lauf konnte nicht bewertet werden, weil kein Browser-Platz frei wurde \(browser_budget_exhausted\)/);
-    const report = JSON.parse(await readFile(join(home, 'en.json'), 'utf8')) as { sessions?: Array<{ runs: Array<{ status: string; note?: string }> }>; runs?: Array<{ status: string; note?: string }> };
-    const runs = report.runs ?? report.sessions?.flatMap(session => session.runs) ?? [];
-    assert.deepEqual(runs.map(run => [run.status, run.note?.startsWith('browser_budget_exhausted: ')]), [['infra_error', true]], 'the run\'s note names the budget');
   } finally { await rm(home, { recursive: true, force: true }); }
 });
 
