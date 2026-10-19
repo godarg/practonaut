@@ -1,13 +1,14 @@
-# PADR-0050 — A browser close is a bounded request: no forced end in 0.3.0
+# PADR-0050 — A browser close is a bounded request on top of Playwright's own forced end
 
 Status: proposed · Date: 2026-10-19 · Issue #64 · Builds on
 [PADR-0032](0032-chromium-sandbox-stays-on.md) (one way to start Chromium),
-[PADR-0045](0045-adapter-registry-and-browser-shell.md) (browser shell, network boundary, time bounds)
-and [PADR-0012](0012-excalidraw-bundling.md) (the engine is served without a local listener) · Records
-the maintainer's decision of 2026-10-19: **in 0.3.0 Practonaut signals no process it did not spawn
-itself** · Revised after an independent review of the first draft (OpenAI Codex, 2026-10-19), which
-proposed a verified forced end; dispositions at the end · Design only; accepted with the pull request
-that implements it
+[PADR-0045](0045-adapter-registry-and-browser-shell.md) (browser shell, sink proxy, time bounds) and
+[PADR-0012](0012-excalidraw-bundling.md) (the engine is served without a local listener) · Records the
+maintainer's decision of 2026-10-19: **in 0.3.0 Practonaut signals no process it did not spawn
+itself** · Revised after two independent reviews (OpenAI Codex, 2026-10-19): the first rejected a
+forced end through a CDP process id, the second showed that Playwright already forces the end through
+the handle it owns; dispositions in *Review* and *Re-review* at the end · Design only; accepted with
+the pull request that implements it
 
 ## Context
 
@@ -15,214 +16,277 @@ Every browser Practonaut starts goes through `launchChromium` (`src/adapters/bro
 the mirror's shell (`src/adapters/browser/shell.ts:197`), the start check
 (`src/cli/browser-start.ts:29`), the render check (`src/adapters/excalidraw/render-check.ts:26`) and
 the report card (`src/bench/card-png.ts:27`). They close it four ways: the shell through
-`closeBrowser` (`src/adapters/browser/bounded.ts:28`), Playwright's `browser.close()` within
+`closeBrowser` (`src/adapters/browser/bounded.ts:28`), Playwright's `browser.close()` raced against
 `BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced` = 3 s + 5 s; the start check, the render check and
-the report card with a plain `browser.close()` (the report card closes each context first). The names
-promise a graceful step and a forced one; there is no forced step. Playwright offers none for a
-browser started with `launch()` — `Browser.process` does not exist on it — and ends what is left only
-when the Node process exits: its exit handler, which owns the child process handle, kills the
-process tree and removes the temporary profile (Playwright 1.64 source, `killProcessAndCleanup`).
+the report card with a plain `browser.close()` (the report card closes each context first; the start
+check ignores the close's failure). Above the shell, the mirror's `dispose` (since pull request #68,
+`closeWithin`) and the host's close steps (`src/host/server.ts`, 8 s per step within 12 s overall)
+arm timers of their own around the same close.
 
-Issue #64 measured what that costs (`docs/testing.md`, *Host deadline tests*). Playwright's close
-returns once Chromium has exited and Playwright has removed its temporary profile. On a machine short
-of CPU, Chromium's own graceful exit — from Playwright's `Browser.close` request to the process exit —
-grows from about 15 ms to seconds; many slow exits end at 10.0–10.1 s, two at 30.1 s. The profile
-removal stays near or under a second. A plain Playwright Chromium without any of the shell's settings
-shows the same 10 s exits; the sandbox and the page's `unload` listeners make no difference (scratch
-runs, paired). Under load, then:
+**What Playwright does on a close** (playwright-core 1.64.0, `lib/coreBundle.js`). `browser.close()`
+ends in `browserProcess.close()`, which is `closeOrKill(30 000 ms)` (`DEFAULT_PLAYWRIGHT_TIMEOUT`):
+it races the graceful close — CDP `Browser.close`, then waiting for the child's `close` event and the
+removal of its temporary directories — against a 30 s timer, and when the timer wins calls `kill()`.
+`kill()` ends the child it spawned and still holds: on POSIX `SIGKILL` to the child's process group
+(`-pid`; the child was spawned `detached`), skipped once the child's `close` event has arrived; on
+Windows a synchronous `taskkill /pid <pid> /T /F` through `spawnSync` with no timeout. It then waits
+for the same cleanup. The timeout is not a public option: the only override is
+`__testHookBrowserCloseTimeout`, which Playwright's protocol validator passes only when its own test
+mode (`PWTEST_UNDER_TEST`) is set. The cleanup removes two temporary directories per launch,
+`playwright_chromiumdev_profile-*` and `playwright-artifacts-*`, with `fs.promises.rm` (10 retries);
+a removal error is logged and the close still fulfils. At Node's `exit` event Playwright's own handler
+kills every child it still tracks the same way and removes the directories with `rmSync` (5 retries),
+catching errors. A Practonaut command ends by setting `process.exitCode` (`src/cli/main.ts`), so Node
+exits only once Playwright's pending closes, their pipes and their 30 s timers are done; the bench's
+second interrupt calls `process.exit` and so reaches the exit handler with closes still pending.
 
-- a close that has an 8 s bound fails with `BrowserDeadlineError` although the browser is merely
-  slow, and the browser keeps running until the Node process exits; a host close reports "Session
-  shutdown could not be fully confirmed";
-- a close without a bound waits as long as Chromium takes;
-- a mirror recovery that must replace a browser fails when the old one does not close within the
-  bound, and the session loses its mirror (measured once in 60 attempts under load);
-- tests that close a real browser in their cleanup fail on a loaded runner (the two Windows runs of
-  issue #64; the adapter layer twice on a loaded development machine).
-
-Issue #64's first step (pull request #68) keeps the original failure when a close after it fails or
-runs out of time (`closeAfterFailure`, `closeWithin`), tries every cleanup step of a failed host
-start on its own, and bounds the mirror's wait for an old adapter. It does not change what a close
-after successful work does.
+Issue #64 measured what a slow close costs (`docs/testing.md`, *Host deadline tests*). On a machine
+short of CPU, Chromium's graceful exit grows from about 15 ms to seconds; in the amplifier run under the
+heaviest load (60 closes) 27 exits took a second or more and ended with exit code 0, up to 11.4 s, ten
+of them at 10.0–10.1 s; two ended at 30.1 s with `SIGKILL`, logged by Playwright as `<kill>` — its own
+forced end after 30 s, not a Chromium limit. Profile removal stayed near or under a second. Under
+load, then: an 8 s bound fails although the browser is merely slow; an unbounded close waits up to
+Playwright's 30 s; a mirror recovery that must replace a browser fails and the session loses its
+mirror; tests fail in their cleanup. Pull request #68 keeps the original failure when a close after it
+fails or runs out of time, tries every cleanup step of a failed host start on its own and bounds the
+mirror's wait for an old adapter; it does not change what a close after successful work does.
 
 ## Measurements
 
-macOS 27 (Apple M4), Node 22.22.3, Playwright 1.64.0 with its headless shell, 2026-10-19. Read-only
-probes in `.local/` that start their own browser and signal nothing but it (not kept in the
-repository). They were made for the first draft's forced end and are kept here because they decide
-against it as much as for it.
+macOS 27 (Apple M4), Node 22.22.3, Playwright 1.64.0 with its headless shell, 2026-10-19. Probes in
+`.local/` start their own browser and signal nothing but it (not kept in the repository). Source facts
+are from the installed `playwright-core` 1.64.0.
 
-| Question | Answer on macOS | Linux | Windows |
+| Question | macOS | Linux | Windows |
 |---|---|---|---|
-| `Browser.process` on a launched browser | `undefined` | same API, not run | same API, not run |
-| CDP `SystemInfo.getProcessInfo` on the browser session | one entry `browser` with the process id, plus `renderer`, `GPU`, `network.mojom.NetworkService`; 1 ms | UNKNOWN | UNKNOWN |
-| That id's parent | this Node process | UNKNOWN | UNKNOWN |
-| Process group | Playwright spawns Chromium `detached` on every platform but Windows (source of 1.64), so the browser leads its own group (PGID read with `ps`); all three children share it; SID not read | same source; children UNKNOWN (zygote, sandbox helpers) | no process groups; Playwright ends a tree with `taskkill /pid <pid> /T /F` (source) |
-| `ps lstart` resolution | one second | — | — |
-| A killed child within one synchronous segment | stays a zombie with this process as parent through 300 ms of synchronous work and two `ps` calls; reaped only after an event-loop turn | UNKNOWN | UNKNOWN |
-| Group stopped (`SIGSTOP`, the probe's own), then a group `SIGKILL` at 3 s | Playwright's close settled at 3 022 ms; no process of the group left | UNKNOWN | — |
-| `launchServer()` | a WebSocket listener in the Node process on `[::1]` and a random port, path of 32 hex characters; a second client that knows the endpoint drives the browser; a wrong path gets `400`; `BrowserServer.kill()` ended the browser in 7 ms | UNKNOWN | UNKNOWN |
-| A plain browser's `disconnected` against its exit, under load | `disconnected` 21–115 ms after the close request, exit up to 3.6 s | UNKNOWN | UNKNOWN |
+| Playwright's close timeout, then its forced end | 30 s, then `kill()` (source); measured: 2 of 60 closes under load ended at 30.1 s with `SIGKILL` | same source | same source; `taskkill /T /F` synchronous, no timeout |
+| Close timeout settable through a public option | no (only the test-mode hook) | same | same |
+| `Browser.process` on a launched browser | `undefined` | same API | same API |
+| Graceful exits under load (60 closes) | 27 ≥ 1 s, exit code 0, up to 11.4 s; 10 at 10.0–10.1 s | UNKNOWN | UNKNOWN |
+| `disconnected` against the process exit, under load | `disconnected` 21–115 ms after the request, exit up to 3.6 s | UNKNOWN | UNKNOWN |
+| Temporary directories per launch | profile and artifacts (source) | same | same |
+| Removal error on close | logged, close fulfils (source) | same | same |
+| Process group | the browser leads its group (PGID read); three children share it; SID not read | same source; zygote and sandbox helpers UNKNOWN | no groups (source) |
+| Peak memory per browser, and during a recovery with the old browser still closing | UNKNOWN | UNKNOWN | UNKNOWN |
+| `launchServer()` | listener on `[::1]`, 32-hex path, second client drives the browser, wrong path `400`, `kill()` 7 ms | UNKNOWN | UNKNOWN |
 
 ## Options considered
 
 Each option with what it guarantees, what it costs and what is measured.
 
-**(a) `launchServer` and `BrowserServer.kill()`.** *Guarantee:* Playwright's own kill, through the
-process handle it holds — no reused id. *Cost:* every operation on the browser, not only the close,
-goes through a WebSocket endpoint the Node process listens on (`[::1]`, measured), a second local
-control channel next to the host's. Taken apart: *endpoint disclosure* — the port is visible to any
-local process, the 128-bit path is not (it lives only in this process's memory and is never passed
-on a command line); *unauthorised control* — without the path a client gets `400` (measured), with it
-full control of the browser; *denial of service* — any local process can open connections to the
-port. The threat model trusts processes of the same user (`docs/security/threat-model.md` §3, 1)
-and protects against other users and origins; a listener whose only gate is a secret path is the
-same kind of gate as the host's session token. *Evidence:* macOS only. Not chosen for 0.3.0: it
-replaces PADR-0012's "no local listener" for the engine with a permanent control listener for every
-browser, and moves the whole shell onto `connect`; that is a larger change than the close needs now.
-Kept as the first candidate if a forced end is needed later (re-assessment triggers).
+**(a) `launchServer` and `BrowserServer.kill()`.** *Guarantee:* Playwright's kill through its handle.
+*Cost:* every browser operation through a WebSocket endpoint the Node process listens on — endpoint
+disclosure (the port is visible, the 128-bit path is not), control (none without the path, `400`;
+full with it), denial of service (anyone can connect to the port). The threat model trusts same-user
+processes (`docs/security/threat-model.md` §3, 1). *Evidence:* macOS only. Not chosen: since the
+second review it adds nothing, because `launch()` already gets the same kill through the same kind of
+handle (`closeOrKill`), without a listener.
 
-**(b) The browser's process id from CDP, verified, and a signal (the first draft).** *Guarantee
-claimed:* the id is re-verified as this Node process's child with its recorded start time in the same
-synchronous segment as the signal. *Why it does not hold* (review, findings 1–3): the identity is not
-bound to the browser whose close is pending. Chromium can die and be reaped between the CDP answer
-and the system read, and the read then records another child of this process under the same id;
-`ps lstart` has one-second resolution, so two incarnations of an id can share the recorded start
-time. On Windows, `taskkill /T` follows parent ids that may already have been reused, and the
-synchronous segment protects at most the root, not the tree it walks. Descendants can leave the
-browser's group. *Evidence:* the macOS probes above show the parts that work; none of them closes
-these gaps. Rejected for 0.3.0.
+**(b) The browser's process id from CDP, verified, and a signal of Practonaut's own.** Rejected
+(first review, findings 1–3): the identity is not bound to the browser whose close is pending, `ps
+lstart` has one-second resolution, and a Windows tree walk follows parent ids that may be reused.
 
-**(c) A process-group or job-object launch.** On POSIX Playwright already makes the browser a group
-leader, which (b) relied on. A Windows job object assigned before Chromium's first instruction would
-bind the whole tree to a handle Practonaut owns, but needs a native addon or a wrapper process around
-the one start (PADR-0032); one assigned afterwards leaves a gap before the assignment. *Evidence:*
-none measured. Not chosen for 0.3.0; with (a), the way to a safe forced end later.
+**(c) A process-group or job-object launch of Practonaut's own.** A job object needs native code or a
+wrapper around the one start (PADR-0032). Not chosen; re-assessment trigger.
 
-**(d) Leave the close as it is and run `challenge-round.test.ts` alone in CI.** Removes the load the
-two failed Windows runs shared, if that load is the cause there (not measured), and changes nothing
-for users. Chosen only as an interim CI measure, if the measurement asks for it (decision 6).
+**(d) Leave the close as it is and run `challenge-round.test.ts` alone in CI.** Changes nothing for
+users. Interim CI measure only (decision 11).
 
-**(e) A close is a request with a bounded wait, tracked until it ends.** *Guarantee:* no caller waits
-longer than the close bound, no work that succeeded fails because a browser closes slowly, no signal
-to any process, and every close still running is counted, capped and reported. *Cost:* a browser
-that closes slowly may outlive its close until it finishes or the process exits. *Evidence:* the
-macOS load runs (how long closes take); what Playwright's exit handler leaves is to be measured
-(decision 7). Chosen.
+**(e) A bounded request on top of Playwright's own close and forced end.** *Guarantee:* no caller
+waits longer than its deadline; no work that succeeded fails because a browser closes slowly;
+Practonaut signals nothing; every browser launched stays reserved in a process-wide budget until
+Playwright reports its process ended; the forced end is Playwright's, through the handle it spawned
+and holds, 30 s after the request. *Cost:* Playwright's forced end carries its own risks (decision 1);
+a browser that closes slowly holds a budget slot, its sink and memory for up to 30 s; a command waits
+for it before it exits. *Evidence:* source and the macOS load runs. Chosen.
 
 ## Decision
 
-1. **One close contract for every browser Practonaut owns.** The shell, the start check, the render
-   check and the report card close through the same function, and so does every context the report
-   card closes before its browser. It asks Playwright to close and waits on **one monotonic deadline**
-   from the request: the close bound, graceful + forced = 8 s, no part of it spent on anything else.
-   Nothing in it runs synchronously long enough to hold the event loop, and nothing in it signals a
-   process.
-2. **After the bound, the caller goes on.** A close that settles in time is *closed*; one that fails
-   in time is *failed* (its error, as today); one that is still running at the deadline is
-   *abandoned*: the caller gets that outcome, not an error. Work that succeeded is not failed by an
-   abandoned close: a render check returns its report, a report card its pictures, `run` its result,
-   a host close resolves. After a failure the original failure stays what the caller gets, with an
-   abandoned or failed close next to it (`closeAfterFailure`, issue #64 step 1). A host close
-   reports "could not be fully confirmed" only for a close that *failed*, not for one abandoned.
-3. **Abandoned closes are tracked.** Each one stays in a process-wide ledger until Playwright's close
-   settles; the ledger keeps how many are pending and how each ended (closed late, failed late, or
-   still running at exit). At `HOST_LIMITS.pendingBrowserCloses` = 3 pending closes, a new browser
-   start in this process is refused by name, `browser_close_pending`, the way a start that fails is
-   refused today: `--mirror auto` goes on model-only with a notice, `--mirror required` and
-   `practonaut run` stop with the named error (exit 3), a mirror recovery leaves the session without a
-   mirror. The cap is a count of browsers that may still run, not a timeout.
-4. **What the user sees.** Nothing in the Player or over MCP. The host's private mirror diagnostics
-   record each abandoned close and how it ended. A command that owns browsers (`serve`, `play`,
-   `mcp --task`, `run`, `bench`, `report --card`, `doctor`) prints one line on stderr when a close is
-   abandoned, in English and German: *Chromium has not closed within 8 s; Practonaut goes on and ends
-   it when it exits.* At exit, if any are still pending, one line says how many. A refused start
-   names `browser_close_pending` and the remedy (wait, or restart Practonaut).
-5. **At process exit Playwright ends what is left.** Its exit handler holds the child handle, kills
-   the tree (POSIX: the group; Windows: `taskkill /T /F` on the root it spawned and still holds) and
-   removes the temporary profile synchronously. Practonaut adds no exit or signal handler of its
-   own. What happens when Node is killed without an `exit` event is not covered (decision 7 measures
-   the `exit` case).
-6. **Mirror recovery does not wait for the old browser beyond the bound.** An interrupted recovery
-   requests the old adapter's close; once that close is closed, failed or abandoned, it starts the
-   replacement (subject to the cap in point 3). A late write of the old browser cannot reach the
-   replacement: it is another browser process with its own page. The replacement is published only
-   after its read-back equals the committed Practonaut state, as today; that state, not anything the
-   old browser held, is what counts.
-7. **Tests that fail without it.**
-   - Unit, Node's mock clock, for each of the four owners (shell, start check, render check, report
-     card with its contexts): a fake browser whose close never settles makes the owner's call return
-     at the bound with its own result (or its own failure), the close *abandoned*, the ledger at 1;
-     when the fake close settles later, the ledger goes back to 0 and records *closed late*. Without
-     the contract the call waits for good (start check, render check, report card) or fails with
-     `BrowserDeadlineError` (shell).
-   - Unit: with 3 pending closes, a mirror start, a recovery and `run` are refused with
-     `browser_close_pending`; with 2 they start.
-   - Unit: an interrupted recovery whose old adapter never closes starts the replacement at the bound
-     and publishes it only after its read-back equals the committed state.
-   - Integration (real Chromium, a child Node process the test starts; the close held by the test's
-     own preload, no signal): the child abandons a close and exits; afterwards no process with the
-     browser's recorded id and start time remains and its temporary profile directory is gone (read
-     with `ps` and the file system only). Run on every CI platform; where it fails, the reliance in
-     point 5 is not met there and this record is reopened.
-8. **Before and after (acceptance of issue #64).** Comparable runs: the same Playwright, Chromium and
-   Node versions, runners, load parameters and test parallelism; Linux with the sandbox and with the
-   PADR-0032 fallback.
-   - *Before:* `main` with #68 only. `host-deadline-repeat` runs 5 jobs × 30 attempts per test on
-     each platform beside `challenge-round.test.ts`; locally the amplifier with
-     `--cpu 20 --block 20 --load 6` (before #68: 4 and 14 failures in 60 attempts).
-   - *After:* the same runs on the implementing branch.
-   - *Reported, both times, per platform and test, with full denominators:* attempts; passes;
-     failures at the close; other failures; closes; closes of a second or more; closes abandoned;
-     closes still pending at exit; and per close the request, `disconnected`, the process exit, the
-     start and end of the profile removal, the settling of Playwright's close and the return to the
-     caller, measured separately (`disconnected` is not the process exit).
-   - *Accepted when* no attempt fails at the close on any platform, and the after-run shows abandoned
-     closes wherever the before-run showed close failures (a run in which no close was ever abandoned
-     does not confirm the cause). Zero failures in 150 attempts bounds the failure rate only to about
-     2 % at 95 % confidence; the record says so rather than "fixed".
-   - *Interim:* if the before-run fails at the close on a platform, `test:integration` runs
-     `challenge-round.test.ts` in a CI step of its own on that platform until the after-run is in;
-     no required check is renamed.
+1. **Playwright's close is the close; its forced end is the forced end.** Practonaut asks once,
+   `browser.close()`, and adds no signal, no kill and no handler of its own. Playwright ends a close
+   that has not finished after 30 s through the child it spawned and holds. Its timeout stays 30 s:
+   it is not settable through a public option, and Practonaut does not turn on Playwright's test mode.
+   **Accepted dependency risks**, recorded rather than hidden: on Windows Playwright's `taskkill /T`
+   walks the tree by parent process ids, which Windows may have reused (the first review's finding 2
+   applies to Playwright as to any user of it), and its `spawnSync` holds the host's event loop until
+   `taskkill` returns, with no timeout; on POSIX Playwright signals the child's group until the
+   child's `close` event, which Node delivers after it has reaped the child (`exit`), so for a moment
+   it may signal a group id whose leader is already gone. Practonaut runs a stalled browser into
+   these paths only as often as Playwright's own users do: when a close takes longer than 30 s.
+2. **One close contract, one deadline, outcomes passed up.** Every owner — the shell, the start
+   check, the render check and the report card — closes through one function that takes a
+   **deadline** (a monotonic time) from its caller, by default the request plus 8 s, and runs the
+   owner's context closes first within the same deadline. It always settles by that deadline with an
+   outcome: **closed** (Playwright's close fulfilled), **failed** (it rejected) or **abandoned** (still
+   running at the deadline). Every layer above — the adapter's `terminate`, the mirror's `dispose`
+   and `close`, the session's `close`, the host's close steps, the commands — passes its own deadline
+   down and reads the outcome; none arms a timer of its own that ends at or before a deadline it has
+   passed down. (The second review's counterexample: `closeWithin` in the mirror starts its 8 s timer
+   before `terminate` starts the browser's, so the outer one fires first and turns an *abandoned* into
+   a `BrowserDeadlineError`; the host's step timer does the same.) A safety timer that remains above
+   the contract, such as the host's 12 s overall close, ends later than every deadline it hands down,
+   and its firing counts as *failed*.
+3. **After the deadline the caller goes on.** Work that succeeded is not failed by an *abandoned*
+   close: a render check returns its report, a report card its pictures, `run` its result, a start
+   check its answer, a host close resolves. After a failure the original failure is what the caller
+   gets, with an abandoned or failed close next to it (`closeAfterFailure`, #68). A host close
+   reports "could not be fully confirmed" only for a *failed* close.
+4. **A process-wide browser budget with reservations.** Every launch reserves one slot,
+   synchronously, before Playwright's launch starts; JavaScript runs one thing at a time, so two
+   starts cannot both see the last free slot. The slot stays reserved while the browser runs and
+   while its close is pending, and is released only when Playwright's close fulfils (decision 5). A
+   *failed* close keeps its slot until the process exits: its process state is unknown. The budget,
+   `HOST_LIMITS.browsers`, counts running and closing browsers together, across every host in the
+   process; a recovery's replacement reserves its own slot while the old browser still holds one. A
+   start beyond it is refused by name, `browser_budget_exhausted`, as a start that fails is refused
+   today: `--mirror auto` goes on model-only with a notice, `--mirror required` and `run` stop with
+   the named error (exit 3), a recovery leaves the session without a mirror. The starting value is 6:
+   the largest legitimate configuration, an author host with four practice hosts (five mirrors) and
+   one recovery replacement. It is confirmed or lowered by the memory measurement (decision 10). The
+   budget bounds the browsers Practonaut launched that Playwright has not reported ended; a helper
+   that has left the browser's process group is not counted and is looked for in the tests only.
+5. **Three separate statements per close.** *Process end:* Playwright's close fulfils only after the
+   child's `close` event (source), so a fulfilled close says the root process ended; the tests check
+   the whole process tree independently. *Promise result:* closed, failed or abandoned (decision 2).
+   *Directory cleanup:* not confirmable through Playwright's API — it logs a removal error and
+   fulfils — so Practonaut reports it as unconfirmed and never frees a slot because of it; the tests
+   check the profile and artifacts directories under a test-owned `TMPDIR`. Nothing in Practonaut
+   infers cleanup from a call to `rm` or `rmSync`.
+6. **The sink belongs to the pending close.** The shell's sink proxy stays bound for as long as its
+   browser's slot is reserved: it is closed when Playwright's close fulfils, not in the `finally` of
+   the close request. A browser whose close is abandoned or failed keeps its proxy address pointing at
+   Practonaut's sink, so no other local process can take that port and receive the connections the
+   browser opens below the page (PADR-0045's sink).
+7. **Register rules.** One ledger entry per launch, created with the reservation; it becomes the
+   browser when the launch resolves and is released if the launch fails. One close per browser: the
+   first close request calls `browser.close()` once; every later request (the shell's, the mirror's,
+   a host's) joins that promise and gets its outcome against its own deadline. A context close is a
+   step of its owner's close, inside the same deadline, with no entry or slot of its own.
+8. **Mirror recovery** asks the old adapter to close against the recovery's deadline; once the
+   outcome is known (closed, failed or abandoned), it starts the replacement in a slot of its own and
+   publishes it only after its read-back equals the committed Practonaut state, as today. A late
+   write of the old browser cannot reach the replacement: it is another process with its own page,
+   profile and sink.
+9. **What the user sees.** Nothing in the Player or over MCP. A host's private diagnostics record the
+   closes it abandoned while it lived; no diagnostics writer outlives its host. What happens to a
+   close later stays in the process ledger (the last 64 entries: closed late, failed late, or still
+   pending; one that fulfils 30 s or more after its request is marked as probably ended by Playwright's
+   forced end — Playwright's own log is the proof, and the tests read it),
+   and the command reports it on stderr when it ends, in English and German. A command that still has
+   closes pending says so before Node waits for them: *Waiting for N browsers to close; Playwright
+   ends them within 30 s of the request.* A refused start names `browser_budget_exhausted`, how many
+   browsers are running and closing, and the remedy (wait, or restart Practonaut).
+10. **Tests that fail without it.**
+    - Unit, Node's mock clock, a fake browser whose close never settles, for each of the four owners:
+      the owner's call returns at the deadline with its own result (or its own failure) and the
+      outcome *abandoned*; the slot stays reserved; when the fake close settles, the slot is released
+      and the ledger records it.
+    - Unit, the review's counterexample as a test: a never-settling browser close under the mirror's
+      `dispose` and under a host close yields *abandoned* at every layer, never a `BrowserDeadlineError`
+      from an outer timer.
+    - Unit, the budget: seven starts in the same turn with a budget of 6 — exactly one is refused;
+      a failed close keeps its slot; a fulfilled one frees it; a recovery holds two slots until the
+      old close fulfils.
+    - Unit: the sink is not closed while its browser's close is pending, and is closed when it
+      fulfils; joining callers share one `browser.close()` call; context closes take no slot.
+    - Integration, POSIX, the real CLI (`practonaut run --mirror required`): a test preload reports
+      the browser's process id from CDP; the test confirms it is a descendant of the CLI process it
+      started and stops that browser's group (`SIGSTOP`, test-only, on the tree its own child
+      launched), so no graceful close can finish. (A) Normal end: `run` prints its result by the
+      deadline with the close abandoned; just before Node exits the test reads the whole descendant
+      tree (pid, ppid, pgid, sid, start time) and finds the browser alive; the CLI exits after
+      Playwright's forced end (about 30 s); afterwards none of those processes remains and the
+      test-owned `TMPDIR` holds no `playwright_*` directory. (B) Exit handler: the same with a bench
+      whose second interrupt calls `process.exit` while the close is pending. Windows has no
+      deterministic way from Node to stall Chromium (UNKNOWN): there (A) and (B) run without the
+      stall and check survivors and directories only; the forced path stays an accepted dependency
+      risk, counted in the repeat.
+    - Measurement, POSIX and Windows: peak memory (resident size summed over each browser's process
+      tree), sinks and profile directories while a recovery runs with the old browser still closing,
+      and two such recoveries overlapping. It sets `HOST_LIMITS.browsers`.
+11. **Before and after (acceptance of issue #64).** Comparable runs: the same Playwright, Chromium and
+    Node versions, runners, load parameters and test parallelism; Linux with the sandbox and with the
+    PADR-0032 fallback. *Before:* `main` with #68 only — `host-deadline-repeat` (5 jobs × 30 attempts
+    per test, each platform, beside `challenge-round.test.ts`) and locally the amplifier with
+    `--cpu 20 --block 20 --load 6` (before #68: 4 and 14 failures in 60 attempts). *After:* the same
+    runs on the implementing branch. Reported both times, per platform and test, with full
+    denominators:
+    - attempts; **work completed** (the test's own assertions passed); mirror recoveries started and
+      **published**; failures at the close; start failures (budget refusals included); resource
+      failures; shutdown failures (a host close *failed*; a command that did not exit within
+      Playwright's 30 s plus cleanup);
+    - closes: closed in time, abandoned, failed; of the abandoned: ended gracefully, ended by
+      Playwright's forced end, still pending when the command ended;
+    - per close, separately: the request, `disconnected`, the process exit with its exit code or
+      signal, the start and end of directory cleanup, the promise settling, the return to the caller;
+    - peak memory and slots in use.
+
+    **Accepted when**, on every platform: every attempt completed its work; every recovery published
+    a replacement; no attempt failed at the close; no start, resource or shutdown failure appeared
+    that the before-run did not have; and the after-run shows abandoned closes wherever the before-run
+    failed at the close (a run in which no close was ever abandoned does not confirm the cause).
+    Moving a failure from the close into a refused start, a lost recovery or a slow exit does not
+    pass. Zero failures in 150 attempts bound the failure rate only to about 2 % at 95 % confidence;
+    the record says so rather than "fixed". *Interim:* if the before-run fails at the close on a
+    platform, `test:integration` runs `challenge-round.test.ts` in a CI step of its own on that
+    platform until the after-run is in; no required check is renamed.
 
 ## Consequences
 
-- No process is signalled; the threat model does not change. A browser that closes slowly keeps
-  running until it finishes or Practonaut exits; a long-running host (a bench, `mcp --task`) holds at
-  most 3 such browsers before it refuses new ones by name.
-- Callers no longer fail work that succeeded because a browser closed slowly: the adapter and
-  integration layers' own cleanup stops failing under load, and a host close under load resolves.
-- A browser left running holds memory and CPU on a machine that was already short of both; the
-  ledger, the cap and the stderr line make that visible instead of failing.
-- Whether Playwright's exit handler leaves nothing behind on Windows is unmeasured until decision 7's
-  integration test runs there. On Windows that handler ends the tree with `taskkill /T`, the same tree
-  walk finding 2 doubts; it is what every Playwright user gets at exit today, on a root whose handle
-  Playwright still holds, and this decision neither adds to nor changes it.
+- Practonaut signals no process. The forced end is Playwright's, with the dependency risks in
+  decision 1; the threat model records them as Playwright's.
+- No caller waits beyond its deadline, and work that succeeded does not fail because a browser closes
+  slowly. A command may still wait before it exits — up to Playwright's 30 s after the last close
+  request — and says so.
+- The number of browsers Practonaut launched and Playwright has not reported ended is bounded per
+  process; a recovery's replacement counts. A failed close holds its slot until the process exits.
+- A slowly closing browser keeps its sink port and its directories for up to 30 s, and longer if
+  Playwright's cleanup fails; cleanup is reported as unconfirmed, not assumed.
 
 ## Re-assessment triggers
 
-- Playwright exposes a process handle or a kill for launched browsers, without a listener.
-- A Windows job object or process handle becomes available from Node or through a vetted addon
-  (option c); then a forced end can bind to a handle, not a number.
-- The ledger reaches its cap in practice (bench or `mcp --task` runs refusing starts), or browsers
-  pending at exit survive Practonaut's exit on a platform (decision 7).
-- The Windows repeat shows that the time goes into the profile removal rather than Chromium's exit.
+- Playwright makes its close timeout public, or exposes a process handle or kill for launched
+  browsers without a listener.
+- A Windows job object or process handle becomes available from Node or a vetted addon (option c).
+- Budget refusals appear in practice, or the memory measurement asks for a lower budget.
+- The tests find a survivor, or a leftover directory, on any platform.
+- The Windows repeat shows Playwright's `taskkill` holding the event loop long enough to break a
+  deadline.
 
 ## Review (2026-10-19)
 
-An independent review of the first draft (forced end through a verified process id) by OpenAI Codex.
-Its counterexamples were analytical; none was reproduced experimentally.
+The first independent review, of the first draft (a forced end through a verified process id), by
+OpenAI Codex. Its counterexamples were analytical. Statuses as of the second review (*Re-review*).
 
 | # | Finding | Disposition |
 |---|---|---|
-| 1 | blocker — the recorded identity is not bound to the browser whose close is pending: it can die and be reaped between the CDP answer and the system read, and `ps lstart` has one-second resolution | Accepted. The forced end is rejected for 0.3.0 (option b); a forced end later needs a handle, not a number (re-assessment triggers). |
-| 2 | blocker — Windows `taskkill /T` follows parent ids that may be reused; the synchronous segment protects at most the root | Accepted. No Windows tree kill; option b rejected. |
-| 3 | major — PGID and SID not captured; descendants may leave the group; "group empty" is not "all browser processes ended" | Accepted; moot for this decision (no signals). Recorded for any later forced end: read PID, PPID, PGID and SID; report escaped helpers, never kill them by a later id list. |
-| 4 | major — a settled Playwright close is no independent proof of cleanup; a hard end flushes no browser state | Accepted. This decision claims no cleanup at the bound; abandoned closes are tracked (decision 3), Playwright's exit handler is measured (decision 7), process exit and profile removal are measured separately (decision 8), and a recovery publishes only a replacement whose read-back equals the committed state (decision 6). |
-| 5 | major — 3 s + identity check + `taskkill` + 5 s exceed 8 s; synchronous helpers block the timers | Accepted. One monotonic deadline from the request; nothing synchronous; no helper processes (decision 1). |
-| 6 | major — a hanging identity capture inside `launchChromium` leaves the browser unreachable | Moot: no identity capture. Kept: the ledger takes the browser as soon as Playwright's launch returns, so a close is always reachable. |
-| 7 | major — the start check, render check and report card bypass `closeBrowser`; the report card's context close can hang | Accepted. Decision 1 puts every owner and every context close under one contract; decision 7 tests each at its entry point. |
-| 8 | major — acceptance could pass without proof (an empty group proves nothing; mocks prove only logic; no Windows force path) | Accepted. With no forced end there is no safety claim to prove; the effectiveness claim is measured with full denominators and abandoned counts, and a run without abandoned closes does not count as confirming the cause (decision 8). |
-| 9 | minor — the alternatives were weighed with different standards (128-bit endpoint vs. job-object effort) | Accepted. Each option now states guarantee, cost and evidence; (a) is split into endpoint disclosure, control and denial of service, and with (c) it is the path to a forced end later. |
-| 10 | minor — CDP's answer is a browser claim; the trust boundary should be explicit | Noted; moot for this decision. A later forced end treats the CDP id as the browser's claim, binds it to the operating system only through a handle, and takes it from a browser session before any app code loads. |
-| — | gaps — Linux with sandbox and fallback; a time decomposition in which `disconnected` is not the exit; statistics of 150 attempts; CI isolation as an interim | Accepted: decision 8 (comparable runs, Linux both ways, separate timings, the 2 % bound, the interim CI step). |
+| 1 | blocker — the recorded identity is not bound to the browser whose close is pending (death and reaping between the CDP answer and the system read; `ps lstart` one-second resolution) | Accepted; option b rejected. Closed in the re-review. |
+| 2 | blocker — Windows `taskkill /T` follows parent ids that may be reused | Accepted for Practonaut's own signals (none). Playwright's forced end uses the same walk: recorded as an accepted dependency risk (decision 1), not as resolved. |
+| 3 | major — PGID and SID not captured; descendants may leave the group | Accepted; no signal of Practonaut's own. The tests read pid, ppid, pgid, sid and start time of the whole tree and look for survivors outside the group (decision 10). |
+| 4 | major — a settled Playwright close is no proof of cleanup | Accepted: process end, promise result and directory cleanup are three statements (decision 5); a slot is freed on process end only. |
+| 5 | major — partial budgets exceed 8 s; synchronous helpers block timers | Accepted: one deadline per close, passed down (decision 2). Closed in the re-review. |
+| 6 | major — a hanging identity capture leaves the browser unreachable | Moot (no identity capture); the ledger takes the browser with its reservation (decision 7). Closed in the re-review. |
+| 7 | major — three owners bypass `closeBrowser`; context closes can hang | Accepted: decision 2 for all four owners and their contexts. Closed in the re-review. |
+| 8 | major — acceptance could pass without proof | Accepted: decisions 10 and 11 (independent survivor checks, the real CLI exit, full denominators, work completed). |
+| 9 | minor — alternatives weighed with different standards | Accepted; each option states guarantee, cost and evidence. Closed in the re-review. |
+| 10 | minor — the CDP trust boundary | Moot. Closed in the re-review. |
+
+## Re-review (2026-10-19)
+
+The second independent review, of the revision that chose a bounded request, by OpenAI Codex. It
+confirmed that the CDP blocker is gone and found seven majors. Each claim was checked against the
+code of pull request #68 and the installed `playwright-core` 1.64.0 before this revision.
+
+| # | Finding | Check | Disposition |
+|---|---|---|---|
+| 1 | major — Playwright already forces the end in a running host (`closeOrKill`, 30 s, then `kill()`; Windows `taskkill /T /F` synchronous); the measured 30.1 s is probably that timeout | Confirmed in source; the two 30.1 s closes of the load run were logged `<kill>`, `<will force kill>` and ended with `SIGKILL`; no public option sets the timeout | Accepted: the decision builds on that forced end (decision 1), with its Windows tree walk, its synchronous `taskkill` and its POSIX reaping window recorded as accepted dependency risks; the measurement separates graceful exits, Playwright's forced end and the caller's deadline (decision 11). |
+| 2 | major — outer 8 s timers fire before the inner *abandoned* (`dispose`, the host's close step) | Confirmed by construction: `closeWithin` arms its timer before `terminate` starts the browser's; the host arms its step timer before `controller.close()` | Accepted: one deadline handed down, outcomes passed up, no outer timer at or before a deadline it passed down; the counterexample becomes a test (decisions 2, 10). |
+| 3 | major — the cap of 3 is no guarantee (several hosts, parallel starts, active browsers that become abandoned later) | Confirmed: the check counted only pending closes, at start time | Accepted: a process-wide budget of running and closing browsers with synchronous reservations, held until process end; a recovery's replacement counts (decision 4). |
+| 4 | major — a fulfilled close does not confirm cleanup; `failed late` must not free a slot | Confirmed in source (removal errors logged, close fulfils; the exit handler catches `rmSync` errors) | Accepted: three statements; a slot is freed only on process end; a failed close keeps it until exit (decisions 4, 5). |
+| 5 | major — the sink port must stay reserved until the old browser is gone | Confirmed: `shutDown()` closes the sink in `finally` | Accepted: the sink lives as long as the browser's slot (decision 6). |
+| 6 | major — the exit test can pass with a surviving helper; it must prove the browser alive just before exit and use the real CLI exit | Confirmed: `main.ts` only sets `process.exitCode`, so Node waits for Playwright's pending close; a preload that holds a close before it starts never reaches the exit handler | Accepted: the real CLI with a stalled browser group, the whole descendant tree read before and after, the normal end and the bench's `process.exit` as two cases; Windows without a stall, its forced path a dependency risk (decision 10). |
+| 7 | major — #64 could pass by moving failures | Accepted as stated | Accepted: work completed and recoveries published in every attempt, no new start, resource or shutdown failure, and abandoned closes where the before-run failed (decision 11). |
+| — | gaps — register rules (one identity, one close promise, joining callers, context closes) | — | Accepted: decision 7, tested in decision 10. |
+| — | gaps — a diagnostics writer that outlives the host | `server.ts` closes the diagnostics file in the host's close | Not adopted: no writer outlives its host. A host records what it knew while it lived; later outcomes stay in the bounded process ledger and the command reports them on stderr (decision 9). A writer without an owner would need its own lifetime and bound for little gain. |
+| — | gaps — memory, profiles and sinks under overlapping recoveries | — | Accepted as measurements (decision 10) that set the budget; profiles are separate per launch (Playwright's `mkdtemp`), sinks per shell. |
+| — | gaps — the #64 tools and docs are not in the reviewed snapshot | They are on `main` with #68 | Noted. |
