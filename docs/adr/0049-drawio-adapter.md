@@ -14,8 +14,10 @@ the shared shell with the mapping decided here
 [`mapping.ts`](../../spikes/drawio/mapping.ts), summary
 [`results/shell.json`](../../spikes/drawio/results/shell.json)) · Revised after three independent
 reviews on 2026-10-19 (OpenAI Codex, Google Gemini, a three-lens Claude Opus workflow with a skeptic
-per major), the coordinator's dispositions, and a second round (see *Review* and *Re-review*) · To
-be accepted with the pull request that implements it, after a review of that code
+per major), the coordinator's dispositions, and a second round (see *Review* and *Re-review*);
+revised again on 2026-10-20 after the review of the implementation (decision 6 made allowlist-based;
+see *Review of the implementation*) · To be accepted with the pull request that implements it, after
+a review of that code
 
 ## Context
 
@@ -244,9 +246,14 @@ through a test seam, so the product reads no new variable.
    8 s; a size or hash mismatch is never retried. The body streams through a SHA-256 and a byte
    counter into a partial file whose name is unique to this setup (process id plus random), created
    exclusively (`O_EXCL`, no link following, mode 0600) in the version directory. One setup at a time
-   per version directory holds an exclusive lock file there; a lock whose process is gone, or older
-   than the absolute deadline, is removed by the next setup, which also removes only partial files
-   whose lock is gone. Only a complete file whose size and SHA-256 equal the pin is kept: flush; on
+   per version directory holds a lock file there. The lock holds the process id, its start and a
+   random token. It is written whole to a temp file and then hard-linked to the lock's name, which
+   fails when the name exists, so no setup ever sees a lock half written. A lock that cannot be read
+   is judged by its own modification time. A lock whose process is gone, or that is older than the
+   absolute deadline, is stale. The next setup removes a stale lock only after a second read finds
+   that same lock, and under the lock it removes the partial files of earlier setups. A release
+   removes the lock only while it holds the setup's own token. Only a complete file whose size and
+   SHA-256 equal the pin is kept: flush; on
    POSIX sync the file, rename over the target, sync the directory (`src/platform/private-fs.ts`
    already skips directory sync on Windows); on Windows a rename that fails with `EPERM`, `EBUSY` or
    `EACCES` (a reader holds the file for the moment of its read) is retried up to 10 times, 200 ms
@@ -256,8 +263,9 @@ through a test seam, so the product reads no new variable.
    actual byte count and both full SHA-256 values; nothing is kept. `app_download_failed` (exit 3)
    names the URL, the limit or error, and the alternative below; nothing is kept.
 5. **Offline and proxies.** `practonaut setup --app drawio --from <file>` verifies a `draw.war` the
-   user fetched by other means with the same size and SHA-256 check (printing both, and the expected
-   values, on a mismatch) and copies it into place the same way. Whether Node's built-in `fetch`
+   user fetched by other means with the same size and SHA-256 check and copies it into place the same
+   way. The file is hashed whatever its size (a file of another size is only streamed through the
+   hash), so a mismatch prints both sizes and both SHA-256 values. Whether Node's built-in `fetch`
    honours proxy settings on every supported Node line was not measured (UNKNOWN); `--from` always
    works. An already kept file that matches is reported and not fetched again; one that does not
    match is reported by name and replaced by a verified download.
@@ -280,7 +288,12 @@ through a test seam, so the product reads no new variable.
      sixth redirect (all five earlier hops allowed), a redirect to a scheme outside the set; retries
      counted; two concurrent setups (one lock holder, the other waits or stops by name, never a half
      file); stale partial files and locks; `--from`; the Windows rename retry with a held reader. Each
-     negative test asserts the refusal reason by name, so none passes for another reason.
+     negative test asserts the refusal reason by name, so none passes for another reason. The lock
+     cases include a fresh lock that is not yet written (busy) and the same lock an hour old (stale).
+     They also include two concurrent setups with the first held before its lock is written (one
+     download; the first stops by name), a lock that another setup took over during a run (the release
+     leaves it), and 25 pairs of setups started together. A retry wait is tested in a child process
+     in which nothing else runs: it must retry and finish.
    - The draw.io conformance and adapter tests get the runtime through two **test-only** variables,
      read only by test support, never by the product: `PN_DRAWIO_HOME` (an absolute path to a
      Practonaut home in which `setup --app drawio` ran; default `.local/drawio-home/` in the
@@ -392,7 +405,15 @@ through a test seam, so the product reads no new variable.
      are steps, no `html` value other than 0 on any cell (an absent key counts as 0, so the group
      cell's `group;` and the root and layer cells pass), integer geometry, only the adapter's colours,
      shapes and style keys, and every declared constraint (decision 1.2) holds (`integrity_failed`).
-     The integrity unit tests include a state with a live group.
+     Integrity also refuses every attribute, child element, geometry attribute and point the adapter
+     does not write. So a step hidden with `visible="0"` is refused even when the write check is not
+     run. The integrity unit tests include a state with a live group.
+
+   Every read, including `snapshot()` and the before-check of `apply`, runs integrity and compares
+   the app's cells with the cells of the last confirmed write. The transaction's saved scene carries
+   those cells, so a rollback restores them. A change that reached the app after a confirmed write is
+   therefore `integrity_failed` at the next read. Tests show this, both with and without the real app,
+   for a hidden step and for a changed label (review m2c, Codex 3).
    A failure is undone in place or the committed scene is rebuilt on a fresh page by the shell
    (PADR-0045 decision 7); under `--mirror required` the step is rejected and the core state is
    unchanged (PADR-0011). The spike's 12 silent-change cases become conformance cases, written
@@ -489,109 +510,125 @@ through a test seam, so the product reads no new variable.
 
 ### 6. The checker's independent `.drawio` reader
 
-1. **Independent and faithful.** `src/checker/drawio.ts`, ported from the spike's `parser.ts` and
-   hardened: its own bounded XML tokenizer, its own style parser and its own colour table. It imports
-   nothing from `src/adapters` or `src/core` (architecture §2) and nothing from the spike's writer.
-   The adapter's read-back (decision 4.3) is a different implementation on a different XML parser.
-   Being independent is not enough: where draw.io's codec would read a form differently, the reader
-   follows the codec or refuses the file. Every rule below gets a differential fixture through the
-   real app (decision 6.7).
-2. **XML.** End-of-line handling first: CRLF and a lone CR become LF; then attribute-value
-   normalisation (a literal tab or LF becomes a space; a character reference keeps its character).
-   Attributes must be separated by whitespace. A character — raw or by reference — outside the
-   XML 1.0 character set is refused, as are DOCTYPE, any entity but the five predefined ones and
-   numeric references, a bare `&`, an unclosed or mismatched element and more than one root
-   (`xml_invalid`, `xml_doctype`).
-3. **File and model.** An `mxfile` with exactly one `diagram`, or a bare `mxGraphModel`; several pages
-   are refused (`pages_unsupported`). A `diagram` is compressed if and only if its trimmed text content,
-   descendants included, is non-empty, and then it has no element child (Base64 of raw deflate of the
-   URI-encoded model, inflated with `maxOutputLength`); otherwise it holds exactly one `mxGraphModel`
-   and no other element (`diagram_invalid`). A cell has at most one child with `as="geometry"`; a
-   vertex or edge has exactly one, and it is an `mxGeometry` (`cell_invalid`). `vertex`, `edge`,
-   `visible` and `collapsed` take only absent, `"0"` or `"1"` (`cell_invalid`). Every coordinate and
-   size uses one grammar, `-?digits[.digits][(e|E)[+|-]digits]`; any other spelling (`0x1F4`, `0b11`,
-   blank) is `geometry_invalid`; an absent `x` or `y` is 0, as the codec writes it.
-4. **Reading rules** (world/2, any `.drawio` file, the same rules for the session's native export):
-   - the root is the cell without a parent, layers are its children, whatever their ids;
-   - a cell is read only when it and every ancestor are visible and no ancestor is collapsed; a
-     hidden cell, a cell of a hidden layer and every descendant of a hidden or collapsed cell are
-     listed as unmodeled (hidden) and not read;
-   - **edge labels are classified first**: a vertex whose parent is an edge is an edge label, listed
-     as unmodeled and not read, before any parent rule applies; an edge whose parent is an edge is
-     `structure_invalid`;
-   - **the effective shape comes before any classification.** For every vertex the reader collects
-     its shape-determining tokens — every style name (`swimlane`, `group`, `ellipse`, `rhombus` or
-     any other name) and the `shape` key. More than one refuses the file (`unmodeled_value`), whatever
-     the vertex would be classified as (`ellipse;rhombus`, `ellipse;shape=rhombus`,
-     `shape=ellipse;rhombus`, `swimlane;shape=ellipse`): draw.io applies them left to right and draws
-     the last, and the reader does not reproduce the stylesheet cascade. Then, by the single token:
-     `swimlane` or `shape=swimlane`, or no token with `container=1`, is a **frame**; `group` is a
-     **group**; no token (a rectangle; `rounded` either way), `shape=rectangle`, `ellipse`,
-     `shape=ellipse`, `rhombus` or `shape=rhombus` is a **step**, and a step token together with
-     `container=1` is refused (`unmodeled_value`: it would be drawn as a step and hold children like a
-     frame); any other single token is listed as unmodeled and not read. An **arrow** is an edge;
-   - a step's frame is its nearest frame ancestor; its group is the outermost group between it and
-     that frame (or the layer). A group cell that has a frame among its descendants groups frames: it
-     is listed as unmodeled and gives no step a group. The reader therefore never yields a group across
-     frames;
-   - a step's box: its `mxGeometry` plus the `x`/`y` of every ancestor vertex, then rounded by edges
-     with `Math.round` as PADR-0047 decision 10 states. For `.drawio` a step with a width or height of
-     0 or less, or with `relative="1"` on itself or on any vertex ancestor, is refused
-     (`geometry_invalid`) instead of normalised or widened: draw.io does not draw such a shape as a
-     box. `rotation` is ignored here as in Excalidraw's world/2 reader, and layout units' reading rules
-     refuse it (PADR-0047);
-   - an arrow's ends are `source` and `target` when they are read steps. **Arrow markers** take only
-     the values of a list kept with the pin: the marker names for which the pinned app draws a head,
-     measured by the conformance suite from SVG exports, plus `none` and empty; any other value of
-     `startArrow` or `endArrow` refuses the file (`unmodeled_value`), because draw.io draws no head
-     for a name it does not know. A head is at the end when `endArrow` is absent or a listed marker,
-     and at the start when `startArrow` is a listed marker; a single head at the start reverses the
-     ends, as for Excalidraw. Its frame
-     follows world/2's rule; an arrow with both ends loose takes its nearest frame ancestor;
-   - ids matching the semantic id pattern are kept; `pn:group:<id>` gives the group id `<id>`; any
-     other id gets a derived one, as `src/checker/scene.ts` does. **Group ids are injective over group
-     cells**: the reader keeps a set of group ids and refuses a second group cell that yields an id
-     already taken (`duplicate_id`; a file with group cells `g1` and `pn:group:g1` is a fixture);
-   - **values are not snapped**: an absent `strokeColor` reads as black and an absent `fillColor` as
-     none (the adapter always writes both); any other value outside the reader's own table refuses the
-     file (`unmodeled_value`). Excalidraw's world/2 reader maps colours to the nearest palette name
-     (world format §2a); draw.io's palette is not world/2's, so a nearest rule would invent colours
-     (PADR-0043 decision 4 points the same way);
-   - **labels**: with `html=0` (or no `html` key) the value is the label; with `html=1` the value is
-     read only when it contains no `<`, no `&`, no tab, LF or CR, no run of spaces and no leading or
-     trailing whitespace — then HTML shows exactly that text — and refused otherwise
-     (`markup_label`). The reader never parses HTML. Labels are compared after NFC; invisible
-     format characters are refused, as in `scene.ts`; at most 4,096 code points;
-   - also listed as unmodeled and not read (never fatal): text-only cells, images, edge values,
-     nested frames (a frame's own frame is ignored) and `UserObject`/`object` data attributes. A label
-     of an `object` with `placeholders="1"` that contains `%` is refused (the app would show other
-     text).
-5. **Limits** (the checker's, listed in threat model §4): file 10 MiB (as `scene.ts`); inflated page
-   10 MiB through `maxOutputLength`; 50,000 XML elements, depth 64, 128 attributes per element,
-   65,536 characters per attribute value, style strings 4,096 characters and 128 keys; 5,000 cells
-   (as `scene.ts`); parent chains of at most 64 (so the projection's work is at most 5,000 × 64
-   ancestor steps); coordinates within ±1,000,000 after adding ancestors. Goal evaluation keeps
-   PADR-0013's fuel.
+1. **Independent, and allowlist-based.** `src/checker/drawio.ts` has its own bounded XML tokenizer,
+   its own style parser and its own tables. It imports nothing from `src/adapters` or `src/core`
+   (architecture §2) and nothing from the spike's writer. The adapter's read-back (decision 4.3) is a
+   different implementation on a different XML parser. The reader reads exactly the vocabulary the
+   adapter writes: elements, attributes, style names, style keys and values from explicit tables. It
+   also reads the few forms that a differential fixture through the real app shows are drawn as the
+   reader reads them (6.7). Everything else is refused with a reason from the closed list (6.6). The
+   first implementation listed what draw.io hides and read the rest. The implementation review (m2c,
+   *Review of the implementation*) found forms it read while draw.io showed something else: a hidden
+   label, a transparent shape, a step that is also a container, an unknown style name, an offset from a
+   plain cell, an object's inner value. Each of these passed a library goal. So the list is now the
+   other way round: no form is read unless it is known. `check` on hand-drawn files is therefore strict
+   until artifact mode (Must 3) decides otherwise (Consequences). Exports the adapter writes are read
+   without refusal: every sequence of the three runs (8.4) and every run of the oracle benches (8.9).
+2. **XML.** Well-formed XML 1.0 without namespaces. End-of-line handling comes first: CRLF and a lone
+   CR become LF. Then attribute values are normalised: a literal tab or LF becomes a space, and a
+   character reference keeps its character. These are refused (`xml_invalid`, `xml_doctype`):
+   - attributes without whitespace between them;
+   - a character, raw or by reference, outside the XML 1.0 character set;
+   - DOCTYPE, any entity except the five predefined ones and numeric references, and a bare `&`;
+   - an unclosed or mismatched element, or more than one root;
+   - a prefixed name (`x:y`; no draw.io file declares a namespace);
+   - a comment that holds `--` or ends in `-`, or `]]>` in text;
+   - an XML declaration anywhere but at the very start, and any other processing instruction.
+3. **File and model.** The file is an `mxfile` with exactly one `diagram`, or a bare `mxGraphModel`.
+   Several pages are refused (`pages_unsupported`). A `diagram` is compressed if and only if its
+   trimmed text content, descendants included, is non-empty. A compressed `diagram` has no element
+   child, and it is decoded the way draw.io decodes it: Base64 without ASCII whitespace, raw inflate
+   with `maxOutputLength`, strict UTF-8, then URI decoding. An uncompressed `diagram` holds exactly one
+   `mxGraphModel` and no other element (`diagram_invalid`). The model holds one `root`, and the root
+   holds no text.
+4. **Elements and attributes, by table.**
+   - An `mxCell` carries only `id`, `value`, `style`, `vertex`, `edge`, `parent`, `source`, `target` and
+     `connectable`.
+   - An `object` or `UserObject` carries only `id` and `label`, around exactly one `mxCell` with no
+     `id` and no `value`. draw.io takes an inner `value` over the label, so an inner `value` is
+     `cell_invalid`.
+   - Any other attribute (`visible`, `collapsed`, a data attribute, a link and so on) is
+     `unmodeled_value`.
+   - A vertex or edge has exactly one child: an `mxGeometry` with `as="geometry"` (`cell_invalid`
+     otherwise, including value children such as `<add as="value">`).
+   - A vertex's geometry carries only `x`, `y`, `width`, `height` and `as`, and has no children.
+   - An edge's geometry carries `relative="1"` exactly (`geometry_invalid` otherwise) and at most one
+     `mxPoint` each with `as="sourcePoint"` and `as="targetPoint"`, carrying `x`, `y` and `as`.
+   - `vertex` and `edge` take only `"1"` or absent (`cell_invalid`). Text inside a cell is refused.
+   - Every coordinate and size uses one grammar, `-?digits[.digits][(e|E)[+|-]digits]`. Any other
+     spelling (`0x1F4`, blank), or a value beyond ±1,000,000 on its own, is `geometry_invalid`. An
+     absent `x` or `y` is 0, as the codec writes it.
+5. **Cells, places and styles.** The root is the one cell without a parent, and the layers are its
+   children. Both carry only `id` and `parent`. A vertex or edge in place of either is
+   `structure_invalid`. Every other cell is a vertex or an edge (`structure_invalid` otherwise), so a
+   cell that draw.io would draw as a box but the reader would not read as a step is refused, never
+   listed and skipped. A style is named styles and then `key=value` pairs. A leading `;` (draw.io then
+   drops its default style), an empty segment, a repeated key and more than one name are
+   `unmodeled_value`. By kind:
+   - a **frame** is `swimlane` with `container=1`, `collapsible=0` and `startSize=30` (all three
+     required) and optionally `html`;
+   - a **group** is `group` with no keys, `connectable` `0` or absent, and an empty value;
+   - a **step** is no name (a rectangle, optionally `rounded=0`), `ellipse` or `rhombus`, with
+     `strokeColor` and `fillColor` both present and in the reader's own colour tables (case does not
+     matter) and optionally `html`;
+   - an **arrow** is an edge with no name, only `startArrow`, `endArrow` and `html=0`, an empty value,
+     and ends that are steps or absent (`structure_invalid` for another end).
+
+   Any other name, key or value is `unmodeled_value`. This includes every visibility, opacity,
+   label-hiding, rotation, perimeter, container or edge-style key. A `html=1` label is `markup_label`:
+   the reader never parses HTML. **Places**, as the adapter writes them: a frame on a layer; a group on
+   a layer or in a frame; a step on a layer, in a frame or in a group; an edge on a layer or in a
+   frame. Any other parent is `structure_invalid`. Every reading rule follows from these:
+   - A step's frame is its frame ancestor, and its group is its parent when that is a group.
+   - A step's box is its `mxGeometry` plus the `x`/`y` of every ancestor, summed root first as draw.io's
+     view does. Each value is bounded on its own, and the chain is at most 64 long, so no sum of large
+     values can cancel out to shift a box. The box is then rounded by edges with `Math.round`
+     (PADR-0047 decision 10). A step with a non-positive size, or one that rounds to no area, is
+     `geometry_invalid`.
+   - **Arrow markers** take only the values of a list kept with the pin: the marker names for which the
+     pinned app draws a head, measured from SVG exports, plus `none` and empty. An arrow needs exactly
+     one head (`unmodeled_value` otherwise). The head is at the end when `endArrow` is absent or a
+     listed marker, and at the start when `startArrow` is a listed marker. A head at the start
+     reverses the ends; the conformance suite shows draw.io draws it at the source. Its frame follows
+     world/2's rule.
+   - Ids matching the semantic id pattern are kept, and `pn:group:<id>` gives the group id `<id>`. Any
+     other id gets a derived one, as `src/checker/scene.ts` does. Group ids are injective over group
+     cells (`duplicate_id`; a file with group cells `g1` and `pn:group:g1` is a fixture).
+   - Labels and frame names are plain text, compared after NFC. Invisible format characters are
+     refused (`text_invalid`). The limits are 4,096 characters for a label and 256 for a frame name.
 6. **Refusals** are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
    `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
-   `duplicate_id`, `structure_invalid` (root count, missing parent, cycle, an edge whose parent is an
-   edge), `geometry_invalid`, `markup_label`, `text_invalid`, `unmodeled_value`, `constraint`
-   (decision 5.2). A `.drawio` file for an Excalidraw world, or the reverse, is refused by the format
-   table as today. The request format `drawio` joins the checker request's enum.
-7. **Fixtures.** Hand-written files with expected values derived from the file format (not from the
-   reader); real exports of the conformance suite; the counter-probes empty, unchanged start and wrong
-   artifact written and exported through draw.io (the spike: 144/144 failed). **Differential fixtures
-   through the real app** for every rule of 6.2–6.4: each file is loaded into draw.io through the
-   conformance seam and the app's own export, and its SVG rendering, are compared with the reader's
-   reading — the reader agrees or refuses, never reads something the app does not show. They include
-   CRLF in attributes, adjacent attributes, `&#1;`, both compressed text and a model child, two
-   geometries, `x="0x1F4"`, `vertex="true"`, hidden and collapsed ancestors, an edge label vertex,
-   `ellipse;shape=rhombus`, `shape=ellipse;rhombus` and `swimlane;shape=ellipse`, `endArrow=`,
-   `startArrow=bogus` and `endArrow=bogus`, `g1` beside `pn:group:g1`, a `" A "` label with
-   `html=1`, non-positive sizes and a relative ancestor. For PADR-0047 decision 10:
-   steps inside groups inside frames, with integer and fractional offsets; the reader's boxes must equal
-   the boxes draw.io renders in its SVG export (relative to a reference step on the layer). Until they
-   pass, the `layout` unit on draw.io is not pre-probed (PADR-0047).
+   `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
+   `unmodeled_value` and `constraint` (decision 5.2). The checker refuses every file it does not read,
+   and every refusal carries one of these reasons; nothing is listed as unmodeled and skipped. A
+   `.drawio` file for an Excalidraw world, or the reverse, is refused by the format table as today.
+   The request format `drawio` joins the checker request's enum.
+   **Limits** (the checker's, listed in threat model §4): file 10 MiB (as `scene.ts`); inflated page
+   10 MiB through `maxOutputLength`; 50,000 XML elements, depth 64, 128 attributes per element,
+   65,536 characters per attribute value, style strings 4,096 characters and 128 keys; 5,000 cells
+   (as `scene.ts`); parent chains of at most 64; coordinates within ±1,000,000 on their own and after
+   adding ancestors. Goal evaluation keeps PADR-0013's fuel.
+7. **Fixtures.**
+   - Hand-written files, with expected values derived from the file format rather than from the reader.
+   - Each attack of the review, reproduced on the draw.io library's own tasks: the honest goal passes,
+     the unchanged start fails, and each attack is refused by name.
+   - Real exports of the conformance suite.
+   - The counter-probes (empty, unchanged start, wrong artifact), written and exported through draw.io.
+   - **Differential fixtures through the real app.** Each file is loaded into draw.io through the
+     conformance seam. The app's own export must read the same, and the reader's boxes and labels must
+     match what draw.io draws in its SVG export, measured against a reference step on the layer.
+     - Read: CRLF in an attribute, an upper-case colour, the three shapes, a start head, a step without
+       an `html` key, an `object` and a `UserObject` label, and steps in groups in frames with integer
+       and fractional offsets (PADR-0047 decision 10).
+     - Refused by the reason named: adjacent attributes, `&#1;`, `--` in a comment, compressed text with
+       a model child, two geometries, `x="0x1F4"`, cancelling offsets, `vertex="true"`, `visible="0"`,
+       `collapsed="1"`, `noLabel=1`, `opacity=0`, `container=1` on a step, unknown names and shapes,
+       stacked shape tokens, a leading `;`, `relative` on a vertex or an ancestor, an object's inner
+       value, a value child, an edge label vertex, a plain cell as an ancestor, a vertex under the
+       root, the marker cases, `g1` beside `pn:group:g1`, a `" A "` label with `html=1`, and a
+       non-positive size.
+   - `startArrow`, the one edge key beyond what the adapter writes, has its own case: for every listed
+     marker draw.io draws one head, at the source.
 
 ### 7. Linux: draw.io never starts without the Chromium sandbox
 
@@ -613,7 +650,14 @@ through a test seam, so the product reads no new variable.
    the evidence for the policy: once the restriction is lifted, a sandboxed start succeeds with or
    without it. The CI step that lifts the restriction keeps its global `require` for its own Excalidraw
    check; the draw.io layer runs in its own later step without the variable, which the workflow check
-   asserts (2.8).
+   asserts (2.8). (d) The adapter's own wiring has a test as well. Two test-only seams, `pin` and
+   `allowlist`, start `createDrawioAdapter` on a small fixture archive with the fake Chromium. With or
+   without the memo set, it asks exactly once, and with the sandbox. Without the adapter's
+   `sandbox: 'required'` this test fails (review m2c, runtime-1). The sandbox is also measured on the
+   real app. Every conformance run and every timed start reads the command lines of its Chromium
+   processes. The summary records how many processes there were and how many carry `--no-sandbox`
+   (8.6). A layer test shows that this observation tells a Chromium started without its sandbox from
+   one started with it.
 4. **Why.** Nothing was measured on Linux (UNKNOWN), so the safer option wins. The amendment that lets
    Excalidraw start without the sandbox rests on what the browser loads: the engine Practonaut builds
    from a locked dependency. draw.io is 20.1 MB of downloaded third-party script (99 % of the 20.3 MB
@@ -649,7 +693,11 @@ through a test seam, so the product reads no new variable.
    keeps naming the Excalidraw library; a bench mixing prefixes is refused (a bench stores one world).
    `report --verify` anchors a library bench to the library this Practonaut ships for the stored
    world's `app.adapterId` — id, version and content hash, as PADR-0044 decision 2 states — and binds
-   its references to that library's oracle file.
+   its references to that library's oracle file. It also refuses a bench/3 report whose
+   `environment.app.version` is not the stored world's `app.versionRange` (`bench_world_changed`), so
+   a re-verified page never names another version. Tests show the anchor (`same`) for a draw.io bench
+   and for both committed reports, and the refusal of references that are not the draw.io library's
+   own (`bench_reference_invalid`). Both tests fail when verify anchors to Excalidraw's library.
 3. **Near misses on draw.io** are the library's own: 39 single-fault sequences (19 kinds, from
    `misordered` to `missing-set-frame`) in 3 cases, 117 per run, plus the unchanged start in each
    case (48). Their verdict comes from the checker reading draw.io's native export. Added for draw.io
@@ -680,7 +728,19 @@ through a test seam, so the product reads no new variable.
    `docs/index.md`): the conformance summary of the release commit in a versioned schema without local
    paths (commit, platform, Chromium version, sandbox state, pin, per-run totals, the recorded hashes
    and orders); the two oracle bench/3 folders; and the compare page. CI always uploads the summary
-   JSON of its conformance run (a listed path; it holds no part of the archive).
+   JSON of its conformance run (a listed path; it holds no part of the archive). The summary schema
+   is `practonaut.drawio-conformance/2`. It records:
+   - the Chromium version each run's browser reports (the runs must agree);
+   - the sandbox as an observation (the policy, and per run the processes seen and how many carry
+     `--no-sandbox`), not as a setting;
+   - whether the checkout had changes not in its commit.
+
+   `tools/require-drawio-summary.ts` refuses a summary without the pin, without one Chromium version,
+   or with a run in which no process was observed or one ran without its sandbox. The evidence tool
+   (`tools/drawio-evidence.ts`) also requires that the summary names `HEAD`, that it comes from a
+   clean checkout, and that every run covers the planned sequences. It runs only on a clean checkout,
+   and it takes each bench's folder as the one entry the bench added under `PRACTONAUT_HOME/bench/`,
+   never from printed text (review m2c).
 7. **Platforms.** Setup and reader unit tests run on all three CI platforms; the conformance layer
    runs on Linux in its own step after the one that lifts the restriction, on every CI run. Before
    acceptance a manual workflow (`workflow_dispatch`) runs it on macOS and Windows, three runs each,
@@ -773,9 +833,12 @@ through a test seam, so the product reads no new variable.
 - Two independent `.drawio` readings exist (the adapter's, on the browser's XML parser; the checker's,
   on its own tokenizer, following the codec or refusing); a disagreement fails the transaction or the
   export pair instead of passing silently.
-- `practonaut check` reads `.drawio` files strictly: a file drawn in draw.io with colours outside the
-  table, with markup in its labels, with stacked shape tokens or with other ambiguous forms is refused
-  by name until artifact mode's reading rules (Must 3) decide otherwise.
+- `practonaut check` reads `.drawio` files strictly. The reader is allowlist-based (decision 6): it
+  reads only the adapter's own vocabulary, plus the forms the real app is shown to draw as read. A
+  file drawn by hand in draw.io is therefore usually refused by name, for example for a default style
+  key, a colour outside the table, markup in a label, a hidden or transparent cell, or a container.
+  This stays so until artifact mode's reading rules (Must 3) decide otherwise. Every export the
+  adapter writes is read.
 - Each running draw.io adapter holds the 48.4 MB archive in Node memory.
 - On Linux with the default AppArmor restriction draw.io is model-only; CI covers draw.io in a Linux
   step after the one that lifts the restriction; macOS and Windows are covered by the manual
@@ -903,3 +966,42 @@ disposition:
 | r2-08 (Opus, minor): against an `http:` stand-in, the redirect-cap test passes for the scheme reason | Adopted | 2.8: allowed schemes as a named seam (`https:` in the product, `http:` in tests), the scheme test redirects outside the injected set, every negative test asserts its reason by name |
 | r2-09 (Opus, minor): `actions/cache/save` or a third-party upload action escapes a name match | Adopted | 2.8: cache and upload actions matched by prefix; any `uses:` not on a list of actions known not to save or publish files fails; the heading names what is checked, and a shell command that copies files is stated as outside the check |
 | r2-10 (Opus, minor): small contradictions | Adopted | 1.3 points to 2.6; "4–5 processes"; the archive-mode medians are labelled as one process under load and the fresh-process figure as the user-facing one; the review row no longer says "verbatim" (the remedy was changed for root and layer cells) |
+
+## Review of the implementation (2026-10-20)
+
+Two independent reviews looked at the implementation in draft PR #70, at commit be2f862 (round
+m2c). OpenAI Codex reported 1 blocker and 4 majors. A Claude Opus workflow with three lenses
+(runtime, reader, acceptance), and a skeptic for each major, reported 19 findings. Each finding was
+reproduced before it was fixed.
+
+The coordinator decided the reader question. The checker's reader is now allowlist-based instead of
+reading everything it does not know to be hidden. Decision 6 was rewritten for this. The rows of the
+two earlier rounds name subsections of the earlier draft of decision 6, and each concern they raised
+is now met by a refusal (6.4–6.6). Severity is the skeptic's where one was run. Every finding and its
+disposition:
+
+| Finding (reviewer, severity after verification) | Disposition | Where, and the test that fails without it |
+|---|---|---|
+| Codex 1 (blocker): `noLabel=1` or `opacity=0;textOpacity=0;` on a committed export still passes | Adopted (allowlist) | 6.1, 6.5: any style key outside the tables is `unmodeled_value`; `tests/unit/drawio-reader-attacks.test.ts` on the library's `connect` |
+| Codex 2 (major): `<!-- a--b -->` after `<root>` still passes | Adopted | 6.2: `--` in a comment and the other non-well-formed forms are `xml_invalid`; reader unit and attack tests, differential fixture |
+| Codex 3 (major): `visible="0"` added after a write is not seen by `snapshot()` or apply's before-check | Adopted | 4.2: integrity refuses every attribute and child the adapter does not write; every read compares with the last confirmed write; `tests/unit/drawio-writer.test.ts`, `tests/adapter/drawio/silent-changes.test.ts` (hidden step and changed label after a confirmed write) |
+| Codex 4 (major) and runtime-2 (minor): a lock not yet written is taken over; release removes another setup's lock | Adopted | 2.3: lock written whole and hard-linked; unreadable lock judged by its modification time; release only by token; `tests/unit/drawio-setup.test.ts` (fresh empty lock, a setup held before its lock is written, a lock taken over, 25 simultaneous pairs) |
+| Codex 5 (major): the retry wait's `unref()` lets Node exit (exit 13) | Adopted | 2.8: the timer keeps Node alive; a child-process test exits 0 with `installed 2` (13 before) |
+| runtime-1 (major, skeptic: minor): no test fails without the adapter's own `sandbox: 'required'`; the summary records a literal | Adopted | 7.3 (d): test-only `pin` and `allowlist` seams, an adapter-level test with a fake Chromium; the summary records each run's observed processes and `--no-sandbox` count (8.6), with a layer test that the observation discriminates |
+| runtime-3 (minor): `--from` with a file of another size prints `SHA-256 ?`; `appRuntimeUnverified` lacks the exact size | Adopted | 2.5: hashed at any size; the message names the file and its 48,442,174 bytes (EN, DE); CLI and setup tests |
+| reader-ancestor-sum-order (major, skeptic: minor): cancelling offsets shift a box | Adopted | 6.4, 6.5: each value within ±1,000,000 on its own, summed root first; fixture with ±2^63 |
+| reader-nonvertex-ancestor-offset (major): a plain cell with geometry moves its children in draw.io only | Adopted | 6.5: a cell below a layer that is neither vertex nor edge is `structure_invalid`; geometry on the root or a layer refused; attack test on `reorder`, differential fixture |
+| reader-relative-flag (major): `relative="true"` or `"1.0"` is truthy in draw.io | Adopted | 6.4: `relative` only on an edge, exactly `"1"`; `vertex`/`edge` only `"1"`; attack test, fixtures |
+| reader-unread-drawn-boxes (major): `container=1`, an unknown name or shape, a vertex under the root are skipped while drawn | Adopted | 6.5: refused, never skipped (`unmodeled_value`, `structure_invalid`); attack test on `remove-step` |
+| reader-object-inner-value (major): draw.io shows the inner cell's `value` over the object's label | Adopted | 6.4: an inner `value` is `cell_invalid`; value children refused; attack test on `rename-step`, fixtures (and an `object` and a `UserObject` label read through the real app) |
+| reader-edge-style-unchecked (major): invisible or reversed edges read as directed arrows | Adopted | 6.5: edges by table (`startArrow`, `endArrow`, `html=0`), exactly one head, no names, no leading `;`; attack test on `connect`; marker case for `startArrow` through the real app |
+| reader-compressed-page-decoding (minor): NBSP stripped, bytes read as Latin-1 | Adopted | 6.3: ASCII whitespace only, strict UTF-8; unit and attack tests |
+| reader-xml-wellformedness (minor): `--`, `]]>`, a late or second declaration, an undeclared prefix | Adopted | 6.2; unit and attack tests |
+| reader-group-of-frames-groups-steps (minor) | Adopted | 6.5: a frame may sit only on a layer, so a group never holds a frame; a step's group is its parent |
+| reader-refusals-outside-closed-list (minor): long frame names, `constructor` colours, `1e400` | Adopted | 6.5, 6.6: frame names within 256 (`text_invalid`), null-prototype tables with `Object.hasOwn`, non-finite values `geometry_invalid`; a unit test asserts every refusal's reason is in the closed list |
+| acceptance-anchor-untested (minor) | Adopted | 8.2: the anchor `same` asserted for a draw.io bench and both committed reports; foreign references refused; both fail when verify anchors to Excalidraw's library |
+| acceptance-verify-app-version (minor) | Adopted | 8.2: `environment.app.version` must equal the stored world's `versionRange` (`bench_world_changed`); integration test with `0.18.1` |
+| acceptance-evidence-summary-unbound (minor) | Adopted | 8.6: summary schema `/2` with a dirty flag; the evidence tool requires `HEAD`, a clean checkout, the planned sequences, the pin and the observed sandbox; unit test with the review's forged summary |
+| acceptance-evidence-home-path (minor) | Adopted | 8.6: the bench folder is the one entry added under `PRACTONAUT_HOME/bench/`; unit test |
+| acceptance-pr-rerun-claim (minor) | Adopted | The evidence is rebuilt with the tool on the final commit of this round and committed; its README names that commit, and a test checks that the summary's commit is the README's |
+| acceptance-summary-chromium-version (minor) | Adopted | 8.6: each run's browser version recorded; the runs must agree; the summary names it |

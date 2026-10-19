@@ -25,12 +25,15 @@ SHA-256 `b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820`. Only
 exactly that size and hash is kept; a mismatch names both sizes and both hashes and keeps nothing.
 
 - **Offline or behind a proxy:** fetch `draw.war` by other means and run
-  `practonaut setup --app drawio --from <file>`. It is checked the same way and copied into place.
+  `practonaut setup --app drawio --from <file>`. It is checked the same way and copied into place; a
+  file that is not the pinned release is refused with both sizes and both SHA-256 values.
 - **Where it is kept:** `<PRACTONAUT_HOME>/apps/drawio/32.4.1/draw.war`, in private directories.
   Removing it is deleting that folder.
 - **Limits of the download:** at most 5 redirects, every hop `https:`; headers within 30 s, no stall
   over 30 s, 10 minutes for the whole download; network errors, HTTP 429 and 5xx are retried twice
-  (after 2 s and 8 s), a size or hash mismatch never. One setup at a time per version (a lock file).
+  (after 2 s and 8 s), a size or hash mismatch never. One setup at a time per version: a lock file
+  that appears whole or not at all and that only its own setup removes; a second setup stops with
+  `app_install_busy`.
 - **Failures by name** (exit 3): `app_download_failed` (names the limit or error and `--from`),
   `app_download_mismatch`, `app_install_busy`.
 
@@ -49,7 +52,9 @@ without the sandbox ([PADR-0032](../adr/0032-chromium-sandbox-stays-on.md)), dra
 `--mirror required` the command stops with `browser_start_failed` and the AppArmor advice, with
 `--mirror auto` the session runs model-only. `PRACTONAUT_CHROMIUM_SANDBOX=require` changes nothing for
 draw.io; nothing loosens it. The reason: draw.io is 20 MB of downloaded third-party script, and no
-review shows that the adapter's narrow input keeps a renderer exploit out of reach.
+review shows that the adapter's narrow input keeps a renderer exploit out of reach. This is measured
+as well as set: every conformance run records its Chromium processes' command lines, and the summary
+counts those that carry `--no-sandbox` (0 in every committed run).
 
 ## How the adapter works
 
@@ -70,7 +75,10 @@ review shows that the adapter's narrow input keeps a renderer exploit out of rea
   objects; every element the adapter wrote comes back with every attribute and child element, and
   nothing else comes back (the full write check); and integrity (unique ids, one root, existing
   parents, no cycle, no edge as a parent, edge ends are steps, no `html` other than 0, integer
-  geometry, only the adapter's own styles and colours, and the declared constraints).
+  geometry, only the adapter's own attributes, styles and colours, and the declared constraints).
+  Every read, `snapshot()` included, also runs integrity and requires the app to hold exactly what
+  the last confirmed write left. So a change that reached the app in between, such as a hidden step,
+  is `integrity_failed`.
 - **Pictures.** The PNG and SVG are draw.io's own protocol exports, never a screenshot of the editor.
   `importArtifact` is not offered: foreign `.drawio` files are not loaded into the app.
 
@@ -99,16 +107,19 @@ adapter refuses before writing. See [world format §2a](../world-format.md#2a-wo
 
 ## The checker's `.drawio` reader
 
-`src/checker/drawio.ts` is the checker's own reader: its own bounded XML tokenizer, style parser and
-colour table, independent of the adapter. Where draw.io would read a form differently, it follows
-draw.io or refuses the file (`artifact_invalid` with a named `reason`). Its rules — one page, plain or
-compressed; XML read as XML without DOCTYPE; hidden and collapsed cells not read; edge labels
-classified first; the effective shape decided before classification (two shape tokens refuse);
-groups as the outermost group under the frame; boxes from every ancestor's offset; arrow markers
-only from a measured list; colours never snapped; plain-text labels — and its limits are in
-[PADR-0049 decision 6](../adr/0049-drawio-adapter.md#6-the-checkers-independent-drawio-reader) and
-the [threat model](../security/threat-model.md#4-limits). Every rule has a differential fixture
-loaded through the real app (`tests/adapter/drawio/cases.test.ts`).
+`src/checker/drawio.ts` is the checker's own reader. It has its own bounded XML tokenizer, style
+parser and tables, and is independent of the adapter. It is **allowlist-based**: it reads exactly the
+cells, attributes, style names, keys and values the adapter writes (and a few forms the real app is
+shown to draw as read), and refuses everything else with a named `reason`. Nothing is skipped as
+unmodeled. So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example
+for a default style key, a hidden or transparent cell, a container or a colour outside the table.
+This stays so until artifact mode (Must 3) decides otherwise. Every export the adapter writes is read.
+The rules and limits are in
+[PADR-0049 decision 6](../adr/0049-drawio-adapter.md#6-the-checkers-independent-drawio-reader),
+[world format §2a](../world-format.md#2a-world-content-v2-normative-additive) and the
+[threat model](../security/threat-model.md#4-limits). Each form the reader reads, and each refusal
+the review found, has a differential fixture loaded through the real app
+(`tests/adapter/drawio/cases.test.ts`).
 
 ## The draw.io library
 

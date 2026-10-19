@@ -348,28 +348,41 @@ input, duplicate ids and invisible format characters in text remain `artifact_in
 
 **draw.io worlds** (`app.adapterId` `drawio`, world/2 only; [PADR-0049](adr/0049-drawio-adapter.md),
 [adapter page](adapters/drawio.md)). The checker reads draw.io's own `.drawio` export with its own
-reader (`src/checker/drawio.ts`): an `mxfile` with exactly one page (plain or compressed) or a bare
-`mxGraphModel`; XML read as XML (end-of-line and attribute normalisation, no DOCTYPE, only the five
-predefined entities and numeric references, XML 1.0 characters only). The root is the cell without
-a parent, layers are its children; a hidden cell, a cell of a hidden layer and every descendant of a
-hidden or collapsed cell are `unmodeled` (hidden) and not read; a vertex whose parent is an edge is
-an edge label (`unmodeled`). The effective shape is decided first: two shape-determining tokens
-(`ellipse;rhombus`, `ellipse;shape=rhombus`, `swimlane;shape=ellipse`, …) refuse the file; then
-`swimlane` (or `container=1` without a token) is a frame, `group` a group, no token, `ellipse` or
-`rhombus` (or `shape=` of them) a step, a step token with `container=1` is refused, any other
-token is `unmodeled`. A step's frame is its nearest frame ancestor, its group the outermost group
-below that frame (a group holding a frame gives no step a group; group ids are unique over group
-cells, `pn:group:<id>` gives `<id>`); its box is its geometry plus every ancestor vertex's offset,
-rounded by edges; a size of 0 or less or a relative ancestor is refused. An arrow is an edge; its
-heads come only from a measured marker list (`DRAWIO_MARKERS`, plus `none` and empty), any other
-marker refuses the file. Colours are never snapped: absent stroke is black, absent fill none, any
-value outside the reader's table refuses. Labels are plain text: with `html=1` only a value without
-`<`, `&`, tab, line breaks, runs of spaces or outer spaces is read, otherwise `markup_label`.
+reader (`src/checker/drawio.ts`). The file is an `mxfile` with exactly one page, plain or compressed
+(Base64, raw deflate, UTF-8, URI encoding, as draw.io decodes it), or a bare `mxGraphModel`. It must
+be well-formed XML without namespaces: no DOCTYPE, only the five predefined entities and numeric
+references, XML 1.0 characters only, no `--` in comments, the XML declaration only at the very
+start.
+
+The reader is **allowlist-based**. It reads exactly the vocabulary the adapter writes and refuses
+everything else by name, never skipping it:
+- the root (the cell without a parent) and its layers, each with only `id` and `parent`;
+- a **frame**: `swimlane;container=1;collapsible=0;startSize=30;` on a layer;
+- a **group**: `group;` with an empty value and `connectable="0"`, on a layer or in a frame;
+- a **step**: a rectangle (optionally `rounded=0`), `ellipse` or `rhombus`, with `strokeColor` and
+  `fillColor` from the reader's own colour table, on a layer, in a frame or in a group;
+- an **arrow**: an edge with only `startArrow`, `endArrow` (from the measured marker list
+  `DRAWIO_MARKERS`, `none` or empty, with exactly one head) and `html=0`, an empty value, steps or
+  nothing as its ends, on a layer or in a frame.
+
+Cells carry only the attributes the adapter writes. An `object` or `UserObject` carries an `id` and a
+`label` around one `mxCell` without a value. A vertex has one geometry (`x`, `y`, `width`, `height`),
+and an edge has one geometry with `relative="1"` and at most a source and a target point. Any other
+attribute, style name, key or value is refused. This includes `visible`, `collapsed`, `noLabel`,
+`opacity`, `container` on a step, an unknown name or shape, and a leading `;`. So is any other parent
+(a plain cell, a vertex under the root, a frame in a group). A step's frame is its frame ancestor and
+its group is its parent group (`pn:group:<id>` gives `<id>`; group ids are unique over group cells).
+Its box is its geometry plus every ancestor's offset, summed root first, each value within
+±1,000,000, rounded by edges; a box with no area is refused. A start head reverses an arrow. Labels
+are plain text; `html=1` is `markup_label`. Labels are at most 4,096 characters and frame names at
+most 256.
+
 Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
 `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
 `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
-`unmodeled_value`, `constraint`. The request format `drawio` names it; a `.drawio` file for an
-Excalidraw world, or the reverse, is refused.
+`unmodeled_value`, `constraint`. `check` on a `.drawio` file drawn by hand is therefore strict until
+artifact mode (Must 3) decides otherwise; every export the adapter writes is read. The request format
+`drawio` names it; a `.drawio` file for an Excalidraw world, or the reverse, is refused.
 
 **Declared structural constraints.** An application may declare constraints its files cannot
 break, from a closed list beside the world table (`src/world/constraints.ts`):

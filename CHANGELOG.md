@@ -61,17 +61,23 @@ All notable changes are recorded here. The format follows
   Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.
   - `practonaut setup --app drawio [--from <file>]` downloads the unmodified `draw.war` (48,442,174
     bytes) only on request, names file, source, size and SHA-256 first, and keeps it only when both
-    match (redirect, scheme, stall, deadline and retry limits; a lock per version; atomic keep and a
-    re-hash). New codes, exit 3: `app_download_failed`, `app_download_mismatch`, `app_install_busy`,
+    match (redirect, scheme, stall, deadline and retry limits; a lock per version that appears whole
+    and only its own setup removes; atomic keep and a re-hash; `--from` hashes a file of any size, so
+    a mismatch names both SHA-256 values). New codes, exit 3: `app_download_failed`, `app_download_mismatch`, `app_install_busy`,
     and before any browser starts `app_runtime_missing` and `app_runtime_unverified`; with `--mirror
     auto` such a session runs model-only and names the setup command. `doctor --adapter` lists the
     runtime and the sandboxed start.
   - The adapter serves the archive from memory through an allowlist of 14 files, with zip limits
     and one capped, CRC-checked inflation per file; talks to draw.io only through its embed JSON
     protocol; and after every write requires the declared set, a full write check of every attribute
-    and child element, and integrity. Chromium always runs with its sandbox for draw.io.
-  - The checker has its own `.drawio` reader that follows draw.io or refuses by name; `check` reads a
-    `.drawio` export with `--pair` or with `--seed` and `--task`.
+    and child element, and integrity; every read, `snapshot()` included, also runs integrity over
+    every attribute and compares the app with the last confirmed write. Chromium always runs with its
+    sandbox for draw.io, and every conformance run records that none of its processes ran with
+    `--no-sandbox`.
+  - The checker has its own allowlist-based `.drawio` reader: it reads only the cells, attributes,
+    style names, keys and values the adapter writes and refuses everything else by a reason from a
+    closed list, so a file drawn by hand is strict until artifact mode (Must 3) decides otherwise;
+    `check` reads a `.drawio` export with `--pair` or with `--seed` and `--task`.
   - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.
   - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
@@ -82,12 +88,15 @@ All notable changes are recorded here. The format follows
     same task set, with the same references, near misses and seeds re-verified there. Libraries are a
     table by adapter id: `drawio/<task>` names it in `play`, `mcp --task`, `bench --tasks` (`drawio/all`)
     and `tasks list|show`; a bench mixing prefixes is refused; `report --verify` anchors a library bench
-    to the library of its application and binds its references to that library's oracle file.
+    to the library of its application and binds its references to that library's oracle file; it
+    refuses a bench/3 report whose `environment.app.version` is not the stored world's pin.
   - The challenge generator writes a family for draw.io (`node tools/challenge.ts generate … --app
     drawio`): the same instances, `generatedBy` unchanged, so their identities pair.
   - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
     the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
-    difference); `tools/drawio-evidence.ts` rebuilds it on a release commit.
+    difference); `tools/drawio-evidence.ts` rebuilds it on a clean release commit and refuses a summary
+    (schema `practonaut.drawio-conformance/2`, with the Chromium version and the observed sandbox) made
+    on another commit, from a dirty checkout or over fewer sequences than planned.
 - A workflow check in `npm run check` (`tools/check-workflows.ts`): every cache and upload path and
   release asset must be listed in `.github/workflow-allowlist.json`, every other action must be on its
   list and pinned by SHA, and the draw.io CI steps must share one home and run without
@@ -147,6 +156,10 @@ All notable changes are recorded here. The format follows
 
 - `setup --app drawio`: a wait cut short by the download's absolute deadline is reported as the
   deadline, not as a stall or a connect timeout (a timer can fire a fraction of a millisecond early).
+- `setup --app drawio`: a retry wait keeps the process alive, so a failed first request is retried
+  instead of ending the process with exit 13; a setup that has created its lock but not yet written
+  it is no longer taken over by a second setup; `app_runtime_unverified` names the exact download
+  size.
 - A browser close after a failure no longer replaces that failure (issue #64). When a session or
   host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
   an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
