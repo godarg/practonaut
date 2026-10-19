@@ -8,8 +8,10 @@
  * 4), the app's export after every step, `exportArtifact`, the PNG, and the checker's verdict on that
  * native file with format `drawio`. Recorded per sequence: the canonical hash of each export (the
  * random diagram id normalised), of the native file, of the PNG, and the full verdict. Also recorded:
- * the peak RSS of this Node process and of its Chromium process tree, and any request the shell
- * refused. Library content comes from the world; nothing here decides a verdict.
+ * the peak RSS of this Node process and of its Chromium process tree, any request the shell refused,
+ * the browser's own version, and what the Chromium processes were started with: how many there were
+ * and how many carry `--no-sandbox` (review m2c, runtime-1). Library content comes from the world;
+ * nothing here decides a verdict.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -35,10 +37,14 @@ export interface SequenceRecord {
   verdict: { passed: boolean; errors: string[] } | { refused: string };
 }
 export interface RunRecord {
-  schema: 'practonaut.drawio-run/1'; order: Order; seed: number; keys: string[]; sequences: SequenceRecord[];
+  schema: 'practonaut.drawio-run/2'; order: Order; seed: number; keys: string[]; sequences: SequenceRecord[];
   /** `startMs`: the adapter's start in this run, from the call to its first scene confirmed. */
   refusedRequests: string[]; startMs: number; peakRss: { node: number; chromiumTree: number | null };
+  /** The browser's version as it reports it; the Chromium processes observed after the start and before the close. */
+  chromium: string | null; sandbox: SandboxObservation | null;
 }
+/** Processes under this one and how many of them carry `--no-sandbox`: the most seen in any sample. */
+export interface SandboxObservation { samples: number; processes: number; noSandbox: number }
 
 /** The random diagram id is file metadata (decision 5.4); everything else of the export is compared. */
 export const normaliseExport = (xml: string): string => xml.replace(/(<diagram\b[^>]*\bid=")[^"]*(")/, '$1·$2');
@@ -62,6 +68,25 @@ export function chromiumTreeRss(): number | null {
     while (queue.length) { const pid = queue.pop()!; if (pid === process.pid) continue; total += rss.get(pid) ?? 0; queue.push(...(children.get(pid) ?? [])); }
     return total;
   } catch { return null; }
+}
+
+/** The command line of every process under this one (POSIX `ps`, full width), without `ps` itself; null where not measured. */
+export function descendantCommands(): string[] | null {
+  if (process.platform === 'win32') return null;
+  try {
+    const rows = execFileSync('ps', ['-A', '-ww', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n').flatMap(line => { const m = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line); return m ? [{ pid: Number(m[1]), ppid: Number(m[2]), args: m[3]!.trim() }] : []; });
+    const children = new Map<number, number[]>();
+    for (const row of rows) children.set(row.ppid, [...(children.get(row.ppid) ?? []), row.pid]);
+    const args = new Map(rows.map(row => [row.pid, row.args])), out: string[] = [], queue = [...(children.get(process.pid) ?? [])];
+    while (queue.length) { const pid = queue.pop()!; if (pid === process.pid) continue; const line = args.get(pid) ?? ''; if (!/^(\S*\/)?ps\s+-A\b/.test(line)) out.push(line); queue.push(...(children.get(pid) ?? [])); }
+    return out;
+  } catch { return null; }
+}
+/** One sample folded into an observation: the most processes seen, and the most carrying `--no-sandbox`. */
+export function observeSandbox(previous: SandboxObservation | null, commands: string[] | null): SandboxObservation | null {
+  if (commands === null) return previous;
+  const noSandbox = commands.filter(line => /(^|\s)--no-sandbox(\s|=|$)/.test(line)).length;
+  return { samples: (previous?.samples ?? 0) + 1, processes: Math.max(previous?.processes ?? 0, commands.length), noSandbox: Math.max(previous?.noSandbox ?? 0, noSandbox) };
 }
 
 interface Planned { key: string; source: string; world: World; taskId: string; variantCase: string; seed: number; kind: SequenceRecord['kind']; nearMiss?: string; steps: Array<{ name: string; params: Record<string, unknown> }> }
@@ -93,8 +118,10 @@ export async function runProtocol(order: Order, seed: number): Promise<RunRecord
   let peakTree = chromiumTreeRss();
   const sample = setInterval(() => { const now = chromiumTreeRss(); if (now !== null) peakTree = Math.max(peakTree ?? 0, now); }, 250);
   const first = plan[0]!, starting = performance.now();
-  const adapter = await createDrawioAdapter(new Session(first.world, first.seed, first.taskId).state, {}, undefined, { runtimePath: runtime.runtimePath });
+  let chromium: string | null = null;
+  const adapter = await createDrawioAdapter(new Session(first.world, first.seed, first.taskId).state, {}, { ready: browser => { chromium = browser.version(); } }, { runtimePath: runtime.runtimePath });
   const startMs = performance.now() - starting;
+  let sandbox = observeSandbox(null, descendantCommands());
   const sequences: SequenceRecord[] = [];
   let refusedRequests: string[] = [];
   try {
@@ -126,11 +153,12 @@ export async function runProtocol(order: Order, seed: number): Promise<RunRecord
     }
   } finally {
     clearInterval(sample);
+    sandbox = observeSandbox(sandbox, descendantCommands());
     refusedRequests = adapter.networkAttempts();
     await adapter.close();
   }
   const now = chromiumTreeRss(); if (now !== null) peakTree = Math.max(peakTree ?? 0, now);
-  return { schema: 'practonaut.drawio-run/1', order, seed, keys: plan.map(p => p.key), sequences, refusedRequests, startMs, peakRss: { node: process.resourceUsage().maxRSS * 1024, chromiumTree: peakTree } };
+  return { schema: 'practonaut.drawio-run/2', order, seed, keys: plan.map(p => p.key), sequences, refusedRequests, startMs, peakRss: { node: process.resourceUsage().maxRSS * 1024, chromiumTree: peakTree }, chromium, sandbox };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

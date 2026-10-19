@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { randomInt } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DRAWIO_PIN } from '../../../src/adapters/drawio/pin.ts';
+import { ADAPTER_REGISTRY } from '../../../src/adapters/registry.ts';
 import { drawioAvailability } from '../../support/drawio.ts';
 import { plannedSequences, type Order, type RunRecord } from '../../support/drawio-run.ts';
 
@@ -62,7 +63,13 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
     if (record.refusedRequests.length) problems.push(`${where}: the shell refused ${record.refusedRequests.slice(0, 5).join(', ')}`);
     if (record.peakRss.node > NODE_RSS_MAX) problems.push(`${where}: Node peak RSS ${record.peakRss.node} bytes`);
     if (record.peakRss.chromiumTree !== null && record.peakRss.chromiumTree > CHROMIUM_TREE_RSS_MAX) problems.push(`${where}: Chromium tree peak RSS ${record.peakRss.chromiumTree} bytes`);
+    // The sandbox is measured, not assumed (review m2c, runtime-1): processes ran, none with --no-sandbox.
+    if (record.sandbox === null) { if (process.platform !== 'win32') problems.push(`${where}: the Chromium processes were not observed`); }
+    else if (record.sandbox.processes === 0) problems.push(`${where}: no Chromium process was observed`);
+    else if (record.sandbox.noSandbox > 0) problems.push(`${where}: ${record.sandbox.noSandbox} Chromium processes ran with --no-sandbox`);
   }
+  const chromiumVersions = [...new Set(runs.map(record => record.chromium))];
+  if (chromiumVersions.length !== 1 || !chromiumVersions[0]) problems.push(`the runs report Chromium ${chromiumVersions.join(', ')}`);
   // Agreement on every recorded value, sequence by sequence.
   const byKey = runs.map(record => new Map(record.sequences.map(sequence => [sequence.key, sequence])));
   let disagreements = 0;
@@ -74,14 +81,19 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
       }
     }
   }
+  const git = (...args: string[]): string | null => { const out = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); return out.status === 0 ? out.stdout : null; };
+  const status = git('status', '--porcelain');
   const summary = {
-    schema: 'practonaut.drawio-conformance/1',
-    // The commit the runs were made on (CI names it; a checkout asks git), never a path.
-    commit: process.env.GITHUB_SHA ?? (spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout?.trim() || null),
+    schema: 'practonaut.drawio-conformance/2',
+    // The commit the runs were made on (CI names it; a checkout asks git), never a path, and whether
+    // the checkout held changes not in that commit (review m2c: the evidence binds to a clean commit).
+    commit: process.env.GITHUB_SHA ?? (git('rev-parse', 'HEAD')?.trim() || null), dirty: status === null ? null : status.trim() !== '',
     platform: `${process.platform}-${process.arch}`, node: process.version,
     playwright: (JSON.parse(readFileSync(join(root, 'node_modules/playwright-core/package.json'), 'utf8')) as { version: string }).version,
-    sandbox: 'required', pin: { version: DRAWIO_PIN.version, size: DRAWIO_PIN.size, sha256: DRAWIO_PIN.sha256 },
-    runs: runs.map(record => ({ order: record.order, seed: record.seed, sequences: record.sequences.length, steps: record.sequences.reduce((n, s) => n + s.steps, 0), startMs: Math.round(record.startMs), peakRss: record.peakRss, refusedRequests: record.refusedRequests.length, byTask: byTask(record) })),
+    chromium: chromiumVersions.length === 1 ? chromiumVersions[0] : null,
+    sandbox: { policy: ADAPTER_REGISTRY.drawio.sandbox, observed: runs.map(record => record.sandbox) },
+    pin: { version: DRAWIO_PIN.version, size: DRAWIO_PIN.size, sha256: DRAWIO_PIN.sha256 },
+    runs: runs.map(record => ({ order: record.order, seed: record.seed, sequences: record.sequences.length, steps: record.sequences.reduce((n, s) => n + s.steps, 0), startMs: Math.round(record.startMs), peakRss: record.peakRss, refusedRequests: record.refusedRequests.length, chromium: record.chromium, sandbox: record.sandbox, byTask: byTask(record) })),
     disagreements, problems: problems.slice(0, 50),
     sequences: Object.fromEntries(runs[0]!.sequences.map(sequence => [sequence.key, { kind: sequence.kind, exports: sequence.exports, native: sequence.native, png: sequence.png, verdict: sequence.verdict }])),
   };
