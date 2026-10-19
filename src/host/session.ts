@@ -17,6 +17,7 @@ import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAIN
 import type { MirrorFactory, PracticeMirror } from './mirror.ts';
 import {buildExportEnvelope,nativeMatchesState,type CurrentSessionExport} from './export-pair.ts';
 import {HOST_LIMITS} from './limits.ts';
+import { closeAfterFailure } from '../adapters/browser/bounded.ts';
 import { libraryTaskInfo } from '../library/index.ts';
 
 export interface MirrorDiagnostic {
@@ -263,7 +264,8 @@ export async function createPracticeController(input: World, options: PracticeSe
     options.admitView?.(value);
   };
   const view = (): HostView => makeView();
-  try { admit(view()); } catch (error) { await mirror?.close(); throw error; }
+  // A mirror close that fails or outlives its bound must not replace the admission failure (issue #64).
+  try { admit(view()); } catch (error) { throw await closeAfterFailure(error, () => mirror?.close()); }
   const emit = (event: HostEvent): void => { for (const listener of listeners) { try { listener(structuredClone(event)); } catch { /* Detached consumer cannot break the writer. */ } } };
   const contextFor=(context?:TransactionContext):TransactionContext=>context??{deadline:performance.now()+HOST_TRANSACTION_MS};
   const continues=(context:TransactionContext):boolean=>Number.isFinite(context.deadline)&&performance.now()<context.deadline;
@@ -303,7 +305,8 @@ export async function createPracticeController(input: World, options: PracticeSe
     if (!mirror || closed) return;
     const current = mirror;
     try { await current.recover(session.state); if (closed) throw new MirrorFault('mirror_unavailable', 'Session closed'); recoveries++; }
-    catch { await current.close(); if (mirror === current) mirror = undefined; if(!preserveResult)result = null; }
+    // Bounded, and never a throw: the transaction's own refusal stays what its caller gets (issue #64).
+    catch (failure) { await closeAfterFailure(failure, () => current.close()); if (mirror === current) mirror = undefined; if(!preserveResult)result = null; }
     if (!closed) emit({ type: 'changed', view: view() });
   };
   /** The mirror's read-back against a session state, compared as its adapter declares (PADR-0045):

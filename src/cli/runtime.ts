@@ -10,6 +10,7 @@ import { parseJsonEntry } from "../package/json.ts";
 import { loadWorldPackage } from "../world/index.ts";
 import { Session, apply } from "../core/index.ts";
 import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from "../adapters/registry.ts";
+import { withClose } from "../adapters/browser/bounded.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
@@ -73,7 +74,8 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
- try{
+ // A close that fails or outlives its bound never replaces the run's own failure (issue #64).
+ return withClose(async()=>{
   if(mirror==="required")adapter=await registration.create(session.state);
   for(const input of raw){const action=input as Action;const before=session.state;const tentative=apply(session.world,before,action,{seed,prefix:session.log.map(e=>e.action)});
    if(!tentative.ok)throw new RuntimeError(tentative.error.code,tentative.error.message);
@@ -90,7 +92,7 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
    await atomicFile(prefix+".excalidraw",artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
    exported={native:prefix+".excalidraw",svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
   process.stdout.write(safeJson({ok:true,world:{id:world.id,version:world.version},taskId,seed,mode:mirror==="required"?"real-engine":"model-only",initialHash,steps,endHash:session.hash,state:data,...(exported?{exported}:{})})+"\n");return 0;
- }finally{await adapter?.close();}
+ },()=>adapter?.close());
 }
 export async function commandCheck(args:string[]):Promise<number>{
  const {path,flags}=options(args,["--world","--bundle","--seed","--task","--pair"]);
