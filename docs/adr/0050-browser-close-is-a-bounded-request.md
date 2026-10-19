@@ -503,23 +503,41 @@ that the decisions left open:
   reserves the slot synchronously and then calls it. The tests' own browsers
   (`tests/support/browser.ts`) and the packed-tarball smoke test call `launchChromium` without a slot.
 - **The safety margin.** A layer that awaits a close it handed a deadline to arms no timer of its
-  own except a safety timer `CLOSE_SAFETY_MS` = 1 s after that deadline (*failed*), for a close that
-  does not keep the contract (a stand-in, a third-party adapter); the host's overall bound stays 12 s.
+  own except a safety timer `CLOSE_SAFETY_MS` = 1 s after that deadline, or after now when the
+  deadline has passed (*failed*), for a close that does not keep the contract (a stand-in, a
+  third-party adapter). A child practice host is a whole host whose own diagnostics and credential
+  steps follow its browser's close: its safety timer is 1 s before the parent's overall bound, which
+  stays 12 s. Nothing that is not a close sits inside a safety margin: the session hands its
+  diagnostic record to the host's writer without waiting, and the writer's close waits for it.
 - **A close before the browser exists** answers *cancelled*: a lease whose launch never started is
   given back at once; one still launching keeps its entry *launching*, and the late browser goes to
   its one close.
 - **The deadline through an abort.** The mirror's close aborts a running start with
   `CloseRequested(deadline)` as the signal's reason; the shell closes what that start owns under the
-  same deadline.
+  same deadline, also when the start was already closing after its own failure under a later one.
+  The mirror's close joins every close a recovery's dispose still runs, under its own deadline. An
+  author host's shutdown aborts a practice host it is still starting the same way (the abort reaches
+  that host's mirror start), closes what the start became, and never publishes a child after it.
+- **The slot wait.** A mirror start waits for a slot only while its launch keeps
+  `LAUNCH_AFTER_WAIT_MS` = 5 s of the launch bound; a slot freed later is left for the next start, and
+  this one is refused by name. A sandbox setting that is refused launches nothing and takes no slot.
 - **The 35 s rule's "last close request"** includes a launch rejection, when Playwright's own close
-  of the spawned child starts.
+  of the spawned child starts, and the rule follows the latest request in the ledger, also one made
+  after it was armed. While it waits, SIGINT, SIGTERM and SIGHUP end the command through
+  `process.exit` (130, 143, 129), so Playwright's exit handler runs.
 - **What a command reports.** Only entries with something to say: a close abandoned or failed, a
-  launch rejected, an end not proven. The host's private diagnostics get `browser_close_abandoned`
-  or `browser_close_failed` with the phase (`recovery` or `close`) and the revision.
+  launch rejected, an end not proven. "Waiting for N browsers" counts only browsers whose close or
+  launch is still running. The host's private diagnostics get `browser_close_abandoned` or
+  `browser_close_failed` with the phase (`recovery` or `close`) and the revision. `practonaut mcp`
+  tries every shutdown step on its own and arms the rule only once its host has closed; a host that
+  did not close is reported and no rule is armed. Over HTTP, a practice host whose start found the
+  budget full answers `browser_budget_exhausted` (503).
 - **The report card's contexts** close under the contract with the default deadline each; one that
   is abandoned keeps the pictures and the loop goes on, and the browser's one close ends it.
-- **Bench.** A run lost to the budget is `infra_error` with the note `browser_budget_exhausted: …`;
-  the bench's terminal output counts those runs after the table. The report file is unchanged.
+- **Bench.** A run lost to the budget is `infra_error` with the note `browser_budget_exhausted: …`,
+  also when the refusal hit a recovery's replacement and the run failed later for want of a mirror
+  (the ledger counts its refusals); the bench's terminal output counts those runs after the table.
+  The report file is unchanged.
 - **The rejected-launch test** adds Chromium's own `--wait-for-debugger` switch (test only), so the
   spawned browser waits before it connects and Playwright's launch timeout reliably expires while it
   runs, on every platform and without a signal; the repeat with a longer timeout stays (F11).
@@ -530,12 +548,41 @@ that the decisions left open:
   sinks and 8 profile directories; every slot, sink and directory is gone after Playwright's forced
   ends and the mirrors' closes. `HOST_LIMITS.browsers` stays 8. Linux and Windows: UNKNOWN.
 
-**Before and after (decision 11), macOS only so far** (amplifier, 60 attempts per row, the table in
-`docs/testing.md`, *Browser close contract*). With every close held 8.5 s: before (`main` with #68)
-60 of 60 attempts failed at the close; after, 60 of 60 passed, every close abandoned at its deadline
-and its end proven 0.5 s later, no forced end, no slot held at exit. Under `--cpu 20 --block 20` with
-6 and with 16 load workers: 60 of 60 passed before and after, no close reached 8 s in either, so these
-runs confirm no regression but not the cause. No start, budget, resource or shutdown failure in any
-run. Every test that decision 10 names failed with its mechanism disabled for the run. The CI repeat
-on Linux, macOS and Windows (before: run 39300134324 on `main` at aeca1c0; after: once this is
-merged) is a maintainer step; its numbers are not in this record.
+**Before and after (decision 11).** Locally, macOS only (amplifier, 60 attempts per row, the table in
+`docs/testing.md`, *Browser close contract*; before `main` at 2cc9126 with #68, after this branch at
+9b0d424 with the review fixes). With every close held 8.5 s: before, 60 of 60 attempts failed at the
+close; after, 60 of 60 passed, every close abandoned at its deadline and its end proven about 0.5 s
+later, no forced end, no slot held at exit. Under `--cpu 20 --block 20` with 6 and with 16 load
+workers: 60 of 60 passed before and after, and no close reached 8 s in either, so these rows show no
+regression but do not test the cause. No start, budget, resource or shutdown failure in any run. An
+earlier after-run on 880f6be, before two later changes to the close path and the review fixes, had
+the same outcome in every row. On CI, before (run 39300134324 on `main` at aeca1c0, 300 attempts per
+platform beside `challenge-round.test.ts`): Ubuntu 0 failed, macOS 0, Windows 3, all at the close
+(slowest close 12 309 ms, of which Chromium's exit 12 297 ms). The CI after-run, and with it the
+acceptance of issue #64 on Linux and Windows, follows once this is on `main`. Every test that
+decision 10 names failed with its mechanism disabled for the run.
+
+## Review of the implementation (2026-10-19)
+
+Two independent reviews of pull request #69: OpenAI Codex (four majors, one minor, one gap) and a
+Claude Opus workflow with two lenses and a skeptic (one major the skeptic downgraded to minor, fourteen
+minors). Each finding was reproduced, fixed, and given a test that failed with the fix undone.
+
+| Source | Finding | Disposition |
+|---|---|---|
+| Codex 1 | major — the 35 s rule read the last close request once, when armed; a late browser's close could not move it, so `process.exit` could come before Playwright's own 30 s | Fixed: the rule follows the latest request in the ledger. |
+| Codex 2; contract-mcp-finish-host-open; effects-2 | major — a failed `launcher.remove()` skipped the host's close in `practonaut mcp`, and the command's end still armed the rule | Fixed: every shutdown step is tried on its own; the rule is armed only once the host closed; a host that did not close is reported and arms nothing. |
+| Codex 3 | major — a practice host the author host was still starting joined `children` only after its start, so a shutdown missed it | Fixed: starts are tracked from their first moment; the shutdown aborts them with its deadline (down to the child's mirror start) and closes what they became; none is published after it. |
+| Codex 4; contract-mirror-close-no-join-inflight-dispose | major — a close during a recovery's dispose answered *closed* at once and the host's diagnostics lost the record | Fixed: the mirror keeps the closes its dispose runs, and its close joins them under its own deadline. |
+| Codex 5 | minor — a child host's budget refusal answered `mirror_unavailable` over HTTP | Fixed: `browser_budget_exhausted` (503), in `HOST_ERROR_CODES`. |
+| Codex gap | minor — the Windows cleanup test could pass on a folder nothing used | Fixed: the test watches Playwright's directories appear before it asserts they are gone, on every platform. |
+| contract-start-closed-outer-timer | major, downgraded by the skeptic to minor (no current caller passes a deadline less than about 7 s ahead) | Fixed anyway: a close's earlier deadline reaches a start already closing after its own failure. |
+| contract-session-close-post-deadline-write; effects-1 | minor — the diagnostics write and fsync sat inside the host's 1 s safety margin, and a child host's own cleanup too | Fixed: the record is handed to the host's writer without waiting, the writer's close waits for it, and a child's close has its cleanup time within the parent's overall bound. |
+| contract-late-grant-burns-slot; effects-3 | minor — a slot granted late launched with milliseconds, failed as a launch timeout and held the slot 35 s | Fixed: the slot wait ends while the launch keeps 5 s; the start is then refused by name. The ledger records how long a start waited. |
+| effects-4 | minor — the wait line counted entries with nothing of Playwright's left; a refused sandbox setting held a slot | Fixed: the line counts closes and launches still running; a refused setting takes no slot. |
+| effects-5 | minor — Ctrl+C during the wait killed Node past Playwright's exit handler and left the directories | Fixed: signal handlers while the rule waits call `process.exit`; a real-CLI test. |
+| effects-6 | minor — the docs dated the after-run to 880f6be although the close path changed after it | Fixed: re-measured on the reviewed tip (above). |
+| effects-7 | minor — the per-command real-CLI test could not see a bench run's host left open | Fixed: it counts credentials under the whole home; the mutation now fails it. |
+| effects-8 | minor — the bench's budget count had no test and missed refusals during a recovery | Fixed: tested in both languages; the ledger counts refusals, and a run lost to one during a recovery names the budget. |
+| effects-9 | minor — German texts for a count of 1 | Fixed with plural forms; tested. |
+| effects-10 | minor — the docs index called the record proposed | Fixed (and PADR-0044's entry); a test compares the index with `docs/adr/README.md`. |

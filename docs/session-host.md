@@ -177,7 +177,7 @@ These are fixed constants, not environment overrides. Tests exercise each releva
 | SSE | 8 clients; 4 MiB queued per client; heartbeat 15 s | rate_limited / stream closed |
 | Bootstrap | one use, 5 min, one outstanding code, at most 1000 links per session | bootstrap_used / bootstrap_expired / token_invalid / limit_exceeded |
 | Mirror operation | 5 s | mirror_timeout / mirror_unavailable / real_tool_disagrees |
-| Browsers per process (PADR-0050) | 8 running and closing; a start waits up to its 15 s launch bound for a slot; a close's deadline 8 s | browser_budget_exhausted (a required mirror: exit 3; `--mirror auto`: model-only with a notice) |
+| Browsers per process (PADR-0050) | 8 running and closing; a mirror start waits for a slot while its launch keeps 5 s of its 15 s bound; a close's deadline 8 s | browser_budget_exhausted (a required mirror: exit 3; `--mirror auto`: model-only with a notice; a practice host started from the author page: HTTP 503) |
 | Private diagnostic | 4 MiB file and single-record cap | diagnostic_limit / diagnostic_unavailable |
 | Optional network startup probe | 3 s | E_NETWORK_AVAILABLE when external reachability is observed |
 | Bench action budget (bench runs only) | `--max-actions`, default 50 act/undo/reset per run | action_budget_exhausted (HTTP 429) |

@@ -103,21 +103,25 @@ All notable changes are recorded here. The format follows
   or abandoned, and an abandoned close no longer fails the call (a test's cleanup, a host's close,
   `run`, a render check, a report card); Playwright itself ends a browser that has not closed 30 s
   after the request. A mirror recovery whose old browser closes slowly goes on to its replacement,
-  and a session closed during a recovery stops the replacement's start instead of waiting for it.
+  and a session closed during a recovery stops the replacement's start instead of waiting for it;
+  an author host's close also stops a practice host it is still starting.
   Measured with the amplifier on macOS (60 attempts of the two host deadline tests per row, main
   with the previous fix against this change): with every close held 8.5 s, 60 of 60 failed before
   and 0 of 60 after, every close abandoned at its deadline and its end proven 0.5 s later; under
   load (`--cpu 20 --block 20`, 6 and 16 load workers) 0 of 60 failed before and after in each, and
-  no close reached the deadline in either, so those runs do not test the cause. Linux and Windows
-  are not measured yet. Browsers launched and not yet proven closed are
-  bounded per process (8; the budget's scenario peaked at 2.1–2.4 GiB of resident size summed over
-  8 browser trees on macOS); a start that finds no slot waits up to 15 s and is then refused as
-  `browser_budget_exhausted` (exit 3 under `--mirror required` and `run`, model-only with a notice
-  under `--mirror auto`, counted after a bench's table). A browser's sink proxy keeps its port until
-  that browser's end is proven. A command reports later close outcomes on stderr (English or German),
-  says when it waits for browsers to close, and exits 35 s after its last close request if a
-  browser's end is still not proven. For developers: `npm run measure:browser-budget`, and the
-  amplifier counts each close's outcome ([testing](docs/testing.md#browser-close-contract)).
+  no close reached the deadline in either, so those runs do not test the cause. On CI before this
+  change, 300 attempts per platform: 0 failed on Ubuntu and macOS, 3 on Windows, all at the close
+  (slowest close 12.3 s); the CI after-run is still to come. Browsers launched and not yet proven
+  closed are bounded per process (8; the budget's scenario peaked at 2.1–2.4 GiB of resident size
+  summed over 8 browser trees on macOS); a start that finds no slot waits within its 15 s launch
+  bound and is then refused as `browser_budget_exhausted` (exit 3 under `--mirror required` and
+  `run`, model-only with a notice under `--mirror auto`, HTTP 503 for a practice host started from
+  the author page, counted after a bench's table). A browser's sink proxy keeps its port until that
+  browser's end is proven. A command reports later close outcomes on stderr (English or German),
+  says when it waits for a browser to close, and exits 35 s after the latest close request if a
+  browser's end is still not proven; Ctrl+C during that wait still lets Playwright end the browser
+  and remove its directories. For developers: `npm run measure:browser-budget`, and the amplifier
+  counts each close's outcome ([testing](docs/testing.md#browser-close-contract)).
 - A browser close after a failure no longer replaces that failure (issue #64). When a session or
   host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
   an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,

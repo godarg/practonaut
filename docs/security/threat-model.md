@@ -109,7 +109,7 @@ change with a test and an update of this table. No environment variable disables
 | Event streams | 8 clients, 4 MiB queued each, heartbeat 15 s | stream closed | same |
 | Link code | one use, 5 min, one outstanding, 1,000 per session | `bootstrap_used` / `bootstrap_expired` | same |
 | Mirror operation | 5 s | `mirror_timeout` | `src/host/mirror.ts` |
-| Browsers per process (PADR-0050) | 8 running and closing together, every host included; a start waits up to its 15 s launch bound for a slot; a close's default deadline 8 s | `browser_budget_exhausted` | `src/host/limits.ts` (`HOST_LIMITS.browsers`), `src/adapters/browser/ledger.ts` |
+| Browsers per process (PADR-0050) | 8 running and closing together, every host included; a start waits for a slot within its 15 s launch bound (a mirror start only while 5 s of it remain for the launch); a close's default deadline 8 s | `browser_budget_exhausted` | `src/host/limits.ts` (`HOST_LIMITS.browsers`), `src/adapters/browser/ledger.ts` |
 | MCP inbound message | 1 MiB | `invalid_request` | `src/mcp/server.ts` |
 | Recordings | 30 min, 1,000 gestures, 3 MiB each; 100 recordings / 64 MiB in total | `recording_limit` | `src/host/author-controller.ts` |
 | Bench run | `--timeout` (default 300 s), `--max-actions` (default 50) | `action_budget_exhausted` | `src/bench/` |

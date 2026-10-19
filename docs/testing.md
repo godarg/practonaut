@@ -228,14 +228,27 @@ held (`src/cli/browser-exit.ts`). The product reads no process table; the tests 
   all *abandoned*, never a deadline error, the host's private diagnostics recording it); a session
   close during a recovery's start (the start aborted with the close's deadline, the mirror
   *cancelled* or *abandoned* by that deadline, the host's close never timing out, a late replacement
-  going to its one close); a recovery holding two slots until the old browser's end is proven.
+  going to its one close); a recovery holding two slots until the old browser's end is proven. From
+  the review of pull request #69: a mirror close during a recovery's dispose joins that close and
+  reports it; a start already closing after its own failure settles by a later close's earlier
+  deadline; a slow diagnostics write (fsync held 1.2 s) neither delays the close nor fails the
+  host's, and the record lands; an author host's shutdown stops a practice host it is still starting
+  and gives a running child its cleanup time; the stop signal reaches the mirror's start; a budget
+  refusal over HTTP is `browser_budget_exhausted` (503); a slot granted too late to launch is not
+  taken; a refused sandbox setting takes no slot.
 - `tests/unit/browser-exit.test.ts`: Codex's combined path (a close that fulfils after a disconnect)
   keeps the slot and leads to `process.exit` 35 s after the last close request, only after the
   command's writes; no exit once the end is proven; `practonaut mcp` ends only after `stop()` closed
   the host; the real CLI, per command kind (`pack`, `validate`, `run`, `tasks`, `mcp`, `bench`,
   `play`), exits through the rule only after its own shutdown, with no credential left (a preload,
   `tests/support/exit-rule-preload.ts`, holds Node alive as Playwright's pipes would); a full budget
-  named with its counts and remedy in English and German, exit 3.
+  named with its counts and remedy in English and German, exit 3. From the review: the rule follows
+  a close requested after it was armed; a signal while it waits exits through `process.exit`; the
+  wait line counts only closes and launches still running; `practonaut mcp` tries every shutdown
+  step and arms the rule only once its host closed; German texts for a count of 1; a bench counts
+  the runs it lost to the budget, in both languages; `doctor --adapter` with a refused sandbox
+  setting leaves no ledger line. The per-command test counts credentials anywhere under the home, so
+  a bench run's host left open fails it.
 - `tests/integration/browser-close-contract.test.ts` (real Chromium): a launch that Playwright
   rejects after it spawned Chromium (Chromium's own `--wait-for-debugger`, added by the test only,
   makes the spawned browser wait before it connects) holds its slot and sink for 35 s; the test's own
@@ -245,14 +258,18 @@ held (`src/cli/browser-exit.ts`). The product reads no process table; the tests 
   `run`'s close is abandoned at its deadline with the browser alive, and the CLI exits after
   Playwright's forced end, about 30 s after the request, with none of the recorded processes (pid,
   parent, group, session, start time) and no directory left; (B) a bench's second interrupt calls
-  `process.exit` while that close is pending, and nothing is left. Windows runs `run` without a stall
-  and checks survivors and directories only.
+  `process.exit` while that close is pending, and nothing is left; (C) Ctrl+C while the command waits
+  for that browser ends it through `process.exit` (130), and nothing is left. Every platform runs
+  `run` without a stall and watches Playwright's directories appear under the CLI's temporary
+  directory before it asserts that they, and every process started with it, are gone (on Windows the
+  only one of these tests).
 
 Every one of these tests failed with its mechanism disabled for the run (the proof rule, the launch
 hold, the late browser's close, the budget's count and its wait, the one close per browser, the
 deadline, the safety margin above it, the sink's lifetime, the mirror's abort of a running start, the
 recovery going on after its old close, the 35 s exit, `mcp`'s deferred end, the named budget
-refusal, the report card's contexts, the diagnostics record, the host reading the outcome).
+refusal, the report card's contexts, the diagnostics record, the host reading the outcome), and so
+did each test written for a finding of the review of pull request #69 with its fix undone.
 
 - `npm run measure:browser-budget` (opt-in, POSIX) runs the budget's scenario with real Excalidraw
   mirrors: the start check's browser still closing, five mirrors, two of them recovering at once
@@ -269,31 +286,43 @@ refusal, the report card's contexts, the diagnostics record, the host reading th
 
 Before and after, with the amplifier ([Host deadline tests](#host-deadline-tests)) on the same
 shared machine (macOS 27, Apple M4, 10 cores, Node 22, Playwright 1.64.0), 2026-10-19: before is
-`main` at 2cc9126 (with #68, without PADR-0050), after is this branch at 880f6be (the source
-unchanged since; the amplifier's preload then also records the ledger). Every attempt runs one of the
-two tests in its own process; the load average is the machine's at the start and end of each run and
-was not controlled.
+`main` at 2cc9126 (with #68, without PADR-0050), after is this branch at 9b0d424, after the review
+fixes, with no change to `src/` during the runs (the amplifier's preload also records the ledger
+there). Every attempt runs one of the two tests in its own process; the load average is the
+machine's at the start and end of each run and was not controlled. An earlier after-run, on 880f6be
+before the two later changes to the close path (ab6cf31, 641adc5) and the review fixes, had the same
+outcome in every row.
 
 | Settings | Code | Load average | Attempts | Tests passed | Failed at the close | Browser closes | Closes ≥ 8 s | Abandoned (ended / pending at exit) | Longest close | Playwright forced ends | Slots released by proof / launch wait / held at exit |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `--hold 8500` | before | 13.7 → 6.6 | 60 | 0 | 60 (`BrowserDeadlineError`, close) | 60 | 60 | — | 8 626 ms | 0 | — |
-| `--hold 8500` | after | 6.4 → 12.3 | 60 | 60 | 0 | 60 | 60 | 60 (60 / 0) | 8 816 ms | 0 | 60 / 0 / 0 |
+| `--hold 8500` | after | 18.2 → 19.4 | 60 | 60 | 0 | 60 | 60 | 60 (60 / 0) | 8 607 ms | 0 | 60 / 0 / 0 |
 | `--cpu 20 --block 20 --load 16` | before | 3.8 → 40.0 | 60 | 60 | 0 | 60 | 0 | — | 1 158 ms | 0 | — |
-| `--cpu 20 --block 20 --load 16` | after | 12.3 → 48.6 | 60 | 60 | 0 | 62 | 0 | 0 | 1 246 ms | 0 | 62 / 0 / 0 |
+| `--cpu 20 --block 20 --load 16` | after | 19.4 → 57.6 | 60 | 60 | 0 | 60 | 0 | 0 | 1 079 ms | 0 | 60 / 0 / 0 |
 | `--cpu 20 --block 20 --load 6` | before | 31.2 → 20.4 | 60 | 60 | 0 | 60 | 0 | — | 566 ms | 0 | — |
-| `--cpu 20 --block 20 --load 6` | after | 48.6 → 31.3 | 60 | 60 | 0 | 60 | 0 | 0 | 713 ms | 0 | 60 / 0 / 0 |
+| `--cpu 20 --block 20 --load 6` | after | 57.6 → 30.6 | 60 | 60 | 0 | 60 | 0 | 0 | 904 ms | 0 | 60 / 0 / 0 |
 
 `--hold 8500` holds every real close 8.5 s before it starts, a stand-in for a slow Chromium exit:
 before, every attempt failed in its cleanup; after, every close was abandoned at its 8 s deadline,
 ended 0.5 s later with its end proven, and every test passed. Under load no close reached 8 s in
-either run, so those rows show no regression but do not test the cause (decision 11). In the
-`--load 16` after-run two attempts replaced their browser in a mirror recovery (62 browsers for 60
-attempts) and passed; no attempt in any run had a start, budget, resource or shutdown failure, a
-rejected launch, or a slot held at its exit. Forced ends before are inferred from the close times
+either run, so those rows show no regression but do not test the cause (decision 11). No attempt in
+any run had a start, budget, resource or shutdown failure, a rejected launch, or a slot held at its
+exit; no mirror recovery replaced a browser in these runs (one browser per attempt; in the earlier
+880f6be run two attempts with 16 load workers did, published their replacement and passed). Forced ends before are inferred from the close times
 (every close ended long before Playwright's 30 s); after, they are counted from Playwright's log.
 Each attempt's ledger times (request, disconnect, settling, release) and Playwright's own log of the
 exit and the directory removal are in the run's record under `.local/amplify-host-deadline/`.
-Linux and Windows: the `host-deadline-repeat` workflow, a maintainer step.
+
+On CI, before (run 39300134324 of `host-deadline-repeat` on `main` at aeca1c0, without PADR-0050, 5
+jobs per platform of 30 attempts × 2 tests beside `challenge-round.test.ts`):
+
+| Platform | Attempts | Failed | Notes |
+|---|---|---|---|
+| Ubuntu | 300 | 0 | |
+| macOS | 300 | 0 | |
+| Windows | 300 | 3, all at the close | job 4: 1, job 5: 2; slowest close 12 309 ms (Chromium's exit 12 297 ms) |
+
+The CI after-run follows once this branch is on `main` (a maintainer step).
 
 ## Platform matrix
 
