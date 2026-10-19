@@ -8,6 +8,12 @@ import type { Browser, LaunchOptions } from 'playwright-core';
 import { launchChromium, type SandboxMemo } from '../../src/adapters/browser/chromium.ts';
 import { ADAPTER_REGISTRY } from '../../src/adapters/registry.ts';
 import { startShell } from '../../src/adapters/browser/shell.ts';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createDrawioAdapter } from '../../src/adapters/drawio/index.ts';
+import { buildZip } from '../support/zipwriter.ts';
 
 const SANDBOX_REFUSED = 'browserType.launch: Target page, context or browser has been closed\n[pid=1][err] No usable sandbox! If you are running on Ubuntu 23.10+ … AppArmor\nChromium sandboxing failed!';
 const BROWSER = { marker: 'browser', close: async () => undefined } as unknown as Browser;
@@ -47,4 +53,20 @@ test('the shared shell starts a required-sandbox adapter with its policy, whatev
   const chromium = fakeChromium(true);
   await assert.rejects(startShell({ origins: {}, chromium, launchContext: { env: {}, platform: 'linux', memo: { unavailable: true } }, sandbox: 'required' }, async () => undefined));
   assert.deepEqual(chromium.calls.map(call => call.chromiumSandbox), [true]);
+});
+
+test('the draw.io adapter itself starts Chromium with the sandbox, whatever the process memo says (review m2c, runtime-1)', async () => {
+  // A small fixture archive under an injected pin, so the adapter's own start reaches the browser launch.
+  const archive = buildZip([{ name: 'index.html', data: Buffer.from('<!doctype html><title>stand-in</title>') }]);
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), 'pn-drawio-sandbox-'));
+  try {
+    const runtimePath = join(dir, 'stand-in.war'); writeFileSync(runtimePath, archive);
+    const pin = { version: '0.0.1-test', asset: 'stand-in.war', size: archive.length, sha256: createHash('sha256').update(archive).digest('hex') };
+    for (const memo of [{ unavailable: true }, { unavailable: false }]) {
+      // Linux, where a refused sandbox would otherwise fall back; with the memo set, an earlier start did.
+      const chromium = fakeChromium(true);
+      await assert.rejects(createDrawioAdapter({ objects: {} }, {}, undefined, { runtimePath, pin, allowlist: ['index.html'], chromium, launchContext: { env: {}, platform: 'linux', memo } }), /sandbox/i);
+      assert.deepEqual(chromium.calls.map(call => call.chromiumSandbox), [true], `memo ${memo.unavailable}: exactly one start, with the sandbox`);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

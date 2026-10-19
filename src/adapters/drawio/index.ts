@@ -27,7 +27,7 @@ import { openDrawioArchive } from './archive.ts';
 import { APP_ORIGIN, HOST_ORIGIN, hostPage } from './host-page.ts';
 import { DRAWIO_ALLOWLIST, DRAWIO_PIN, DRAWIO_URL_PARAMETERS } from './pin.ts';
 import { readBack, writeCheck } from './readback.ts';
-import { DrawioRuntimeError, drawioRuntimePath, readDrawioRuntime } from './runtime.ts';
+import { DrawioRuntimeError, drawioRuntimePath, readDrawioRuntime, type DrawioPin } from './runtime.ts';
 import { cloneMemory, freshMemory, LAYER, modelXml, ROOT, writeCells, type WriterMemory, type XmlNode } from './writer.ts';
 
 export { DRAWIO_PIN } from './pin.ts';
@@ -45,8 +45,10 @@ export const EXCLUDED_ATTRIBUTES = Object.freeze({
 export const MAX_PNG_BYTES = 10 * 1024 * 1024;
 const CONTENT_TYPES: Readonly<Record<string, string>> = Object.freeze({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain', '.svg': 'image/svg+xml', '.png': 'image/png', '.gif': 'image/gif', '.json': 'application/json', '.xml': 'application/xml' });
 
-/** Test and conformance seams; the product passes none. */
-export interface DrawioSeams { runtimePath?: string; chromium?: ChromiumLike; launchContext?: LaunchContext; launchMs?: number; initializeMs?: number }
+/** Test and conformance seams; the product passes none. `pin` and `allowlist` let a unit test start the
+ * adapter on a small fixture archive, so its own wiring (such as the sandbox policy) is tested up to
+ * the browser launch (review m2c, runtime-1). */
+export interface DrawioSeams { runtimePath?: string; pin?: DrawioPin; allowlist?: readonly string[]; chromium?: ChromiumLike; launchContext?: LaunchContext; launchMs?: number; initializeMs?: number }
 export interface DrawioAdapter extends MirrorAdapter {
   /** Conformance only: loads hand-written XML through the protocol and runs the same checks against
    * `expected` cells (default: the cells in that XML). Never reachable from the host or a world. */
@@ -72,7 +74,7 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled');
   // The whole archive is read, hashed and opened in memory before anything starts (decision 2.6); a
   // runtime that fails here is the mirror unavailable, carrying the runtime's own code.
-  const archive = await (async () => openDrawioArchive(await readDrawioRuntime(seams.runtimePath ?? drawioRuntimePath()), DRAWIO_ALLOWLIST))().catch((error: unknown) => {
+  const archive = await (async () => openDrawioArchive(await readDrawioRuntime(seams.runtimePath ?? drawioRuntimePath(), seams.pin ?? DRAWIO_PIN), seams.allowlist ?? DRAWIO_ALLOWLIST))().catch((error: unknown) => {
     throw error instanceof DrawioRuntimeError ? new AppRuntimeFault('drawio', error.code, error.message) : error;
   });
   const page = hostPage(DRAWIO_URL_PARAMETERS);
