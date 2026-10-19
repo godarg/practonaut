@@ -123,7 +123,10 @@ test('report card: a page failure stays the error when the context and browser c
   assert.equal(result.outcome.state, 'rejected', `the call ${result.outcome.state === 'pending' ? 'never settled' : 'did not fail'}`);
   const reason = (result.outcome as { reason: unknown }).reason;
   assert.equal(reason, refused, `the caller sees the original failure, not ${String(reason)}`);
-  assert.equal(((reason as { closeError?: Error }).closeError)?.name, 'BrowserDeadlineError');
+  // Both closes ran out of time: the context's and then the browser's, kept together in order.
+  const closeError = (reason as { closeError?: unknown }).closeError;
+  assert.ok(closeError instanceof AggregateError, 'both close failures are kept');
+  assert.deepEqual(closeError.errors.map((error: Error) => error.name), ['BrowserDeadlineError', 'BrowserDeadlineError']);
   assert.ok(result.atMs >= CLOSE_BOUND_MS * 2 && result.atMs <= CLOSE_BOUND_MS * 2 + 1_000, `each close had its own bound, and no more (${result.atMs} ms)`);
 });
 
@@ -133,4 +136,29 @@ test('author practice host: a reply over budget stays the error when closing the
   // from outside, so the check is called directly with a value over it (the budget is 4 MiB).
   keptOriginal(await settle(t, admitChildHost({ close: never }, { url: 'x'.repeat(5 * 1024 * 1024) })),
     reason => (reason as { code?: string }).code === 'result_too_large');
+});
+
+// Review of PR #68 (2026-10-19): an interrupted recovery waited for the old adapter's close without a
+// bound, so the session kept its write lock and the transaction never answered.
+test('interrupted mirror recovery: a close of the old adapter that never settles ends at its bound and the session answers (mirror.ts)', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const registry = registryOf(async () => standInAdapter({ apply: async () => { throw new Error('stand-in write failed'); }, terminate: never }));
+  const controller = await createPracticeController(world(), { seed: 1 }, initial => createProductionMirror(initial, undefined, undefined, registry));
+  const result = await settle(t, controller.act({ expectedRevision: 0, action: { name: 'move_step', params: { id: 'a', x: 200, y: 220 } } }));
+  assert.equal(result.outcome.state, 'fulfilled', `the act ${result.outcome.state === 'pending' ? 'never answered' : 'threw'}`);
+  const reply = (result.outcome as { value: { ok: boolean; error?: { code: string } } }).value;
+  assert.deepEqual([reply.ok, reply.error?.code], [false, 'mirror_unavailable'], 'the refusal the failed write causes');
+  assert.ok(result.atMs >= CLOSE_BOUND_MS && result.atMs <= CLOSE_BOUND_MS + 1_000, `the old adapter's close had its bound, and no more (${result.atMs} ms)`);
+  assert.equal(controller.view().mirrorHealth.status, 'unavailable');
+  assert.equal((await settle(t, controller.check({ expectedRevision: 0 }))).outcome.state, 'fulfilled', 'the write lock is released');
+});
+
+// Review of PR #68: the report card's browser close swallowed its own failure before the failure path
+// could record it.
+test('report card: a page failure keeps the browser close\'s failure next to it (card-png.ts)', async () => {
+  const refused = new Error('stand-in route refused'), closeFailed = new Error('stand-in browser close failed');
+  const browser = { newContext: async () => ({ route: async () => { throw refused; }, close: async () => {} }), close: async () => { throw closeFailed; } } as unknown as Browser;
+  const reason = await renderCardPngs(['<svg xmlns="http://www.w3.org/2000/svg"/>'], { chromium: { launch: async () => browser } }).then(() => assert.fail('the call did not fail'), (error: unknown) => error);
+  assert.equal(reason, refused);
+  assert.equal((reason as { closeError?: unknown }).closeError, closeFailed);
 });

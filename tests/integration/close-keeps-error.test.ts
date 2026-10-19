@@ -6,14 +6,15 @@
 // real time.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Server } from 'node:http';
+import { Server, request as httpRequest, type ClientRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright-core';
 import { startHost } from '../../src/host/server.ts';
 import { createPracticeSession } from '../../src/host/session.ts';
-import type { PracticeController, ServeOptions } from '../../src/host/protocol.ts';
+import { HOST_ROUTES, TOKEN_HEADER, type PracticeController, type ServeOptions } from '../../src/host/protocol.ts';
 import { validateWorld } from '../../src/world/index.ts';
 import type { World } from '../../src/world/types.ts';
 import { packWorld } from '../../src/package/index.ts';
@@ -82,6 +83,61 @@ test('host start: an editor listener that cannot start stays the error when the 
     assert.deepEqual(await readdir(tokens), [], 'the credential is still removed');
   } finally { restore(); await rm(tokens, { recursive: true, force: true }); await rm(home, { recursive: true, force: true }); }
 });
+
+// Review of PR #68 (2026-10-19): closing the listener after an editor start failure waited for an
+// open, authenticated event stream, without a deadline, so nothing after it ran.
+test('host start: an editor listener failure with an event stream open still closes, removes the credential and keeps its error', { timeout: 30_000 }, async t => {
+  const tokens = await scratch('pn-close-keeps-'), home = await scratch('pn-close-keeps-home-'), refused = new Error('stand-in editor listen refused');
+  const prototype = Server.prototype as unknown as { listen: (...args: unknown[]) => Server }, original = prototype.listen;
+  let opened!: () => void, stream: ClientRequest | undefined, calls = 0;
+  const streamOpen = new Promise<void>(done => { opened = done; });
+  // The host listens; the test opens its event stream with the session token; only then does the
+  // editor listener fail.
+  const openStream = async (server: Server): Promise<void> => {
+    const file = (await readdir(tokens)).find(name => name.endsWith('.token'))!;
+    const token = (await readFile(join(tokens, file), 'utf8')).trim();
+    stream = httpRequest({ host: '127.0.0.1', port: (server.address() as AddressInfo).port, path: HOST_ROUTES.events, headers: { [TOKEN_HEADER]: token } }, response => {
+      assert.equal(response.statusCode, 200, 'the event stream is open'); response.on('data', () => undefined); response.on('error', () => undefined); opened();
+    });
+    stream.on('error', () => undefined); stream.end();
+  };
+  prototype.listen = function (this: Server, ...args: unknown[]) {
+    if (++calls === 1) { this.once('listening', () => { void openStream(this); }); return original.apply(this, args); }
+    void streamOpen.then(() => this.emit('error', refused)); return this;
+  };
+  // Also after a timeout (the previous code waited for the stream for good): end the stream, so the
+  // listener and this process can end.
+  t.after(() => { prototype.listen = original; stream?.destroy(); });
+  try {
+    await keepsOriginal(startHost(await world(), { mirror: 'off', phase3: true, localDirectory: home, tokenDirectory: tokens, controllerFactory: hangingClose }), reason => reason === refused);
+    assert.deepEqual(await readdir(tokens), [], 'the credential is still removed');
+  } finally { await rm(tokens, { recursive: true, force: true }); await rm(home, { recursive: true, force: true }); }
+});
+
+// Review of PR #68: one cleanup step that fails (here the diagnostics file is already gone when it is
+// discarded) must neither replace the start failure nor skip the steps after it.
+for (const [path, setUp] of [
+  ['the session factory', () => ({ options: {}, restore: () => undefined, original: (reason: unknown) => reason instanceof Error && reason.message === 'stand-in factory refused', factoryFails: true })],
+  ['the author store', () => ({ options: { phase3: true, localDirectory: 42 as unknown as string }, restore: () => undefined, original: (reason: unknown) => (reason as { code?: string }).code === 'ERR_INVALID_ARG_TYPE', factoryFails: false })],
+  ['the listener', () => { const refused = new Error('stand-in listen refused'); return { options: {}, restore: refuseListen(1, refused), original: (reason: unknown) => reason === refused, factoryFails: false }; }],
+  ['the editor listener', () => { const refused = new Error('stand-in editor listen refused'); return { options: { phase3: true }, restore: refuseListen(2, refused), original: (reason: unknown) => reason === refused, factoryFails: false }; }],
+] as const) {
+  test(`host start: when ${path} fails and discarding the diagnostics fails, the credential is still removed and the start's error stays`, { timeout: 30_000 }, async () => {
+    const tokens = await scratch('pn-close-keeps-'), home = await scratch('pn-close-keeps-home-'), plan = setUp();
+    const removeDiagnostics = async (): Promise<void> => { for (const name of await readdir(tokens)) if (name.endsWith('.mirror.jsonl')) await rm(join(tokens, name)); };
+    const factory = async (input: World, options?: ServeOptions): Promise<PracticeController> => {
+      if (plan.factoryFails) { await removeDiagnostics(); throw new Error('stand-in factory refused'); }
+      return { ...await createPracticeSession(input, { ...options, mirror: 'off' }), close: removeDiagnostics };
+    };
+    try {
+      const reason = await startHost(await world(), { mirror: 'off', localDirectory: home, ...plan.options, tokenDirectory: tokens, controllerFactory: factory })
+        .then(() => assert.fail('the start did not fail'), (error: unknown) => error);
+      assert.ok(plan.original(reason), `the caller sees the start's own failure, not ${String(reason)}`);
+      assert.equal(((reason as { closeError?: { code?: string } }).closeError)?.code, 'ENOENT', 'the failed discard is recorded next to it');
+      assert.deepEqual(await readdir(tokens), [], 'the credential is still removed');
+    } finally { plan.restore(); await rm(tokens, { recursive: true, force: true }); await rm(home, { recursive: true, force: true }); }
+  });
+}
 
 test('practonaut run: the engine\'s refusal stays the error when the adapter close outlives its bound', { timeout: 60_000 }, async () => {
   const dir = await scratch('pn-close-keeps-run-');

@@ -67,9 +67,15 @@ All notable changes are recorded here. The format follows
   an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
   or a render check or report card fails, the close that follows runs within the close bound
   (graceful 3 s + forced 5 s) and the caller gets the original failure, with the close's failure kept
-  next to it as `closeError`. Before, a close that failed replaced it (a native transfer export
-  reported "Browser close exceeded its deadline" instead of its own error), and a close that never
-  finished held these paths forever (a failed host start then never removed its credential).
+  next to it as `closeError`. A failed host start tries every cleanup step on its own (the listener,
+  ending its connections and event streams first; the author store; the session; the diagnostics;
+  the credential), and a mirror waits no longer than the close bound for an old adapter, in a
+  recovery too. Before, a close or cleanup step that failed replaced the failure (a native transfer
+  export reported "Browser close exceeded its deadline" instead of its own error; a diagnostics file
+  already gone made a failed start report `ENOENT` and keep its credential), and a close that never
+  finished held these paths forever: a failed host start never removed its credential, an open event
+  stream held a failed editor start for good, and an interrupted mirror recovery kept the session's
+  write lock.
 
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
   #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the

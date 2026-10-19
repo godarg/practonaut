@@ -148,15 +148,22 @@ it is a decision of its own.
 
 A slow close must not hide the failure it cleans up after. Every path that closes a browser (or a
 mirror, session or host holding one) after a failure does so within the same close bound and keeps
-the original failure, with the close's failure as its non-enumerable `closeError`
-(`closeAfterFailure` and `withClose` in `src/adapters/browser/bounded.ts`).
+the original failure, with the close's failure as its non-enumerable `closeError` (an
+`AggregateError` when several fail) (`closeAfterFailure` and `withClose` in
+`src/adapters/browser/bounded.ts`). A failed host start tries each cleanup step on its own — the
+listener (ending every connection and event stream first), the author store, the session, the
+diagnostics, the credential — so one that fails or hangs skips none of the others. A mirror never
+waits longer than the close bound for an old adapter, in a recovery or a close.
 `tests/unit/close-keeps-error.test.ts` (session admission, mirror recovery in a session, a failed
-rollback, a replacement started after close, the author practice host's reply budget, the render
-check, the report card; Node's mock clock) and `tests/integration/close-keeps-error.test.ts` (the
-host start's author store, listener and editor listener, `practonaut run`, the native transfer
-export; real time, 8 s each) give each path a stand-in close that never settles. Run on the previous code, every one of them
-failed (the call never settled, or the close's error replaced the original), except the author
-practice host's, whose check was inline there and is a function of its own now.
+rollback, a replacement started after close, an interrupted recovery, the author practice host's
+reply budget, the render check, the report card; Node's mock clock) and
+`tests/integration/close-keeps-error.test.ts` (the host start's author store, listener and editor
+listener, the editor listener with an event stream open, a failed diagnostics discard on four start
+paths, `practonaut run`, the native transfer export; real time, up to 8 s each) give each path a
+stand-in close that never settles or fails. Run on the previous code, every one of them failed (the
+call never settled, or a close's or cleanup's error replaced the original, or the close's failure
+was lost), except the author practice host's, whose check was inline there and is a function of its
+own now.
 
 - `npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0]
   [--beside <file>] [--require-pass]` (opt-in) runs each of the two tests unchanged in its own

@@ -29,24 +29,31 @@ export async function closeBrowser(browser: { close(): Promise<void> }): Promise
   await bounded(browser.close(), CLOSE_BOUND_MS, 'close');
 }
 /** A close (of a browser, or of what holds one) within the close bound; a throw counts as a failure. */
-const closeWithin = (close: () => Promise<unknown> | undefined): Promise<unknown> => bounded(Promise.resolve().then(close), CLOSE_BOUND_MS, 'close');
+export const closeWithin = (close: () => Promise<unknown> | undefined): Promise<unknown> => bounded(Promise.resolve().then(close), CLOSE_BOUND_MS, 'close');
 /**
  * Closes after `failure` without replacing it (issue #64): `close` runs within the close bound, and
  * this never throws. A close that fails or runs out of time (`BrowserDeadlineError`, operation
  * `close`) is kept next to the failure as its `closeError`, as `AdapterInitializationError` keeps its
- * `cleanupError`: not enumerable, so a reply or a log that serialises the failure is unchanged, and
- * never over an earlier one. A failure that is not an extensible object cannot carry it. Returns
- * `failure` for the caller to rethrow: `throw await closeAfterFailure(error, () => adapter.close())`.
+ * `cleanupError`: not enumerable, so a reply or a log that serialises the failure is unchanged. When
+ * several closes after the same failure fail, `closeError` is an `AggregateError` of all of them, in
+ * order. A failure that is not an extensible object cannot carry it. Returns `failure` for the caller
+ * to rethrow: `throw await closeAfterFailure(error, () => adapter.close())`.
  */
 export async function closeAfterFailure<E>(failure: E, close: () => Promise<unknown> | undefined): Promise<E> {
   try { await closeWithin(close); }
   catch (closeError) {
     const holder = failure as unknown;
-    if (((typeof holder === 'object' && holder !== null) || typeof holder === 'function') && Object.isExtensible(holder) && !Object.hasOwn(holder, 'closeError'))
-      Object.defineProperty(holder, 'closeError', { value: closeError, configurable: true, writable: true, enumerable: false });
+    if (((typeof holder === 'object' && holder !== null) || typeof holder === 'function') && Object.isExtensible(holder)) {
+      const earlier = Object.hasOwn(holder, 'closeError') ? (holder as { closeError: unknown }).closeError : undefined;
+      const value = earlier === undefined ? closeError : new AggregateError([...(collected.has(earlier as object) ? (earlier as AggregateError).errors : [earlier]), closeError], 'Several closes after the failure failed');
+      if (value instanceof AggregateError) collected.add(value);
+      Object.defineProperty(holder, 'closeError', { value, configurable: true, writable: true, enumerable: false });
+    }
   }
   return failure;
 }
+/** The aggregates `closeAfterFailure` made itself, so that a later failure is added to them. */
+const collected = new WeakSet<object>();
 /**
  * Runs `work`, then `close`. When `work` fails, its failure is what the caller gets: the close runs
  * within the close bound, with a failed close next to it (`closeAfterFailure`). When `work` succeeds,

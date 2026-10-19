@@ -9,7 +9,7 @@
  */
 import type { Browser, LaunchOptions } from 'playwright-core';
 import { launchChromium } from '../adapters/browser/chromium.ts';
-import { withClose } from '../adapters/browser/bounded.ts';
+import { closeAfterFailure, withClose } from '../adapters/browser/bounded.ts';
 import { CARD_SIZE } from './card.ts';
 
 /** Never resolved: the request is answered by the route below before anything reaches a network. */
@@ -25,9 +25,10 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
   const timeoutMs = options.timeoutMs ?? 30_000;
   const chromium = options.chromium ?? (await import('playwright-core')).chromium;
   const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-  // After a failure each close has the close bound and never replaces that failure (issue #64); after
-  // the pictures, the browser's close runs as before and its failure is ignored, as before.
-  return withClose(async () => {
+  // After a failure each close has the close bound, never replaces that failure and is kept next to it
+  // (issue #64); after the pictures, the browser's close runs as before and its failure is ignored.
+  let pictures: { pngs: Buffer[]; sandbox: boolean };
+  try {
     const pngs: Buffer[] = [];
     for (const svg of svgs) {
       const context = await browser.newContext({ viewport: { ...CARD_SIZE }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: 'block', reducedMotion: 'reduce' });
@@ -38,6 +39,8 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
         pngs.push(await page.screenshot({ type: 'png', clip: { x: 0, y: 0, ...CARD_SIZE }, animations: 'disabled', caret: 'hide', timeout: timeoutMs }));
       }, () => context.close());
     }
-    return { pngs, sandbox };
-  }, () => browser.close().catch(() => {}));
+    pictures = { pngs, sandbox };
+  } catch (failure) { throw await closeAfterFailure(failure, () => browser.close()); }
+  await browser.close().catch(() => {});
+  return pictures;
 }

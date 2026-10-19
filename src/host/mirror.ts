@@ -1,6 +1,6 @@
 import { ADAPTER_REGISTRY, EXCALIDRAW_APP, readBackAgrees, resolveAdapter, type AdapterRegistry, type ReadBackComparison } from '../adapters/registry.ts';
 import type { EngineLifecycleProbe } from '../adapters/browser/shell.ts';
-import { closeAfterFailure } from '../adapters/browser/bounded.ts';
+import { closeAfterFailure, closeWithin } from '../adapters/browser/bounded.ts';
 import type { AdapterResult, MirrorAdapter, Transition } from '../adapters/types.ts';
 import type { State, World } from '../world/types.ts';
 import type {TransactionContext} from './protocol.ts';
@@ -66,7 +66,10 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
       throw new MirrorFault('mirror_unavailable', 'Real engine operation failed');
     } finally { if (timer) clearTimeout(timer); }
   };
-  const dispose = async (): Promise<void> => { const old = adapter; adapter = undefined; if (old) await old.terminate(); };
+  // The old adapter's close has the close bound: a recovery or a close never waits longer for it. A
+  // recovery whose old adapter does not close in time fails, and the session goes on without a mirror
+  // (issue #64).
+  const dispose = async (): Promise<void> => { const old = adapter; adapter = undefined; if (old) await closeWithin(() => old.terminate()); };
   return {
     readBack: registration.readBack,
     apply: (transition,context) => bounded((engine,remaining) => engine.apply(transition, { timeoutMs: remaining }),context),
