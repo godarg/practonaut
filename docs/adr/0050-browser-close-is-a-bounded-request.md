@@ -123,9 +123,11 @@ service (anyone can connect to the port). The threat model trusts same-user proc
 whole shell would move onto `connect`. *Evidence:* macOS only. Weighed again in round 5 (review
 finding F10) against the proof requirement: (a) gives the strongest proof, with no residual window.
 Not chosen, the listener being the deciding cost: Playwright's own close already proves the end
-where it ran (decision 5), and the cases it leaves (decision 5's residual window and a browser that
-disconnected first) only hold a slot longer, never free one early. It is the first candidate if those
-cases show up in practice (re-assessment triggers).
+where it ran (decision 5). Of the cases it leaves, a browser that disconnected first only holds a
+slot longer; decision 5's residual window is the one exception that frees a slot and the sink early
+(a close that fulfils through the swallowed `TargetClosedError` before the child has ended), accepted
+there because it arises only when Chromium has closed its own end of the connection. It is the first
+candidate if either case shows up in practice (re-assessment triggers).
 
 **(b) The browser's process id from CDP, verified, and a signal of Practonaut's own.** Rejected
 (first review, findings 1–3): the identity is not bound to the browser whose close is pending, `ps
@@ -479,8 +481,14 @@ checked against the installed `playwright-core` 1.64.0 and is cited in *Context*
 | F10 | minor — `BrowserServer.process()` is a public `ChildProcess`; option (a) deserves another look under the proof requirement | Confirmed (`types/types.d.ts:20759`) | Weighed again: strongest proof, no residual window; not chosen, the listener being the deciding cost, because Playwright's own close proves the end where it ran and the remaining cases only hold a slot longer; first candidate if those cases appear (option a, re-assessment triggers). |
 | F11 | minor — the rejected-launch test can pass without exercising the path | Holds: whether the spawn precedes a short timeout depends on the machine | Accepted: an attempt counts only if the test's own read found the spawned Chromium after the rejection; otherwise it is repeated with a longer timeout, up to a fixed number of tries, then the test fails (decision 10). |
 | F12 | minor — the report card's per-picture context closes are not under the contract | Confirmed (`withClose` per picture; unbounded on success) | Accepted: each context close goes through the contract under the command's deadline, keeps the pictures taken, and a context still closing ends with its browser's one close (decision 2); unit test (decision 10). |
-| — | the reviewer's simpler design | — | Adopted by the maintainer (decisions 4–9). It gives up two things, both recorded: detecting a Playwright kill that failed (its close then never fulfils, so the slot stays held anyway), and the one-turn residual window (decision 5). |
+| — | the reviewer's simpler design | — | Adopted by the maintainer (decisions 4–9). It gives up two things, both recorded: detecting a Playwright kill that failed (its close then never fulfils, so the slot stays held anyway), and the one-turn residual window (decision 5), the one case in which a slot and the sink are freed before the child has ended. |
 
 Earlier rounds' statuses: Re-review 2's disposition of its finding 2 (the command-line switch) is
 superseded by decision 5 as revised here; its findings 1 and 3 stay closed, now through Playwright's
 promise and the launch wait instead of the reader.
+
+The fifth round (OpenAI Codex, 2026-10-19) found no blocker or major, confirmed the cited
+`playwright-core` 1.64.0 lines (with the caveat that the public close alone proves nothing, because
+it swallows `TargetClosedError`, 64308–64310) and found one minor: option (a)'s trade-off said the
+residual window never frees a slot early, which decision 5 accepts it does. Option (a) and the
+simpler-design row above now name that exception.
