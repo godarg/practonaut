@@ -29,7 +29,6 @@ import { resolvedDataPaths } from '../platform/paths.ts';
 import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { sha256Hex } from '../canonical/index.ts';
-import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
@@ -488,7 +487,8 @@ async function assembleReport(input: {
     verdictLevel: 'session',
     environment: {
       practonaut: PACKAGE_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() },
-      app: { adapterId: world.app.adapterId, version: EXCALIDRAW_APP_VERSION }, mirror: input.mirror,
+      // The pinned app version the world names (the world table refuses any other, PADR-0045), not Excalidraw's.
+      app: { adapterId: world.app.adapterId, version: world.app.versionRange }, mirror: input.mirror,
       world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated, ...(limits.length ? { limits } : {}) },
     },
     toolchain: { kind: 'practonaut', id: 'practonaut', tools: [...BRIDGE_TOOLS] },
