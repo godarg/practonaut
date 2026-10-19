@@ -442,8 +442,10 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
         })]); } catch { failed = true; } finally { clearTimeout(timer); }
       };
       /** A close under the contract: the deadline goes down, the outcome comes up. An abandoned close
-       * does not fail the host's close (its session recorded it); only a failed one does. */
-      const browserStep = async (close: (by: number) => Closing): Promise<void> => { if ((await closeBy(close, browsers, overall)).outcome === 'failed') failed = true; };
+       * does not fail the host's close (its session recorded it); only a failed one does. Its safety
+       * timer, 1 s after the deadline, leaves the diagnostics and the credential their time within
+       * the overall bound. */
+      const browserStep = async (close: (by: number) => Closing): Promise<void> => { if ((await closeBy(close, browsers)).outcome === 'failed') failed = true; };
       clearInterval(heartbeat);
       try { unsubscribe(); } catch { failed = true; }
       for (const response of streams) { try { response.destroy(); } catch { failed = true; } }
