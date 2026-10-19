@@ -80,3 +80,16 @@ test('integrity: a live group passes; markup, foreign styles, cycles, edge paren
   issue(c => { c.push({ name: 'mxCell', attrs: { id: 'f2', value: 'Inner', style: 'swimlane;container=1;collapsible=0;startSize=30;html=0;', vertex: '1', parent: 'pn:group:g1' }, children: [{ name: 'mxGeometry', attrs: { x: '300', width: '200', height: '120', as: 'geometry' }, children: [] }] }); cell(c, 'b').attrs.parent = 'f2'; }, /constraint group-within-one-frame/);
   issue(c => { c.push({ ...clone([cell(c, 'c')])[0]! }); }, /duplicate id c/);
 });
+
+test('integrity sees every attribute and child the adapter does not write, so a hidden cell is never read as live (review m2c, Codex 3)', () => {
+  const cells = writeCells(state, freshMemory());
+  const issue = (mutate: (cells: XmlNode[]) => void, pattern: RegExp): void => { const c = clone(cells); mutate(c); assert.ok(readBack(c).issues.some(i => pattern.test(i)), String(pattern)); };
+  issue(c => { cell(c, 'c').attrs.visible = '0'; }, /does not write: visible on c/);
+  issue(c => { cell(c, 'f1').attrs.collapsed = '1'; }, /does not write: collapsed on f1/);
+  issue(c => { cell(c, 'pn:layer').attrs.visible = '0'; }, /visible on pn:layer/);
+  issue(c => { cell(c, 'c').children.unshift({ name: 'add', attrs: { as: 'value', value: 'Other' }, children: [] }); }, /child the adapter does not write on c/);
+  issue(c => { cell(c, 'c').children[0]!.attrs.relative = '1'; }, /geometry attribute the adapter does not write: relative on c/);
+  issue(c => { cell(c, 'ab').children[0]!.attrs.relative = '0'; }, /not relative on ab/);
+  issue(c => { cell(c, 'loose').children[0]!.children.push({ name: 'Array', attrs: { as: 'points' }, children: [] }); }, /point the adapter does not write on loose/);
+  issue(c => { cell(c, 'c').children[0]!.children.push({ name: 'mxPoint', attrs: { as: 'offset' }, children: [] }); }, /point the adapter does not write on c/);
+});

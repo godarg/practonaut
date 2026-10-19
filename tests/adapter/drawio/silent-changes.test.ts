@@ -77,6 +77,21 @@ test('silent changes: every case draw.io changes, drops or keeps invalid is refu
       const cells = cellsOf(state); const point = cell(cells, 'e1').children[0]!.children[0]!; point.attrs.x = '20';
       const written = structuredClone(cells); cell(written, 'e1').children[0]!.children[0]!.attrs.x = '999';
       await refused('terminal-point-moved', modelXml(written), cells, state); }
+    // Review m2c, Codex 3: a change that reaches the app after a confirmed write is seen by every later
+    // read. A step hidden with visible="0" (written as "expected", so the write check alone passes it) is
+    // refused by integrity, by snapshot() and by apply's before-check; so is a label changed since.
+    { const confirmed = objects(a), hidden = cellsOf(confirmed); cell(hidden, 's1').attrs.visible = '0';
+      const rename = { name: 'rename_step', params: { id: 's1', label: 'Z' } } as const;
+      const after = objects(stepV2('s1', 'Z', 10, 20));
+      for (const [id, changed, issue] of [['hidden-after-write', hidden, /visible on s1/], ['renamed-after-write', cellsOf(objects(stepV2('s1', 'Other', 10, 20))), null]] as const) {
+        const baseline = await adapter.restoreState(confirmed); assert.equal(baseline.ok, true, JSON.stringify(baseline));
+        const written = await adapter.conformanceWrite(modelXml(changed), structuredClone(changed) as XmlNode[]);
+        if (issue) assert.ok(written.issues.some(i => issue.test(i)), `${id}: ${JSON.stringify(written.issues)}`);
+        await assert.rejects(adapter.snapshot(), (error: unknown) => (error as { code?: string }).code === 'integrity_failed', `${id}: snapshot`);
+        const applied = await adapter.apply({ before: confirmed, after, action: rename });
+        assert.equal(!applied.ok && applied.error.code, 'integrity_failed', `${id}: ${JSON.stringify(applied)}`);
+      }
+    }
     // Added: a tab, a CR and a CRLF in labels round-trip as written (character references).
     await kept('tab-cr-crlf', objects(stepV2('s1', 'a\tb', 10, 20), stepV2('s2', 'a\rb', 300, 20), stepV2('s3', 'a\r\nb', 600, 20)));
     // Added: a C0 control cannot be stored in XML: refused by name before anything is written.

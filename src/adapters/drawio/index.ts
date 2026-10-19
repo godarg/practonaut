@@ -60,7 +60,7 @@ function checkState(state: State): void {
   validateState(state, 2);
   for (const object of Object.values(state.objects)) if (object.type === 'step' && !isStepV2(object)) throw new AdapterError('unmodeled', 'draw.io holds world/2 steps only');
 }
-interface Scene { xml: string; memory: WriterMemory }
+interface Scene { xml: string; memory: WriterMemory; committed: XmlNode[] | undefined }
 const dataUri = (value: unknown, type: string): Buffer => {
   const text = String(value ?? ''), prefix = `data:${type};base64,`;
   if (!text.startsWith(prefix)) throw new AdapterError('integrity_failed', `the app's ${type} export is not a base64 data URI`);
@@ -83,6 +83,9 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
   };
   const serveHost = async (path: string): Promise<Fulfilment | undefined> => path === '/' ? { body: page, contentType: 'text/html' } : undefined;
   let shell: BrowserShell | undefined, memory = freshMemory();
+  /** The cells of the last confirmed write: what the app must still hold whenever the adapter reads it
+   * (review m2c, Codex 3). A change made since, such as a cell hidden with visible="0", is integrity_failed. */
+  let committed: XmlNode[] | undefined;
   const current = (): BrowserShell => shell!;
   const limit = (opts: AdapterOptions = {}): number => operationMs(opts.timeoutMs, options.timeoutMs);
   const request = async <T,>(message: Record<string, unknown>, event: string): Promise<T> =>
@@ -101,7 +104,7 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
     const exported = await exportXml(), parsed = await cellsOf(exported);
     if ('error' in parsed) return { state: { objects: {} }, issues: [`the export does not parse (${parsed.error})`], exported };
     const result = readBack(parsed.cells);
-    return { ...result, exported };
+    return { ...result, issues: [...(committed ? writeCheck(committed, parsed.cells) : []), ...result.issues], exported };
   };
   /** Writes `expected` cells (or hand-written XML) and runs every check on what comes back. */
   const writeAndCheck = async (cells: XmlNode[], xml: string = modelXml(cells)): Promise<{ state: State; issues: string[]; exported: string }> => {
@@ -115,11 +118,15 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
     await current().wait(() => current().page.goto(`${HOST_ORIGIN}/`, { timeout: MAX_ADAPTER_MS }));
     await current().wait(() => current().page.waitForFunction('window.__pn && window.__pn.ready === true', undefined, { timeout: 30_000, polling: 10 }));
   };
-  const writeState = async (state: State): Promise<{ state: State; issues: string[] }> => writeAndCheck(writeCells(state, memory));
+  const writeState = async (state: State): Promise<{ state: State; issues: string[] }> => {
+    const cells = writeCells(state, memory), result = await writeAndCheck(cells);
+    if (!result.issues.length) committed = cells;
+    return result;
+  };
   const scene: SceneIO<Scene> = {
-    read: async () => ({ xml: await exportXml(), memory: cloneMemory(memory) }),
-    write: async saved => { memory = cloneMemory(saved.memory); await load(saved.xml); },
-    load: async saved => { await startPage(); memory = cloneMemory(saved.memory); await load(saved.xml); },
+    read: async () => ({ xml: await exportXml(), memory: cloneMemory(memory), committed: structuredClone(committed) }),
+    write: async saved => { memory = cloneMemory(saved.memory); committed = structuredClone(saved.committed); await load(saved.xml); },
+    load: async saved => { await startPage(); memory = cloneMemory(saved.memory); committed = structuredClone(saved.committed); await load(saved.xml); },
   };
   const ready = await startShell({ signal: options.signal, origins: { [HOST_ORIGIN]: serveHost, [APP_ORIGIN]: serveApp }, sandbox: 'required', ...(seams.chromium ? { chromium: seams.chromium } : {}), ...(seams.launchContext ? { launchContext: seams.launchContext } : {}), ...(seams.launchMs ? { launchMs: seams.launchMs } : {}), ...(seams.initializeMs ? { initializeMs: seams.initializeMs } : {}) }, async started => {
     shell = started;

@@ -30,6 +30,9 @@ const SHAPE_OF = Object.fromEntries(Object.entries(SHAPE_TOKEN).map(([shape, tok
 const STROKE_OF = Object.fromEntries(Object.entries(STROKE_HEX).map(([name, hex]) => [hex, name])) as Record<string, StepV2['stroke']>;
 const FILL_OF = Object.fromEntries(Object.entries(FILL_HEX).map(([name, hex]) => [hex, name])) as Record<string, StepV2['fill']>;
 const INTEGER = /^-?(0|[1-9][0-9]*)$/;
+const CELL_KEYS: ReadonlySet<string> = new Set(['id', 'value', 'style', 'vertex', 'edge', 'parent', 'source', 'target', 'connectable']);
+const VERTEX_GEOMETRY_KEYS: ReadonlySet<string> = new Set(['x', 'y', 'width', 'height', 'as']);
+const EDGE_GEOMETRY_KEYS: ReadonlySet<string> = new Set(['relative', 'as']);
 
 export interface ReadBack { state: State; issues: string[] }
 /**
@@ -62,6 +65,21 @@ export function readBack(cells: readonly XmlNode[], adapterId = 'drawio'): ReadB
   };
   const kinds = new Map([...byId].map(([id, cell]) => [id, kind(cell)]));
   for (const [id, k] of kinds) if (k === 'unknown') issues.push(`a cell the adapter does not write: ${id}`);
+  // Every attribute and child element must be one the adapter writes (review m2c, Codex 3): a cell hidden
+  // with visible="0", collapsed, or given a value child after a confirmed write is an integrity failure.
+  for (const [id, cell] of byId) {
+    for (const key of Object.keys(cell.attrs)) if (!CELL_KEYS.has(key)) issues.push(`an attribute the adapter does not write: ${key} on ${id}`);
+    const k = kinds.get(id);
+    if (k === 'root' || k === 'layer') { if (cell.children.length || Object.keys(cell.attrs).some(key => key !== 'id' && key !== 'parent')) issues.push(`${id} holds more than the adapter writes`); continue; }
+    const geometry = cell.children[0];
+    if (cell.children.length !== 1 || geometry!.name !== 'mxGeometry' || geometry!.attrs.as !== 'geometry') { issues.push(`a child the adapter does not write on ${id}`); continue; }
+    const edge = k === 'edge';
+    for (const key of Object.keys(geometry!.attrs)) if (!(edge ? EDGE_GEOMETRY_KEYS : VERTEX_GEOMETRY_KEYS).has(key)) issues.push(`a geometry attribute the adapter does not write: ${key} on ${id}`);
+    if (edge && geometry!.attrs.relative !== '1') issues.push(`an edge geometry that is not relative on ${id}`);
+    for (const point of geometry!.children) {
+      if (!edge || point.name !== 'mxPoint' || !['sourcePoint', 'targetPoint'].includes(point.attrs.as ?? '') || point.children.length || Object.keys(point.attrs).some(key => !['x', 'y', 'as'].includes(key))) issues.push(`a point the adapter does not write on ${id}`);
+    }
+  }
   // Parent chains: existing, acyclic, no edge as a parent.
   const ancestors = (id: string): string[] => {
     const chain: string[] = [];
