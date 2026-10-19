@@ -937,7 +937,8 @@ the held-out set records and that commit is pushed; plan and record are committe
 follows from them; the held-out set, its world and oracle files are the regenerated ones; every report
 is a re-verified `practonaut.bench/3` session-level report of the pinned Practonaut, the plan's
 settings and seed list `1`; the pre-probe runs give the declared digest and outcomes; oracle 100 %,
-random ≤ 5 %, every near miss fails in a checker process; the ledger rules above — and then the
+random ≤ 5 %, every near miss fails in a checker process; the ledger rules above, and the ledger the
+pre-probe record and the declaration counted is a prefix of the gated one — and then the
 ladder: every run bound to its two ledger records (other hashes, status, failure, toolchain or rules
 refuse), the declared preset and model requested, the billing class, isolation shown by the runs
 whose offered tools a shipped parser read again, one prompt, one API key source and one release line
