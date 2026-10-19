@@ -17,7 +17,7 @@ const tokens = await readTokensCss();
 const side = (report: BenchReportV3, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
 const compared = (a: BenchReportV3, b: BenchReportV3, language: 'en' | 'de' = 'en'): string => renderCompareHtml(side(a, 'excalidraw'), side(b, 'drawio'), compareReports(a, b), tokens, language);
 const body = (html: string): string => html.replace(/<head>[\s\S]*?<\/head>/u, '');
-const visible = (html: string): string => body(html).replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&amp;/gu, '&').replace(/[ ⁠]/gu, match => match === ' ' ? ' ' : '').replace(/\s+/gu, ' ');
+const visible = (html: string): string => body(html).replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&amp;/gu, '&').replace(/[ ⁠]/gu, match => match === ' ' ? ' ' : '').replace(/\s+/gu, ' ').replace(/ ([,;:)])/gu, '$1');
 
 test('R2-F1: every identifier with a hyphen is one unbreakable word (`id`), in tables, lists, chips, settings and refusals', () => {
   const pages = (['en', 'de'] as const).flatMap(language => [
@@ -54,13 +54,14 @@ test('R2-F2/F3/F4/F5: across worlds a rate resting on runs without a verdict say
   assert.match(identity, /<h2 id="regressions">Outcomes per task identity<\/h2>/);
   assert.match(compared(s.excalidraw, s.drawio, 'de'), /<h2 id="regressions">Ergebnisse je Aufgabenidentität<\/h2>/);
   assert.match(identity, /<td data-label="instance" class="text wide">/);
-  assert.match(compared(one, one), /<td data-label="instance" class="text">/);
+  // R3-F1: every compare's instance cell spans a stacked row.
+  assert.match(compared(one, one), /<td data-label="instance" class="text wide">/);
 });
 
 test('R2-F6: one instance name in one type style: the table and the lists name a task in mono with "seed"', () => {
   const html = compared(validateBenchReportV3(sessionReport({ 'restyle-flow': { 1: [true] } })), validateBenchReportV3(sessionReport({ 'restyle-flow': { 1: [false] } })));
-  assert.match(html, /<td data-label="instance" class="text"><code class="id">restyle-flow<\/code> · seed 1<\/td>/u);
-  assert.match(html, /<li><span><code class="id">restyle-flow<\/code> · seed 1: passed on the baseline/u);
+  assert.match(html, /<td data-label="instance" class="text wide"><span class="id"><code class="id">restyle-flow<\/code> · seed\u00a01<\/span><\/td>/u);
+  assert.match(html, /<li><span><span class="id"><code class="id">restyle-flow<\/code> · seed\u00a01<\/span>: passed on the baseline/u);
   // A command in a note is code, as in the banner.
   assert.match(renderHtml(s.claimed, tokens, 'en', s.claims), /Not re-checked by <code class="id">report<\/code> <code class="flag">--verify<\/code>:/u);
 });

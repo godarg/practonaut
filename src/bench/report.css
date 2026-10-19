@@ -75,7 +75,7 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:n
 .figure dd.detail{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-regular);color:var(--pn-color-text-secondary)}
 .scroll{overflow-x:auto;border-radius:var(--pn-radius-lg);background:var(--pn-color-surface);box-shadow:var(--pn-shadow-raised)}
 /* A table of few columns is as wide as its content, so its numbers sit next to their labels. */
-.scroll.compact{width:fit-content;max-width:100%}
+@media (min-width:40rem){.scroll.compact{width:fit-content;max-width:100%}}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;vertical-align:top;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
 tbody tr:last-child td{border-bottom:0}

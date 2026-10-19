@@ -48,13 +48,18 @@ const QUOTED = /([“„«‚‘"][^“”„«»‚‘’"]*[”“»’"])/u;
  * number and its percent sign ("91 %"), and a range ("9\u201391": a word joiner after the dash). */
 const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0').replace(/(\S) = (?=\S)/gu, '$1\u00a0=\u00a0')
   .replace(/(\d) %/gu, '$1\u00a0%').replace(/(\d)\u2013(?=\d)/gu, '$1\u2013\u2060').replace(/([<>\u2264\u2265]) (?=\d)/gu, '$1\u00a0')).join('');
-export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+const ENTITIES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ENTITIES[char]!);
+/** Escaped as written, without joining numbers to words: a formal condition's text, which wraps freely
+ * (joined, "= 3 und" became one run that a narrow line had to cut inside a word). */
+const escapePlain = (value: string): string => readableText(value).replace(/[&<>"']/g, char => ENTITIES[char]!);
 const esc = escapeHtml;
 /** A command named in prose ("practonaut report", "report --verify") and a command-line flag: code, set
  * in mono like every command; a flag stays on one line, so a reader who copies it gets it whole. */
 const COMMAND = String.raw`(?:practonaut )?(?:report|compare|bench)(?= --)|practonaut (?:report|compare|bench|challenge)\b|--[a-z][a-z-]*`;
-/** Proper names the page's hyphenation must not split ("Prac-tonaut", "McNe-mar"). */
-const NAMES = String.raw`(?<![\p{L}\p{N}])(?:Practonaut|McNemar|Excalidraw)(?![\p{L}\p{N}])`;
+/** Proper names the page's hyphenation must not split ("Prac-tonaut", "McNe-mar", "Wil-son"). */
+export const PROPER_NAMES: readonly string[] = ['Practonaut', 'McNemar', 'Excalidraw', 'Wilson'];
+const NAMES = String.raw`(?<![\p{L}\p{N}])(?:${PROPER_NAMES.join('|')})(?![\p{L}\p{N}])`;
 /** The longest word kept on one line: an identifier up to this length never breaks, not even at its own
  * hyphens (design-language \u00a710.5, design review R2); a longer one, such as a hash, may wrap. */
 export const ID_MAX = 32;
@@ -76,7 +81,7 @@ export function prose(value: string, ids: readonly string[] = [], idTag: 'data' 
   const known = new Set(ids), pattern = new RegExp(`(${[...names.map(name => String.raw`(?<![\p{L}\p{N}_-])${name}(?![\p{L}\p{N}_-])`), COMMAND, NAMES].join('|')})`, 'u');
   const piece = (part: string): string => known.has(part) ? dataWords(part, idTag)
     : part.startsWith('--') ? `<code class="flag">${esc(part)}</code>`
-    : /^(?:Practonaut|McNemar|Excalidraw)$/u.test(part) ? `<span class="name">${esc(part)}</span>` : dataWords(part, 'code');
+    : PROPER_NAMES.includes(part) ? `<span class="name">${esc(part)}</span>` : dataWords(part, 'code');
   // A quoted label is the author's text: never hyphenated, but it wraps like text (a long German
   // compound may not fit a phone's line); identifiers are the ones that never break.
   return readableText(value).split(QUOTED).map((part, index) => index % 2 ? `<span class="data quoted">${esc(part)}</span>`
@@ -437,7 +442,7 @@ function conditionsHtml(detail: RunDetail, language: Language): string {
   const items = detail.conditions.map((condition, index) => {
     const kind = condition.met === null ? 'unknown' : condition.met ? 'pass' : 'fail';
     const word = condition.met === null ? t.conditionUnknown : condition.met ? t.conditionMet : t.conditionUnmet;
-    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${esc(condition.formal[language])}</span>` : ''}</div></li>`;
+    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${escapePlain(condition.formal[language])}</span>` : ''}</div></li>`;
   }).join('');
   const note = detail.traceError ? `<p class="note">${esc(t.traceMissing)}</p>` : detail.conditionsMissing ? `<p class="note">${esc(fill(language, t.conditionsMissing, { reason: missing(detail.conditionsMissing) }))}</p>` : '';
   return `<ol class="conditions">${items}</ol>${note}`;
@@ -698,7 +703,7 @@ function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, langu
 ${chips(t.provenance, [...provenance(report, language, verification), report.createdAt.slice(0, 10)], agentIds(report))}
 ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.label}`)}</p>\n` : ''}${report.interrupted ? `<p class="meta">${esc(fill(language, t.interrupted, { runs: report.runs.length, planned: report.interrupted.plannedRuns }))}</p>\n` : ''}<p class="meta">${esc(sampleLine(report, language))}</p>
 ${jump}</header>
-${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
+${banner('warning', t.cardNoSandbox, `<p>${prose(t.noSandbox)}</p>`)}
 <section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n3'}">${cards.join('')}</dl></section>
 <section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>

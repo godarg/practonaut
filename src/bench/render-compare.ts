@@ -10,7 +10,7 @@
 import { isolationOf, refusalHint, type CompareOptions, type Comparison, type Difference, type InstanceName, type InstancePair, type SideRate } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
-import { agentIds, appName, banner, chips, escapeHtml as esc, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
+import { agentIds, appName, banner, chips, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
 import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
 
@@ -82,25 +82,25 @@ const pairText = (pair: InstancePair, language: Language): string => pair.names
   : instanceText(pair, language);
 /** The task ids a pair names (data in a line). */
 const pairIds = (pair: InstancePair): string[] => pair.names ? [...pair.names.baseline, ...pair.names.candidate].map(name => name.taskId) : [pair.taskId];
-const flipLine = (pair: InstancePair, language: Language): string => {
+const flipLine = (pair: InstancePair, language: Language, name = pairText(pair, language)): string => {
   const t = TEXT[language], b = pair.baseline!, c = pair.candidate!;
-  const values = { name: pairText(pair, language), bp: b.passed, bn: b.judged, br: b.repeats, bu: b.unjudged, cp: c.passed, cn: c.judged, cr: c.repeats, cu: c.unjudged };
+  const values = { name, bp: b.passed, bn: b.judged, br: b.repeats, bu: b.unjudged, cp: c.passed, cn: c.judged, cr: c.repeats, cu: c.unjudged };
   const missing = noVerdictSide(pair);
   if (missing) return fill(language, missing === 'candidate' ? t.noVerdictDown : t.noVerdictUp, values);
   const line = { regression: t.regressionLine, fix: t.fixLine, 'single-down': t.singleDown, 'single-up': t.singleUp, 'changed-down': t.changedDown, 'changed-up': t.changedUp, 'config-down': t.configDown, 'config-up': t.configUp }[pair.flip ?? 'single-up'];
   return fill(language, line, values);
 };
 const sideName = (side: InstancePair['side'], t: Words): string => side === 'baseline' ? t.sideBaseline : side === 'candidate' ? t.sideCandidate : t.sideBoth;
-const notComparedLine = (pair: InstancePair, language: Language): string => {
+/** Across worlds the side that holds the identity names its instances; the missing side is said once. */
+const presentNames = (pair: InstancePair, language: Language): string => {
   const t = TEXT[language];
-  // Across worlds the side that holds the identity names its instances; the missing side is said once.
-  const name = pair.names ? (pair.side === 'candidate' ? fill(language, t.identityBaselineOnly, { names: namesText(pair.names.baseline, language) }) : fill(language, t.identityCandidateOnly, { names: namesText(pair.names.candidate, language) })) : pairText(pair, language);
-  return fill(language, t.missingSide, { name, side: sideName(pair.side, t) });
+  return pair.names ? (pair.side === 'candidate' ? fill(language, t.identityBaselineOnly, { names: namesText(pair.names.baseline, language) }) : fill(language, t.identityCandidateOnly, { names: namesText(pair.names.candidate, language) })) : pairText(pair, language);
 };
+const notComparedLine = (pair: InstancePair, language: Language, name = presentNames(pair, language)): string => fill(language, TEXT[language].missingSide, { name, side: sideName(pair.side, TEXT[language]) });
 /** One line per side of a paired instance that holds runs that were not judged. */
-const unjudgedLines = (pair: InstancePair, language: Language): string[] => {
+const unjudgedLines = (pair: InstancePair, language: Language, name = pairText(pair, language)): string[] => {
   const t = TEXT[language];
-  return (['baseline', 'candidate'] as const).flatMap(side => pair[side]!.unjudged ? [fill(language, t.unjudgedLine, { name: pairText(pair, language), n: pair[side]!.unjudged, side: sideName(side, t) })] : []);
+  return (['baseline', 'candidate'] as const).flatMap(side => pair[side]!.unjudged ? [fill(language, t.unjudgedLine, { name, n: pair[side]!.unjudged, side: sideName(side, t) })] : []);
 };
 /** Caveat fields whose values are identifiers (versions, ids, worlds): data on the page. */
 const IDENTIFIER_CAVEATS: ReadonlySet<Comparison['caveats'][number]['field']> = new Set(['practonaut', 'reportVersion', 'toolchain', 'rules', 'clientVersion', 'clientSettings', 'identityPairing']);
@@ -113,12 +113,12 @@ const caveatLine = (caveat: Comparison['caveats'][number], language: Language): 
   }
   return capital(fill(language, t.caveatLine, { field, baseline: caveat.baseline, candidate: caveat.candidate }), language);
 };
-/** Across worlds, each paired identity with a different number of runs on the two sides: left out of the rate. */
-const runCountLines = (comparison: Comparison, language: Language): string[] => comparison.pairs.filter(pair => pair.unequalRuns).map(pair => fill(language, TEXT[language].runCountsLine, { name: pairText(pair, language), b: pair.baseline!.repeats, c: pair.candidate!.repeats }));
-/** Every caveat line with the identifiers it holds. */
-const caveatItems = (comparison: Comparison, language: Language): Array<{ text: string; ids: string[] }> => [
-  ...comparison.caveats.map(caveat => ({ text: caveatLine(caveat, language), ids: IDENTIFIER_CAVEATS.has(caveat.field) ? [caveat.baseline, caveat.candidate] : [] })),
-  ...comparison.pairs.filter(pair => pair.unequalRuns).map((pair, index) => ({ text: runCountLines(comparison, language)[index]!, ids: pairIds(pair) })),
+/** Across worlds, a paired identity with a different number of runs on the two sides: left out of the rate. */
+const runCountLine = (pair: InstancePair, language: Language, name = pairText(pair, language)): string => fill(language, TEXT[language].runCountsLine, { name, b: pair.baseline!.repeats, c: pair.candidate!.repeats });
+/** Every caveat line as text (the terminal). */
+const caveatTexts = (comparison: Comparison, language: Language): string[] => [
+  ...comparison.caveats.map(caveat => caveatLine(caveat, language)),
+  ...comparison.pairs.filter(pair => pair.unequalRuns).map(pair => runCountLine(pair, language)),
 ];
 const rulesText = (comparison: Comparison, t: Words): string => comparison.pairing === 'identity' ? t.compareRulesIdentity : t.compareRules;
 
@@ -143,8 +143,8 @@ export function renderCompareTable(baselineInput: CompareInput, candidateInput: 
   if (comparison.withUnjudged.length) { lines.push(`${t.unjudgedHeading}:`); for (const pair of comparison.withUnjudged) for (const line of noVerdictSide(pair) ? [flipLine(pair, language)] : unjudgedLines(pair, language)) lines.push(readableText(`  ? ${line}`)); }
   if (comparison.notCompared.length) { lines.push(`${t.notCompared}:`); for (const pair of comparison.notCompared) lines.push(readableText(`  ${notComparedLine(pair, language)}`)); }
   if (comparison.incomplete.length) lines.push(`${t.incompleteTitle}: ${fill(language, t.incompleteBody, { n: comparison.incomplete.length })}`);
-  const caveats = caveatItems(comparison, language);
-  if (caveats.length) { lines.push(`${t.caveats}:`); for (const caveat of caveats) lines.push(readableText(`  ${caveat.text}`)); }
+  const caveats = caveatTexts(comparison, language);
+  if (caveats.length) { lines.push(`${t.caveats}:`); for (const caveat of caveats) lines.push(readableText(`  ${caveat}`)); }
   lines.push('', `${t.rulesHeading}: ${rulesText(comparison, t)}`);
   return lines.join('\n') + '\n';
 }
@@ -165,15 +165,31 @@ const outcomeCell = (aggregate: InstancePair['baseline'], t: Words, language: La
 /** A template filled with markup: its own words escaped, the values given as HTML. */
 const fillHtml = (template: string, values: Readonly<Record<string, string>>): string =>
   template.split(/(\{\w+\})/u).map(part => { const key = /^\{(\w+)\}$/u.exec(part)?.[1]; return key !== undefined && key in values ? values[key]! : esc(part); }).join('');
-/** An instance name in a table cell: the task id in mono, one unit from task to seed (it breaks only
- * inside a long task id). */
-const instanceHtml = (name: InstanceName, language: Language): string => prose(instanceText(name, language).replace(/ · /gu, ' · '), [name.taskId], 'code');
+/** An instance name on the page: the task id in mono, "seed" with its number. A name that fits a line
+ * (`ID_MAX` characters) is one unit that never breaks; a longer one may break after its dot. */
+const instanceHtml = (name: InstanceName, language: Language): string => {
+  const text = instanceText(name, language);
+  return text.length <= ID_MAX ? `<span class="id">${prose(text, [name.taskId], 'code')}</span>` : prose(text.replace(/ · /gu, '\u00a0· '), [name.taskId], 'code');
+};
 const namesHtml = (names: readonly InstanceName[], language: Language): string => names.length ? names.map(name => instanceHtml(name, language)).join(', ') : esc(TEXT[language].noInstance);
+/** A pair's name as HTML: its instance, or across worlds each side's instances (the separator ends a line). */
+const pairHtml = (pair: InstancePair, language: Language): string => pair.names
+  ? fillHtml(TEXT[language].identityNames.replace(' · ', '\u00a0· '), { baseline: namesHtml(pair.names.baseline, language), candidate: namesHtml(pair.names.candidate, language) })
+  : instanceHtml(pair, language);
+/** The side that holds an identity found on one side only, as HTML. */
+const presentNamesHtml = (pair: InstancePair, language: Language): string => {
+  const t = TEXT[language];
+  return pair.names ? (pair.side === 'candidate' ? fillHtml(t.identityBaselineOnly, { names: namesHtml(pair.names.baseline, language) }) : fillHtml(t.identityCandidateOnly, { names: namesHtml(pair.names.candidate, language) })) : instanceHtml(pair, language);
+};
+/** Where a line's name goes: the line is worded from the catalogue with this slot, set as prose, and the
+ * slot replaced by the name's HTML (no task id can hold these brackets). */
+const SLOT = '\u27e6\u27e7';
+const named = (line: string, pair: InstancePair, nameHtml: string): string => prose(line, pairIds(pair), 'code').split(SLOT).join(nameHtml);
 type Mark = 'pass' | 'fail' | 'unknown' | undefined;
-// (A list item may carry its own mark: [text, mark].)
-const list = (items: ReadonlyArray<string | [string, Mark]>, mark?: Mark, ids: readonly string[] = []): string => `<ul class="flips">${items.map(item => { const [text, own] = typeof item === 'string' ? [item, mark] : item; return `<li>${own ? statusIcon(own) : ''}<span>${prose(text, ids, 'code')}</span></li>`; }).join('')}</ul>`;
+/** List items given as HTML, each with the list's mark. */
+const htmlList = (items: readonly string[], mark?: Mark): string => `<ul class="flips">${items.map(item => `<li>${mark ? statusIcon(mark) : ''}<span>${item}</span></li>`).join('')}</ul>`;
 /** Items that each hold their own identifiers. */
-const idList = (items: ReadonlyArray<{ text: string; ids: readonly string[] }>, mark?: Mark): string => `<ul class="flips">${items.map(item => `<li>${mark ? statusIcon(mark) : ''}<span>${prose(item.text, item.ids)}</span></li>`).join('')}</ul>`;
+const idList = (items: ReadonlyArray<{ text: string; ids: readonly string[] }>, mark?: Mark): string => htmlList(items.map(item => prose(item.text, item.ids)), mark);
 const side = (title: string, input: Side, other: Side, rate: SideRate, comparison: Comparison, t: Words, language: Language): string => {
   const unknown = noVerdictText(rate, language);
   return `<div class="figure"><dt>${esc(title)}</dt><dd>${esc(rate.instances ? rateText(rate.passed, rate.instances, language) : t.none)}</dd><dd class="detail">${esc(sideText(rate, comparison, language))}</dd>${unknown ? `<dd class="detail"><span class="result unknown">${statusIcon('unknown')}${esc(unknown)}</span></dd>` : ''}<dd class="detail">${chips(title, sideFacts(input, other, t, language), sideIds(input))}</dd></div>`;
@@ -189,26 +205,28 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
   const baseline = toSide(baselineInput), candidate = toSide(candidateInput);
   const t = TEXT[language];
   const flipWord = (pair: InstancePair): string => noVerdictSide(pair) ? t.flipNoVerdict : pair.flip === 'regression' ? t.flipRegression : pair.flip === 'fix' ? t.flipFix : pair.flip === 'changed-down' || pair.flip === 'changed-up' ? t.flipChanged : pair.flip === 'config-down' || pair.flip === 'config-up' ? t.flipConfig : pair.flip ? t.flipSingle : t.flipNone;
-  // The separator between the two sides ends a line, never starts one.
-  const nameCell = (pair: InstancePair): string => pair.names
-    ? fillHtml(t.identityNames.replace(' · ', ' · '), { baseline: namesHtml(pair.names.baseline, language), candidate: namesHtml(pair.names.candidate, language) })
-    : instanceHtml(pair, language);
+  const nameCell = (pair: InstancePair): string => pairHtml(pair, language);
   // A pair not compared says only which side lacks a run: the row already names it.
   const changeCell = (pair: InstancePair): string => esc(pair.kind === 'paired' ? flipWord(pair) : fill(language, t.missingShort, { side: sideName(pair.side, t) }));
   const rows = comparison.pairs.map(pair => [nameCell(pair), outcomeCell(pair.baseline, t, language), outcomeCell(pair.candidate, t, language), changeCell(pair)]);
-  const ids = comparison.pairs.flatMap(pairIds);
+  // Every line names its pair as on the table: the same name, the task id in mono, never split inside.
+  const flipHtml = (pair: InstancePair): string => named(flipLine(pair, language, SLOT), pair, pairHtml(pair, language));
   // A flip that rests on a side without any verdict is not a change of outcome: it is listed with the
   // runs not judged, under the unknown mark (it did not fail; it was not judged).
-  const flips = (pairs: readonly InstancePair[]): string[] => pairs.filter(pair => !noVerdictSide(pair)).map(pair => flipLine(pair, language));
-  const unjudged = comparison.withUnjudged.flatMap(pair => noVerdictSide(pair) ? [flipLine(pair, language)] : unjudgedLines(pair, language));
+  const flips = (pairs: readonly InstancePair[]): string[] => pairs.filter(pair => !noVerdictSide(pair)).map(flipHtml);
+  const unjudged = comparison.withUnjudged.flatMap(pair => noVerdictSide(pair) ? [flipHtml(pair)] : unjudgedLines(pair, language, SLOT).map(line => named(line, pair, pairHtml(pair, language))));
   const sections: string[] = [];
-  if (comparison.fixes.length) sections.push(`<h3>${esc(t.fixes)}</h3>${list(comparison.fixes.map(pair => flipLine(pair, language)), 'pass', ids)}`);
-  if (flips(comparison.changedFlips).length) sections.push(`<h3>${esc(t.changedFlips)}</h3>${list(flips(comparison.changedFlips), undefined, ids)}`);
-  if (flips(comparison.configFlips).length) sections.push(`<h3>${esc(t.configFlips)}</h3>${list(flips(comparison.configFlips), undefined, ids)}`);
-  if (flips(comparison.singleFlips).length) sections.push(`<h3>${esc(t.singleFlips)}</h3>${list(flips(comparison.singleFlips), undefined, ids)}`);
-  if (unjudged.length) sections.push(`<h3>${esc(t.unjudgedHeading)}</h3>${list(unjudged, 'unknown', ids)}`);
-  if (comparison.notCompared.length) sections.push(`<h3>${esc(t.notCompared)}</h3>${list(comparison.notCompared.map(pair => notComparedLine(pair, language)), undefined, ids)}`);
-  const caveats = caveatItems(comparison, language);
+  if (comparison.fixes.length) sections.push(`<h3>${esc(t.fixes)}</h3>${htmlList(comparison.fixes.map(flipHtml), 'pass')}`);
+  if (flips(comparison.changedFlips).length) sections.push(`<h3>${esc(t.changedFlips)}</h3>${htmlList(flips(comparison.changedFlips))}`);
+  if (flips(comparison.configFlips).length) sections.push(`<h3>${esc(t.configFlips)}</h3>${htmlList(flips(comparison.configFlips))}`);
+  if (flips(comparison.singleFlips).length) sections.push(`<h3>${esc(t.singleFlips)}</h3>${htmlList(flips(comparison.singleFlips))}`);
+  if (unjudged.length) sections.push(`<h3>${esc(t.unjudgedHeading)}</h3>${htmlList(unjudged, 'unknown')}`);
+  if (comparison.notCompared.length) sections.push(`<h3>${esc(t.notCompared)}</h3>${htmlList(comparison.notCompared.map(pair => named(notComparedLine(pair, language, SLOT), pair, presentNamesHtml(pair, language))))}`);
+  // Caveats: each with its identifiers; across worlds the run counts name their pair as above (R3-F2).
+  const caveats = [
+    ...comparison.caveats.map(caveat => prose(caveatLine(caveat, language), IDENTIFIER_CAVEATS.has(caveat.field) ? [caveat.baseline, caveat.candidate] : [])),
+    ...comparison.pairs.filter(pair => pair.unequalRuns).map(pair => named(runCountLine(pair, language, SLOT), pair, pairHtml(pair, language))),
+  ];
   const body = `<header>
 <p class="eyebrow">${esc(t.compareTitle)}</p>
 <h1>${esc(heading(baseline, candidate, language))}</h1>
@@ -217,9 +235,9 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
 </header>
 ${noVerdictBanner(comparison, language)}${comparison.incomplete.length ? banner('warning', t.incompleteTitle, `<p>${prose(fill(language, t.incompleteBody, { n: comparison.incomplete.length }))}</p>`) : ''}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides">${side(t.baseline, baseline, candidate, comparison.baseline, comparison, t, language)}${side(t.candidate, candidate, baseline, comparison.candidate, comparison, t, language)}</dl></section>
-<section aria-labelledby="regressions"><h2 id="regressions">${esc(comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions)}</h2>${comparison.regressions.length ? list(comparison.regressions.map(pair => flipLine(pair, language)), 'fail', ids) : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
-<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, ...(comparison.pairing === 'identity' ? { wide: true } : {}) }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true }], rows)}</section>
-${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${idList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p></section>`;
+<section aria-labelledby="regressions"><h2 id="regressions">${esc(comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions)}</h2>${comparison.regressions.length ? htmlList(comparison.regressions.map(flipHtml), 'fail') : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
+<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, wide: true }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true }], rows)}</section>
+${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${htmlList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }
 
@@ -245,6 +263,6 @@ export function renderIncomparableHtml(baselineInput: CompareInput, candidateInp
 </header>
 ${banner('warning', t.incomparableDiffers, `<p>${esc(lead)}</p>${idList(items, 'fail')}<p>${prose(fix)}</p>`)}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides"><div class="figure"><dt>${esc(t.baseline)}</dt><dd class="detail">${chips(t.baseline, sideFacts(baseline, candidate, t, language), sideIds(baseline))}</dd></div><div class="figure"><dt>${esc(t.candidate)}</dt><dd class="detail">${chips(t.candidate, sideFacts(candidate, baseline, t, language), sideIds(candidate))}</dd></div></dl></section>
-${hint === 'level' ? '' : `<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${esc(t.compareRules)}</p></section>`}`;
+${hint === 'level' ? '' : `<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(t.compareRules)}</p></section>`}`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }

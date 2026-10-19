@@ -19,7 +19,8 @@ const side = (report: BenchReportV3, name: string): CompareInput => ({ report, v
 const compared = (a: BenchReportV3, b: BenchReportV3, language: 'en' | 'de'): string => renderCompareHtml(side(a, 'excalidraw'), side(b, 'drawio'), compareReports(a, b), tokens, language);
 const gate = (language: 'en' | 'de'): string => renderIncomparableHtml(side(s.excalidraw, 'excalidraw'), side(s.drawio, 'drawio'), differences(s.excalidraw, s.drawio, { regressionGate: true }), tokens, language, { regressionGate: true });
 /** The page body as a reader sees it: tags dropped, entities read, no-break spaces as spaces. */
-const visible = (html: string): string => html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&quot;/gu, '"').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&').replace(/ /gu, ' ').replace(/\s+/gu, ' ');
+// Tags separate words; a mark of punctuation after an inline element stays with the word before it.
+const visible = (html: string): string => html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&quot;/gu, '"').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&').replace(/ /gu, ' ').replace(/\s+/gu, ' ').replace(/ ([,;:)])/gu, '$1');
 /** Text the browser may hyphenate: everything outside code, `.data`, Technical details and the title. */
 const hyphenable = (html: string): string => visible(html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<h1>[\s\S]*?<\/h1>/gu, '').replace(/<details class="tech">[\s\S]*?<\/details>/gu, '')
   .replace(/<code[^>]*>[\s\S]*?<\/code>/gu, '').replace(/<span class="data[^"]*">[^<]*<\/span>/gu, ''));
@@ -152,7 +153,7 @@ test('R1 minors: one colon and a capital per caveat line, the task id in mono, "
   const caveats = [...part(html, '<section aria-labelledby="caveats">', '</section>').matchAll(/<li>([\s\S]*?)<\/li>/gu)].map(match => visible(match[1]!).trim());
   assert.deepEqual(caveats.map(line => [/^\p{Lu}/u.test(line), line.split(': ').length - 1]), caveats.map(() => [true, 1]), caveats.join('\n'));
   assert.equal(caveats[0], 'Paired by task identity: excalidraw-library 1.0.0 on the baseline, drawio-library 1.0.0 on the candidate');
-  assert.match(html, /<td data-label="instance" class="text wide"><code class="id">T<\/code> · seed 1 \(baseline\) · <code class="id">T<\/code>/);
+  assert.match(html, /<td data-label="instance" class="text wide"><span class="id"><code class="id">T<\/code> · seed\u00a01<\/span> \(baseline\)\u00a0· <span class="id"><code class="id">T<\/code>/u);
   assert.match(html, /\(baseline\) · no instance \(candidate\)<\/td>/);
   assert.match(html, /<td data-label="change" class="text prose">no run on the candidate<\/td>/);
   assert.equal(visible(html).includes('PADR-'), false, 'no decision-record number on a page');

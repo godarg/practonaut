@@ -124,7 +124,7 @@ test('every run counts: a run that was not judged counts as not passed, is named
   const page = renderCompareHtml({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison, ':root{}').replace(/\u00a0/g, ' ');
   // In the instance table and the list: the unknown mark (a dashed ring) with "no verdict", never the fail mark.
   assert.match(page, /<td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray="2\.4 3"\/><\/svg>no verdict \(3 of 3 runs not judged\), counted as not passed<\/span><\/td><td data-label="change" class="text prose">no verdict on one side — not a regression signal<\/td>/);
-  assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><code class="id">T<\/code> · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate/);
+  assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><span class="id"><code class="id">T<\/code> · seed 2<\/span>: passed on the baseline \(3\/3\), no verdict on the candidate/);
   assert.equal(page.includes('failed on the candidate (0/3)'), false);
   assert.match(text, /The candidate is incomplete: 3 instances are missing, cut short or hold a run that was not judged\./);
   assert.deepEqual(compareReports(baseline, baseline).incomplete, [], 'a complete candidate');
