@@ -528,7 +528,8 @@ that the decisions left open:
 - **What a command reports.** Only entries with something to say: a close abandoned or failed, a
   launch rejected, an end not proven. "Waiting for N browsers" counts only browsers whose close or
   launch is still running. The host's private diagnostics get `browser_close_abandoned` or
-  `browser_close_failed` with the phase (`recovery` or `close`) and the revision. `practonaut mcp`
+  `browser_close_failed` with the phase (`recovery` or `close`) and the revision; a practice host
+  whose start its parent stopped counts as *failed* when its own cleanup did not close. `practonaut mcp`
   tries every shutdown step on its own and arms the rule only once its host has closed; a host that
   did not close is reported and no rule is armed. Over HTTP, a practice host whose start found the
   budget full answers `browser_budget_exhausted` (503).
@@ -586,3 +587,12 @@ minors). Each finding was reproduced, fixed, and given a test that failed with t
 | effects-8 | minor — the bench's budget count had no test and missed refusals during a recovery | Fixed: tested in both languages; the ledger counts refusals, and a run lost to one during a recovery names the budget. |
 | effects-9 | minor — German texts for a count of 1 | Fixed with plural forms; tested. |
 | effects-10 | minor — the docs index called the record proposed | Fixed (and PADR-0044's entry); a test compares the index with `docs/adr/README.md`. |
+
+Codex's re-review confirmed these fixes and found two more, and CI found two unit tests that passed
+only where a Player build happened to exist:
+
+| Source | Finding | Disposition |
+|---|---|---|
+| Codex re-review | major — a stopped child start's rejection was taken as a clean close, so a failed cleanup (a browser close that failed, a credential that could not be removed) left the parent's shutdown reported clean | Fixed: an expected abort is *cancelled* (or its browser's *abandoned* under the deadline handed down); a cleanup that did not close is a *failed* step. |
+| Codex re-review | minor — the signal handlers came after the end-of-command output, so a signal right after it killed Node past Playwright's exit handler | Fixed: the handlers are in place before any output. |
+| CI (node 24 and 26 on Ubuntu, macOS) | the real-CLI checks of `mcp`, `bench` and `play` and the bench's budget count started a session host in the unit layer, which has no Player build (`npm test` runs before `npm run build`) | Moved to the integration layer, which builds the Player first; the unit layer now passes without any build. |

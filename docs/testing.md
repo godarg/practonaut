@@ -235,20 +235,25 @@ held (`src/cli/browser-exit.ts`). The product reads no process table; the tests 
   host's, and the record lands; an author host's shutdown stops a practice host it is still starting
   and gives a running child its cleanup time; the stop signal reaches the mirror's start; a budget
   refusal over HTTP is `browser_budget_exhausted` (503); a slot granted too late to launch is not
-  taken; a refused sandbox setting takes no slot.
+  taken; a refused sandbox setting takes no slot. From the re-review: a stopped child start whose
+  cleanup did not close (its credential left behind, read-only directory) makes the parent's
+  shutdown report a failure instead of a clean close.
 - `tests/unit/browser-exit.test.ts`: Codex's combined path (a close that fulfils after a disconnect)
   keeps the slot and leads to `process.exit` 35 s after the last close request, only after the
   command's writes; no exit once the end is proven; `practonaut mcp` ends only after `stop()` closed
-  the host; the real CLI, per command kind (`pack`, `validate`, `run`, `tasks`, `mcp`, `bench`,
-  `play`), exits through the rule only after its own shutdown, with no credential left (a preload,
-  `tests/support/exit-rule-preload.ts`, holds Node alive as Playwright's pipes would); a full budget
-  named with its counts and remedy in English and German, exit 3. From the review: the rule follows
-  a close requested after it was armed; a signal while it waits exits through `process.exit`; the
-  wait line counts only closes and launches still running; `practonaut mcp` tries every shutdown
-  step and arms the rule only once its host closed; German texts for a count of 1; a bench counts
-  the runs it lost to the budget, in both languages; `doctor --adapter` with a refused sandbox
-  setting leaves no ledger line. The per-command test counts credentials anywhere under the home, so
-  a bench run's host left open fails it.
+  the host; the real CLI, per command kind that starts no host (`pack`, `validate`, `run`,
+  `tasks`), exits through the rule only after its own shutdown, with no credential left (a preload,
+  `tests/support/exit-rule-preload.ts`, holds Node alive as Playwright's pipes would; helpers in
+  `tests/support/command-end.ts`); a full budget named with its counts and remedy in English and
+  German, exit 3. From the review: the rule follows a close requested after it was armed; a signal
+  while it waits exits through `process.exit`, and the handlers are in place before the command's
+  end writes anything; the wait line counts only closes and launches still running; `practonaut mcp`
+  tries every shutdown step and arms the rule only once its host closed; German texts for a count of
+  1; `doctor --adapter` with a refused sandbox setting leaves no ledger line. The unit layer has no
+  Player build (`npm test` runs before `npm run build` in CI), so commands that start a session host
+  run in `tests/integration/command-end.test.ts`: `mcp`, `bench` and `play` end through the rule the
+  same way (credentials are counted anywhere under the home, so a bench run's host left open fails
+  it), and a bench counts the runs it lost to the budget, in both languages.
 - `tests/integration/browser-close-contract.test.ts` (real Chromium): a launch that Playwright
   rejects after it spawned Chromium (Chromium's own `--wait-for-debugger`, added by the test only,
   makes the spawned browser wait before it connects) holds its slot and sink for 35 s; the test's own
