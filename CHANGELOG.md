@@ -27,8 +27,43 @@ All notable changes are recorded here. The format follows
   too (a rollback that fails closes the shell, and the host's mirror starts a new one); PNG
   capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity and
   SVG.
+- **draw.io as application #2** (PADR-0049, proposed; roadmap 0.3.0 Must 2; [adapter
+  page](docs/adapters/drawio.md)): worlds whose `app.adapterId` is `drawio` (32.4.1, world/2 only)
+  are practised, mirrored and checked like Excalidraw worlds. draw.io is a registered trademark;
+  Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.
+  - `practonaut setup --app drawio [--from <file>]` downloads the unmodified `draw.war` (48,442,174
+    bytes) only on request, names file, source, size and SHA-256 first, and keeps it only when both
+    match (redirect, scheme, stall, deadline and retry limits; a lock per version; atomic keep and a
+    re-hash). New codes, exit 3: `app_download_failed`, `app_download_mismatch`, `app_install_busy`,
+    and before any browser starts `app_runtime_missing` and `app_runtime_unverified`; with `--mirror
+    auto` such a session runs model-only and names the setup command. `doctor --adapter` lists the
+    runtime and the sandboxed start.
+  - The adapter serves the archive from memory through an allowlist of 14 files, with zip limits
+    and one capped, CRC-checked inflation per file; talks to draw.io only through its embed JSON
+    protocol; and after every write requires the declared set, a full write check of every attribute
+    and child element, and integrity. Chromium always runs with its sandbox for draw.io.
+  - The checker has its own `.drawio` reader that follows draw.io or refuses by name; `check` reads a
+    `.drawio` export with `--pair` or with `--seed` and `--task`.
+  - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
+    by name in the core (`constraint_refused`), world validation, the checker and the adapter.
+  - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
+    after the AppArmor restriction is lifted, with the test-only variables `PN_DRAWIO_HOME` and
+    `PN_DRAWIO_REQUIRED`.
+- A workflow check in `npm run check` (`tools/check-workflows.ts`): every cache and upload path and
+  release asset must be listed in `.github/workflow-allowlist.json`, every other action must be on its
+  list and pinned by SHA, and the draw.io CI steps must share one home and run without
+  `PRACTONAUT_CHROMIUM_SANDBOX`. `test:pack` refuses a `.war` or zip archive in the tarball.
 
 ### Changed
+
+- Texts that name the running app take its fixed display name from the world's adapter id: the MCP
+  instructions (built per session from the host's view, which now carries `world.adapterId`), the
+  Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. Texts about
+  the editor and author workspaces keep naming Excalidraw; an Excalidraw session's texts are
+  unchanged.
+- The native export file is named by its app's format: `practonaut.excalidraw` or `practonaut.drawio`
+  (Player download, `run --export`). A world whose app has no editor workspaces (draw.io) gets the
+  board workspace only.
 
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
   Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
@@ -55,6 +90,8 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- `setup --app drawio`: a wait cut short by the download's absolute deadline is reported as the
+  deadline, not as a stall or a connect timeout (a timer can fire a fraction of a millisecond early).
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
   #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
   renderer throttled 20x, 28 of 30 Opens lost their file dialog before the change and 0 of 30 after;

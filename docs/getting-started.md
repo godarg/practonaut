@@ -92,6 +92,23 @@ start that still fails are:
 
 Elsewhere, run `npx practonaut setup` again to repair a damaged download.
 
+### draw.io (optional, opt-in)
+
+Practonaut also works with draw.io, for worlds whose `app.adapterId` is `drawio`. draw.io is a
+registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or
+draw.io AG. Its mirror needs the unmodified draw.io release, which is never part of the package and
+never downloaded unless you ask:
+
+```bash
+npx practonaut setup --app drawio
+```
+
+It does what plain `setup` does, then names `draw.war` of draw.io v32.4.1 with its source, its size
+(48,442,174 bytes) and its SHA-256 before fetching it, and keeps it only when both match. Without a
+network route to GitHub, fetch the file yourself and use `--from <file>`. draw.io's mirror always
+runs Chromium with its sandbox: on a Linux system that refuses it (see above), draw.io sessions run
+model-only until the restriction is lifted. Details: [the draw.io adapter](adapters/drawio.md).
+
 ## 3. Let an agent practise
 
 Any MCP client can connect. With Claude Code:

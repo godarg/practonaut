@@ -335,6 +335,42 @@ an arrow's ends follow its bindings (a single head at the start reverses it). Fr
 labels, lines, images and other kinds are listed as `unmodeled` and ignored, never fatal; malformed
 input, duplicate ids and invisible format characters in text remain `artifact_invalid`.
 
+**draw.io worlds** (`app.adapterId` `drawio`, world/2 only; [PADR-0049](adr/0049-drawio-adapter.md),
+[adapter page](adapters/drawio.md)). The checker reads draw.io's own `.drawio` export with its own
+reader (`src/checker/drawio.ts`): an `mxfile` with exactly one page (plain or compressed) or a bare
+`mxGraphModel`; XML read as XML (end-of-line and attribute normalisation, no DOCTYPE, only the five
+predefined entities and numeric references, XML 1.0 characters only). The root is the cell without
+a parent, layers are its children; a hidden cell, a cell of a hidden layer and every descendant of a
+hidden or collapsed cell are `unmodeled` (hidden) and not read; a vertex whose parent is an edge is
+an edge label (`unmodeled`). The effective shape is decided first: two shape-determining tokens
+(`ellipse;rhombus`, `ellipse;shape=rhombus`, `swimlane;shape=ellipse`, …) refuse the file; then
+`swimlane` (or `container=1` without a token) is a frame, `group` a group, no token, `ellipse` or
+`rhombus` (or `shape=` of them) a step, a step token with `container=1` is refused, any other
+token is `unmodeled`. A step's frame is its nearest frame ancestor, its group the outermost group
+below that frame (a group holding a frame gives no step a group; group ids are unique over group
+cells, `pn:group:<id>` gives `<id>`); its box is its geometry plus every ancestor vertex's offset,
+rounded by edges; a size of 0 or less or a relative ancestor is refused. An arrow is an edge; its
+heads come only from a measured marker list (`DRAWIO_MARKERS`, plus `none` and empty), any other
+marker refuses the file. Colours are never snapped: absent stroke is black, absent fill none, any
+value outside the reader's table refuses. Labels are plain text: with `html=1` only a value without
+`<`, `&`, tab, line breaks, runs of spaces or outer spaces is read, otherwise `markup_label`.
+Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
+`xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
+`duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
+`unmodeled_value`, `constraint`. The request format `drawio` names it; a `.drawio` file for an
+Excalidraw world, or the reverse, is refused.
+
+**Declared structural constraints.** An application may declare constraints its files cannot
+break, from a closed list beside the world table (`src/world/constraints.ts`):
+`group-within-one-frame` (the live members of one group share one frame, or all have none) and
+`xml-text` (labels and frame names consist of XML 1.0 characters: tab, LF, CR, U+0020–U+D7FF,
+U+E000–U+FFFD, U+10000–U+10FFFF). draw.io declares both; Excalidraw none. For a world whose
+application declares one, the core refuses a transition whose result breaks it with
+`constraint_refused` (the state and its hash unchanged; the message names the constraint and the
+remedy, `details.constraint` names it), world validation refuses an initial state that breaks it in
+any variant case (`E_WORLD_INVALID`), the checker refuses such a history or submission
+(`artifact_invalid`, reason `constraint`), and the adapter refuses before writing.
+
 **Tasks from two scenes.** `practonaut tasks from-scenes <start> <goal> --out <dir>` (and the
 Player's Create workspace) derives a world/2 task: the goal is the exact multiset of step
 signatures (label, shape, colours, frame, grouped), arrows by their end labels and frames by name,

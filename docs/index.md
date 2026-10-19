@@ -20,6 +20,7 @@
 | [Session host](session-host.md) | local HTTP/SSE protocol, authentication, budgets, authoring routes, exports |
 | [Threat model](security/threat-model.md) | assets, boundaries, controls, limits, what is not promised |
 | [Excalidraw engine assets](adapters/excalidraw-assets.md) | engine build, patches, fonts and licenses |
+| [draw.io adapter](adapters/drawio.md) | `setup --app drawio`, the runtime check, serving, protocol, mapping, constraints, the `.drawio` reader, licence, platform status |
 
 ## Contribute
 

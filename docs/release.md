@@ -76,6 +76,17 @@ Node version that ships a recent npm. See npm's
      && npm run test:pack
    ```
 
+   Then the draw.io layer on the same commit, required ([PADR-0049](adr/0049-drawio-adapter.md)
+   decision 8.8), with a home in which `setup --app drawio` ran:
+
+   ```bash
+   PN_DRAWIO_HOME="$PWD/.local/drawio-home" PN_DRAWIO_REQUIRED=1 npm run test:drawio \
+     && node tools/require-drawio-summary.ts .local/drawio-conformance/summary.json
+   ```
+
+   Its summary replaces the committed draw.io evidence, and the release notes state its counts. Until
+   the maintainer has decided the naming question (PADR-0049 decision 9.3), no release names draw.io.
+
 3. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
 4. `release.yml` checks that the tag equals `v` + the package version, runs the checks, packs the
    tarball once and smoke-tests that exact file. Approve the `release` environment when asked; the
