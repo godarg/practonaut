@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BrowserBudgetError, BrowserLedger, type BrowserLease } from '../../src/adapters/browser/ledger.ts';
 import type { ChromiumLaunch } from '../../src/adapters/browser/chromium.ts';
+import { closeBy } from '../../src/adapters/browser/close.ts';
 import type { Browser } from 'playwright-core';
 import { FakeBrowser, advance, flush } from '../support/fake-browser.ts';
 
@@ -161,4 +162,13 @@ test('the ledger keeps every unreleased entry and the latest 64 in all', async (
   assert.equal(records.length, 64);
   assert.equal(records[0]!.id, 1, 'the unreleased entry stays');
   assert.equal(records.at(-1)!.id, 71);
+});
+
+test('a close whose deadline has already passed is abandoned at once, not cut by the safety timer', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ledger = new BrowserLedger(), { lease } = await running(ledger, new FakeBrowser('held'));
+  const outcomes: string[] = [];
+  void closeBy(deadline => lease.close(deadline), performance.now() - 1_000).then(result => outcomes.push(result.outcome));
+  await advance(t, () => outcomes.length > 0, 2_000, 1);
+  assert.deepEqual(outcomes, ['abandoned']);
 });

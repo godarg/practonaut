@@ -46,10 +46,11 @@ export const closeStep = (close: () => Promise<unknown>, deadline: number): Prom
 /**
  * A close under the contract, called by a layer above it. `close` gets `deadline` and settles by it.
  * A close that returns nothing is *closed*, one that throws is *failed*. A close that does not keep the
- * contract is cut by a safety timer at `safetyAt` (by default `CLOSE_SAFETY_MS` after the deadline,
- * never earlier than the deadline): that is *failed*, with a `BrowserDeadlineError` (operation `close`).
+ * contract is cut by a safety timer at `safetyAt` (by default `CLOSE_SAFETY_MS` after the deadline, or
+ * after now when the deadline has already passed; never earlier than the deadline): that is *failed*,
+ * with a `BrowserDeadlineError` (operation `close`).
  */
-export async function closeBy(close: CloseWithin, deadline: number = closeDeadline(), safetyAt: number = deadline + CLOSE_SAFETY_MS): Promise<CloseResult> {
+export async function closeBy(close: CloseWithin, deadline: number = closeDeadline(), safetyAt: number = Math.max(deadline, performance.now()) + CLOSE_SAFETY_MS): Promise<CloseResult> {
   const requested = performance.now(), limit = Math.max(safetyAt, deadline) - requested;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const safety = new Promise<CloseResult>(resolve => { timer = setTimeout(() => resolve({ outcome: 'failed', error: new BrowserDeadlineError('close', Math.max(1, limit)) }), Math.max(1, limit)); });
