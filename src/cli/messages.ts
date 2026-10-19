@@ -352,8 +352,8 @@ export const CLI_CATALOG = {
     "de": "{app} ist nicht installiert, dieser Befehl braucht aber die echte Spiegelung. Einmal {cli} setup --app {id} ausführen (ausdrücklicher Download: {name}, {bytes} Bytes) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
   },
   "appRuntimeUnverified": {
-    "en": "The kept {app} release does not match the pin ({detail}). Run {cli} setup --app {id} again, or use --mirror off for a model-only session.",
-    "de": "Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}). {cli} setup --app {id} erneut ausführen, oder --mirror off für eine reine Modellsitzung."
+    "en": "The kept {app} release does not match the pin ({detail}). Run {cli} setup --app {id} again (an explicit download: {name}, {bytes} bytes), or use --mirror off for a model-only session.",
+    "de": "Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}). {cli} setup --app {id} erneut ausführen (ausdrücklicher Download: {name}, {bytes} Bytes), oder --mirror off für eine reine Modellsitzung."
   },
   "mirrorAppFallback": {
     "en": "practonaut: {app} is not installed, so this session runs model-only: actions are not mirrored into the real {app} and results are never practice evidence. Run {cli} setup --app {id} once to enable the mirror (one download: {name}, about {size} MB).\n",

@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +17,7 @@ import type { RunningHost } from '../../src/host/protocol.ts';
 import { commandSetup } from '../../src/cli/setup.ts';
 import { RuntimeError } from '../../src/cli/runtime.ts';
 import { runChecks } from '../../src/cli/doctor.ts';
-import { DrawioInstallError } from '../../src/adapters/drawio/download.ts';
+import { DrawioInstallError, installDrawioFrom } from '../../src/adapters/drawio/download.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { RuntimeStatus } from '../../src/adapters/registry.ts';
 
@@ -41,7 +42,8 @@ test('a missing or damaged draw.io runtime is refused by name before any browser
   await assert.rejects(resolveMirror('required', required.value, drawioWorld), (error: unknown) => error instanceof RuntimeError && error.code === 'app_runtime_missing' && /setup --app drawio/.test(error.message) && /48442174|48,442,174/.test(error.message));
   assert.deepEqual(required.calls, ['runtime:drawio'], 'no Chromium check, no start');
   const damaged = probes({ ok: false, code: 'app_runtime_unverified', detail: 'size 12' });
-  await assert.rejects(resolveMirror('required', damaged.value, drawioWorld), (error: unknown) => error instanceof RuntimeError && error.code === 'app_runtime_unverified' && /size 12/.test(error.message));
+  // Both runtime messages name the exact download (review m2c, runtime-3).
+  await assert.rejects(resolveMirror('required', damaged.value, drawioWorld), (error: unknown) => error instanceof RuntimeError && error.code === 'app_runtime_unverified' && /size 12/.test(error.message) && /setup --app drawio/.test(error.message) && /48442174|48,442,174/.test(error.message));
   const auto = probes(missing);
   const resolved = await resolveMirror('auto', auto.value, drawioWorld);
   assert.deepEqual([resolved.mode, resolved.fallback, resolved.reason, resolved.app], ['off', true, 'app-missing', 'drawio']);
@@ -101,6 +103,24 @@ test('setup --app drawio: Chromium first, the sandbox said before the download, 
   const from = await captured(() => commandSetup(['--app', 'drawio', '--from', '/tmp/draw.war'], { ...seams, installFrom: async (file: string) => { order.push(`from:${file}`); return installed; } } as never));
   assert.equal(from.code, 0); assert.ok(order.includes('from:/tmp/draw.war'));
   for (const args of [['--app'], ['--app', 'bpmnjs'], ['--app', 'drawio', '--from'], ['--from', 'x']]) assert.equal((await captured(() => commandSetup(args, seams as never))).code, 1, args.join(' '));
+});
+
+test('setup --app drawio --from a file of another size prints both sizes and both SHA-256 values (review m2c, runtime-3)', async () => {
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), 'pn-drawio-from-'));
+  try {
+    // A saved error page instead of draw.war: the commonest --from mistake.
+    const page = Buffer.from('<html>Not Found</html>\n'), file = join(dir, 'draw.war'); writeFileSync(file, page);
+    // The real check against the real pin runs outside the captured output (the test runner's own
+    // reports must not be captured while files are read); the command then reports what it threw.
+    const refused = await installDrawioFrom(file, { home: join(dir, 'home') }).then(() => undefined, (error: unknown) => error);
+    assert.ok(refused instanceof DrawioInstallError, String(refused));
+    const seams = { home: join(dir, 'home'), chromium: async () => 0, starts: async () => ({ ok: true as const }), installFrom: async () => { throw refused; } };
+    const ran = await captured(() => commandSetup(['--app', 'drawio', '--from', file], seams as never));
+    assert.ok(ran.error instanceof RuntimeError && ran.error.code === 'app_download_mismatch', String(ran.error));
+    const message = (ran.error as RuntimeError).message;
+    for (const fact of ['48442174', 'b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820', String(page.length), createHash('sha256').update(page).digest('hex')]) assert.ok(message.includes(fact), `${fact} in ${message}`);
+    assert.ok(!message.includes('?'), message);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('doctor --adapter lists the draw.io runtime and its sandboxed start, and says the platform is not yet verified', async () => {
