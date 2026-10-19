@@ -187,7 +187,7 @@ test('a whole 0.3.0 round without a language model: pre-probe, declaration, held
     const result = await json(join(p.repo, file('repair.practonaut-round1.gate.json')));
     assert.deepEqual([result.schema, result.verdict, result.spend, result.ledger.counted, result.ledger.versions.length], ['practonaut.challenge-gate/2', 'passes', { preProbe: 7, heldOut: 78, total: 85, exempt: 1, planned: 85 }, 85, 2]);
     // The 0.2.0 files are unchanged in the repository and appear in no 0.3.0 figure.
-    assert.equal(p.git('status', '--porcelain', '--', 'docs/benchmarks/challenge/*.json'), '');
+    assert.equal(p.git('status', '--porcelain', '--', ':(glob)docs/benchmarks/challenge/*.json', ':(glob)docs/benchmarks/challenge/*.md'), '');
     // 7. A run made outside the ledger (a plain bench of one held-out task) refuses the round.
     const plainRun = await p.bench(['--agent', 'claude-code', ...p.setArgs(held, tasks[20]!)], { ANTHROPIC_MODEL: HAIKU, PN_FAKE_MODEL: HAIKU }, true);
     assert.equal(plainRun.status, 0, plainRun.stderr);
