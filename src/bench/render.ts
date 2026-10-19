@@ -51,12 +51,15 @@ const joined = (value: string): string => value.split(QUOTED).map((part, index) 
 const ENTITIES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ENTITIES[char]!);
 /** A formal condition's text: numbers are not joined to words (joined, "= 3 und" became one run that a
- * narrow line had to cut inside a word, design review R3), but an operator is joined to the operand
- * after it, so a line may break before "=", "≈", "<" or ">", never after one (design review R4). An
- * operand longer than `FORMAL_JOIN_MAX` characters (a long label) is not joined: with its operator it
- * may not fit a phone's line, and a break after the operator is better than one inside the label. */
-const FORMAL_JOIN_MAX = 24;
-const escapeFormal = (value: string): string => readableText(value).replace(new RegExp(`([=≈<>≤≥]) (?=\\S{1,${FORMAL_JOIN_MAX}}(?:\\s|$))`, 'gu'), '$1\u00a0').replace(/[&<>"']/g, char => ENTITIES[char]!);
+ * narrow line had to cut inside a word, design review R3), and each operator travels with the operand
+ * after it (design review R4): "= 3" is one box (`.op`, inline-block) that moves to the next line
+ * whole, so a line breaks before "=", "≈", "<" or ">", never after one. Only a pair wider than a whole
+ * line (a long label on a phone) breaks inside its box, after the operator, never inside the label. */
+const escapeFormal = (value: string): string => {
+  const text = (part: string): string => part.replace(/[&<>"']/g, char => ENTITIES[char]!);
+  const parts = readableText(value).split(/([=≈<>≤≥]) (\S+)/u);
+  return parts.map((part, index) => index % 3 === 0 ? text(part) : index % 3 === 1 ? `<span class="op">${text(part)} ${text(parts[index + 1]!)}</span>` : '').join('');
+};
 /** Escaped, with a number kept with the word it counts ("3 runs") but a word free to break before the
  * number after it ("3 of" / "3 runs"): text in a narrow cell, which must shrink to its cell (R4). */
 export const escapeBreakable = (value: string): string => readableText(value).split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0')).join('').replace(/[&<>"']/g, char => ENTITIES[char]!);
