@@ -164,3 +164,17 @@ test('a full browser budget: required stops by name with the counts and the reme
   assert.deepEqual([started, fallback.mirror.mode, fallback.mirror.detail?.startsWith('browser_budget_exhausted: ')], [['required', 'required', 'off'], 'off', true]);
   assert.match(infraNote(refused), /^browser_budget_exhausted: /, 'a bench run lost to the budget names it as its infra_error');
 });
+
+test('the start check reports a full browser budget as such, after waiting its launch bound', async t => {
+  const { BrowserLedger } = await import('../../src/adapters/browser/ledger.ts');
+  const { chromiumStarts } = await import('../../src/cli/browser-start.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let result: StartResult | undefined, waited = 0;
+  void chromiumStarts(30_000, { chromium: { launch: async () => { throw new Error('must not launch'); } }, ledger: new BrowserLedger(0) }).then(value => { result = value; });
+  const answered = (): StartResult | undefined => result;
+  while (!answered() && waited < 20_000) { t.mock.timers.tick(500); waited += 500; for (let turn = 0; turn < 5; turn++) await new Promise(done => setImmediate(done)); }
+  const answer = answered();
+  assert.ok(answer && !answer.ok && answer.budget, 'refused as a full budget, not as a start that failed');
+  assert.ok(waited >= 15_000, `it waited its launch bound (${waited} ms)`);
+  assert.match(answer.detail, /^browser_budget_exhausted: no browser could start: 0 running and 0 closing of 0 allowed/);
+});

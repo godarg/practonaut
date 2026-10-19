@@ -66,6 +66,7 @@
     "test:mcp": "npm run engine:build && npm run player:build && node --import ./tests/support/test-home.ts --test --test-timeout=180000 --test-reporter=spec \"tests/mcp/*.test.ts\"",
     "amplify:native-open": "npm run engine:build && node --import ./tests/support/test-home.ts tools/amplify-native-open.ts",
     "amplify:host-deadline": "npm run engine:build && node --import ./tests/support/test-home.ts tools/amplify-host-deadline.ts",
+    "measure:browser-budget": "npm run engine:build && node --import ./tests/support/test-home.ts tools/measure-browser-budget.ts",
     "prepack": "npm run build"
   },
   "dependencies": {
