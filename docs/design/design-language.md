@@ -772,3 +772,14 @@ the badge keeps the header line's facts (§10.5) and only marks the preset as a 
 difference still shows the short content hash, since that is what differs; the terminal's refusal
 keeps its decision-record number, which the pages no longer show. A re-review on the fixed state
 follows ([pull request #66](https://github.com/godarg/practonaut/pull/66)).
+
+Round R2 of the same pages was reviewed on 2026-10-19 by an independent agent started from fresh
+context: 13 states, 38 captures plus 2 badge images, from commit `440e261`. Verdict conditional: no
+blocker, 1 major and 13 minor findings; the R1 majors F2 to F9 were confirmed resolved and F1 only in
+part. The major (identifiers still split at line ends at their own hyphens, which reads like the
+page's hyphenation) was fixed: every identifier word up to 32 characters is now one unbreakable unit,
+the instance cell takes a stacked row's full width, and `test:a11y` measures every identifier word's
+line boxes, red on the reviewed commit. Consciously not done: a page title (the agent's name) and a
+quoted board label may still wrap at their own hyphens, since a title or an author's label longer
+than a phone's line has to wrap somewhere; "Wilson score interval" became "Wilson interval" rather
+than a rule question about the term of art. A short round R3 looks at the major's states again.
