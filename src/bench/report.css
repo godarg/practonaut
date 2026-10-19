@@ -24,6 +24,15 @@ a:focus-visible,summary:focus-visible,.scroll:focus-visible,.board-scroll:focus-
 code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:none;overflow-wrap:anywhere}
 /* Data inside prose (a quoted label, a task id) is never hyphenated. */
 .data{hyphens:none}
+/* An identifier (a task, a model, a world, an error class) is one word that never breaks, not even at its
+   own hyphens (§10.5, design review R2); only a word longer than a line, such as a hash, may wrap. */
+.id{white-space:nowrap;hyphens:none}
+/* A quoted label is the author's text: it wraps like text, but is never hyphenated. */
+.quoted{overflow-wrap:break-word}
+/* A proper name is never hyphenated ("Practonaut", "McNemar"). */
+.name{hyphens:manual}
+/* A command-line flag stays on one line: a reader who copies it gets it whole (design review R1). */
+.flag{white-space:nowrap;hyphens:none}
 /* The way to the failed runs, right under the headline. */
 .jump{margin:var(--pn-space-3) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .jump-title{font-weight:var(--pn-weight-semibold);color:var(--pn-color-text)}
@@ -57,14 +66,16 @@ code{font-family:var(--pn-font-mono);font-size:var(--pn-text-footnote);hyphens:n
 
 /* Cards: summary figures, tables and run panels. */
 .figures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pn-space-3);margin:0}
-.figures.n5 .figure:first-child{grid-column:1/-1}
-@media (min-width:40rem){.figures.n4{grid-template-columns:repeat(4,minmax(0,1fr))}.figures.n5{grid-template-columns:repeat(6,minmax(0,1fr))}.figures.n5 .figure{grid-column:span 2}.figures.n5 .figure:nth-child(-n+2){grid-column:span 3}}
+.figures.n3 .figure:first-child,.figures.n5 .figure:first-child{grid-column:1/-1}
+@media (min-width:40rem){.figures.n3{grid-template-columns:repeat(3,minmax(0,1fr))}.figures.n3 .figure:first-child{grid-column:auto}.figures.n4{grid-template-columns:repeat(4,minmax(0,1fr))}.figures.n5{grid-template-columns:repeat(6,minmax(0,1fr))}.figures.n5 .figure{grid-column:span 2}.figures.n5 .figure:nth-child(-n+2){grid-column:span 3}}
 @media (min-width:60rem){.figures.n5{grid-template-columns:repeat(5,minmax(0,1fr))}.figures.n5 .figure,.figures.n5 .figure:nth-child(-n+2){grid-column:auto}}
 .figure{background:var(--pn-color-surface);border-radius:var(--pn-radius-lg);box-shadow:var(--pn-shadow-raised);padding:var(--pn-space-4) var(--pn-space-5);min-width:0}
 .figure dt{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);color:var(--pn-color-text-secondary)}
 .figure dd{margin:var(--pn-space-1) 0 0;font-size:var(--pn-text-title2);line-height:var(--pn-leading-title2);font-weight:var(--pn-weight-semibold);font-variant-numeric:tabular-nums}
 .figure dd.detail{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-regular);color:var(--pn-color-text-secondary)}
 .scroll{overflow-x:auto;border-radius:var(--pn-radius-lg);background:var(--pn-color-surface);box-shadow:var(--pn-shadow-raised)}
+/* A table of few columns is as wide as its content, so its numbers sit next to their labels. */
+@media (min-width:40rem){.scroll.compact{width:fit-content;max-width:100%}}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:var(--pn-space-2) var(--pn-space-3);text-align:right;vertical-align:top;white-space:nowrap;border-bottom:var(--pn-stroke-hairline) solid var(--pn-color-separator)}
 tbody tr:last-child td{border-bottom:0}
@@ -72,6 +83,8 @@ th{font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font
 /* A column of lists (error classes) wraps at this width instead of widening the table. */
 th.capped{width:12rem}
 td.text,th.text{text-align:left;white-space:normal;hyphens:none}
+/* A column of sentences (a change between two sides) may hyphenate: a stacked cell is narrow. */
+td.text.prose{hyphens:auto}
 td.text code{overflow-wrap:anywhere}
 /* Below 40rem a table becomes one block per row, two cells side by side, each under its column's name;
    a cell with long text (an action, error classes) takes the whole row. */
@@ -131,7 +144,7 @@ td.text code{overflow-wrap:anywhere}
 .condition-status.pass{color:var(--pn-color-success-fg)}
 .condition-status.fail{color:var(--pn-color-danger-fg)}
 .condition-status.unknown{color:var(--pn-color-unknown-fg)}
-.formal{display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);hyphens:none;overflow-wrap:anywhere}
+.formal{display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);hyphens:none;overflow-wrap:break-word}
 .history{color:var(--pn-color-text-secondary)}
 
 /* Boards: the final board above the example target, one column, one shared scale. A picture is never

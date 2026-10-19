@@ -5,6 +5,7 @@
  * an agent could write to: it is parsed with strict, bounded schemas and a line that does not fit is
  * dropped (call log) or refuses the file (mutation log).
  */
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { z } from 'zod';
@@ -120,8 +121,18 @@ export const MutationRecordSchema = z.strictObject({
   /** Step and revision after the mutation (unchanged when it was rejected). */
   step: count, revision: count,
 });
-export type MutationRecord = z.infer<typeof MutationRecordSchema>;
+/** A bench/3 mutation record (PADR-0044 decision 7): the /2 record and its actor; a co-actor record
+ * also names its schedule entry and has no client. The co-actor is host-only: no request can claim it. */
+export const MutationRecordSchemaV3 = z.union([
+  z.strictObject({ ...MutationRecordSchema.shape, actor: z.literal('agent') }),
+  z.strictObject({ ...MutationRecordSchema.shape, actor: z.literal('co-actor'), entry: count, client: z.null() }),
+]);
+export type MutationRecordV3 = z.infer<typeof MutationRecordSchemaV3>;
+/** A record of either format; a /2 record (no `actor`) is the agent's. */
+export type MutationRecord = z.infer<typeof MutationRecordSchema> & { actor?: 'agent' | 'co-actor'; entry?: number };
 export type MutationOp = MutationRecord['op'];
+/** The mutation-log format a run folder's report reads: /2 records, or /3 records with their actor. */
+export type MutationLogFormat = 'v2' | 'v3';
 
 /** A rejected action's parameters as the log keeps them: scalars only, strings cut. */
 function keptParams(params: Record<string, unknown>): Record<string, Scalar> {
@@ -136,18 +147,24 @@ function keptParams(params: Record<string, unknown>): Record<string, Scalar> {
   return kept;
 }
 
-/** The runner's record of every mutation that reaches the session (PADR-0039 A.2). */
+/** The runner's record of every mutation that reaches the session (PADR-0039 A.2). With `format: 'v3'`
+ * (PADR-0044 decision 7) every record names its actor, and the log is complete for a replay: an
+ * accepted or refused act, undo or reset (bounded by the action budget) and a co-actor record are
+ * always kept; past the line cap only check records and budget refusals are counted instead. */
 export class MutationRecorder {
   readonly records: MutationRecord[] = [];
-  /** Budget refusals beyond MAX_RECORDED_REFUSALS: counted, not recorded. */
+  /** Budget refusals beyond MAX_RECORDED_REFUSALS, and records past the line cap: counted, not recorded. */
   omitted = 0;
   private refusals = 0;
   private checkRefusals = 0;
+  readonly format: MutationLogFormat;
+  constructor(format: MutationLogFormat = 'v2') { this.format = format; }
   /** `position` is read only for an entry that is kept (a refusal beyond the cap costs nothing). */
   record(entry: { op: MutationOp; action?: Action; client?: string | null; outcome: 'accepted' | 'rejected'; code?: string; position: () => { step: number; revision: number } }): void {
     if (entry.code === 'action_budget_exhausted' && ++this.refusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
     if (entry.code === 'check_budget_exhausted' && ++this.checkRefusals > MAX_RECORDED_REFUSALS) { this.omitted++; return; }
-    if (this.records.length >= MAX_LOG_LINES) { this.omitted++; return; }
+    const budget = entry.code === 'action_budget_exhausted' || entry.code === 'check_budget_exhausted';
+    if (this.records.length >= MAX_LOG_LINES && (this.format === 'v2' || entry.op === 'check' || budget)) { this.omitted++; return; }
     const { step, revision } = entry.position();
     const action = entry.action === undefined ? undefined : {
       name: /^[a-z_]{1,32}$/.test(entry.action.name) ? entry.action.name : 'unknown',
@@ -155,33 +172,36 @@ export class MutationRecorder {
       ...(Number.isSafeInteger(entry.action.baseStep) && (entry.action.baseStep ?? -1) >= 0 ? { baseStep: entry.action.baseStep } : {}),
     };
     const client = typeof entry.client === 'string' && ACTOR_CLIENT.test(entry.client) ? entry.client : null;
-    this.records.push({ seq: this.records.length, op: entry.op, ...(action ? { action } : {}), client, outcome: entry.outcome, ...(entry.code && /^[A-Za-z0-9_.:-]{1,64}$/.test(entry.code) ? { code: entry.code } : {}), step, revision });
+    this.records.push({ seq: this.records.length, op: entry.op, ...(action ? { action } : {}), client, outcome: entry.outcome, ...(entry.code && /^[A-Za-z0-9_.:-]{1,64}$/.test(entry.code) ? { code: entry.code } : {}), step, revision, ...(this.format === 'v3' ? { actor: 'agent' as const } : {}) });
   }
   text(): string { return this.records.map(record => JSON.stringify(record)).join('\n') + (this.records.length ? '\n' : ''); }
 }
 
-/** Reads a run's `mutations.jsonl` strictly: every line a record, numbered from 0. */
-export function parseMutations(text: string): MutationRecord[] {
+/** Reads a run's `mutations.jsonl` strictly: every line a record of the given format, numbered from 0. */
+export function parseMutations(text: string, format: MutationLogFormat = 'v2'): MutationRecord[] {
+  const schema = format === 'v3' ? MutationRecordSchemaV3 : MutationRecordSchema;
   return lines(text).map((line, index) => {
     let raw: unknown;
     try { raw = JSON.parse(line); } catch { throw new Error(`mutations.jsonl line ${index + 1} is not JSON`); }
-    const parsed = MutationRecordSchema.safeParse(raw);
+    const parsed = schema.safeParse(raw);
     if (!parsed.success || parsed.data.seq !== index) throw new Error(`mutations.jsonl line ${index + 1} is not a mutation record`);
     return parsed.data;
   });
 }
 
-/** What a mutation log says about the run's counters (each kind of call and its outcome). */
-export function mutationCounts(records: readonly MutationRecord[]): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; checkCalls: number; checks: number } {
-  const of = (op: MutationOp, outcome?: 'accepted' | 'rejected'): number => records.filter(record => record.op === op && (outcome === undefined || record.outcome === outcome)).length;
+/** What a mutation log says about the run's counters (each kind of call and its outcome), for one actor
+ * (PADR-0044 decision 7: the agent's counters count the agent only; a /2 record is the agent's). */
+export function mutationCounts(records: readonly MutationRecord[], actor: 'agent' | 'co-actor' = 'agent'): { act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; checkCalls: number; checks: number } {
+  const own = records.filter(record => (record.actor ?? 'agent') === actor);
+  const of = (op: MutationOp, outcome?: 'accepted' | 'rejected'): number => own.filter(record => record.op === op && (outcome === undefined || record.outcome === outcome)).length;
   return { act: of('act'), accepted: of('act', 'accepted'), rejected: of('act', 'rejected'), undoCalls: of('undo'), undos: of('undo', 'accepted'), resetCalls: of('reset'), resets: of('reset', 'accepted'), checkCalls: of('check'), checks: of('check', 'accepted') };
 }
 
-/** The accepted mutations as the checker's trace replays them, or the reason there is none: a log
- * that was cut cannot be replayed. */
+/** The accepted mutations as the checker's trace replays them, or the reason there is none: a /2 log
+ * that was cut cannot be replayed (a /3 log keeps every change, `complete`). */
 export type TimelineEntry = { seq: number; op: 'act'; action: Action } | { seq: number; op: 'undo' | 'reset' };
-export function timelineOf(records: readonly MutationRecord[], omitted = 0): { timeline: TimelineEntry[] } | { reason: 'log_truncated' } {
-  if (records.length >= MAX_LOG_LINES && omitted > 0) return { reason: 'log_truncated' };
+export function timelineOf(records: readonly MutationRecord[], omitted = 0, complete = false): { timeline: TimelineEntry[] } | { reason: 'log_truncated' } {
+  if (!complete && records.length >= MAX_LOG_LINES && omitted > 0) return { reason: 'log_truncated' };
   const timeline: TimelineEntry[] = [];
   for (const record of records) {
     // A check changes nothing: it is not part of the timeline the checker replays.
@@ -195,8 +215,12 @@ export function timelineOf(records: readonly MutationRecord[], omitted = 0): { t
 // ---- the client's own failure reports ----
 
 /** Why a run could not show what the model can do, as its client's own stream says it: a usage or
- * rate limit, or an API error. Such a run is an infrastructure error, not a model failure. */
-export interface ClientFailure { reason: 'usage_limit' | 'auth' | 'api_error'; detail: string }
+ * rate limit, or an API error. Such a run is an infrastructure error, not a model failure. `code` is
+ * the client's own identifier where it gives one (an HTTP status, an event status), never free text;
+ * `beforeModelWork` says whether the failure came before the model's first message (PADR-0044
+ * decision 9). */
+export interface ClientFailure { reason: 'usage_limit' | 'auth' | 'api_error'; detail: string; code: string | null; beforeModelWork: boolean }
+const failureCode = (value: unknown): string | null => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(value) ? value : typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
 const LIMIT_TEXT = /usage limit|limit reached|hit your limit|rate.?limit|quota|too many requests/i;
 const AUTH_TEXT = /authentication|unauthori[sz]ed|forbidden|invalid (?:x-)?api.?key|oauth|(?:token|login|session|credentials?) (?:has |have )?expired|expired (?:token|login|session|credentials?)|\/login|not logged in|credit balance|billing/i;
 const SERVER_TEXT = /overloaded|internal server error|service unavailable|bad gateway|gateway time-?out|server_error|"api_error"|connection error/i;
@@ -223,33 +247,61 @@ const DETAIL: Record<ClientFailure['reason'], string> = { usage_limit: 'usage or
  * `error_max_turns`) or an assistant message the client marks as an API error, whose status or words
  * name a usage or rate limit (429), an authentication or billing error (401, 403, an expired login)
  * or a server error (5xx, 529 included). A context overflow and other 4xx errors stay the agent's.
- * The detail is fixed text, never the client's own words.
+ * The detail is fixed text, never the client's own words; the first such report is the failure. It
+ * came before model work only when no assistant message of the model (one the client does not mark as
+ * an API error) appears anywhere in the output, before or after it, and the whole output was read
+ * (`complete`): a client that worked on after a refused limit did model work, and output past the part
+ * read could hold some.
  */
-export function clientFailure(stdout: string): ClientFailure | null {
+export function clientFailure(stdout: string, complete = true): ClientFailure | null {
+  let modelWork = false, failure: Omit<ClientFailure, 'beforeModelWork'> | null = null;
   for (const line of stdout.split('\n')) {
     if (!line.trimStart().startsWith('{')) continue;
     let event: Record<string, unknown>;
     try { const parsed: unknown = JSON.parse(line); if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue; event = parsed as Record<string, unknown>; } catch { continue; }
     if (event.type === 'rate_limit_event') {
       const status = (event.rate_limit_info as { status?: unknown } | undefined)?.status;
-      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') return { reason: 'usage_limit', detail: 'rate_limit_event not allowed' };
+      if (typeof status === 'string' && status !== 'allowed' && status !== 'allowed_warning') failure ??= { reason: 'usage_limit', detail: 'rate_limit_event not allowed', code: failureCode(status) };
       continue;
     }
     if (event.type === 'result' && event.is_error === true && event.subtype !== 'error_max_turns') {
       const text = [event.result, event.error, ...(Array.isArray(event.errors) ? event.errors : [])].filter((value): value is string => typeof value === 'string').join(' ').slice(0, 4096);
-      const reason = errorClass(typeof event.api_error_status === 'number' ? event.api_error_status : statusIn(text), text);
-      if (reason) return { reason, detail: `result is_error: ${DETAIL[reason]}` };
+      const status = typeof event.api_error_status === 'number' ? event.api_error_status : statusIn(text);
+      const reason = errorClass(status, text);
+      if (reason) failure ??= { reason, detail: `result is_error: ${DETAIL[reason]}`, code: failureCode(status) ?? failureCode(event.subtype) };
       continue;
     }
     if (event.type === 'assistant' && (event.isApiErrorMessage === true || typeof event.error === 'string')) {
       const content = (event.message as { content?: unknown } | undefined)?.content;
       const words = Array.isArray(content) ? content.flatMap(part => typeof (part as { text?: unknown })?.text === 'string' ? [(part as { text: string }).text] : []) : [];
       const text = [typeof event.error === 'string' ? event.error : '', ...words].join(' ').slice(0, 4096);
-      const reason = errorClass(statusIn(text), text);
-      if (reason) return { reason, detail: `assistant API error: ${DETAIL[reason]}` };
+      const status = statusIn(text), reason = errorClass(status, text);
+      if (reason) failure ??= { reason, detail: `assistant API error: ${DETAIL[reason]}`, code: failureCode(status) };
+      continue;
     }
+    if (event.type === 'assistant') modelWork = true;
   }
-  return null;
+  return failure ? { ...failure, beforeModelWork: !modelWork && complete } : null;
+}
+/** Whether a log head is the whole file (no line past the part read). */
+export const wholeLog = (head: { unreadLines: number; countCapped: boolean } | null): boolean => head !== null && head.unreadLines === 0 && !head.countCapped;
+
+/** SHA-256 and size of a whole regular file, read as a stream whatever its size (PADR-0044 decision 5:
+ * the run's stdout binding); null when it is missing or not a regular file. */
+export async function hashFile(path: string): Promise<{ sha256: string; bytes: number } | null> {
+  let handle;
+  try { handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0)); } catch { return null; }
+  try {
+    if (!(await handle.stat()).isFile()) return null;
+    const hash = createHash('sha256'), chunk = Buffer.alloc(1024 * 1024);
+    let bytes = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, bytes);
+      if (!bytesRead) break;
+      hash.update(chunk.subarray(0, bytesRead)); bytes += bytesRead;
+    }
+    return { sha256: hash.digest('hex'), bytes };
+  } catch { return null; } finally { await handle.close(); }
 }
 
 // ---- the client's own figures ----

@@ -8,13 +8,14 @@ import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent, type AgentSpec } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../bench/run.ts';
 import { existsSync } from 'node:fs';
-import { verifyBenchArtifacts, verifyBenchV2, type VerificationResult, type VerificationResultV2 } from '../bench/verify.ts';
-import { BenchReportError, isBenchReportV2, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
+import { verifyBenchArtifacts, verifyBenchV2, verifyBenchV3, type VerificationResult, type VerificationResultV2, type VerificationResultV3 } from '../bench/verify.ts';
+import { BENCH_SCHEMA_V1, BENCH_SCHEMA_V2, BenchReportError, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
+import { toView, type BenchReportView } from '../bench/view.ts';
 import { libraryBenchWorld, libraryReferences, ownBenchWorld, ownReferences, readOracleFile, resolveWorldTasks, seedVariants, validateOwnReferences, type BenchReference, type BenchWorld } from '../bench/world.ts';
 import type { World } from '../world/types.ts';
-import { detailWords, readTokensCss, renderHtml, renderTable } from '../bench/render.ts';
+import { detailWords, readTokensCss, renderHtml, renderTable, type VerificationDetail } from '../bench/render.ts';
 import { loadReportDetails } from '../bench/details.ts';
-import { agentKindDiffers, compareReports, CompareError } from '../bench/compare.ts';
+import { compareReports, CompareError, refusalHint } from '../bench/compare.ts';
 import { renderCompareHtml, renderCompareTable, renderIncomparableHtml } from '../bench/render-compare.ts';
 import { renderJunit } from '../bench/junit.ts';
 import { renderBadge, renderCard } from '../bench/card.ts';
@@ -191,11 +192,12 @@ export async function commandBench(args: string[]): Promise<number> {
   }
   const out = options.out ?? join(directory, 'report.json');
   await writeAtomic(out, JSON.stringify(report, null, 2) + '\n');
+  const view = toView(report);
   // The report's numbers come from the runs; why each failed comes from the bench folder (PADR-0039).
-  const details = await loadReportDetails(report, directory, detailWords(getCliLanguage())).catch(() => undefined);
+  const details = await loadReportDetails(view, directory, detailWords(getCliLanguage())).catch(() => undefined);
   // The JUnit file names the same reasons as the table (unmet conditions from the bench folder).
-  if (options.junit) await writeAtomic(options.junit, renderJunit(report, getCliLanguage(), 'consistency-checked', details));
-  process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
+  if (options.junit) await writeAtomic(options.junit, renderJunit(view, getCliLanguage(), 'consistency-checked', details));
+  process.stdout.write('\n' + renderTable(view, getCliLanguage(), details));
   // Runs lost to a full browser budget (PADR-0050): the judged set can depend on machine load.
   const budgetRuns = report.runs.filter(run => run.status === 'infra_error' && (run.note ?? '').startsWith('browser_budget_exhausted')).length;
   if (budgetRuns > 0) process.stdout.write(cliText('benchBudgetRuns', { n: budgetRuns }));
@@ -231,7 +233,7 @@ async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepare
   let recovered: Awaited<ReturnType<typeof recoverBench>>;
   try {
     recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder);
-    await verifyBenchV2(recovered.report, folder, libraryWorld);
+    await verifyBenchV3(recovered.report, folder, libraryWorld);
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, cliText('benchRecoverRefused', { folder: safeText(displayPath(folder)), reason: error.message })); throw error; }
   const { report, remaining } = recovered;
   await writeAtomic(join(folder, 'report.json'), JSON.stringify(report, null, 2) + '\n');
@@ -266,14 +268,18 @@ async function readReport(path: string): Promise<BenchReport> {
     throw new RuntimeError('bench_report_invalid', cliText('reportJson'));
   }
 }
-type Verified = { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult & Partial<Pick<VerificationResultV2, 'references' | 'world' | 'library'>>);
-/** --verify re-judges the run artifacts: a /2 report against the world stored in its bench folder
+/** What every surface is told about a verification: its level, and for /3 the parsers whose values were
+ * not re-derived and whether the preset was checked (PADR-0044): such values are never shown confirmed. */
+const detailOf = (verified: Verified): VerificationDetail => verified.level === 're-verified' ? { level: 're-verified', notRederived: verified.parsers?.notShipped ?? [], preset: verified.preset ?? null } : { level: 'consistency-checked' };
+type Verified = { level: 'consistency-checked' } | ({ level: 're-verified' } & VerificationResult & Partial<Pick<VerificationResultV3, 'references' | 'world' | 'library' | 'parsers' | 'preset'>>);
+/** --verify re-judges the run artifacts: a /2 or /3 report against the world stored in its bench folder
  * (a library bench also against this Practonaut's library), a /1 report against the bundled library.
  * Any difference is refused with its named code. */
 async function verifyReport(report: BenchReport, runs: string): Promise<Verified> {
   try {
-    if (isBenchReportV2(report)) return { level: 're-verified', ...await verifyBenchV2(report, runs, libraryWorld) };
-    return { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+    if (report.schema === BENCH_SCHEMA_V1) return { level: 're-verified', ...await verifyBenchArtifacts(report, runs, await libraryWorld()) };
+    if (report.schema === BENCH_SCHEMA_V2) return { level: 're-verified', ...await verifyBenchV2(report, runs, libraryWorld) };
+    return { level: 're-verified', ...await verifyBenchV3(report, runs, libraryWorld) };
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, error.message); throw error; }
 }
 
@@ -285,7 +291,7 @@ export function cardPaths(out: string, folder = false): { light: { svg: string; 
   return { light: { svg: `${base}-light.svg`, png: `${base}-light.png` }, dark: { svg: `${base}-dark.svg`, png: `${base}-dark.png` } };
 }
 /** `--card`: both themes as SVG, then as PNG through Chromium; nothing is written unless all four exist. */
-async function writeCard(out: string, report: BenchReport, language: ReturnType<typeof getCliLanguage>, verification: Verified['level']): Promise<string[]> {
+async function writeCard(out: string, report: BenchReportView, language: ReturnType<typeof getCliLanguage>, verification: VerificationDetail): Promise<string[]> {
   if (!(await chromiumCheck(true)).ok) throw new RuntimeError('browser_runtime_missing', cliText('cardChromiumMissing'));
   const folder = await stat(out).then(info => info.isDirectory(), () => false);
   const tokens = await readTokensCss(), paths = cardPaths(out, folder);
@@ -305,17 +311,17 @@ async function writeCard(out: string, report: BenchReport, language: ReturnType<
 export async function commandReport(args: string[]): Promise<number> {
   const parsed = flags(args, ['--html', '--runs', '--junit', '--card', '--badge'], ['--json', '--verify']);
   if (parsed.positional.length !== 1) throw new RuntimeError('usage', cliText('reportUsage'));
-  const path = parsed.positional[0]!, report = await readReport(path);
+  const path = parsed.positional[0]!, report = await readReport(path), view = toView(report);
   // The bench folder: what --verify re-judges and where the run details come from.
   const runs = parsed.flags['--runs'] ?? dirname(path);
   // Without --verify only the report's own arithmetic is checked.
   const verification: Verified = parsed.booleans.has('--verify') ? await verifyReport(report, runs) : { level: 'consistency-checked' };
   const language = getCliLanguage();
-  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] && !parsed.flags['--junit'] ? undefined : await loadReportDetails(report, runs, detailWords(language)).catch(() => undefined);
+  const details = parsed.booleans.has('--json') && !parsed.flags['--html'] && !parsed.flags['--junit'] ? undefined : await loadReportDetails(view, runs, detailWords(language)).catch(() => undefined);
   // With --json the one result line comes last, once every requested file is written: a file that
   // fails ends the command with ok:false and its code instead.
   if (!parsed.booleans.has('--json')) {
-    process.stdout.write(renderTable(report, language, details, verification.level));
+    process.stdout.write(renderTable(view, language, details, detailOf(verification)));
     if (verification.level !== 're-verified') process.stdout.write(cliText('reportConsistencyOnly'));
     else if (verification.world === undefined) process.stdout.write(cliText('reportReverified', { runs: verification.reverified, unjudged: verification.unjudged }));
     else {
@@ -325,30 +331,33 @@ export async function commandReport(args: string[]): Promise<number> {
       process.stdout.write(verification.library === undefined ? cliText('reportWorldOwn')
         : verification.library.status === 'same' ? cliText('reportLibrarySame', world)
         : cliText('reportLibraryOther', { ...world, shipped: safeText(`${verification.library.shipped.id} ${verification.library.shipped.version}`) }));
+      // bench/3: values a parser this Practonaut does not ship read could not be re-derived; a preset of another version was not checked.
+      if (verification.parsers?.notShipped.length) process.stdout.write(cliText('reportParsersNotShipped', { parsers: verification.parsers.notShipped.map(safeText).join(', ') }));
+      if (verification.preset === 'not-checked') process.stdout.write(cliText('reportPresetUnchecked', { version: safeText(view.environment.practonaut) }));
     }
   }
   const html = parsed.flags['--html'];
   if (html) {
-    await writeAtomic(html, renderHtml(report, await readTokensCss(), language, verification.level, details));
+    await writeAtomic(html, renderHtml(view, await readTokensCss(), language, detailOf(verification), details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportHtml', { path: safeText(displayPath(html)) }));
   }
   const junit = parsed.flags['--junit'];
   if (junit) {
-    await writeAtomic(junit, renderJunit(report, language, verification.level, details));
+    await writeAtomic(junit, renderJunit(view, language, detailOf(verification), details));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(junit)) }));
   }
   // The card and the badge depend on the report, the language and the verification level only.
   const card = parsed.flags['--card'];
   if (card) {
-    const written = await writeCard(card, report, language, verification.level);
+    const written = await writeCard(card, view, language, detailOf(verification));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportCard', { paths: written.map(path => safeText(displayPath(path))).join(', ') }));
   }
   const badge = parsed.flags['--badge'];
   if (badge) {
-    await writeAtomic(badge, renderBadge(report, await readTokensCss(), language, verification.level));
+    await writeAtomic(badge, renderBadge(view, await readTokensCss(), language, detailOf(verification)));
     if (!parsed.booleans.has('--json')) process.stdout.write(cliText('reportBadge', { path: safeText(displayPath(badge)) }));
   }
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verification, summary: report.summary }) + '\n');
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, schema: report.schema, verdictLevel: view.verdictLevel, verification, summary: report.summary }) + '\n');
   return 0;
 }
 
@@ -360,24 +369,32 @@ export async function commandCompare(args: string[]): Promise<number> {
   if (parsed.positional.length !== 2) throw new RuntimeError('usage', cliText('compareUsage'));
   const [baselinePath, candidatePath] = parsed.positional as [string, string];
   const baseline = await readReport(baselinePath), candidate = await readReport(candidatePath);
-  const level = async (report: BenchReport, path: string): Promise<'consistency-checked' | 're-verified'> => parsed.booleans.has('--verify') ? (await verifyReport(report, dirname(path))).level : 'consistency-checked';
+  const level = async (report: BenchReport, path: string): Promise<VerificationDetail> => parsed.booleans.has('--verify') ? detailOf(await verifyReport(report, dirname(path))) : { level: 'consistency-checked' };
   // Each side goes by its label, else its file name (the page title says which is which).
-  const named = (report: BenchReport, path: string): string => isBenchReportV2(report) && report.label !== undefined ? report.label : basename(path).replace(/\.json$/i, '');
-  const sides = { baseline: { report: baseline, verification: await level(baseline, baselinePath), name: named(baseline, baselinePath) }, candidate: { report: candidate, verification: await level(candidate, candidatePath), name: named(candidate, candidatePath) } };
+  const named = (report: BenchReportView, path: string): string => report.label ?? basename(path).replace(/\.json$/i, '');
+  const views = { baseline: toView(baseline), candidate: toView(candidate) };
+  const sides = { baseline: { report: views.baseline, verification: await level(baseline, baselinePath), name: named(views.baseline, baselinePath) }, candidate: { report: views.candidate, verification: await level(candidate, candidatePath), name: named(views.candidate, candidatePath) } };
   const language = getCliLanguage();
   const html = parsed.flags['--html'];
   let comparison;
-  try { comparison = compareReports(baseline, candidate); }
+  // A regression gate compares one world with itself under one reading of results (PADR-0044 decisions 3, 4).
+  const options = { regressionGate: parsed.booleans.has('--fail-on-regression') };
+  try { comparison = compareReports(views.baseline, views.candidate, options); }
   catch (error) {
     if (!(error instanceof CompareError)) throw error;
     // With --html the refusal is a page too, naming every difference.
-    if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language));
+    if (html) await writeAtomic(html, renderIncomparableHtml(sides.baseline, sides.candidate, error.differences, await readTokensCss(), language, options));
     const field = (name: string): string => cliText(`compareField_${name}` as Parameters<typeof cliText>[0]);
-    // A different isolation level is a different agent kind: other flags cannot fix it.
-    const hint = cliText(agentKindDiffers(error.differences) ? 'compareHintAgentKind' : 'compareHintSettings');
-    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: safeText(difference.baseline), candidate: safeText(difference.candidate) })).join('; '), hint }));
+    // Levels are named in words (PADR-0044 decision 1); every other value as recorded.
+    const value = (name: string, given: string): string => name === 'verdictLevel' && (given === 'session' || given === 'artifact') ? cliText(`compareLevel_${given}`) : safeText(given);
+    // Different levels are never paired; a different isolation level is a different agent kind; a gate needs one world: other flags cannot fix them.
+    const hint = cliText(({ level: 'compareHintLevel', agentKind: 'compareHintAgentKind', gate: 'compareHintGate', settings: 'compareHintSettings' } as const)[refusalHint(error.differences, views.baseline, views.candidate, options)]);
+    throw new RuntimeError('compare_incomparable', cliText('compareIncomparable', { differences: error.differences.map(difference => cliText('compareDifference', { field: field(difference.field), baseline: value(difference.field, difference.baseline), candidate: value(difference.field, difference.candidate) })).join('; '), hint }));
   }
-  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: { schema: baseline.schema, verification: sides.baseline.verification }, candidate: { schema: candidate.schema, verification: sides.candidate.verification }, comparison }) + '\n');
+  // Each side as report --json names its verification: the level, the parsers not shipped here and
+  // whether a preset was checked (a side whose client values are claims never reads as re-derived).
+  const sideJson = (schema: string, view: BenchReportView, verification: VerificationDetail): Record<string, unknown> => ({ schema, verdictLevel: view.verdictLevel, verification: verification.level, ...(verification.notRederived?.length ? { notRederived: verification.notRederived } : {}), ...(verification.preset ? { preset: verification.preset } : {}) });
+  if (parsed.booleans.has('--json')) process.stdout.write(safeJson({ ok: true, baseline: sideJson(baseline.schema, views.baseline, sides.baseline.verification), candidate: sideJson(candidate.schema, views.candidate, sides.candidate.verification), comparison }) + '\n');
   else process.stdout.write(renderCompareTable(sides.baseline, sides.candidate, comparison, language));
   if (html) {
     await writeAtomic(html, renderCompareHtml(sides.baseline, sides.candidate, comparison, await readTokensCss(), language));

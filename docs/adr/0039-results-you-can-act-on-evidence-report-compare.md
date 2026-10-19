@@ -4,6 +4,12 @@ Status: accepted 2026-10-15 after independent review (pull request #31) · Date:
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) decision 8 left open; uses the call log
 of [PADR-0038](0038-lean-mcp-replies.md) decision 8
 
+> **Amended (2026-10-18) by [PADR-0044](0044-bench-report-v3.md) decision 3, for comparisons across
+> worlds only:** when two reports of different worlds are paired by task identity, the unit is the
+> distinct identity (all runs of one identity on a side aggregate by C.2's rule), rate claims use only
+> identities with equal run counts, and flips are differences between the two configurations, never
+> regressions or fixes. Within one world the unit stays the instance (task × seed) as C.2 says.
+
 ## Context
 
 A bench report from 0.1.0 and from the Must 2 build says *whether* each run passed, not *why*: it

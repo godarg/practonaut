@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
-import { MODEL_ID, type BenchReportV2 } from '../bench/report.ts';
+import { MODEL_ID, type GateBenchReport, type GateBenchRun } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
 import { FAMILIES, generatorId, type Family } from './families.ts';
 
@@ -97,7 +97,7 @@ export function developmentDigest(runs: readonly DigestRun[]): string {
 }
 /** A judged session as the digest reads it: its state hash and its action log. */
 export interface DigestSession { hash: string; log: unknown }
-export const digestRunOf = (run: BenchReportV2['runs'][number], model: string, session: DigestSession): DigestRun => ({
+export const digestRunOf = (run: GateBenchRun, model: string, session: DigestSession): DigestRun => ({
   model, taskId: run.taskId, seed: run.seed, pass: run.pass, hash: session.hash, log: canonicalJson(session.log),
 });
 
@@ -141,7 +141,7 @@ export function validateDeclaration(raw: unknown): Declaration {
 
 /** A development or ladder report's runs, each on the model its report names (review S3): a run that
  * reports another model makes the round invalid; a run that reports none is returned (unattested). */
-export function unattestedRuns(report: BenchReportV2, expected: string): string[] {
+export function unattestedRuns(report: GateBenchReport, expected: string): string[] {
   const fail = (message: string): never => { throw new DeclarationError(message); };
   if (report.agent.model !== expected) fail(`the report of ${expected} names model ${report.agent.model ?? 'none'}`);
   const unattested: string[] = [];
@@ -157,7 +157,7 @@ export function unattestedRuns(report: BenchReportV2, expected: string): string[
 /** A ladder agent's report as the round requires it: the claude-code preset with the model its
  * client reported for a tier model; for a maintainer-approved model, any external agent whose model
  * its client or command reported. */
-export function checkLadderAgent(report: BenchReportV2, expected: string, approved: readonly string[]): void {
+export function checkLadderAgent(report: GateBenchReport, expected: string, approved: readonly string[]): void {
   const agent = report.agent;
   const tier = tierOf(expected) !== -1;
   if (tier ? agent.kind !== 'preset' || agent.name !== 'claude-code' || agent.modelSource !== 'client-attested' : !approved.includes(expected) || agent.kind === 'builtin' || agent.modelSource === 'none')

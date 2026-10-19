@@ -1,15 +1,14 @@
 # PADR-0044 — Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity
 
-Status: proposed · Date: 2026-10-18 · Roadmap 0.3.0, strand P3 (issue #46) · Successor format of
+Status: accepted 2026-10-18 with the change that implements it (P3b, issue #46) · Date: 2026-10-18 · Roadmap 0.3.0, strand P3 (issue #46) · Successor format of
 [PADR-0036](0036-bench-report-v2-any-world-stored-world.md) and
 [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) (bench/2, frozen since 0.2.0);
 carries the verdict level of [PADR-0043](0043-artifact-judged-verdict-level.md) and the run facts the
 gate of [PADR-0042](0042-gate-for-families-on-toolchains.md) reads · Revised after three
 independent reviews on 2026-10-18 (a multi-lens Claude Opus review with an adversarial check per
 finding, OpenAI Codex `gpt-6.1-sol`, Google `gemini-3.8-flash`) and again after a re-review the
-same day (two Claude Opus re-reviewers and Codex; dispositions at the end) · To be
-accepted after the coordinator's check of this revision; the change that implements it (P3b)
-follows
+same day (two Claude Opus re-reviewers and Codex; dispositions at the end) · Implemented at
+session level by P3b; what each later strand implements is listed under Consequences
 
 ## Context
 
@@ -130,7 +129,7 @@ states, nothing written to disk* (chosen).
 strands adding required fields in parallel conflict, and a field decided twice means two things.
 (2) *One holder at a time; only additive changes until the release* (chosen).
 
-## Decision (proposed)
+## Decision
 
 1. **Verdict level.** Every /3 report has `verdictLevel: "session" | "artifact"`, and every run
    repeats it; the validator refuses a run whose level is not the report's.
@@ -873,6 +872,58 @@ interface BenchReportView {
 - Roadmap item 2's "one report shows the same tasks on both apps" is delivered as a `compare` page
   of two reports whose worlds share a task set; the draw.io library world names the Excalidraw
   library as its task set, or both name a new one.
+
+### What P3b implemented, and what each later strand implements
+
+**P3b (this change).** The whole /3 zod schema and validator for both levels
+(`src/bench/report.ts`), `schemas/bench.v3.json`, the read-only view (`src/bench/view.ts`), the task
+identity (`src/bench/identity.ts`), the task-set key in world/2 and in variant selection, the
+`claude-code-stream/1` parser with the offered tools, the attested billing class and the fixed
+`apiKeySource` list (`src/bench/parsers.ts`, `src/bench/client-evidence.ts`), the runner writing /3 at
+session level, `bench --recover` writing /3 and refusing co-actor runs, artifact runs and folders
+whose mutation logs predate /3, `report --verify` of session-level /3 reports without the co-actor
+checks, `compare` (levels, `checks`, identity pairing, the new caveats), and every surface naming the
+level, the application and the toolchain. The committed /2 bench folder `tests/fixtures/bench/v2/`
+was written by the /2 writer before the writer changed; `tests/unit/bench-v3-acceptance.test.ts`
+measures the acceptance line on it and on every other committed report.
+
+Choices P3b made inside the record, for the next holder:
+
+- The view is a union by level (`SessionReportView | ArtifactReportView`), so a consumer narrows once;
+  a /1 report's `keptEnv` and `apiKeySource` are "not recorded" (`null`); a /1 and /2 report's
+  advertised tool names are `toolchain.tools: null`; `runs[].client.parser` is absent in the view of
+  a /2 run. Every consumer (renderers, details, compare, the CLI) takes a validated report of any
+  version or its view and reads it through the view.
+- `agent.clientVersion` uses /2's client-version pattern (`runs[].client.version`), which allows `+`.
+- The runner records the requested billing class from the preset's kept variables (a kept provider
+  key or switch: `api-key`; none: `subscription`) and `requestedModel` from `ANTHROPIC_MODEL` in the
+  environment the client starts with; `bench --recover` cannot know that environment and records the
+  requested model as not known. `beforeModelWork` of `claude-code-stream/1` is true when no assistant
+  message of the model (one the client does not mark as an API error) appears anywhere in the run's
+  whole stdout, before or after the failure event (re-review r3: a client that worked on after a
+  refused limit did model work); output longer than the part the parser reads is never "before".
+- A version that is not SemVer 2.0.0 (a leading zero, an empty identifier) is never "newer", so a
+  report that names it may name only shipped parsers. A run whose parser is not shipped here leaves
+  only the agent values it could be the first to report as claims; those that a run read by a shipped
+  parser reports first are still checked. `agent.requestedModel` is `preset-requested` or `none`.
+- The validator also refuses `failure.reason` `no_tool_call` on a session run with host calls,
+  `server_error` at session level, and `evidence_incomplete` at session level without a co-actor.
+- The card names the level beside what it is (its eyebrow) rather than as an evidence row; the badge,
+  the header line, each run's technical details, the JUnit properties (`practonaut.verdictLevel`,
+  `practonaut.app`, `practonaut.toolchain`, and `practonaut.sandbox` for a foreign toolchain) and the
+  compare page name it too. An artifact report renders without session figures; the schematic of its
+  judged state is the artifact strand's.
+- Until P1 restricts 0.3.0 rounds to /3, the 0.2.0 challenge gate reads /2 and session-level /3
+  reports (they keep every /2 run field).
+
+**Later strands.** The artifact strand: the toolchain definitions, the proxy and `proxy.jsonl`, the
+artifact runner, artifact-level `--verify` (refused by name until then) and its recovery, and the
+schematic of an artifact run's judged state. The scenario strand (item 4): the co-actor schedule,
+`environment.world.scenarios`, co-actor records in the mutation log, `verifySchedule` and its
+recovery (co-actor runs and reports with scenarios are refused by `--verify` and `--recover` until
+then). P1: the gate reading only `readFrom: practonaut.bench/3`, `failure` and the exemption rule,
+`agent.billing` and `client.billing` in the release ledger, the probe plan, the start guard and
+digest /2. P4: further parsers and presets, their vendor mappings, model variables and settings.
 
 ## Re-assessment triggers
 

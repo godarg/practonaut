@@ -221,7 +221,7 @@ partial report naming the remaining tasks and exits 75: wait until the limit win
 --recover <bench folder> with the bench's own arguments rebuilds the report of a bench that was killed (kill -9,
 power loss, a second Ctrl+C) from its run folders, verified like report --verify, and names the tasks to resume.
 Ctrl+C stops after the running agent and writes a partial report; a second Ctrl+C stops at once.
-Writes practonaut.bench/2 (schemas/bench.v2.json); see docs/benchmarks/README.md.`,
+Writes practonaut.bench/3 at session level (schemas/bench.v3.json); see docs/benchmarks/README.md.`,
     de: `Verwendung: practonaut bench --agent <oracle|random|claude-code|"Befehl … {mcp_config} …">
                         [--world <Ordner|.pnworld>] [--tasks all|<id,id,…>] [--oracle <Datei,…>]
                         [--seeds <n> | --seed-list <Seed,Seed,…>] [--repeats <k>] [--timeout <Sekunden>]
@@ -255,13 +255,13 @@ fortsetzen.
 --recover <Bench-Ordner> mit den Argumenten des Benchs baut den Bericht eines beendeten Benchs (kill -9, Stromausfall,
 zweites Strg+C) aus seinen Laufordnern neu, geprüft wie report --verify, und nennt die Aufgaben zum Fortsetzen.
 Strg+C beendet nach dem laufenden Agenten mit Teilbericht; ein zweites Strg+C beendet sofort.
-Schreibt practonaut.bench/2 (schemas/bench.v2.json); siehe docs/benchmarks/README.md.`,
+Schreibt practonaut.bench/3 auf Sitzungsebene (schemas/bench.v3.json); siehe docs/benchmarks/README.md.`,
   },
   report: {
     en: `Usage: practonaut report <bench.json> [--verify] [--runs <dir>] [--html <out.html>] [--junit <out.xml>]
                          [--card <out>] [--badge <out.svg>] [--json]
 
-Checks a bench report (practonaut.bench/2 or /1) for consistency (every pass and aggregate is re-derived from
+Checks a bench report (practonaut.bench/3, /2 or /1) for consistency (every pass and aggregate is re-derived from
 the verdicts in the file; a report that does not add up is rejected with exit 2) and prints a table, or writes
 a static HTML page. Consistency is not proof: a consistently edited file passes. Rates are fractions with a
 95 % interval; failures come first with why they failed, read from the bench folder (default: the report's
@@ -282,7 +282,7 @@ report gives the same bytes.`,
     de: `Verwendung: practonaut report <bench.json> [--verify] [--runs <Ordner>] [--html <out.html>] [--junit <out.xml>]
                               [--card <Ziel>] [--badge <out.svg>] [--json]
 
-Prüft einen Bench-Bericht (practonaut.bench/2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
+Prüft einen Bench-Bericht (practonaut.bench/3, /2 oder /1) auf Stimmigkeit (jedes Bestehen und jede Kennzahl wird
 aus den Urteilen in der Datei neu abgeleitet; ein Bericht, der nicht aufgeht, wird mit Exit 2 abgelehnt) und zeigt
 eine Tabelle oder schreibt eine statische HTML-Seite. Stimmigkeit ist kein Beweis: Eine stimmig bearbeitete Datei
 besteht. Raten stehen als Brüche mit 95-%-Intervall; nicht bestandene Läufe kommen zuerst, mit dem Grund aus dem

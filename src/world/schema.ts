@@ -140,8 +140,13 @@ const actionV2 = z.strictObject({ name: z.enum(V2_ACTION_NAMES), parameters: z.r
 const defaultActions = (): Array<{ name: ActionName; preconditions: Predicate[] }> => V2_ACTION_NAMES.map(name => ({ name, preconditions: [] }));
 export const RuleSchemaV2 = z.strictObject({ id, action: z.enum(V2_ACTION_NAMES), status: z.literal("confirmed"), preconditions: z.array(PredicateSchemaV2).max(128).default([]), effects: z.array(z.enum(EFFECTS_V2)).min(1).max(8), evidence: z.array(z.strictObject({ run: source, case: source, sha256: z.string().regex(/^[a-f0-9]{64}$/) })).max(128).default([]) });
 /** world/2: additive format. Optional parts get explicit defaults, so a validated world re-validates unchanged. */
+/** The world's task set (PADR-0044 decision 3): an application-free key, with the world id's and
+ * version's own patterns, that variant selection hashes instead of the world's own id and version.
+ * Optional without a default, so a world without it keeps its canonical JSON and its variants. */
+export const TaskSetSchema = z.strictObject({ id: id.regex(/^[a-z0-9][a-z0-9-]*$/), version: semver });
 export const WorldSchemaV2 = z.strictObject({
   schema: z.literal("practonaut.world/2"), id: id.regex(/^[a-z0-9][a-z0-9-]*$/), version: semver,
+  taskSet: TaskSetSchema.optional(),
   app: z.strictObject({ adapterId: appIdV2, versionRange: appVersionV2, fontFamilies: z.array(integer.min(1).max(100)).min(1).max(32).default([3]), excludedAttributes: z.record(id, source).default({}) }),
   units: z.record(id, source).default({}),
   objectTypes: z.array(z.strictObject({ type: objType, attributes: z.record(id, z.enum(["string", "integer", "id", "nullable-id", "boolean"])) })).min(1).max(3).default([{ type: "frame", attributes: {} }, { type: "step", attributes: {} }, { type: "arrow", attributes: {} }]),

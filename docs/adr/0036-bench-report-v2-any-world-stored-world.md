@@ -4,6 +4,10 @@ Status: accepted 2026-10-14 after independent review (pull request #30) · Date:
 [PADR-0030](0030-bench-replaces-unsealed-eval.md); records what
 [PADR-0034](0034-preset-agents-get-no-provider-credentials.md) deferred to bench/2
 
+> **Succeeded for new reports (2026-10-18):** `bench` writes `practonaut.bench/3`
+> ([PADR-0044](0044-bench-report-v3.md)). /2 reports are still read, validated and re-verified by the
+> rules of this record, unchanged, through a read-only view; nothing is converted.
+
 ## Context
 
 `practonaut bench` (0.1.0) scores only the bundled task library. Its report, `practonaut.bench/1`,
