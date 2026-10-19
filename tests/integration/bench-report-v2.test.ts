@@ -35,7 +35,8 @@ function runText(html: string, runId: string): string {
 const normalPath = (html: string): string => html.replace(/<details class="tech">[\s\S]*?<\/details>/g, '');
 /** The first sentence of a library explanation (the factual part; the rest coaches a learner). */
 const firstOf = (text: string): string => text.split(/(?<=[.!?])\s+(?=\p{Lu})/u)[0]!;
-const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<span class="data">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+// Data (an id, a command, a flag) is set apart only by its markup: in plain text it is the words around it.
+const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<span class="data(?: flag)?">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fixtures: Fixtures, dir: string;
 test.before(async () => {
@@ -99,7 +100,8 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   // Model-only and consistency-checked: the result and interval in the headline, the provenance as chips.
   const header = plain(failing.slice(0, failing.indexOf('</header>')));
   assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances session verdict consistency-checked, not re-verified model only \(no mirror\) template: tools not restricted by Practonaut model pn-script-model \(self-reported, from the command output\) \d{4}-\d{2}-\d{2}/);
-  assert.equal((failing.match(/pn-script-model \(self-reported/g) ?? []).length, 1, 'the model is named once');
+  // Counted in the text a reader sees (the model id is data inside its chip): once, in the header.
+  assert.equal((plain(failing).match(/pn-script-model \(self-reported/g) ?? []).length, 1, 'the model is named once');
   assert.ok(runText(failing, 'restyle-flow-s1-r1').includes('Schematic of the judged state, not the real Excalidraw. The bench ran model only (no mirror).'), 'model-only picture');
   assert.ok(plain(failing).includes('consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)'));
   assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances session verdict re-verified from the artifacts model only/);
