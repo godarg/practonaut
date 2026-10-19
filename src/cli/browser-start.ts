@@ -5,12 +5,17 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import { startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
+import { BrowserBudgetError, startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
 
 export const BROWSER_START_MS = 30_000;
-export type StartResult = { ok: true; sandbox: boolean } | { ok: false; detail: string };
+/** `budget`: the start was refused because no browser slot became free (PADR-0050); a command that
+ * needs the mirror stops with that named error, not as a start that failed. */
+export type StartResult = { ok: true; sandbox: boolean } | { ok: false; detail: string; budget?: BrowserBudgetError };
+
+/** The budget refusal as one line, by its code, with the counts and the remedy in the CLI's language. */
+export const budgetDetail = (error: BrowserBudgetError): string => `${error.code}: ${cliText('browserBudgetExhausted', { running: error.running, closing: error.closing, budget: error.budget })}`;
 
 /** First meaningful line of a launch error, terminal-safe and short; no stack, no paths beyond it. */
 export function launchFailureDetail(error: unknown): string {
@@ -34,7 +39,7 @@ export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS, seams
     const { lease, sandbox } = await startBrowser('start-check', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: seams.ledger });
     await lease.close();
     return { ok: true, sandbox };
-  } catch (error) { return { ok: false, detail: launchFailureDetail(error) }; }
+  } catch (error) { return error instanceof BrowserBudgetError ? { ok: false, detail: budgetDetail(error), budget: error } : { ok: false, detail: launchFailureDetail(error) }; }
 }
 
 /** Advice for a browser that is installed but does not start, for the platform. */

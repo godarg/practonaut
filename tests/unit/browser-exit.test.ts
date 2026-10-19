@@ -5,7 +5,7 @@
 // `practonaut mcp`, whose `main` returns at once, only after `stop()` closed the host.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -170,5 +170,20 @@ test('every command kind ends through the rule only after its own shutdown (real
     // serve and play stop on Ctrl+C (POSIX: a signal to the test's own child).
     if (process.platform !== 'win32') kinds.push(['play', cli(['play', 'connect', '--no-open', '--mirror', 'off'], home, { interruptWhen: /#code=/ }), ended => assert.match(ended.stdout, /#code=/)]);
     for (const [name, running, check] of kinds) { const ended = await running; check(ended); endedThroughRule(name, ended); }
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('the real CLI names a full browser budget with the counts and the remedy, in English and German, exit 3', { timeout: 120_000 }, async () => {
+  const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-budget-'));
+  try {
+    const world = join(home, 'flow.pnworld'), actions = join(home, 'actions.json');
+    await writeFile(actions, '[]');
+    assert.equal(spawnSync(process.execPath, [CLI, 'pack', join(ROOT, 'examples/worlds/flow-diagram'), '--out', world], { cwd: home, encoding: 'utf8' }).status, 0);
+    const run = (...lang: string[]) => spawnSync(process.execPath, ['--import', join(ROOT, 'tests/support/budget-full-preload.ts'), CLI, ...lang, 'run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], { cwd: home, encoding: 'utf8', timeout: 60_000, env: { ...process.env, PRACTONAUT_HOME: home } });
+    const english = run(), german = run('--lang', 'de');
+    assert.equal(english.status, 3, english.stderr);
+    assert.equal(english.stderr.trim(), 'practonaut: no browser could start: 5 running and 3 closing of 8 allowed, and none closed within the launch bound. Wait until they have closed, or restart Practonaut. [browser_budget_exhausted]');
+    assert.equal(german.status, 3, german.stderr);
+    assert.match(german.stderr, /kein Browser konnte starten: 5 laufen und 3 schließen gerade, 8 sind erlaubt.*Practonaut neu starten\. \[browser_budget_exhausted\]/);
   } finally { await rm(home, { recursive: true, force: true }); }
 });

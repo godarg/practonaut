@@ -70,7 +70,7 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  if(flags["--export"]&&mirror==="off")throw new RuntimeError("usage",cliText("nativeExport"));
  if(mirror==='required'){
   if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', headlessShellDownload()));
-  const started=await chromiumStarts();if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
+  const started=await chromiumStarts();if(!started.ok&&started.budget)throw started.budget;if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
