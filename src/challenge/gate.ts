@@ -14,6 +14,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
 import type { SessionReportV3, SessionRunV3 } from '../bench/report.ts';
 import { SHIPPED_PARSERS } from '../bench/parsers.ts';
+import { safeText } from '../cli/output.ts';
 import { ALPHA, GATE_PRESET, SHAPE_B, declarationHash, developmentDigest, digestRunOf, fileHash, heldOutRuns, type Declaration, type DigestRun, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
 import { countLedger, released, type Ledger, type RunEndRecord, type StartRecord } from './ledger.ts';
 import { generatorId, type Family } from './families.ts';
@@ -139,10 +140,15 @@ const sorted = (values: readonly string[]): string => [...values].sort().join('\
 const releaseLine = (version: string): string => /^(\d+)\.(\d+)\./.exec(version)?.slice(1, 3).join('.') ?? version;
 const compareVersions = (a: string, b: string): number => a.localeCompare(b, 'en', { numeric: true });
 
+/** Every report of a round is made with the Practonaut its plan pins (PADR-0042 amended, 3.11); the
+ * report's own text reaches the terminal escaped. */
+export function checkPinned(label: string, report: { environment: { practonaut: string } }, pinned: string): void {
+  if (report.environment.practonaut !== pinned) fail('practonaut_version', `the ${label} report was made with Practonaut ${safeText(report.environment.practonaut)}; the round's plan pins ${safeText(pinned)}`);
+}
 /** A report's settings and world as the plan or declaration fix them. */
 function checkSettings(label: string, report: SessionReportV3, worldHash: string, tasks: readonly string[], bench: Plan['bench'], toolchain: Plan['toolchain']): void {
   if (report.verdictLevel !== toolchain.level || report.toolchain.id !== toolchain.id) fail('toolchain_mismatch', `the ${label} report ran on toolchain ${report.toolchain.id} at ${report.verdictLevel} level, not the unit's ${toolchain.id}`);
-  if (report.environment.practonaut !== toolchain.practonaut) fail('practonaut_version', `the ${label} report was made with Practonaut ${JSON.stringify(report.environment.practonaut).slice(1, -1)}; the round's plan pins ${toolchain.practonaut}`);
+  checkPinned(label, report, toolchain.practonaut);
   if (report.environment.world.contentHash !== worldHash) fail('set_mismatch', `the ${label} report was not made on the set its round names`);
   if (report.settings.seeds.join() !== GATE_SEEDS.join()) fail('settings_mismatch', `the ${label} report uses seed list ${report.settings.seeds.join(',')}; a generated world has one variant, so a round takes --seed-list 1 only`);
   if (report.settings.repeats !== 1) fail('settings_mismatch', `the ${label} report has --repeats ${report.settings.repeats}; a round takes one run per agent per instance`);
@@ -154,7 +160,7 @@ function checkSettings(label: string, report: SessionReportV3, worldHash: string
  * requested, its billing class, and isolation from the runs a shipped parser re-derived. */
 function checkAgent(label: string, source: GateReport, agent: { preset: string; model: string; billing: string }): void {
   const value = source.report.agent;
-  if (value.kind !== 'preset' || value.name !== agent.preset || agent.preset !== GATE_PRESET) fail('ladder_preset_refused', `the ${label} report is from ${value.kind} ${JSON.stringify(value.name)}; a 0.3.0 round's agents run through ${GATE_PRESET} (PADR-0046 decision 7)`);
+  if (value.kind !== 'preset' || value.name !== agent.preset || agent.preset !== GATE_PRESET) fail('ladder_preset_refused', `the ${label} report is from ${value.kind} ${safeText(value.name)}; a 0.3.0 round's agents run through ${GATE_PRESET} (PADR-0046 decision 7)`);
   if (value.requestedModel.value !== agent.model || value.requestedModel.source !== 'preset-requested') fail('ladder_model_mismatch', `the ${label} report requested ${value.requestedModel.value ?? 'no model'}, not ${agent.model} (ANTHROPIC_MODEL)`);
   if (value.billing.class !== agent.billing) fail('billing_mismatch', `the ${label} report was set up for billing ${value.billing.class}, the round declares ${agent.billing}`);
   // "tool-restricted" only from runs whose offered tools a shipped parser read again (PADR-0044 decision 6).

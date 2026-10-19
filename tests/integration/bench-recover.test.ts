@@ -50,8 +50,9 @@ test('a bench killed with kill -9 is recovered from its run folders once its age
     assert.equal(existsSync(join(folder, 'report.json')), false, 'a killed bench writes no report');
     // Without a report, and outside a release ledger (a plain bench takes no entry), both model-run
     // folders are found by the gate's scan, which refuses a round with any of them.
-    const scan = async () => (await scanOutside([join(home, 'bench')], { worlds: [], tasks: TASKS }, parseLedger(headerLine()))).map(run => run.run);
-    assert.deepEqual(await scan(), ['connect-s1-r1', 'decision-s1-r1']);
+    const scan = async (worlds: string[] = []) => (await scanOutside([join(home, 'bench')], { worlds, tasks: TASKS }, parseLedger(headerLine()))).map(run => `${run.bench === firstBench ? 'killed' : 'resumed'}:${run.run}`);
+    const firstBench = (await readdir(join(home, 'bench')))[0]!;
+    assert.deepEqual(await scan(), ['killed:connect-s1-r1', 'killed:decision-s1-r1']);
 
     // The killed bench's agent outlives it: no recovery (and no world in the folder) while it runs.
     assert.ok(alive(sleeper));
@@ -86,10 +87,11 @@ test('a bench killed with kill -9 is recovered from its run folders once its age
     result = cli([...args(TASKS), '--recover', folder]);
     assert.notEqual(result.status, 0); assert.match(result.stderr, /already holds a report\.json/);
 
-    // Resumed with the named tasks; the gate's scan finds every run listed and its merge takes both.
+    // Resumed with the named tasks; the gate's scan finds every model run of the benched world (none
+    // in a ledger here) and its merge takes both reports.
     result = cli(args(['decision', 'insert-between']));
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(await scan(), ['connect-s1-r1:completed', 'decision-s1-r1:infra_error', 'decision-s1-r1:completed', 'insert-between-s1-r1:completed']);
+    assert.deepEqual(await scan([recovered.environment.world.contentHash]), ['killed:connect-s1-r1', 'killed:decision-s1-r1', 'resumed:decision-s1-r1', 'resumed:insert-between-s1-r1']);
     const benches = (await readdir(join(home, 'bench'))).sort();
     const reports = await Promise.all(benches.map(async bench => ({ report: await json(join(home, 'bench', bench, 'report.json')), bench })));
     const merged = mergeAgentRuns(reports, 'claude-opus-5-5');
