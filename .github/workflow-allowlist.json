@@ -1,0 +1,21 @@
+{
+  "$comment": "PADR-0049 decision 2.8: every path a workflow may hand to a cache or upload action and every asset of gh release create|upload, literally; and the actions known not to save or publish files, pinned by SHA. tools/check-workflows.ts (npm run check) refuses anything else. The draw.io runtime is never among them.",
+  "paths": [
+    ".local/native-chart-paper/",
+    ".local/native-transfer/",
+    ".local/drawio-conformance/summary.json",
+    "~/.cache/ms-playwright",
+    "~/Library/Caches/ms-playwright",
+    "~/AppData/Local/ms-playwright",
+    "${{ runner.temp }}/practonaut-out/",
+    "${{ runner.temp }}/release/practonaut.tgz",
+    "${{ runner.temp }}/release/notes.md"
+  ],
+  "releaseAssets": [],
+  "actions": {
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": "checks out the repository; saves and publishes nothing",
+    "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1": "installs Node; every use turns its package-manager cache off",
+    "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333": "downloads an artifact of the same run; publishes nothing",
+    "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e": "scans the git history; anything it uploads is its own findings report, never a path a workflow names"
+  }
+}

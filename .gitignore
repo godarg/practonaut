@@ -2,6 +2,8 @@ node_modules/
 dist/
 .local/
 *.tgz
+# The draw.io release is downloaded on request, never redistributed (PADR-0049 decision 9.4).
+*.war
 .DS_Store
 coverage/
 

@@ -102,6 +102,37 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           node --import ./tests/support/test-home.ts --test --test-reporter=spec tests/integration/browser-start.test.ts
+      # draw.io (PADR-0049 decisions 2.8 and 7.3), in its own steps after the restriction is lifted and
+      # with PRACTONAUT_CHROMIUM_SANDBOX set at no level, so only draw.io's own policy requires the
+      # sandbox. One home: setup downloads the pinned release into it, the layer reads it, the last step
+      # deletes it. The release is never cached or uploaded (tools/check-workflows.ts checks this file).
+      - name: draw.io runtime (setup --app drawio)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        env:
+          PRACTONAUT_HOME: ${{ runner.temp }}/practonaut-drawio-home
+        run: node src/cli/main.ts setup --app drawio
+      - name: draw.io conformance layer
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        env:
+          PN_DRAWIO_HOME: ${{ runner.temp }}/practonaut-drawio-home
+          PN_DRAWIO_REQUIRED: '1'
+        run: |
+          npm run test:drawio
+          node tools/require-drawio-summary.ts .local/drawio-conformance/summary.json
+      # The summary holds counts and hashes, no part of the archive (decision 8.6).
+      - name: Upload the draw.io conformance summary
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drawio-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/drawio-conformance/summary.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Delete the draw.io runtime
+        if: ${{ always() && runner.os == 'Linux' }}
+        env:
+          PN_DRAWIO_HOME: ${{ runner.temp }}/practonaut-drawio-home
+        run: rm -rf "$PN_DRAWIO_HOME"
 
   # Newer Node lines, outside the required checks: their names stay `test (<os>)` and `secret scan`
   # (the ruleset is a maintainer setting). Node 22 remains the supported minimum.
