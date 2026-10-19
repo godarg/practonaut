@@ -94,7 +94,7 @@ test('HTML is static and self-contained, escapes report text and never shows sta
   // their runs), decision s1 [pass, not judged] passes with 1 of 2 (the unjudged run counts as not
   // passed; half is enough), decision s2 [fail, fail] fails: 3/4.
   // Wilson 3/4 by hand: centre (0.75 + 0.4802) / 1.9604 = 0.6275, half 0.3269 → 30.06–95.44 %, shown 30–96 %.
-  assert.match(table, /^4\/8 runs passed · 3\/4 instances passed \(at least half of all their runs\) · 95 % interval 30–96 % over 4 instances · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\) · model not reported$/m);
+  assert.match(table, /^4\/8 runs passed · 3\/4 instances passed \(at least half of all their runs\) · 95 % interval 30–96 % over 4 instances · session verdict · consistency-checked, not re-verified · real Excalidraw mirror · isolation not recorded \(bench\/1\) · model not reported$/m);
   assert.match(table, /^1 not judged \(infrastructure\), counted as not passed$/m);
   assert.match(table, /^n = 8 runs · 2 seeds · 2 repeats$/m);
   // pass^2 for k = repeats: only connect s2 passed both repeats.
@@ -128,12 +128,12 @@ test('the HTML names its verification level; the command line, home folder as ~,
   const plain = renderHtml(value, ':root{}'), verified = renderHtml(value, ':root{}', 'en', 're-verified');
   assert.match(plain, /consistency-checked, not re-verified/); assert.equal(plain.includes('re-verified: every judged run'), false);
   assert.match(verified, /re-verified: every judged run was re-judged/);
-  assert.match(plain, /<details class="tech"><summary>Technical details<\/summary><dl class="settings"><dt>Command<\/dt><dd><code>claude -p --mcp-config \{mcp_config\} --tools &#39;&#39;<\/code><\/dd>/);
+  assert.match(plain, /<details class="tech"><summary>Technical details<\/summary><dl class="settings"><dt>Command<\/dt><dd><code class="id">claude<\/code> <code class="id">-p<\/code> <code class="id">--mcp-config<\/code> <code class="id">\{mcp_config\}<\/code> <code class="id">--tools<\/code> <code class="id">&#39;&#39;<\/code><\/dd>/);
   const local = fixture(); local.agent = { kind: 'command', name: 'mine', command: [join(homedir(), 'agents', 'run.sh'), '{mcp_config}'], model: null, modelSource: 'none' };
   const shared = renderHtml(local, ':root{}');
-  assert.match(shared, /<code>~[/\\]agents[/\\]run\.sh \{mcp_config\}<\/code>/); assert.equal(shared.includes(homedir()), false, 'the home folder is not named');
-  assert.match(plain, /n = 8\u00a0runs · 2\u00a0seeds · 2\u00a0repeats/);
-  assert.match(renderHtml(value, ':root{}', 'de'), /n = 8\u00a0Läufe · 2\u00a0Seeds · 2\u00a0Wiederholungen/);
+  assert.match(shared, /<code class="id">~[/\\]agents[/\\]run\.sh<\/code> <code class="id">\{mcp_config\}<\/code>/); assert.equal(shared.includes(homedir()), false, 'the home folder is not named');
+  assert.match(plain, /n\u00a0=\u00a08\u00a0runs · 2\u00a0seeds · 2\u00a0repeats/);
+  assert.match(renderHtml(value, ':root{}', 'de'), /n\u00a0=\u00a08\u00a0Läufe · 2\u00a0Seeds · 2\u00a0Wiederholungen/);
   const one = report([run('connect', 1, 1, true)], 1, ['connect'], [1]);
   assert.match(renderTable(one), /^n = 1 run · 1 seed · 1 repeat$/m);
   assert.match(renderTable(one), /^1 task × 1 seed × 1 repeat, timeout/m);
@@ -161,7 +161,7 @@ test('a run without a verdict shows the unknown mark and says so, never the fail
   // In the runs table and on the card: the dashed ring (unknown, design-language §7.3) and the words.
   assert.equal(html.split(mark).length - 1, 2);
   assert.match(card, /<h3>Why there is no verdict<\/h3>/); assert.equal(card.slice(0, card.indexOf('</details>')).includes('Why it failed'), false);
-  assert.match(card, /<span class="state">No verdict:<\/span> the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score\./);
+  assert.match(card, /<span class="state">No verdict:<\/span> the run could not be judged, so it counts as not passed; an infrastructure fault never counts as passed\./);
   assert.equal((html.match(/class="result fail"/g) ?? []).length, 0, 'no fail mark for a run that was not judged');
   // The terminal marks it with "?", not with the cross of a judged failure.
   assert.match(renderTable(value), /^\? connect-s2-r1  no verdict, counted as not passed$/m);

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { CheckerBundleManifestSchema, WorldManifestSchema } from "../src/package/manifest.ts";
 
 import { WorldSchema, WorldSchemaV2 } from "../src/world/schema.ts";
-import { BenchReportSchemaV1, BenchReportSchemaV2 } from "../src/bench/report.ts";
+import { BenchReportSchemaV1, BenchReportSchemaV2, BenchReportSchemaV3 } from "../src/bench/report.ts";
 
 const ROOT = new URL("../", import.meta.url);
 // No public schema host exists yet; a URN identifies the schema without promising a URL.
@@ -20,6 +20,7 @@ export const SCHEMA_FILES: ReadonlyArray<{ file: string; title: string; schema: 
   { file: "checker-bundle-manifest.v1.schema.json", title: "Practonaut checker bundle manifest v1", schema: CheckerBundleManifestSchema },
   { file: "bench.v1.json", title: "Practonaut bench report v1 (practonaut.bench/1)", schema: BenchReportSchemaV1 },
   { file: "bench.v2.json", title: "Practonaut bench report v2 (practonaut.bench/2)", schema: BenchReportSchemaV2 },
+  { file: "bench.v3.json", title: "Practonaut bench report v3 (practonaut.bench/3)", schema: BenchReportSchemaV3 },
 ];
 
 export function generate(entry: (typeof SCHEMA_FILES)[number]): string {

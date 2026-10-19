@@ -23,7 +23,8 @@ import { generateVariant } from '../world/variant.ts';
 import { validateState } from '../world/schema.ts';
 import { worldEra, type Action, type Localized, type SessionData, type State, type World } from '../world/types.ts';
 import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
-import { BENCH_REFERENCES_FILE, BENCH_WORLD_FILE, isBenchReportV2, type BenchReport, type BenchRun, type BenchRunV2 } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
+import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
 import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
@@ -48,7 +49,7 @@ export type Picture = { kind: 'engine'; markup: string } | { kind: 'schematic'; 
 /** A part that could not be shown, and why. */
 export type Missing = 'not-recorded' | 'changed' | 'unreadable' | 'not-judged';
 export interface RunDetail {
-  run: BenchRun;
+  run: ViewSessionRun;
   conditions: ConditionDetail[] | null; conditionsMissing: Missing | null; traceError: string | null;
   errors: Array<{ id: string; explanation: Localized }>;
   trajectory: TrajectoryRow[] | null; trajectoryMissing: Missing | null;
@@ -127,7 +128,7 @@ function describe(action: { name: string; params: Record<string, unknown> }, sta
   return `${action.name}(${Object.entries(action.params).map(([key, raw]) => `${key}: ${value(key, raw)}`).join(', ')})`;
 }
 
-function trajectoryOf(records: readonly MutationRecord[], world: World, run: BenchRun, trace: z.infer<typeof TraceSchema> | null): TrajectoryRow[] {
+function trajectoryOf(records: readonly MutationRecord[], world: World, run: ViewSessionRun, trace: z.infer<typeof TraceSchema> | null): TrajectoryRow[] {
   // The core replays the accepted mutations only to name the objects each action touched.
   let session: Session | null = (() => { try { return new Session(world, run.seed, run.taskId); } catch { return null; } })();
   const metAfter = new Map((trace?.points ?? []).map(point => [point.seq, point.met]));
@@ -162,16 +163,17 @@ function summarizeCalls(records: readonly CallRecord[], dropped: number, omitted
 }
 
 /** The stored world as the report binds it, or why it cannot be used. */
-async function boundWorld(report: BenchReport, folder: string): Promise<{ world: World } | { problem: ReportDetails['folder'] }> {
-  if (!isBenchReportV2(report)) {
+async function boundWorld(report: SessionReportView, folder: string): Promise<{ world: World } | { problem: ReportDetails['folder'] }> {
+  const stored = report.environment.world.package;
+  if (stored === null) {
     // A /1 report names the bundled library; its explanations need the same library content.
     const { libraryWorld } = await import('./run.ts');
     const library = await libraryWorld();
-    return library.contentHash === report.environment.library.contentHash ? { world: library.world } : { problem: 'world-changed' };
+    return library.contentHash === report.environment.world.contentHash ? { world: library.world } : { problem: 'world-changed' };
   }
   const bytes = await bounded(join(folder, BENCH_WORLD_FILE), LIMITS.maxArchiveBytes);
   if (bytes === null) return { problem: 'missing' };
-  if (sha256Hex(bytes) !== report.environment.world.package.sha256) return { problem: 'world-changed' };
+  if (sha256Hex(bytes) !== stored.sha256) return { problem: 'world-changed' };
   try {
     const world = await worldFromPackage(bytes);
     return worldContentHash(world) === report.environment.world.contentHash ? { world } : { problem: 'world-changed' };
@@ -179,8 +181,8 @@ async function boundWorld(report: BenchReport, folder: string): Promise<{ world:
 }
 
 /** The validated references of the report, by task: library solutions for /1, `references.json` for /2. */
-async function boundReferences(report: BenchReport, folder: string): Promise<Map<string, readonly OracleStep[]> | null> {
-  if (!isBenchReportV2(report)) return new Map([...libraryReferences(report.settings.tasks)].map(([task, reference]) => [task, reference.steps]));
+async function boundReferences(report: SessionReportView, folder: string): Promise<Map<string, readonly OracleStep[]> | null> {
+  if (report.references === 'not-recorded') return new Map([...libraryReferences(report.settings.tasks)].map(([task, reference]) => [task, reference.steps]));
   if (report.references === null) return new Map();
   const bytes = await bounded(join(folder, BENCH_REFERENCES_FILE), MAX_REFERENCES_BYTES);
   if (bytes === null || sha256Hex(bytes) !== report.references.sha256) return null;
@@ -192,14 +194,13 @@ async function boundReferences(report: BenchReport, folder: string): Promise<Map
 
 /** Error-class explanations of the report's tasks when its world is the bundled library (its content
  * hash says so), so they can be shown without the bench folder. */
-async function libraryExplanations(report: BenchReport): Promise<Map<string, Localized>> {
+async function libraryExplanations(report: BenchReportView): Promise<Map<string, Localized>> {
   const explanations = new Map<string, Localized>();
-  if (isBenchReportV2(report) && report.environment.world.source !== 'library') return explanations;
+  if (report.environment.world.source !== 'library') return explanations;
   const { libraryWorld } = await import('./run.ts');
   const library = await libraryWorld();
-  const wanted = isBenchReportV2(report) ? report.environment.world.contentHash : report.environment.library.contentHash;
-  if (library.contentHash !== wanted) return explanations;
-  for (const seed of new Set(report.runs.map(run => run.seed))) {
+  if (library.contentHash !== report.environment.world.contentHash) return explanations;
+  for (const seed of new Set((report.runs as ReadonlyArray<{ seed: number }>).map(run => run.seed))) {
     for (const task of generateVariant(library.world, seed).tasks) for (const error of task.errorClasses) explanations.set(explanationKey(task.id, seed, error.id), error.explanation);
   }
   return explanations;
@@ -248,10 +249,14 @@ export function firstDifference(final: State, target: State): number | null {
 }
 
 /** Reads the details of every run from `folder` (the bench folder); `null` folder: none given. */
-export async function loadReportDetails(report: BenchReport, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
+export async function loadReportDetails(input: ReportInput, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
+  const report = asView(input);
   const runs = new Map<string, RunDetail>();
   const explanations = await libraryExplanations(report).catch(() => new Map<string, Localized>());
+  // An artifact-judged run has no session, trajectory or trace to explain it (PADR-0044 decision 1).
+  if (report.verdictLevel === 'artifact') return { folder: 'read', runs, explanations };
   if (folder === null) return { folder: 'missing', runs, explanations };
+  const logFormat = report.readFrom === BENCH_SCHEMA_V3 ? 'v3' : 'v2', nativeName = nativeFileOf(report);
   const found = await boundWorld(report, folder);
   if ('problem' in found) return { folder: found.problem, runs, explanations };
   const world = found.world, references = await boundReferences(report, folder);
@@ -262,7 +267,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
     const conditions = publicConditions(task);
-    const v2 = isBenchReportV2(report) ? run as BenchRunV2 : null;
+    const v2 = run;
     // The mutation log and the trace explain any run, judged or not.
     let trace: z.infer<typeof TraceSchema> | null = null;
     const traceHash = v2?.artifacts?.trace;
@@ -278,7 +283,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
       const read = await bound(folder, run.id, RUN_EVIDENCE.mutations, v2.logs.mutations.sha256, MAX_LOG_BYTES);
       if ('text' in read) {
         try {
-          const records = parseMutations(read.text);
+          const records = parseMutations(read.text, logFormat);
           // Its points must be exactly the accepted mutations, in order, with their steps.
           const accepted = records.filter(record => record.outcome === 'accepted' && record.op !== 'check');
           if (trace && (trace.points.length !== accepted.length || trace.points.some((point, at) => point.seq !== accepted[at]!.seq || point.step !== accepted[at]!.step))) { trace = null; detail.conditionsMissing = 'unreadable'; }
@@ -329,7 +334,7 @@ export async function loadReportDetails(report: BenchReport, folder: string | nu
         try {
           const svg = readEngineSvg(read.text, `run${index}-engine`);
           let scene: Box | null = null;
-          if (run.artifacts.native) { const native = await bound(folder, run.id, ARTIFACT.native, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
+          if (run.artifacts.native) { const native = await bound(folder, run.id, nativeName, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
           engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
         } catch { reason = 'picture-unreadable'; }
       } else reason = read.missing === 'changed' ? 'picture-changed' : 'no-picture';

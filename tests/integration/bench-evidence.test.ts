@@ -14,7 +14,7 @@ import { runBench } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
 import { parseCallLog, parseMutations } from '../../src/bench/evidence.ts';
 import { sha256Hex } from '../../src/canonical/index.ts';
-import type { BenchReportV2 } from '../../src/bench/report.ts';
+import type { SessionReportV3 as BenchReportV2 } from '../../src/bench/report.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const AGENT = fileURLToPath(new URL('../support/bench-agent.ts', import.meta.url));
@@ -34,7 +34,7 @@ test('built-in agent: client round trips joined to the bridge log, every mutatio
     assert.ok(calls.length >= run.referenceActions! + 2, run.id);
     assert.equal(calls.every(call => call.clientMs !== null && call.clientMs + 0.2 >= call.bridgeMs && call.resultBytes > 0), true, 'every call of the bench client has its round trip, which contains the bridge time');
     assert.deepEqual(calls.filter(call => call.tool === 'act').length, run.toolCalls.act);
-    const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'));
+    const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'), 'v3');
     // Every action of the reference, then the oracle's one check (recorded host-side, PADR-0040).
     assert.equal(mutations.length, run.referenceActions! + 1);
     assert.equal(mutations.slice(0, -1).every(entry => entry.op === 'act' && entry.outcome === 'accepted' && entry.client === 'practonaut-bench'), true);
@@ -89,10 +89,10 @@ test('command agent: no client timing, its own figures self-reported, two MCP cl
     const bench = await runBench({ ...base, agent: resolveAgent(`${JSON.stringify(process.execPath)} ${JSON.stringify(AGENT)} script {mcp_config}`), tasks: ['connect'] });
     const run = bench.report!.runs[0]!, folder = join(bench.directory, run.id);
     assert.deepEqual([run.pass, run.acceptedActions, run.rejectedActions, run.undos], [false, 2, 1, 1]);
-    assert.deepEqual(run.client, { source: 'command-output', model: 'pn-script-model', turns: 4, costUsd: 0.0123, tokens: { input: 120, output: 45, cacheRead: 900, cacheCreation: 300 } });
+    assert.deepEqual(run.client, { source: 'command-output', model: 'pn-script-model', turns: 4, costUsd: 0.0123, tokens: { input: 120, output: 45, cacheRead: 900, cacheCreation: 300 }, parser: 'claude-code-stream/1' });
     assert.equal(run.logs?.calls?.clientTiming, false);
     assert.equal(parseCallLog(await readFile(join(folder, 'calls.jsonl'), 'utf8')).every(call => call.clientMs === null), true);
-    const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'));
+    const mutations = parseMutations(await readFile(join(folder, 'mutations.jsonl'), 'utf8'), 'v3');
     // Every change through MCP names its client, an undo too.
     assert.deepEqual(mutations.map(entry => [entry.op, entry.outcome, entry.code ?? null, entry.client]), [['act', 'accepted', null, 'practonaut-bench'], ['undo', 'accepted', null, 'practonaut-bench'], ['act', 'rejected', 'precondition_failed', 'practonaut-bench'], ['act', 'accepted', null, 'second-agent'], ['check', 'accepted', null, null]]);
     // connect: 2 steps · 1 arrow · “l2” · “l1” · arrow l1→l2. a→b meets all; undo returns; b→a misses the direction.

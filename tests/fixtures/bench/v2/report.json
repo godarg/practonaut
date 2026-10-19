@@ -1,0 +1,211 @@
+{
+  "schema": "practonaut.bench/2",
+  "createdAt": "2026-10-18T16:49:15.973Z",
+  "label": "bench/2 fixture (0.2.0 writer)",
+  "environment": {
+    "practonaut": "0.3.0-dev.0",
+    "excalidraw": "0.18.1",
+    "node": "v22.22.3",
+    "os": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "arch": "arm64"
+    },
+    "mirror": "required",
+    "world": {
+      "source": "own",
+      "worldId": "review-and-send",
+      "version": "1.0.0",
+      "contentHash": "9a18d38dd705f180c517c6d235c9b76c83e446bebc8c9dce61878420b9d2b567",
+      "package": {
+        "path": "world.pnworld",
+        "sha256": "e845700b23ab569bbf938185b1fa66b7fedb24c699a50d8aa25da3851b9e13e7"
+      },
+      "generated": []
+    }
+  },
+  "agent": {
+    "kind": "builtin",
+    "name": "oracle",
+    "command": [],
+    "isolation": "builtin-baseline",
+    "model": null,
+    "modelSource": "none",
+    "apiKeySource": null,
+    "keptEnv": []
+  },
+  "settings": {
+    "tasks": [
+      "review-and-send"
+    ],
+    "seeds": [
+      1
+    ],
+    "repeats": 2,
+    "timeoutSeconds": 300,
+    "maxActions": 50,
+    "mirror": "required",
+    "prompt": "",
+    "checks": 4
+  },
+  "references": {
+    "path": "references.json",
+    "sha256": "e79f8581c3ddbee8a5c4fa0e4af32d2353bbda39cdbb21267f5147ada974296f",
+    "tasks": [
+      {
+        "taskId": "review-and-send",
+        "source": "oracle-file",
+        "actions": 2,
+        "minimal": true
+      }
+    ]
+  },
+  "runs": [
+    {
+      "id": "review-and-send-s1-r1",
+      "taskId": "review-and-send",
+      "seed": 1,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "actions": 2,
+      "acceptedActions": 2,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 2,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 5
+      },
+      "wallMs": 829,
+      "referenceActions": 2,
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "agentExitCode": 0,
+      "artifacts": {
+        "session": "3e853edde209da12533e180a50a4461a1465668587f3bfc4d6086a855a26a9e9",
+        "native": "ebafd58093be74ee0ee0742940c6e117243905c824e8d6202221862f417dd965",
+        "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
+        "trace": "00fb1b53c4706512ce3283d3073fde91dbba6afbefeed19685d85f478e624a57",
+        "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "9891dd7f33846e594d9cb11ebc65e5dce171b1739b98caefd9e7a9a614d0fc84",
+          "entries": 4,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
+          "omitted": 0
+        }
+      }
+    },
+    {
+      "id": "review-and-send-s1-r2",
+      "taskId": "review-and-send",
+      "seed": 1,
+      "repeat": 2,
+      "status": "completed",
+      "pass": true,
+      "actions": 2,
+      "acceptedActions": 2,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 2,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 5
+      },
+      "wallMs": 404,
+      "referenceActions": 2,
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "agentExitCode": 0,
+      "artifacts": {
+        "session": "3e853edde209da12533e180a50a4461a1465668587f3bfc4d6086a855a26a9e9",
+        "native": "dddb1bf8e3f7562ece2b9ad22574b70f1521bdfe249fb99ef706bc197caf9724",
+        "checker": "bdbd1b77c6ce237771900dd586c76d8a88e34242005aeefbedee358e1df2cb63",
+        "trace": "00fb1b53c4706512ce3283d3073fde91dbba6afbefeed19685d85f478e624a57",
+        "board": "4cb0133f2af40bba9277a1cff8c670930d40db38cfc3a77d275535d4f6d72351"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "ef15aa40a08732ce306205fb3337e47f53c519f09396d72521e8bd7b51ed9277",
+          "entries": 4,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "39b700fe6b4f3ac53953c3c1c36f70f83aa087c737892586f1344cafaccd1bc0",
+          "entries": 3,
+          "omitted": 0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "runs": 2,
+    "passed": 2,
+    "judged": 2,
+    "infraErrors": 0,
+    "passAt1": 1,
+    "passHatK": [
+      {
+        "k": 1,
+        "value": 1
+      },
+      {
+        "k": 2,
+        "value": 1
+      }
+    ],
+    "meanActions": 2,
+    "meanActionsPassed": 2,
+    "efficiencyVsReference": 1,
+    "meanWallMs": 616.5,
+    "rejectedActions": 0,
+    "undos": 0,
+    "resets": 0,
+    "toolCalls": 10,
+    "byTask": [
+      {
+        "taskId": "review-and-send",
+        "runs": 2,
+        "passed": 2,
+        "passAt1": 1,
+        "meanActions": 2,
+        "referenceActions": 2,
+        "efficiency": 1
+      }
+    ]
+  }
+}

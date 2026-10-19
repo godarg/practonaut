@@ -52,7 +52,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0041](0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) | Headroom where agents fail, and the first checkpoint after the 0.3.0 launch | accepted | 2026-10-18 |
 | [PADR-0042](0042-gate-for-families-on-toolchains.md) | The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget | proposed | 2026-10-18 |
 | [PADR-0043](0043-artifact-judged-verdict-level.md) | Artifact mode: an "artifact-judged" verdict level for results made with foreign tools | proposed | 2026-10-18 |
-| [PADR-0044](0044-bench-report-v3.md) | Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity | proposed | 2026-10-18 |
+| [PADR-0044](0044-bench-report-v3.md) | Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity | accepted | 2026-10-18 |
 | [PADR-0045](0045-adapter-registry-and-browser-shell.md) | Adapter registry, named refusal of unknown applications, and a shared browser shell | proposed | 2026-10-18 |
 | [PADR-0046](0046-vendor-neutral-presets.md) | Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream | proposed | 2026-10-18 |
 | [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | proposed | 2026-10-18 |
