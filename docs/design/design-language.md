@@ -793,3 +793,11 @@ unit, and `test:a11y` measures every word of the instance cell, red on the revie
 minors were fixed (run-count lines name their pair as the table does; "Wilson", "McNemar" and
 "Practonaut" are never hyphenated in notes and notices; a formal line wraps between its words; the
 compact table applies only where the table does not stack). Nothing was consciously left undone.
+
+Round R4 looked at the R3 fixes on 2026-10-19, an independent agent from fresh context: 15 captures
+from commit `2603d7d`. Verdict PASS: no blocker, no major, 3 minor findings. R3-F1 was resolved on
+every session compare and R3-F2 to F5 were accepted. The minors were fixed after the merge: a formal
+line never ends on an operator (each joins the operand after it), the change column of a compare takes
+the full stacked row, and a cell's words may break before a number so its text shrinks to the cell.
+`test:a11y` now measures all three, and the two R3 fixes the round found untested (a formal word cut
+inside, a compact table that stacks), each red on the commit before its fix.
