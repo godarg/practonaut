@@ -164,9 +164,14 @@ test('a set is one world with one task per seed; seeds are distinct and held-out
   const dir = mkdtempSync(join(tmpdir(), 'practonaut-challenge-'));
   try {
     const tool = (args: string[]) => spawnSync(process.execPath, ['tools/challenge.ts', ...args], { encoding: 'utf8' });
-    // A held-out set comes only from a round declaration (PADR-0040), which fixes its seeds.
-    const refused = tool(['generate', 'repair', '--set', 'heldout', '--round', '1', '--seed', '1000000', '--out', join(dir, 'x')]);
+    // A held-out set comes only from a round declaration (PADR-0040, PADR-0042), which fixes its seeds;
+    // a pre-probe set only from its probe plan.
+    let refused = tool(['generate', 'repair.practonaut', '--set', 'heldout', '--out', join(dir, 'x')]);
     assert.equal(refused.status, 1); assert.match(refused.stderr, /a held-out set is generated from its round declaration/);
+    refused = tool(['generate', 'repair.practonaut', '--set', 'heldout', '--seed', '1000000', '--out', join(dir, 'x')]);
+    assert.equal(refused.status, 1); assert.match(refused.stderr, /--seed is fixed by the declaration/);
+    refused = tool(['generate', 'repair.practonaut', '--set', 'probe', '--out', join(dir, 'x')]);
+    assert.equal(refused.status, 1); assert.match(refused.stderr, /a pre-probe set is generated from its probe plan/);
     const range = tool(['generate', 'repair', '--set', 'check', '--seed', '5', '--out', join(dir, 'y')]);
     assert.equal(range.status, 1); assert.match(range.stderr, /--set check uses seeds 10000 to 19999/);
     assert.equal(tool(['generate', 'repair', '--set', 'dev', '--round', '1', '--out', join(dir, 'z')]).status, 1, '--round belongs to held-out sets');
