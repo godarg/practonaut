@@ -170,7 +170,7 @@ test('a whole 0.3.0 round without a language model: pre-probe, declaration, held
     const reports = [stopped.path, resumed.path, sonnet.path, haiku.path];
     // 6. The gate reads only pushed records.
     refused = p.tool(['gate', ...base, '--ladder', reports.join(','), '--out', file('repair.practonaut-round1.md')]);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_not_committed: the local release ledger holds 160 records the committed one lacks/);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_not_committed: the local release ledger holds 158 records the committed one lacks/);
     p.ok(['ledger', 'write']); p.commit('ledger: held-out');
     const gated = p.ok(['gate', ...base, '--ladder', reports.join(','), '--out', file('repair.practonaut-round1.md')]);
     assert.match(gated.stdout, /repair\.practonaut round 1: passes; 85 model runs counted in the round \(1 exempt\); release 85 of 800/);

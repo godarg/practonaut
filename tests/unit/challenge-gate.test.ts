@@ -277,6 +277,10 @@ test('the void rule counts infrastructure errors, missing and unattested runs ov
   const missing = heldReport(round, HAIKU, first(round, 4), { run: (task, index) => index < 4 ? null : presetRun(task, false, HAIKU) });
   assert.equal(computeGate(inputOf(round, [opus!, passing()[1]!, missing])).weakest.missing, 4);
   assert.equal(computeGate(inputOf(round, [opus!, passing()[1]!, missing])).verdict, 'void');
+  // Unattested runs count the same: four of Sonnet's runs not re-derived void the round.
+  const sonnet = passing()[1]!, hidden = sonnet.report.runs.slice(20, 24).map(run => run.id);
+  const four = computeGate(inputOf(round, [opus!, { ...sonnet, rederived: new Set([...sonnet.rederived].filter(id => !hidden.includes(id))) }, haiku!]));
+  assert.deepEqual([four.agents[3]!.unattested, four.verdict, four.voidReason], [4, 'void', 'infrastructure']);
   // Budget: 16 reruns after counted API errors make the round's held-out runs 94 + 7 = 101.
   const failed = heldReport(round, SONNET, first(round, 10), { run: (task, index) => index < 16 ? presetRun(task, null, SONNET, { failure: { reason: 'api_error', parser: 'claude-code-stream/1', code: '529', beforeModelWork: true } }) : null });
   const rerun = heldReport(round, SONNET, first(round, 10), { createdAt: '2026-11-02T11:00:00.000Z' });
@@ -307,7 +311,13 @@ test('the gate holds to its files: the plan and record the declaration follows f
   refused(() => computeGate({ ...input, plan: planOf({ seeds: [1, 2, 3, 4, 5, 6, 8] }) }), 'round_files_mismatch');
   refused(() => computeGate({ ...input, probe: { ...input.probe, passed: 2 } }), 'round_files_mismatch');
   const rerun = probeReport(3, { runs: (task, pass) => presetRun(task, task === 'repair-7' ? true : pass, OPUS) });
-  refused(() => computeGate({ ...input, development: [rerun], ledger: { ...input.ledger, ledger: ledgerOf([{ reports: [rerun], purpose: 'pre-probe', basis: fileHash(round.plan) }, { reports: input.ladder as GateReport[], purpose: 'held-out', basis: fileHash(round.declaration) }]) } }), 'development_mismatch');
+  refused(() => computeGate({ ...input, development: [rerun], ledger: { ...input.ledger, ledger: ledgerOf([{ reports: [rerun], purpose: 'pre-probe', basis: fileHash(round.plan) }, { reports: input.ladder as GateReport[], purpose: 'held-out', basis: fileHash(round.declaration) }]) } }), 'development_mismatch', /outcomes|digests/);
+  // The same outcomes from another board (another action log): only the digest tells.
+  const probe = round.probe[0]!, other = new Map(probe.sessions!); other.set(probe.report.runs[0]!.id, { hash: 'state-other', log: [] });
+  refused(() => computeGate({ ...input, development: [{ ...probe, sessions: other }] }), 'development_mismatch', /are not the ones the declaration digests/);
+  // A pre-probe report that requested another model than the plan's.
+  const sonnetProbe = probeReport(3, { requested: SONNET });
+  refused(() => probeRecordOf(round.plan, [sonnetProbe], ledgerOf([{ reports: [sonnetProbe], purpose: 'pre-probe', basis: fileHash(round.plan) }])), 'ladder_model_mismatch');
   refused(() => computeGate({ ...input, oracle: [heldReport(round, 'oracle', round.tasks.map(() => true), { run: (task, index) => index === 0 ? null : builtinRun(task, true) })] }), 'baseline_incomplete');
   refused(() => preflightGate({ ...input, oracle: [heldReport(round, 'oracle', round.tasks.map((_, index) => index > 0))] }), 'preflight_refused', /the oracle passes 25 of 26/);
   refused(() => preflightGate({ ...input, nearMisses: { ...input.nearMisses, passed: 1 } }), 'preflight_refused', /1 near misses pass the checker/);
