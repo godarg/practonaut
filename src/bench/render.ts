@@ -44,23 +44,42 @@ const shown = (value: string): string => readableText(value);
 const QUOTED = /([“„«‚‘"][^“”„«»‚‘’"]*[”“»’"])/u;
 /** A number and the word it counts, or a word and its number ("6 runs", "seed 1", "after #3"), stay on
  * one line: a no-break space joins them, outside quoted data, which keeps its own characters; so do
- * the two sides of an equals sign ("p = 0.500", "n = 6"). */
-const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0').replace(/(\S) = (?=\S)/gu, '$1\u00a0=\u00a0')).join('');
+ * the two sides of an equals sign ("p = 0.500", "n = 6"), a comparison and its number ("> 1"), a
+ * number and its percent sign ("91 %"), and a range ("9\u201391": a word joiner after the dash). */
+const joined = (value: string): string => value.split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=#?\d)/gu, '$1\u00a0').replace(/(\S) = (?=\S)/gu, '$1\u00a0=\u00a0')
+  .replace(/(\d) %/gu, '$1\u00a0%').replace(/(\d)\u2013(?=\d)/gu, '$1\u2013\u2060').replace(/([<>\u2264\u2265]) (?=\d)/gu, '$1\u00a0')).join('');
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 const esc = escapeHtml;
-/** A command named in prose ("practonaut report", "report --verify") and a command-line flag: data,
- * which never hyphenates (design-language \u00a710.5); a flag also stays on one line, so a reader who
- * copies it gets it whole (design review R1). */
+/** A command named in prose ("practonaut report", "report --verify") and a command-line flag: code, set
+ * in mono like every command; a flag stays on one line, so a reader who copies it gets it whole. */
 const COMMAND = String.raw`(?:practonaut )?(?:report|compare|bench)(?= --)|practonaut (?:report|compare|bench|challenge)\b|--[a-z][a-z-]*`;
-/** Escaped prose whose quoted parts (labels, names), commands, flags and the given ids are data: never
- * hyphenated. `code`: the ids are set as code (mono), as a table names a task. */
+/** Proper names the page's hyphenation must not split ("Prac-tonaut", "McNe-mar"). */
+const NAMES = String.raw`(?<![\p{L}\p{N}])(?:Practonaut|McNemar|Excalidraw)(?![\p{L}\p{N}])`;
+/** The longest word kept on one line: an identifier up to this length never breaks, not even at its own
+ * hyphens (design-language \u00a710.5, design review R2); a longer one, such as a hash, may wrap. */
+export const ID_MAX = 32;
+/** Data (a quoted label, an id, a command) as words: each word of at most `ID_MAX` characters one
+ * unbreakable unit (`id`); `code`: set in mono. */
+export function dataWords(value: string, tag: 'data' | 'code' = 'data'): string {
+  const word = (text: string): string => {
+    const id = text.length <= ID_MAX;
+    return tag === 'code' ? `<code${id ? ' class="id"' : ''}>${esc(text)}</code>` : `<span class="data${id ? ' id' : ''}">${esc(text)}</span>`;
+  };
+  return readableText(value).split(/(\s+)/u).map((part, index) => index % 2 ? esc(part) : part ? word(part) : '').join('');
+}
+/** Escaped prose whose quoted parts (labels, names) and the given ids are data, and whose commands and
+ * flags are code: never hyphenated; ids, commands and flags each word on one line. `code`: the ids are set as code (mono), as
+ * a table or a compare list names a task. Proper names are never hyphenated either. */
 export function prose(value: string, ids: readonly string[] = [], idTag: 'data' | 'code' = 'data'): string {
   const names = [...new Set(ids)].filter(Boolean).sort((a, b) => b.length - a.length).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   // An id is matched as a whole word, never inside another (a task "T" is not the T of "The").
-  const known = new Set(ids), pattern = new RegExp(`(${[...names.map(name => String.raw`(?<![\p{L}\p{N}_-])${name}(?![\p{L}\p{N}_-])`), COMMAND].join('|')})`, 'u');
-  const data = (part: string): string => `<span class="data">${esc(part)}</span>`;
-  const piece = (part: string): string => known.has(part) ? (idTag === 'code' ? `<code>${esc(part)}</code>` : data(part)) : part.startsWith('--') ? `<span class="data flag">${esc(part)}</span>` : data(part);
-  return readableText(value).split(QUOTED).map((part, index) => index % 2 ? data(part)
+  const known = new Set(ids), pattern = new RegExp(`(${[...names.map(name => String.raw`(?<![\p{L}\p{N}_-])${name}(?![\p{L}\p{N}_-])`), COMMAND, NAMES].join('|')})`, 'u');
+  const piece = (part: string): string => known.has(part) ? dataWords(part, idTag)
+    : part.startsWith('--') ? `<code class="flag">${esc(part)}</code>`
+    : /^(?:Practonaut|McNemar|Excalidraw)$/u.test(part) ? `<span class="name">${esc(part)}</span>` : dataWords(part, 'code');
+  // A quoted label is the author's text: never hyphenated, but it wraps like text (a long German
+  // compound may not fit a phone's line); identifiers are the ones that never break.
+  return readableText(value).split(QUOTED).map((part, index) => index % 2 ? `<span class="data quoted">${esc(part)}</span>`
     : part.split(pattern).map((text, at) => at % 2 ? piece(text) : esc(text)).join('')).join('');
 }
 
@@ -99,12 +118,12 @@ export function chips(label: string, facts: readonly string[], ids: readonly str
 /** A table that stacks into one block per row below 40rem (`many` columns: below 60rem): every cell
  * names its column. `capped` bounds a column of lists (it wraps instead of widening the table); `prose`
  * marks a column of sentences, which may hyphenate (a stacked cell is narrow). */
-export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean; prose?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false): string {
+export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean; prose?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false, compact = false): string {
   const region = labelledBy ? `aria-labelledby="${labelledBy}"` : `aria-label="${esc(label)}"`;
   const header = head.map(cell => `<th scope="col"${cell.capped ? ' class="text capped"' : cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
   const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : cell.prose ? ' class="text prose"' : ' class="text"';
   const body = rows.map(row => `<tr>${row.map((cell, index) => `<td data-label="${esc(head[index]!.text)}"${kind(head[index]!)}>${cell}</td>`).join('')}</tr>`).join('');
-  return `<div class="scroll ${many ? 'stack-many' : 'stack'}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="scroll ${many ? 'stack-many' : 'stack'}${compact ? ' compact' : ''}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 /** The first sentence of an explanation (the factual part); the full text stays under Technical details. */
 export function firstSentence(text: string): string {
@@ -403,10 +422,12 @@ const result = (pass: boolean, t: Words): string => `<span class="result ${pass 
 /** A run's result: pass, fail, or — when the checker gave no verdict — the unknown mark, counted as not passed. */
 const runResult = (run: Pick<ViewRun, 'checker' | 'pass'>, t: Words): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
 const figure = (label: string, value: string, detail?: string): string => `<div class="figure"><dt>${esc(label)}</dt><dd>${esc(value)}</dd>${detail ? `<dd class="detail">${esc(detail)}</dd>` : ''}</div>`;
+/** A run's error classes in the runs table: each an identifier on one line. */
+const errorCell = (run: ViewRun, t: Words): string => errorClassesOf(run).map(id => dataWords(id)).join(', ') || esc(t.none);
 /** A "Technical details" disclosure holding label/value pairs (identifiers, codes, hashes). */
 function technical(t: Words, facts: ReadonlyArray<[string, string]>): string {
   if (!facts.length) return '';
-  return `<details class="tech"><summary>${esc(t.technical)}</summary><dl class="settings">${facts.map(([label, value]) => `<dt>${prose(label)}</dt><dd><code>${esc(value)}</code></dd>`).join('')}</dl></details>`;
+  return `<details class="tech"><summary>${esc(t.technical)}</summary><dl class="settings">${facts.map(([label, value]) => `<dt>${prose(label)}</dt><dd>${dataWords(value, 'code')}</dd>`).join('')}</dl></details>`;
 }
 
 function conditionsHtml(detail: RunDetail, language: Language): string {
@@ -468,9 +489,9 @@ function trajectoryHtml(detail: RunDetail, language: Language): string {
   const row = (entry: TrajectoryRow): string[] => {
     const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
     const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [fill(language, t.gained, { list: entry.gained.join(', ') })] : []), ...(entry.lost.length ? [fill(language, t.lost, { list: entry.lost.join(', ') })] : [])].join(' · ');
-    return [String(entry.number), ...(byClient ? [esc(entry.client ?? t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
+    return [String(entry.number), ...(byClient ? [entry.client ? dataWords(entry.client) : esc(t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
   };
-  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult }, { text: t.trajectoryMet }];
+  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult }, { text: t.trajectoryMet }];
   return stackedTable(t.trajectory, null, head, detail.trajectory.map(row));
 }
 
@@ -507,7 +528,7 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
   const summary = `<span class="run-title">${runResult(run, t)}<span>${prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId])}</span></span><span class="run-meta">${esc([fill(language, t.actionCount, { n: run.actions }), statusWords(run, t)].join(' · '))}</span>`;
   const parts: string[] = [];
   const heading = run.checker === null ? t.whyNoVerdict : run.pass ? t.whatHappened : t.why;
-  if (states.length) parts.push(`<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${prose(state.name, errorClassesOf(run))}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why)}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${prose(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
+  if (states.length) parts.push(`<h3>${esc(heading)}</h3><ul class="reasons">${states.map(state => `<li><span class="state">${prose(state.name, errorClassesOf(run))}${state.why ? ':' : ''}</span>${state.why ? ` ${prose(state.why, detail?.clients ?? [])}` : ''}${state.code ? `<code>${esc(state.code)}</code>` : ''}${state.tail ? esc(state.tail) : ''}${state.list?.length ? `<ul class="sublist">${state.list.map(item => `<li>${prose(item)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`);
   if (detail) {
     parts.push(`<h3>${esc(t.conditions)}</h3>${conditionsHtml(detail, language)}`);
     if (detail.picture || detail.target || detail.targetMissing) parts.push(`<h3>${esc(t.board)}</h3>${boardHtml(detail, report, language)}`);
@@ -540,10 +561,10 @@ export function renderHtml(input: ReportInput, tokensCss: string, language: Lang
     figure(t.wall, seconds(s.meanWallMs, language)),
   ];
   const totals = clientTotals(report, language);
-  const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language)), esc(fixed(task.meanActions, 1, language)), esc(referenceCell(report, task.taskId, task.referenceActions, t)), task.referenceActions === null ? esc(t.noReference) : esc(fixed(task.efficiency, 2, language))]);
+  const taskRows = s.byTask.map(task => [dataWords(task.taskId, 'code'), String(task.runs), esc(rateText(task.passed, task.runs, language)), esc(fixed(task.meanActions, 1, language)), esc(referenceCell(report, task.taskId, task.referenceActions, t)), task.referenceActions === null ? esc(t.noReference) : esc(fixed(task.efficiency, 2, language))]);
   const ordered = failuresFirst(report.runs);
   // Result first, so a stacked row on a phone leads with it (F2); error classes wrap.
-  const runRows = ordered.map(run => [runResult(run, t), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
+  const runRows = ordered.map(run => [runResult(run, t), `<a href="#run-${esc(run.id)}">${dataWords(run.taskId, 'code')}</a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), String(run.actions), String(run.rejectedActions), String(run.undos), String(run.resets), String(run.toolCalls.total), esc(seconds(run.wallMs, language)), errorCell(run, t)]);
   const ended = report.runs.filter(run => run.status !== 'completed');
   const endedList = (['agent_failed', 'timeout', 'infra_error'] as const).flatMap(status => { const count = ended.filter(run => run.status === status).length; return count ? [`${count} ${statusWords({ status }, t)}`] : []; });
   const folderReason = details === undefined || details.folder === 'missing' ? t.folderMissing : details.folder === 'world-changed' ? t.folderWorldChanged : details.folder === 'world-unreadable' ? t.folderWorldUnreadable : null;
@@ -575,7 +596,7 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${prose(label)}</dt><dd>${prose(value, (report.environment.world.limits ?? []).map(entry => entry.taskId))}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.note)}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.note)}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 
@@ -649,9 +670,9 @@ function renderArtifactHtml(report: ArtifactReportView, tokensCss: string, langu
     figure(t.proxyCalls, String(s.proxyCalls)), figure(t.wall, seconds(s.meanWallMs, language)),
   ];
   const ordered = failuresFirst(report.runs);
-  const taskRows = s.byTask.map(task => [`<code>${esc(task.taskId)}</code>`, String(task.runs), esc(rateText(task.passed, task.runs, language))]);
+  const taskRows = s.byTask.map(task => [dataWords(task.taskId, 'code'), String(task.runs), esc(rateText(task.passed, task.runs, language))]);
   const resultOf = (run: ViewArtifactRun): string => run.checker === null ? `<span class="result unknown">${statusIcon('unknown')}${esc(t.noVerdictCounted)}</span>` : result(run.pass, t);
-  const runRows = ordered.map(run => [resultOf(run), `<a href="#run-${esc(run.id)}"><code>${esc(run.taskId)}</code></a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), esc(judgedFileText(run, t)), String(run.proxy.calls), esc(seconds(run.wallMs, language)), esc(errorClassesOf(run).join(', ') || t.none)]);
+  const runRows = ordered.map(run => [resultOf(run), `<a href="#run-${esc(run.id)}">${dataWords(run.taskId, 'code')}</a>`, String(run.seed), String(run.repeat), esc(statusWords(run, t)), esc(judgedFileText(run, t)), String(run.proxy.calls), esc(seconds(run.wallMs, language)), errorCell(run, t)]);
   const runTitle = (run: ViewArtifactRun): string => prose(fill(language, t.runTitle, { task: run.taskId, seed: run.seed, repeat: run.repeat }), [run.taskId]);
   const runCards = ordered.map(run => {
     const states = artifactStates(run, report, details, language), classes = errorClassesOf(run);
@@ -679,7 +700,7 @@ ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.labe
 ${jump}</header>
 ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
 <section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n3'}">${cards.join('')}</dl></section>
-<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows)}</section>
+<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2><p class="note">${esc(t.artifactBoardNote)}</p>${runCards.join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">
@@ -691,7 +712,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${esc(t.noSandbox)}</p>`)}
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${esc(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

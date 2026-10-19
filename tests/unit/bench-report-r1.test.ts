@@ -22,7 +22,7 @@ const gate = (language: 'en' | 'de'): string => renderIncomparableHtml(side(s.ex
 const visible = (html: string): string => html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<[^>]+>/gu, ' ').replace(/&#39;/gu, '\'').replace(/&quot;/gu, '"').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&').replace(/ /gu, ' ').replace(/\s+/gu, ' ');
 /** Text the browser may hyphenate: everything outside code, `.data`, Technical details and the title. */
 const hyphenable = (html: string): string => visible(html.replace(/<head>[\s\S]*?<\/head>/u, '').replace(/<h1>[\s\S]*?<\/h1>/gu, '').replace(/<details class="tech">[\s\S]*?<\/details>/gu, '')
-  .replace(/<code>[\s\S]*?<\/code>/gu, '').replace(/<span class="data[^"]*">[^<]*<\/span>/gu, ''));
+  .replace(/<code[^>]*>[\s\S]*?<\/code>/gu, '').replace(/<span class="data[^"]*">[^<]*<\/span>/gu, ''));
 /** One part of a page: from the element that opens with `start` to the first `end` after it. */
 const part = (html: string, start: string, end: string): string => { const from = html.indexOf(start); assert.ok(from >= 0, start); return html.slice(from, html.indexOf(end, from) + end.length); };
 
@@ -38,11 +38,11 @@ test('R1-F1: identifiers and commands never hyphenate and a flag never breaks, o
     for (const id of identifiers) assert.equal(free.includes(id), false, `"${id}" may hyphenate in: …${free.slice(Math.max(0, free.indexOf(id) - 60), free.indexOf(id) + 60)}…`);
     // Every flag in the body is one unbreakable piece.
     const body = html.replace(/<head>[\s\S]*?<\/head>/u, '');
-    for (const flag of ['--fail-on-regression', '--verify']) assert.equal((body.match(new RegExp(`(?<![\\w-])${flag}(?![\\w-])`, 'gu')) ?? []).length, (body.match(new RegExp(`<span class="data flag">${flag}</span>`, 'gu')) ?? []).length, flag);
+    for (const flag of ['--fail-on-regression', '--verify']) assert.equal((body.match(new RegExp(`(?<![\\w-])${flag}(?![\\w-])`, 'gu')) ?? []).length, (body.match(new RegExp(`<code class="flag">${flag}</code>`, 'gu')) ?? []).length, flag);
   }
   // The gate's way forward names its flag whole (the reviewer saw "without -" / "-fail-on-regression"),
   // and so does the command that shows a report's run details.
-  assert.match(gate('en'), /Compare without <span class="data flag">--fail-on-regression<\/span> to see/);
+  assert.match(gate('en'), /Compare without <code class="flag">--fail-on-regression<\/code> to see/);
   assert.match(renderHtml(s.claimed, tokens, 'en', s.claims), /<code>practonaut report &lt;report\.json&gt; <span class="flag">--runs<\/span> &lt;bench folder&gt;<\/code>/);
 });
 
@@ -69,14 +69,14 @@ test('R1-F3: an artifact run card says why it failed or has no verdict in words,
   assert.match(card('flow-s3-r1'), /0 forwarded tool calls · not judged Why there is no verdict No verdict: the foreign MCP server failed before the first forwarded tool call; the run counts as not passed\./);
   // The failed runs, linked from the top; every task in the runs table links to its card.
   assert.match(part(html, '<nav class="jump"', '</nav>'), /href="#run-flow-s2-r1".*href="#run-flow-s3-r1"/);
-  for (const id of ['flow-s1-r1', 'flow-s2-r1', 'flow-s3-r1']) assert.match(html, new RegExp(`<a href="#run-${id}"><code>flow</code></a>`));
+  for (const id of ['flow-s1-r1', 'flow-s2-r1', 'flow-s3-r1']) assert.match(html, new RegExp(`<a href="#run-${id}"><code class="id">flow</code></a>`));
   assert.equal(text.split('This page does not draw the judged state').length - 1, 1);
   // F14-F16 on the same page: the sandbox said once (a warning, with the triangle), three cards in a
   // three-column grid, and how an artifact-judged run is scored.
   assert.equal(/sandbox/iu.test(visible(part(html, '<ul class="chips"', '</ul>'))), false);
   assert.match(html, /<div class="banner warning" role="note"><svg class="banner-icon"[^>]*><path d="M10\.3 4\.9L2\.9 17\.7/);
   assert.match(html, /<dl class="figures n3">/);
-  assert.match(text, /How this is scored: after the agent stops, a separate checker process reads the result the foreign MCP server stored \(or the start file when it stored none\) and judges its end state only/);
+  assert.match(text, /How runs are judged: after the agent stops, a separate checker process reads the result the foreign MCP server stored \(or the start file when it stored none\) and judges its end state only/);
   // German: the same states in German words.
   assert.match(visible(renderHtml(s.artifact, tokens, 'de')), /Warum nicht bestanden Bewertete Datei: die Startdatei, da der Server kein Ergebnis gespeichert hat/);
 });
@@ -95,9 +95,10 @@ test('R1-F4: across worlds the headline is the result (identities paired), the r
 
 test('R1-F5: a side without a rate says why (no identity with equal run counts), never "no instance" beside paired instances', () => {
   const html = compared(s.excalidraw, s.drawio, 'en'), sides = visible(part(html, '<dl class="sides">', '</dl>'));
-  assert.equal(sides.split('no rate: no task identity has the same number of runs on both sides').length - 1, 2);
+  // R2-F3: each side says "no rate"; the reason is said once, under the headline.
+  assert.deepEqual([sides.split('no rate').length - 1, visible(html).split('every paired task identity has a different number of runs on the two sides').length - 1], [2, 1]);
   assert.equal(visible(html).includes('no interval (no instance)'), false);
-  assert.match(visible(compared(s.excalidraw, s.drawio, 'de')), /keine Rate: keine Aufgabenidentität hat auf beiden Seiten gleich viele Läufe/);
+  assert.match(visible(compared(s.excalidraw, s.drawio, 'de')), /Kein Urteil über die Raten: jede gepaarte Aufgabenidentität hat auf beiden Seiten verschieden viele Läufe\. .* keine Rate .* keine Rate /);
 });
 
 test('R1-F6: a side whose rate rests on runs without a verdict says so on its card, under the unknown mark', () => {
@@ -151,7 +152,7 @@ test('R1 minors: one colon and a capital per caveat line, the task id in mono, "
   const caveats = [...part(html, '<section aria-labelledby="caveats">', '</section>').matchAll(/<li>([\s\S]*?)<\/li>/gu)].map(match => visible(match[1]!).trim());
   assert.deepEqual(caveats.map(line => [/^\p{Lu}/u.test(line), line.split(': ').length - 1]), caveats.map(() => [true, 1]), caveats.join('\n'));
   assert.equal(caveats[0], 'Paired by task identity: excalidraw-library 1.0.0 on the baseline, drawio-library 1.0.0 on the candidate');
-  assert.match(html, /<td data-label="instance" class="text"><code>T<\/code> · seed 1 \(baseline\) · <code>T<\/code>/);
+  assert.match(html, /<td data-label="instance" class="text wide"><code class="id">T<\/code> · seed 1 \(baseline\) · <code class="id">T<\/code>/);
   assert.match(html, /\(baseline\) · no instance \(candidate\)<\/td>/);
   assert.match(html, /<td data-label="change" class="text prose">no run on the candidate<\/td>/);
   assert.equal(visible(html).includes('PADR-'), false, 'no decision-record number on a page');
@@ -161,7 +162,7 @@ test('R1 minors: one colon and a capital per caveat line, the task id in mono, "
   assert.match(compared(s.configExcalidraw, s.configDrawio, 'en'), /p = 1\.000/);
   // The report page: the toolchain in words (tool names under Technical details), no "level" (§3).
   const report = renderHtml(s.claimed, tokens, 'en', s.claims);
-  assert.match(report, /<dt>Toolchain<\/dt><dd>Practonaut’s own MCP tools \(7\)<\/dd>/);
-  assert.match(report, /<dt>MCP tools<\/dt><dd><code>observe, list_actions, act, undo, reset, explain_result, check_result<\/code><\/dd>/);
+  assert.match(report, /<dt>Toolchain<\/dt><dd><span class="name">Practonaut<\/span>’s own MCP tools \(7\)<\/dd>/);
+  assert.match(report, /<dt>MCP tools<\/dt><dd><code class="id">observe,<\/code> <code class="id">list_actions,<\/code> <code class="id">act,<\/code> <code class="id">undo,<\/code> <code class="id">reset,<\/code> <code class="id">explain_result,<\/code> <code class="id">check_result<\/code><\/dd>/);
   for (const page of [report, renderHtml(s.artifact, tokens, 'en')]) assert.equal(/\blevel\b/iu.test(visible(page)), false, visible(page).match(/.{40}\blevel\b.{20}/iu)?.[0]);
 });

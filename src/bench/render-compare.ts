@@ -44,7 +44,7 @@ const headlineText = (comparison: Comparison, language: Language): string => com
 /** A side's rate with its interval; without a rate, why (no identity with equal run counts, or none paired). */
 function sideText(side: SideRate, comparison: Comparison, language: Language): string {
   const t = TEXT[language];
-  if (!side.instances) return comparison.verdict === 'no_equal_runs' ? t.noRateUnequal : t.intervalNone;
+  if (!side.instances) return comparison.verdict === 'no_equal_runs' ? t.noRateShort : t.intervalNone;
   const interval = intervalPercent(side.passed, side.instances);
   return `${fill(language, t.sideRate, { fraction: rateText(side.passed, side.instances, language), low: interval.low, high: interval.high })} ${fill(language, t.pairedOver, { n: side.instances })}`;
 }
@@ -91,7 +91,12 @@ const flipLine = (pair: InstancePair, language: Language): string => {
   return fill(language, line, values);
 };
 const sideName = (side: InstancePair['side'], t: Words): string => side === 'baseline' ? t.sideBaseline : side === 'candidate' ? t.sideCandidate : t.sideBoth;
-const notComparedLine = (pair: InstancePair, language: Language): string => fill(language, TEXT[language].missingSide, { name: pairText(pair, language), side: sideName(pair.side, TEXT[language]) });
+const notComparedLine = (pair: InstancePair, language: Language): string => {
+  const t = TEXT[language];
+  // Across worlds the side that holds the identity names its instances; the missing side is said once.
+  const name = pair.names ? (pair.side === 'candidate' ? fill(language, t.identityBaselineOnly, { names: namesText(pair.names.baseline, language) }) : fill(language, t.identityCandidateOnly, { names: namesText(pair.names.candidate, language) })) : pairText(pair, language);
+  return fill(language, t.missingSide, { name, side: sideName(pair.side, t) });
+};
 /** One line per side of a paired instance that holds runs that were not judged. */
 const unjudgedLines = (pair: InstancePair, language: Language): string[] => {
   const t = TEXT[language];
@@ -102,6 +107,10 @@ const IDENTIFIER_CAVEATS: ReadonlySet<Comparison['caveats'][number]['field']> = 
 const caveatLine = (caveat: Comparison['caveats'][number], language: Language): string => {
   const t = TEXT[language];
   const field = { timeout: t.caveatTimeout, repeats: t.caveatRepeats, practonaut: t.caveatPractonaut, reportVersion: t.caveatReportVersion, isolationBasis: t.caveatIsolationBasis, toolchain: t.caveatToolchain, rules: t.caveatRules, clientVersion: t.caveatClientVersion, clientSettings: t.caveatClientSettings, sharedIdentities: t.caveatSharedIdentities, identityPairing: t.caveatIdentityPairing }[caveat.field];
+  if (caveat.field === 'sharedIdentities' && caveat.shared) {
+    const boards = (side: { distinct: number; instances: number } | null): string => side ? fill(language, t.sharedBoards, { d: side.distinct, n: side.instances }) : t.sharedNone;
+    return fill(language, t.sharedLine, { baseline: boards(caveat.shared.baseline), candidate: boards(caveat.shared.candidate) });
+  }
   return capital(fill(language, t.caveatLine, { field, baseline: caveat.baseline, candidate: caveat.candidate }), language);
 };
 /** Across worlds, each paired identity with a different number of runs on the two sides: left out of the rate. */
@@ -122,7 +131,7 @@ export function renderCompareTable(baselineInput: CompareInput, candidateInput: 
   lines.push(`${t.compareSummary}: ${verdictText(comparison, language)}`);
   const sideLine = (rate: SideRate): string => [sideText(rate, comparison, language), ...(noVerdictText(rate, language) ? [`? ${noVerdictText(rate, language)}`] : [])].join(' · ');
   lines.push(`  ${t.baseline}: ${sideLine(comparison.baseline)}`, `  ${t.candidate}: ${sideLine(comparison.candidate)}`, '');
-  lines.push(`${t.regressions}:${comparison.regressions.length ? '' : ` ${regressionText(comparison, language)}`}`);
+  lines.push(`${comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions}:${comparison.regressions.length ? '' : ` ${regressionText(comparison, language)}`}`);
   for (const pair of comparison.regressions) lines.push(readableText(`  ✗ ${flipLine(pair, language)}`));
   if (comparison.fixes.length) { lines.push(`${t.fixes}:`); for (const pair of comparison.fixes) lines.push(readableText(`  ✓ ${flipLine(pair, language)}`)); }
   // A flip that rests on a side without any verdict is listed with the runs not judged ("?"), as on the page.
@@ -162,12 +171,18 @@ const instanceHtml = (name: InstanceName, language: Language): string => prose(i
 const namesHtml = (names: readonly InstanceName[], language: Language): string => names.length ? names.map(name => instanceHtml(name, language)).join(', ') : esc(TEXT[language].noInstance);
 type Mark = 'pass' | 'fail' | 'unknown' | undefined;
 // (A list item may carry its own mark: [text, mark].)
-const list = (items: ReadonlyArray<string | [string, Mark]>, mark?: Mark, ids: readonly string[] = []): string => `<ul class="flips">${items.map(item => { const [text, own] = typeof item === 'string' ? [item, mark] : item; return `<li>${own ? statusIcon(own) : ''}<span>${prose(text, ids)}</span></li>`; }).join('')}</ul>`;
+const list = (items: ReadonlyArray<string | [string, Mark]>, mark?: Mark, ids: readonly string[] = []): string => `<ul class="flips">${items.map(item => { const [text, own] = typeof item === 'string' ? [item, mark] : item; return `<li>${own ? statusIcon(own) : ''}<span>${prose(text, ids, 'code')}</span></li>`; }).join('')}</ul>`;
 /** Items that each hold their own identifiers. */
 const idList = (items: ReadonlyArray<{ text: string; ids: readonly string[] }>, mark?: Mark): string => `<ul class="flips">${items.map(item => `<li>${mark ? statusIcon(mark) : ''}<span>${prose(item.text, item.ids)}</span></li>`).join('')}</ul>`;
 const side = (title: string, input: Side, other: Side, rate: SideRate, comparison: Comparison, t: Words, language: Language): string => {
   const unknown = noVerdictText(rate, language);
   return `<div class="figure"><dt>${esc(title)}</dt><dd>${esc(rate.instances ? rateText(rate.passed, rate.instances, language) : t.none)}</dd><dd class="detail">${esc(sideText(rate, comparison, language))}</dd>${unknown ? `<dd class="detail"><span class="result unknown">${statusIcon('unknown')}${esc(unknown)}</span></dd>` : ''}<dd class="detail">${chips(title, sideFacts(input, other, t, language), sideIds(input))}</dd></div>`;
+};
+
+/** Across worlds, the identities without a verdict that the rates rest on (none: no notice). */
+const noVerdictBanner = (comparison: Comparison, language: Language): string => {
+  const t = TEXT[language], lines = (['baseline', 'candidate'] as const).flatMap(name => comparison[name].noVerdict ? [fill(language, t.noVerdictRatesLine, { n: comparison[name].noVerdict, side: sideName(name, t) })] : []);
+  return comparison.pairing === 'identity' && lines.length ? banner('unknown', t.noVerdictRatesTitle, lines.map(line => `<p>${esc(line)}</p>`).join('')) : '';
 };
 
 export function renderCompareHtml(baselineInput: CompareInput, candidateInput: CompareInput, comparison: Comparison, tokensCss: string, language: Language = 'en'): string {
@@ -177,7 +192,7 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
   // The separator between the two sides ends a line, never starts one.
   const nameCell = (pair: InstancePair): string => pair.names
     ? fillHtml(t.identityNames.replace(' · ', ' · '), { baseline: namesHtml(pair.names.baseline, language), candidate: namesHtml(pair.names.candidate, language) })
-    : `<code>${esc(pair.taskId)}</code> · ${pair.seed}`;
+    : instanceHtml(pair, language);
   // A pair not compared says only which side lacks a run: the row already names it.
   const changeCell = (pair: InstancePair): string => esc(pair.kind === 'paired' ? flipWord(pair) : fill(language, t.missingShort, { side: sideName(pair.side, t) }));
   const rows = comparison.pairs.map(pair => [nameCell(pair), outcomeCell(pair.baseline, t, language), outcomeCell(pair.candidate, t, language), changeCell(pair)]);
@@ -200,10 +215,10 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
 <p class="headline">${esc(sentence(headlineText(comparison, language)))}</p>
 <p class="verdict">${prose(sentence(verdictText(comparison, language)))}</p>
 </header>
-${comparison.incomplete.length ? banner('warning', t.incompleteTitle, `<p>${prose(fill(language, t.incompleteBody, { n: comparison.incomplete.length }))}</p>`) : ''}
+${noVerdictBanner(comparison, language)}${comparison.incomplete.length ? banner('warning', t.incompleteTitle, `<p>${prose(fill(language, t.incompleteBody, { n: comparison.incomplete.length }))}</p>`) : ''}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides">${side(t.baseline, baseline, candidate, comparison.baseline, comparison, t, language)}${side(t.candidate, candidate, baseline, comparison.candidate, comparison, t, language)}</dl></section>
-<section aria-labelledby="regressions"><h2 id="regressions">${esc(t.regressions)}</h2>${comparison.regressions.length ? list(comparison.regressions.map(pair => flipLine(pair, language)), 'fail', ids) : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
-<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true }], rows)}</section>
+<section aria-labelledby="regressions"><h2 id="regressions">${esc(comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions)}</h2>${comparison.regressions.length ? list(comparison.regressions.map(pair => flipLine(pair, language)), 'fail', ids) : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
+<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, ...(comparison.pairing === 'identity' ? { wide: true } : {}) }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true }], rows)}</section>
 ${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${idList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }
@@ -216,9 +231,10 @@ export function renderIncomparableHtml(baselineInput: CompareInput, candidateInp
   const t = TEXT[language], hint = refusalHint(found, baseline.report, candidate.report, options);
   const field = (difference: Difference): string => (t as unknown as Record<string, string>)[`field_${difference.field}`] ?? difference.field;
   const items = found.map(difference => {
-    const values = { baseline: differenceValue(difference, difference.baseline, language), candidate: differenceValue(difference, difference.candidate, language) };
+    const grid = (side: 'baseline' | 'candidate'): string | null => difference.grid ? fill(language, t.gridValue, { tasks: difference.grid[side].tasks.join(', '), n: difference.grid[side].seeds.length, seeds: difference.grid[side].seeds.join(', ') }) : null;
+    const values = { baseline: grid('baseline') ?? differenceValue(difference, difference.baseline, language), candidate: grid('candidate') ?? differenceValue(difference, difference.candidate, language) };
     // Recorded values are identifiers (worlds, ids, versions), except how runs were judged, which is words.
-    return { text: capital(fill(language, t.caveatLine, { field: field(difference), ...values }), language), ids: difference.field === 'verdictLevel' ? [] : [difference.baseline, difference.candidate] };
+    return { text: capital(fill(language, t.caveatLine, { field: field(difference), ...values }), language), ids: difference.field === 'verdictLevel' ? [] : difference.grid ? [...difference.grid.baseline.tasks, ...difference.grid.candidate.tasks] : [difference.baseline, difference.candidate] };
   });
   const lead = hint === 'gate' ? (found.some(difference => difference.field === 'world') ? t.incomparableLeadGateWorld : t.incomparableLeadGateRules) : t.incomparableLead;
   const fix = { level: t.incomparableFixLevel, agentKind: t.incomparableFixAgentKind, gate: t.incomparableFixGate, settings: t.incomparableFix }[hint];

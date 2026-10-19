@@ -211,11 +211,11 @@ test('across worlds compare pairs by task identity: without a task-set key the h
   const text = renderCompareTable({ report: a, verification: 'consistency-checked' }, { report: b, verification: 'consistency-checked' }, comparison);
   assert.match(text, /no rate verdict: every paired task identity has a different number of runs on the two sides/);
   // Never a regression across worlds, and never the gate's "incomplete" (the gate refuses such a pair).
-  assert.match(text, /Instance regressions: across worlds a different outcome is a difference between the two configurations, never an instance regression/);
+  assert.match(text, /Outcomes per task identity: across worlds a different outcome is a difference between the two configurations, never an instance regression/);
   assert.match(text, /^ {2}review-and-send · seed 1 \(baseline\) · review-and-send · seed 2, review-and-send · seed 3, review-and-send · seed 5 \(candidate\): 1 run on the baseline, 3 on the candidate, left out of the rate$/m);
   assert.deepEqual(comparison.incomplete, []);
   assert.match(text, /Paired across worlds by task identity: the unit is the distinct identity/);
-  assert.match(text, /review-and-send · seed 2, review-and-send · seed 3, review-and-send · seed 5 \(baseline\) · no instance \(candidate\): no run on the candidate/);
+  assert.match(text, /review-and-send · seed 2, review-and-send · seed 3, review-and-send · seed 5 \(baseline\): no run on the candidate/);
   // A regression gate compares one world with itself: refused by name.
   assert.throws(() => compareReports(a, b, { regressionGate: true }), (error: unknown) => error instanceof CompareError && error.differences.map(difference => difference.field).join() === 'world');
   // One task set: the same cases for the same seeds, every identity paired, equal run counts, a rate verdict.
@@ -236,7 +236,7 @@ test('within one world, seeds that select one variant share an identity: compare
   const a = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [true] } }, { identities: shared }));
   const comparison = compareReports(a, a);
   assert.equal(comparison.pairing, 'instance');
-  assert.deepEqual(comparison.caveats.filter(caveat => caveat.field === 'sharedIdentities'), [{ field: 'sharedIdentities', baseline: '2 / 3', candidate: '2 / 3' }]);
+  assert.deepEqual(comparison.caveats.filter(caveat => caveat.field === 'sharedIdentities'), [{ field: 'sharedIdentities', baseline: '2/3', candidate: '2/3', shared: { baseline: { distinct: 2, instances: 3 }, candidate: { distinct: 2, instances: 3 } } }]);
   // A different --checks is a comparability field; a different client version a caveat.
   assert.throws(() => compareReports(a, validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [true] } }, { identities: shared, change: value => { value.settings = { ...value.settings, checks: 2 }; } }))), (error: unknown) => error instanceof CompareError && error.differences.map(difference => difference.field).join() === 'checks');
   const newer = validateBenchReportV3(sessionReport({ T: { 1: [true], 2: [true], 3: [true] } }, { identities: shared, change: value => { value.agent = { ...value.agent, clientVersion: { value: '2.1.302', source: 'command-output' } }; } }));

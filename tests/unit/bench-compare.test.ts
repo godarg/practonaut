@@ -98,7 +98,7 @@ test('rate verdicts: exact McNemar on the discordant instances at α = 0.05', ()
   assert.match(text, /^Baseline: generic · session verdict · model model-a \(self-reported, from the command output\) · model only \(no mirror\) · template: tools not restricted by Practonaut · re-verified from the artifacts · 2026-10-14$/m);
   assert.match(text, /^Candidate: generic · .* · model only \(no mirror\) · template: tools not restricted by Practonaut · consistency-checked, not re-verified · /m);
   const page = renderCompareHtml({ report: report(instances(times(10, [true]))), verification: 're-verified' }, { report: report(instances(times(10, [true]))), verification: 'consistency-checked' }, close, ':root{}', 'de');
-  assert.equal((page.match(/<li class="chip"><span>nur Modell \(keine Spiegelung\)<\/span><\/li><li class="chip"><span>Vorlage: Werkzeuge nicht von Practonaut eingeschränkt<\/span><\/li>/g) ?? []).length, 2);
+  assert.equal((page.match(/<li class="chip"><span>nur Modell \(keine Spiegelung\)<\/span><\/li><li class="chip"><span>Vorlage: Werkzeuge nicht von <span class="name">Practonaut<\/span> eingeschränkt<\/span><\/li>/g) ?? []).length, 2);
   assert.match(text, /Baseline: 5\/10 instances passed · 95 % interval 23–77 % over the 10 instances on both sides/);
 });
 
@@ -124,7 +124,7 @@ test('every run counts: a run that was not judged counts as not passed, is named
   const page = renderCompareHtml({ report: baseline, verification: 'consistency-checked' }, { report: candidate, verification: 'consistency-checked' }, comparison, ':root{}').replace(/\u00a0/g, ' ');
   // In the instance table and the list: the unknown mark (a dashed ring) with "no verdict", never the fail mark.
   assert.match(page, /<td data-label="candidate" class="text"><span class="outcome"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray="2\.4 3"\/><\/svg>no verdict \(3 of 3 runs not judged\), counted as not passed<\/span><\/td><td data-label="change" class="text prose">no verdict on one side — not a regression signal<\/td>/);
-  assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><span class="data">T<\/span> · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate/);
+  assert.match(page, /<li><svg class="status-icon unknown"[^>]*>.*?<\/svg><span><code class="id">T<\/code> · seed 2: passed on the baseline \(3\/3\), no verdict on the candidate/);
   assert.equal(page.includes('failed on the candidate (0/3)'), false);
   assert.match(text, /The candidate is incomplete: 3 instances are missing, cut short or hold a run that was not judged\./);
   assert.deepEqual(compareReports(baseline, baseline).incomplete, [], 'a complete candidate');

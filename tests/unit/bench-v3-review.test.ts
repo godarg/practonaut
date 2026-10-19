@@ -83,7 +83,7 @@ test('G: one hint for a refusal: settings for two worlds of one application, the
     assert.equal(refused.status, 2);
     assert.match(refused.stderr, /A regression gate compares one world with itself under one reading of results; compare without --fail-on-regression to see the two configurations side by side \[compare_incomparable\]/);
     // The page: why the gate refuses (two worlds), then the way forward with the flag whole.
-    const gate = readFileSync(join(dir, 'gate.html'), 'utf8').replace(/ /g, ' ').replace(/<\/?span[^>]*>/g, '');
+    const gate = readFileSync(join(dir, 'gate.html'), 'utf8').replace(/ /g, ' ').replace(/<\/?(?:span|code)[^>]*>/g, '');
     assert.match(gate, /A regression gate compares one world with itself; these reports come from two worlds\./);
     assert.match(gate, /Compare without --fail-on-regression to see the two configurations side by side\./);
     // /2 as before: two /2 reports of different worlds under the gate get the settings hint.

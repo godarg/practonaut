@@ -50,7 +50,7 @@ test('no rate is shown finer than 1/n, in the terminal or on the page, in Englis
   for (const [n, passed] of [[6, 5], [98, 50], [150, 113], [1200, 1001]] as const) {
     const value = report(n, passed);
     for (const language of ['en', 'de'] as const) {
-      const texts = [renderTable(value, language), renderHtml(value, ':root{}', language).replace(/<style>[\s\S]*<\/style>/, '').replace(/<[^>]+>/g, ' ').replace(/\u00a0/g, ' ')];
+      const texts = [renderTable(value, language), renderHtml(value, ':root{}', language).replace(/<style>[\s\S]*<\/style>/, '').replace(/<[^>]+>/g, ' ').replace(/\u00a0/g, ' ').replace(/\u2060/g, '')];
       for (const text of texts) {
         // Remove the confidence level and the interval range: they are estimates, not observed rates.
         const rest = text.replace(/95(-| )%(-Intervall| interval) \d+–\d+ %/g, '').replace(/95 %|95-%/g, '');
@@ -174,9 +174,9 @@ test('schematic: two arrows between the same steps are drawn apart, never as one
 
 test('board text is data: quoted labels and task ids never hyphenate; a number stays with its word', () => {
   // Quoted parts and named ids are wrapped as data; the rest stays prose (hyphenated in the page's language).
-  assert.equal(prose('One rectangle “Review” in the default style.', []), 'One rectangle <span class="data">“Review”</span> in the default style.');
-  assert.equal(prose('connect · seed 1', ['connect']), '<span class="data">connect</span> · seed\u00a01');
-  assert.equal(prose('„Archive“ & <b>', ['data']), '<span class="data">„Archive“</span> &amp; &lt;b&gt;', 'an id never matches inside markup');
+  assert.equal(prose('One rectangle “Review” in the default style.', []), 'One rectangle <span class="data quoted">“Review”</span> in the default style.');
+  assert.equal(prose('connect · seed 1', ['connect']), '<span class="data id">connect</span> · seed\u00a01');
+  assert.equal(prose('„Archive“ & <b>', ['data']), '<span class="data quoted">„Archive“</span> &amp; &lt;b&gt;', 'an id never matches inside markup');
   // A no-break space joins a number and its word on the page, but quoted data keeps its own characters.
   assert.equal(escapeHtml('6 runs · seed 2 · after #3 · “Wrong 1”'), '6\u00a0runs · seed\u00a02 · after\u00a0#3 · “Wrong 1”');
 });

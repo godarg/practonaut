@@ -30,9 +30,13 @@ import { aggregateInstance, ALPHA, isInstanceFix, isInstanceRegression, mcnemarE
 import type { IsolationLevel } from './report.ts';
 
 export type ComparableField = 'verdictLevel' | 'world' | 'grid' | 'mirror' | 'budget' | 'checks' | 'isolation' | 'rules';
-export interface Difference { field: ComparableField; baseline: string; candidate: string }
+/** The grid of a report: its tasks and seeds (worded by the renderer). */
+export interface Grid { tasks: string[]; seeds: number[] }
+/** `grid`: for a grid difference, each side's tasks and seeds, so a page words them in its language. */
+export interface Difference { field: ComparableField; baseline: string; candidate: string; grid?: { baseline: Grid; candidate: Grid } }
 export type CaveatField = 'timeout' | 'repeats' | 'practonaut' | 'reportVersion' | 'isolationBasis' | 'toolchain' | 'rules' | 'clientVersion' | 'clientSettings' | 'sharedIdentities' | 'identityPairing';
-export interface Caveat { field: CaveatField; baseline: string; candidate: string }
+/** `shared`: for shared task identities, each side's distinct identities among its instances (null: one each). */
+export interface Caveat { field: CaveatField; baseline: string; candidate: string; shared?: { baseline: { distinct: number; instances: number } | null; candidate: { distinct: number; instances: number } | null } }
 
 export class CompareError extends Error {
   readonly code = 'compare_incomparable';
@@ -44,7 +48,12 @@ export class CompareError extends Error {
  * from the agent kind (PADR-0036). */
 export function isolationOf(report: ReportInput): IsolationLevel { return isolationOfView(asView(report)); }
 export function worldHashOf(report: BenchReportView): string { return report.environment.world.contentHash; }
-const worldName = (report: BenchReportView): string => `${report.environment.world.worldId} ${report.environment.world.version} (${report.environment.world.contentHash.slice(0, 12)})`;
+/** A world by id and version; the start of its content hash only when both sides have the same id and
+ * version, where it is what differs (design review R2). */
+const worldName = (report: BenchReportView, other: BenchReportView): string => {
+  const world = report.environment.world, same = world.worldId === other.environment.world.worldId && world.version === other.environment.world.version;
+  return `${world.worldId} ${world.version}${same ? ` (${world.contentHash.slice(0, 12)})` : ''}`;
+};
 const sorted = <T extends string | number>(values: readonly T[]): T[] => [...values].sort((a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)));
 const sameSet = <T extends string | number>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && sorted(a).every((value, index) => value === sorted(b)[index]);
 const toolchainId = (report: BenchReportView): string => report.toolchain.id;
@@ -66,10 +75,11 @@ export function differences(baselineInput: ReportInput, candidateInput: ReportIn
   // Runs of different verdict levels are never paired (PADR-0043 decision 1): nothing else is compared.
   if (baseline.verdictLevel !== candidate.verdictLevel) return [{ field: 'verdictLevel', baseline: baseline.verdictLevel, candidate: candidate.verdictLevel }];
   const byIdentity = identityPaired(baseline, candidate);
-  if (worldHashOf(baseline) !== worldHashOf(candidate) && (!byIdentity || options.regressionGate)) found.push({ field: 'world', baseline: worldName(baseline), candidate: worldName(candidate) });
+  if (worldHashOf(baseline) !== worldHashOf(candidate) && (!byIdentity || options.regressionGate)) found.push({ field: 'world', baseline: worldName(baseline, candidate), candidate: worldName(candidate, baseline) });
   if (!byIdentity && (!sameSet(baseline.settings.tasks, candidate.settings.tasks) || !sameSet(baseline.settings.seeds, candidate.settings.seeds))) {
     const grid = (report: BenchReportView): string => `${sorted(report.settings.tasks).join(', ')} × ${report.settings.seeds.length === 1 ? 'seed' : 'seeds'} ${sorted(report.settings.seeds).join(', ')}`;
-    found.push({ field: 'grid', baseline: grid(baseline), candidate: grid(candidate) });
+    const cells = (report: BenchReportView): Grid => ({ tasks: sorted(report.settings.tasks), seeds: sorted(report.settings.seeds) });
+    found.push({ field: 'grid', baseline: grid(baseline), candidate: grid(candidate), grid: { baseline: cells(baseline), candidate: cells(candidate) } });
   }
   if (baseline.environment.mirror !== candidate.environment.mirror) found.push({ field: 'mirror', baseline: baseline.environment.mirror ?? 'off', candidate: candidate.environment.mirror ?? 'off' });
   if (baseline.settings.maxActions !== candidate.settings.maxActions) found.push({ field: 'budget', baseline: String(baseline.settings.maxActions), candidate: String(candidate.settings.maxActions) });
@@ -222,9 +232,14 @@ function compareByInstance(baseline: BenchReportView, candidate: BenchReportView
   const plannedRepeats = candidate.settings.repeats;
   const caveats = caveatsOf(baseline, candidate);
   // Seeds that select one variant give one board under several instances (PADR-0044 decision 3).
-  const distinct = (report: BenchReportView): string | null => report.instances && new Set(report.instances.map(entry => entry.identity)).size < report.instances.length ? `${new Set(report.instances.map(entry => entry.identity)).size} / ${report.instances.length}` : null;
-  const shared = [distinct(baseline), distinct(candidate)];
-  if (shared[0] !== null || shared[1] !== null) caveats.push({ field: 'sharedIdentities', baseline: shared[0] ?? 'none', candidate: shared[1] ?? 'none' });
+  const distinct = (report: BenchReportView): { distinct: number; instances: number } | null => {
+    if (!report.instances) return null;
+    const count = new Set(report.instances.map(entry => entry.identity)).size;
+    return count < report.instances.length ? { distinct: count, instances: report.instances.length } : null;
+  };
+  const shared = { baseline: distinct(baseline), candidate: distinct(candidate) };
+  const value = (side: { distinct: number; instances: number } | null): string => side ? `${side.distinct}/${side.instances}` : 'none';
+  if (shared.baseline !== null || shared.candidate !== null) caveats.push({ field: 'sharedIdentities', baseline: value(shared.baseline), candidate: value(shared.candidate), shared });
   return {
     pairing: 'instance', pairs, paired: paired.length, ...counted, verdict: paired.length === 0 ? 'nothing_paired' : counted.verdict,
     regressions: paired.filter(pair => pair.flip === 'regression'), fixes: paired.filter(pair => pair.flip === 'fix'),

@@ -36,7 +36,7 @@ const normalPath = (html: string): string => html.replace(/<details class="tech"
 /** The first sentence of a library explanation (the factual part; the rest coaches a learner). */
 const firstOf = (text: string): string => text.split(/(?<=[.!?])\s+(?=\p{Lu})/u)[0]!;
 // Data (an id, a command, a flag) is set apart only by its markup: in plain text it is the words around it.
-const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<span class="data(?: flag)?">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const plain = (html: string): string => html.replace(/<\/?code[^>]*>/g, '').replace(/<span class="(?:data(?: id| quoted)?|name)">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fixtures: Fixtures, dir: string;
 test.before(async () => {
@@ -107,7 +107,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances session verdict re-verified from the artifacts model only/);
   assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 6 s, the run’s time limit; the board it left was judged.'), 'timeout');
   const unjudgedPage = await reportPage(fixtures.unjudged, 'en'), unjudged = runText(unjudgedPage, 'connect-s1-r1');
-  assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score.'), 'unjudged');
+  assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never counts as passed.'), 'unjudged');
   // No verdict is not a failure: the unknown mark (a dashed ring) and the words, in the table and on the card.
   assert.equal((unjudgedPage.match(/<span class="result unknown"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray/g) ?? []).length, 2);
   assert.ok(unjudged.includes('Why there is no verdict') && !unjudged.includes('Why it failed'));

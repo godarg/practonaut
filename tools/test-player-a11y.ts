@@ -8,6 +8,7 @@ import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { fixtureBenches, reportStates } from "../tests/support/report-states.ts";
+import { brokenIdentifiers } from "../tests/support/identifier-lines.ts";
 
 // Writes screenshots and results to the ignored .local/player-a11y/; never into the source tree.
 const output = ".local/player-a11y";
@@ -199,13 +200,13 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
           return size < 11.95 ? [`${(element.textContent ?? "").slice(0, 24)} at ${size.toFixed(1)} px`] : [];
         }));
         if (small.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: picture text below 12 px: ${small.slice(0, 3).join("; ")}`);
-        // Identifiers never hyphenate (design-language §10.5) and a flag stays on one line, measured as rendered.
+        // Identifiers never hyphenate (design-language §10.5) and never split at their own hyphens: every
+        // word of data and every flag on one line (design review R2), measured as rendered.
         // A chip or status word is one run of text: words split into flex items lose their spaces.
-        const split = await page.evaluate(() => [
+        const split = [...await page.evaluate(() => [
           ...[...document.querySelectorAll(".chip, .result, .outcome")].filter(element => (element as HTMLElement).innerText.includes("\n")).map(element => `"${element.textContent}" falls apart into pieces`),
-          ...[...document.querySelectorAll(".flag")].filter(element => element.getClientRects().length > 1).map(element => `flag ${element.textContent} breaks`),
-          ...[...document.querySelectorAll(".data, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
-        ]);
+          ...[...document.querySelectorAll(".data, .id, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
+        ]), ...(await page.evaluate(brokenIdentifiers)).map(word => `${word} breaks across lines`)];
         if (split.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: ${split.slice(0, 3).join("; ")}`);
         await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
       }
