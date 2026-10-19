@@ -3,7 +3,10 @@
 // `claude` (tests/support/fake-claude.ts) that observes, or plays a task's reference where the test
 // lists the task for its model, or hits a usage limit. Every model run goes through the release
 // ledger's start guard (`node tools/challenge.ts bench`). Expected counts are counted by hand from the
-// outcome lists below.
+// outcome lists below. The whole round re-judges every run and near miss in checker processes and takes
+// longer than test:integration gives a file; run it on its own, after the engine build:
+//   npm run engine:build && npm run player:build
+//   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3600000 tests/integration/challenge-round.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -108,7 +111,7 @@ test('a start that would pass 800 is refused before the client starts; built-in 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('a whole 0.3.0 round without a language model: pre-probe, declaration, held-out set, preflight, gate and ledger; the count starts at zero although the 0.2.0 rounds are committed', { timeout: 1_800_000 }, async () => {
+test('a whole 0.3.0 round without a language model: pre-probe, declaration, held-out set, preflight, gate and ledger; the count starts at zero although the 0.2.0 rounds are committed', { timeout: 3_600_000, skip: process.env.PN_CHALLENGE_ROUND === '1' ? false : 'a whole round re-judges every run and near miss in checker processes, longer than test:integration gives a file; run with PN_CHALLENGE_ROUND=1' }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-round-030-'));
   try {
     const p = await project(dir), folder = p.folder;

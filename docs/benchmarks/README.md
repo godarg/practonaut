@@ -955,7 +955,14 @@ the release count come from the ledger. Every page under `docs/` needs a link fr
 A whole round without a language model — stand-in `claude` scripts that observe or play a listed
 task's reference, a usage-limit stop and resume, the ledger written and pushed between the steps, the
 committed 0.2.0 files present and not counted — and a start at 801 refused before the stand-in starts
-are integration tests (`tests/integration/challenge-round.test.ts`).
+are integration tests (`tests/integration/challenge-round.test.ts`). The whole round re-judges every
+run and near miss in checker processes, longer than `test:integration` gives a file; run it on its own,
+after the engine build:
+
+```bash
+npm run engine:build && npm run player:build
+PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3600000 tests/integration/challenge-round.test.ts
+```
 
 **The 0.2.0 rounds** ([gate reports](challenge/README.md)) used PADR-0040's tool: 3 development
 instances × 3 agents and 26 held-out instances × 3 agents per family, a 500-run release budget, a
