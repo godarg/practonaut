@@ -12,6 +12,8 @@ import { HOST_LIMITS } from '../host/limits.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import type { RunningHost } from '../host/protocol.ts';
 import { inlineOptionValues } from './options.ts';
+import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
+import { deferCommandEnd } from './browser-exit.ts';
 
 /** Self-start: `--task` (with optional `--task-id`, `--seed`, `--mirror`, `--open`). Attach: `--host` + `--token-file`. */
 export interface McpArguments {
@@ -49,6 +51,18 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
   return { attach: { host, ...(tokenFile === undefined ? {} : { tokenFile }) }, ...callLog };
 }
 
+/** The end of an MCP session, once: the stdio server, the launcher, then the host, whose close removes
+ * its token file. Only then has the command's shutdown finished, and `finish` reports the browser
+ * ledger and arms the 35 s rule (PADR-0050, decision 9); a host that is open never exits through it. */
+export function mcpShutdown(steps: { handle: { close(): Promise<unknown> }; launcher: () => { remove(): Promise<unknown> } | undefined; host: Pick<RunningHost, 'close'> | undefined; finish: () => Promise<unknown> }): () => Promise<void> {
+  let stopping: Promise<void> | undefined;
+  return () => stopping ??= (async () => {
+    try { await steps.handle.close(); await steps.launcher()?.remove(); await steps.host?.close(); }
+    catch { process.exitCode = 3; }
+    await steps.finish();
+  })();
+}
+
 /** stdout is exclusively JSON-RPC. Credentials may be inherited, never supplied in argv. In
  * self-start mode the session is owned by this process: it ends when the client closes stdin. */
 export async function commandMcp(args: string[]): Promise<number> {
@@ -83,15 +97,8 @@ export async function commandMcp(args: string[]): Promise<number> {
         process.stderr.write(await openInBrowser(launcher.path) ? cliText('openStarted', { url: host.url }) : cliText('openFailed', { url: host.url }));
       } catch { process.stderr.write(cliText('openFailed', { url: host.url })); }
     }
-    let stopped = false;
-    const owned = host;
-    const stop = (): void => {
-      if (stopped) return; stopped = true;
-      void (async () => {
-        try { await handle.close(); await launcher?.remove(); await owned?.close(); }
-        catch { process.exitCode = 3; }
-      })();
-    };
+    const shutDown = mcpShutdown({ handle, launcher: () => launcher, host, finish: deferCommandEnd() });
+    const stop = (): void => { void shutDown(); };
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, stop);
     // When the client goes away the bridge stops; a self-started session's host and mirror close with it.
     process.stdin.once('end', stop); process.stdin.once('close', stop);
@@ -101,7 +108,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     if (error instanceof McpConfigurationError) process.stderr.write(cliText("mcpRefused", { code: error.code }));
     // A refused world (an application this Practonaut does not have, PADR-0045) keeps its named code
     // and exit 2, as with play and serve; stdout stays clean for JSON-RPC.
-    else if (error instanceof RuntimeError || error instanceof WorldError) throw error;
+    else if (error instanceof RuntimeError || error instanceof WorldError || error instanceof BrowserBudgetError) throw error;
     else process.stderr.write(cliText("mcpStart"));
     return 3;
   }

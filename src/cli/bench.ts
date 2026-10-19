@@ -196,6 +196,9 @@ export async function commandBench(args: string[]): Promise<number> {
   // The JUnit file names the same reasons as the table (unmet conditions from the bench folder).
   if (options.junit) await writeAtomic(options.junit, renderJunit(report, getCliLanguage(), 'consistency-checked', details));
   process.stdout.write('\n' + renderTable(report, getCliLanguage(), details));
+  // Runs lost to a full browser budget (PADR-0050): the judged set can depend on machine load.
+  const budgetRuns = report.runs.filter(run => run.status === 'infra_error' && (run.note ?? '').startsWith('browser_budget_exhausted')).length;
+  if (budgetRuns > 0) process.stdout.write(cliText('benchBudgetRuns', { n: budgetRuns }));
   const stopped = report.interrupted && 'stopped' in report.interrupted ? report.interrupted.stopped : undefined;
   // Tasks without a judged run for every planned seed and repeat: what a resumed bench takes.
   const judged = (task: string): boolean => report.settings.seeds.every(seed => Array.from({ length: report.settings.repeats }, (_, index) => index + 1).every(repeat => report.runs.some(run => run.taskId === task && run.seed === seed && run.repeat === repeat && run.status !== 'infra_error')));

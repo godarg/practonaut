@@ -14,6 +14,7 @@ import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
 import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
+import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
 import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from '../adapters/registry.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
@@ -104,6 +105,13 @@ export async function startHostWithMirror(choice: MirrorChoice, resolved: Mirror
   // The mirror's own start may be the first one that needed the Linux sandbox fallback.
   try { const host = await start('required', undefined); return { host, mirror: chromiumSandboxFallbackActive() ? { ...resolved, sandbox: false } : resolved }; }
   catch (error) {
+    // A full browser budget (PADR-0050) is refused as a start that fails: named under `required`,
+    // model-only with the notice under `auto`.
+    if (error instanceof BrowserBudgetError) {
+      if (choice === 'required') throw error;
+      const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: 'start', detail: `${error.code}: ${cliText('browserBudgetExhausted', { running: error.running, closing: error.closing, budget: error.budget })}` };
+      return { host: await start('off', modelOnlyNotice(choice, mirror)), mirror };
+    }
     if (!(error instanceof AdapterError)) throw error;
     const detail = launchFailureDetail(error instanceof AdapterInitializationError ? error.primaryError : error);
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail, advice: browserAdvice() }));

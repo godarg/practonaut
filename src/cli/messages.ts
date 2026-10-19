@@ -891,6 +891,39 @@ export const CLI_CATALOG = {
     "en": "practonaut: the session could not be closed completely within its deadline.\n",
     "de": "practonaut: die Sitzung konnte innerhalb der Frist nicht vollständig beendet werden.\n"
   },
+  "browserBudgetExhausted": {
+    "en": "no browser could start: {running} running and {closing} closing of {budget} allowed, and none closed within the launch bound. Wait until they have closed, or restart Practonaut.",
+    "de": "kein Browser konnte starten: {running} laufen und {closing} schließen gerade, {budget} sind erlaubt, und keiner wurde innerhalb der Startfrist frei. Warten, bis sie geschlossen sind, oder Practonaut neu starten."
+  },
+  "browsersWaiting": {
+    "en": "practonaut: Waiting for {count} {count:browser|browsers} to close; Playwright ends them within 30 s of the request.\n",
+    "de": "practonaut: Warte auf das Schließen von {count} {count:Browser|Browsern}; Playwright beendet sie spätestens 30 s nach der Anfrage.\n"
+  },
+  "browserLedgerLine": {
+    "en": "practonaut: browser {id} ({owner}): {promise}; {end}; directory cleanup unconfirmed.\n",
+    "de": "practonaut: Browser {id} ({owner}): {promise}; {end}; Aufräumen der Verzeichnisse unbestätigt.\n"
+  },
+  "ledgerOwnerMirror": { "en": "mirror", "de": "Spiegelung" },
+  "ledgerOwnerStartCheck": { "en": "start check", "de": "Startprüfung" },
+  "ledgerOwnerRenderCheck": { "en": "render check", "de": "Darstellungsprüfung" },
+  "ledgerOwnerReportCard": { "en": "report card", "de": "Berichtskarte" },
+  "ledgerLaunchRejected": { "en": "launch rejected", "de": "Start abgelehnt" },
+  "ledgerLaunchPending": { "en": "launch still running", "de": "Start läuft noch" },
+  "ledgerCloseAbandonedRunning": { "en": "close abandoned at its deadline, still running", "de": "Schließen bei Fristende aufgegeben, läuft noch" },
+  "ledgerCloseAbandonedDone": { "en": "close abandoned at its deadline, finished later", "de": "Schließen bei Fristende aufgegeben, später beendet" },
+  "ledgerCloseFailed": { "en": "close failed", "de": "Schließen fehlgeschlagen" },
+  "ledgerCloseRunning": { "en": "close still running", "de": "Schließen läuft noch" },
+  "ledgerNotClosed": { "en": "not closed", "de": "nicht geschlossen" },
+  "ledgerClosed": { "en": "closed", "de": "geschlossen" },
+  "ledgerEndProven": { "en": "process end proven by Playwright's close", "de": "Prozessende durch Playwrights Schließen belegt" },
+  "ledgerEndPending": { "en": "process end not proven yet", "de": "Prozessende noch nicht belegt" },
+  "ledgerEndLaunchWait": { "en": "process end not proven; its slot is held for 35 s after the rejection", "de": "Prozessende nicht belegt; sein Platz bleibt 35 s nach der Ablehnung belegt" },
+  "ledgerEndDisconnected": { "en": "process end not proven (disconnected before its close); its slot is held until Practonaut exits", "de": "Prozessende nicht belegt (Verbindung vor dem Schließen getrennt); sein Platz bleibt bis zum Ende von Practonaut belegt" },
+  "ledgerEndCloseFailed": { "en": "process end not proven; its slot is held until Practonaut exits", "de": "Prozessende nicht belegt; sein Platz bleibt bis zum Ende von Practonaut belegt" },
+  "benchBudgetRuns": {
+    "en": "{n} {n:run|runs} could not be judged because no browser slot became free (browser_budget_exhausted); see each run's note.\n",
+    "de": "{n} {n:Lauf|Läufe} konnten nicht bewertet werden, weil kein Browser-Platz frei wurde (browser_budget_exhausted); siehe die Notiz jedes Laufs.\n"
+  },
   "worldMissing": {
     "en": "world not found: {path}",
     "de": "Welt nicht gefunden: {path}"
