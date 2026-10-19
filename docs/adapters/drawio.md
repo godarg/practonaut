@@ -110,6 +110,22 @@ only from a measured list; colours never snapped; plain-text labels — and its 
 the [threat model](../security/threat-model.md#4-limits). Every rule has a differential fixture
 loaded through the real app (`tests/adapter/drawio/cases.test.ts`).
 
+## The draw.io library
+
+`tasks/drawio/` holds the Excalidraw library's 16 tasks in a draw.io world: the same tasks, variant
+cases, titles, prompts and hints, id `drawio-library`, and the task set `excalidraw-library` at the
+library's version, so the same seeds select the same cases and each of the 48 instances has the same
+task identity on both applications. Its oracle file keeps the same reference solutions, near misses and
+seeds, re-verified in the draw.io world in every case when `npm run library:write` builds it. Address
+its tasks as `drawio/<task>`: `play drawio/connect`, `tasks list drawio/all`, `bench --tasks drawio/all`
+(a bench takes one library; mixing prefixes is refused). `report --verify` anchors a library bench to
+the library this Practonaut ships for the stored world's application and binds its references to that
+library's oracle file. The challenge generator writes any family for draw.io with `--app drawio`
+(`node tools/challenge.ts generate <family> --set dev --app drawio --out <dir>`).
+
+The acceptance evidence — the three-run summary, both libraries benched by the oracle with the real
+mirrors, and their comparison — is in [docs/benchmarks/drawio](../benchmarks/drawio/README.md).
+
 ## In the Player and the CLI
 
 - Texts name draw.io wherever they name the running app (MCP instructions, Player, CLI).

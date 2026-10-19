@@ -76,7 +76,18 @@ All notable changes are recorded here. The format follows
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.
   - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
     after the AppArmor restriction is lifted, with the test-only variables `PN_DRAWIO_HOME` and
-    `PN_DRAWIO_REQUIRED`.
+    `PN_DRAWIO_REQUIRED`: the library and every challenge family on seeds 1–3, three fresh runs in
+    three recorded orders that must agree.
+  - The draw.io library (`tasks/drawio/`): the Excalidraw library's 16 tasks in a draw.io world of the
+    same task set, with the same references, near misses and seeds re-verified there. Libraries are a
+    table by adapter id: `drawio/<task>` names it in `play`, `mcp --task`, `bench --tasks` (`drawio/all`)
+    and `tasks list|show`; a bench mixing prefixes is refused; `report --verify` anchors a library bench
+    to the library of its application and binds its references to that library's oracle file.
+  - The challenge generator writes a family for draw.io (`node tools/challenge.ts generate … --app
+    drawio`): the same instances, `generatedBy` unchanged, so their identities pair.
+  - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
+    the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
+    difference); `tools/drawio-evidence.ts` rebuilds it on a release commit.
 - A workflow check in `npm run check` (`tools/check-workflows.ts`): every cache and upload path and
   release asset must be listed in `.github/workflow-allowlist.json`, every other action must be on its
   list and pinned by SHA, and the draw.io CI steps must share one home and run without
@@ -89,6 +100,9 @@ All notable changes are recorded here. The format follows
   Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. Texts about
   the editor and author workspaces keep naming Excalidraw; an Excalidraw session's texts are
   unchanged.
+- Bench report texts about the mirror, the engine picture and the mirror's failures name the
+  report's application (`environment.app.adapterId`); `environment.app.version` is the version the
+  world pins (a draw.io bench said 0.18.1).
 - The native export file is named by its app's format: `practonaut.excalidraw` or `practonaut.drawio`
   (Player download, `run --export`). A world whose app has no editor workspaces (draw.io) gets the
   board workspace only.

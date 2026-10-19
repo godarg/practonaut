@@ -84,7 +84,10 @@ Node version that ships a recent npm. See npm's
      && node tools/require-drawio-summary.ts .local/drawio-conformance/summary.json
    ```
 
-   Its summary replaces the committed draw.io evidence, and the release notes state its counts. Until
+   Its summary replaces the committed draw.io evidence (`PRACTONAUT_HOME=<that home> node
+   tools/drawio-evidence.ts --summary .local/drawio-conformance/summary.json` benches the oracle on both
+   libraries with the real mirrors, compares them and writes `docs/benchmarks/drawio/`; update the
+   numbers in its README), and the release notes state its counts. Until
    the maintainer has decided the naming question (PADR-0049 decision 9.3), no release names draw.io.
 
 3. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.

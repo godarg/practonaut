@@ -132,7 +132,10 @@ A family becomes a challenge tier only after it passes a preregistered ladder ga
 
 16 tasks for Excalidraw 0.18.1, each in English and German with three label variants, a reference
 solution and near misses. List them with `npx practonaut tasks list`; open one with
-`npx practonaut play <task>`; address them as `excalidraw/<task>` in `mcp` and `bench`.
+`npx practonaut play <task>`; address them as `excalidraw/<task>` in `mcp` and `bench`. The same
+16 tasks run on draw.io as `drawio/<task>` (`tasks list drawio/all`, `bench --tasks drawio/all`) after
+`npx practonaut setup --app drawio`; every instance pairs with its Excalidraw twin in `compare`
+([draw.io evidence](docs/benchmarks/drawio/README.md)).
 
 | Task | Level | Reference actions | Goal |
 |---|---|---|---|

@@ -6,8 +6,9 @@ Decision records: [PADR-0030](../adr/0030-bench-replaces-unsealed-eval.md) (benc
 `compare`), [PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md) (task limits,
 minimal length, challenge tier and its gate, §10).
 
-`practonaut bench` lets any MCP agent practise the bundled Excalidraw task library, or a world of
-your own, and scores it independently: every run gets a fresh session, the agent works only through
+`practonaut bench` lets any MCP agent practise a bundled task library — Excalidraw's, or the same tasks
+on draw.io (`--tasks drawio/all`, after `practonaut setup --app drawio`; [adapter page](../adapters/drawio.md)) —
+or a world of your own, and scores it independently: every run gets a fresh session, the agent works only through
 the Practonaut MCP tools, and after it stops a separate checker process judges what is on the board.
 The agent's own words are never read for scoring.
 
@@ -45,7 +46,7 @@ The real Excalidraw mirror runs when Chromium is installed (`npx practonaut setu
 |---|---|---|
 | `--agent <a>` | required | `oracle`, `random`, `claude-code`, or a command template (§2) |
 | `--world <dir\|.pnworld>` | the task library | your own world: a world folder (packed like `practonaut pack`; anything but `world.json` and allowed assets is refused) or a world package |
-| `--tasks all\|<ids>` | `all` | tasks, comma-separated: library tasks (`connect` or `excalidraw/connect`, list with `practonaut tasks list`), or with `--world` that world's task ids |
+| `--tasks all\|<ids>` | `all` | tasks, comma-separated: library tasks (`connect` or `excalidraw/connect`, list with `practonaut tasks list`; `drawio/connect` or `drawio/all` for the draw.io library, list with `practonaut tasks list drawio/all`; one bench takes one library, so the prefixes never mix), or with `--world` that world's task ids |
 | `--oracle <files>` | none | with `--world`: comma-separated reference solutions, one `practonaut.task-oracle/1` file per task (the `oracle.json` that `tasks from-scenes` writes beside the world) (§3) |
 | `--seeds <n>` | 1 | seeds 1…n; the seed picks the task's variant (labels). Seeds that pick the same variant bench the same board and are named on stderr (`seeds_share_variant`); a world with one variant needs one seed and `--repeats` |
 | `--seed-list <seeds>` | none | instead of `--seeds`: the seeds themselves, distinct, 0 to 999 999 999, e.g. `2,5` |
@@ -536,7 +537,9 @@ for the verdict level and comparisons across worlds, in [PADR-0044](../adr/0044-
   refusal says to compare without the flag only when nothing else refuses the pair; with another
   difference (the budget, the mirror, `--checks`) it says to bench the baseline again. Titles,
   prompts, hints, actions and behaviour rules are not compared, and the identities are the reports'
-  claims unless `--verify` re-derived them. Two worlds that name one task set
+  claims unless `--verify` re-derived them. The draw.io library is such a world: the Excalidraw
+  library's task set at its version, so the two libraries benched on the same seeds pair all 48
+  instances (the committed comparison: [draw.io evidence](drawio/README.md)). Two worlds that name one task set
   ([world format](../world-format.md) §2a) select the same variants for the same seeds, so benched
   with the same seed list and repeats every identity pairs at equal counts.
 - **Instance regression**: at least three judged repeats on each side, every judged baseline repeat

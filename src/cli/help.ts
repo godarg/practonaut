@@ -31,7 +31,7 @@ Usage:
 
 Practice:
   play [world|task]  start a practice session and open it in your browser
-  tasks list|show    the bundled Excalidraw task library (play <task-id> opens one)
+  tasks list|show    the bundled Excalidraw task library (play <task-id> opens one; drawio/<task-id>: on draw.io)
   serve [world]      same as play; for scripts use --no-open
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
   bench --agent <a>  score an agent on the task library or your own world (independent checker)
@@ -64,7 +64,7 @@ Verwendung:
 
 Üben:
   play [Welt|Aufgabe] Übungssitzung starten und im Browser öffnen
-  tasks list|show    die mitgelieferte Excalidraw-Aufgabenbibliothek (play <Aufgaben-ID> öffnet eine)
+  tasks list|show    die mitgelieferte Excalidraw-Aufgabenbibliothek (play <Aufgaben-ID> öffnet eine; drawio/<Aufgaben-ID>: auf draw.io)
   serve [Welt]       wie play; für Skripte --no-open verwenden
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
   bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
@@ -131,26 +131,28 @@ Ctrl+C beendet die Sitzung. Exporte sind normale Browser-Downloads.`,
 };
 
 const TASKS: Text = {
-  en: `Usage: practonaut tasks list [--json]
-       practonaut tasks show <task-id> [--oracle] [--json]
+  en: `Usage: practonaut tasks list [drawio/all] [--json]
+       practonaut tasks show [drawio/]<task-id> [--oracle] [--json]
        practonaut tasks from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>
                                     [--task <id>] [--layout relative] [--align] [--tolerance <px>]
                                     [--force] [--json]
 
 list and show describe the bundled Excalidraw task library; --oracle adds the reference solution.
+drawio/all and drawio/<task-id> name the same tasks in the draw.io library (play drawio/<task-id>).
 from-scenes turns two drawings into a task: the difference becomes the goal (counts, labels, shapes,
 colours, frames, groups and arrows by their end labels; --layout relative adds left-to-right order,
 --align keeps aligned rows and columns within --tolerance, default 8 px), with error classes, a
 reference solution and near misses. It writes <dir>/world/world.json (practise it with
 practonaut play <dir>/world) and <dir>/oracle.json beside it. The goal scene must pass the
 independent checker and the start scene must fail, or nothing is written.`,
-  de: `Verwendung: practonaut tasks list [--json]
-            practonaut tasks show <Aufgaben-ID> [--oracle] [--json]
+  de: `Verwendung: practonaut tasks list [drawio/all] [--json]
+            practonaut tasks show [drawio/]<Aufgaben-ID> [--oracle] [--json]
             practonaut tasks from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>
                                          [--task <id>] [--layout relative] [--align] [--tolerance <px>]
                                          [--force] [--json]
 
 list und show beschreiben die mitgelieferte Excalidraw-Aufgabenbibliothek; --oracle zeigt die Referenzlösung.
+drawio/all und drawio/<Aufgaben-ID> nennen dieselben Aufgaben in der draw.io-Bibliothek (play drawio/<Aufgaben-ID>).
 from-scenes macht aus zwei Zeichnungen eine Aufgabe: Der Unterschied wird zum Ziel (Anzahlen, Beschriftungen,
 Formen, Farben, Rahmen, Gruppen und Pfeile über die Beschriftungen ihrer Enden; --layout relative ergänzt die
 Reihenfolge von links nach rechts, --align hält ausgerichtete Zeilen und Spalten innerhalb von --tolerance,
