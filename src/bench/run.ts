@@ -42,7 +42,7 @@ import { apiKeySourceValue } from './parsers.ts';
 import { instanceIdentities } from './identity.ts';
 import { MCP_TOOL_NAMES } from '../mcp/contracts.ts';
 import { spawnable } from '../platform/spawnable.ts';
-import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, nativeFileName, presetIsolation, summarize, validateBenchReportV3, type AgentV3, type BenchReportV3, type RunFailure, type SessionReportV3, type SessionRunV3 } from './report.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, nativeFileName, presetIsolation, summarize, validateBenchReportV3, type AgentV3, type BenchReportV3, type BillingClass, type RunFailure, type SessionReportV3, type SessionRunV3 } from './report.ts';
 import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
 
@@ -66,6 +66,26 @@ export interface BenchOptions {
   /** Aborted on Ctrl+C, SIGTERM or SIGHUP: the running agent is stopped, its session closed, and the
    * report holds the runs that finished. */
   signal?: AbortSignal;
+  /** A start guard for every client start (the project's release ledger, PADR-0042 decision 4):
+   * consulted before an external agent's client starts, told when its run ends. */
+  guard?: StartGuard;
+}
+/** What a start guard is told before a client starts. */
+export interface StartRequest {
+  bench: string; run: string; taskId: string; seed: number; repeat: number; agent: AgentSpec;
+  /** The billing class the preset was set up for and the model its variable requests (PADR-0044 decision 5). */
+  requested: BillingClass; model: string | null;
+}
+/**
+ * The seam for the release ledger (PADR-0042 decision 4, PADR-0044 decision 8): `start` is awaited
+ * before an external agent's client starts and before its run folder exists; when it throws, no client
+ * starts and the bench stops there (the error is the bench's). `end` is awaited once that run has its
+ * record, judged or not; a run cut short by a kill never reaches it. Built-in agents start no client
+ * and are never passed to it.
+ */
+export interface StartGuard {
+  start(request: StartRequest): Promise<number>;
+  end(handle: number, run: SessionRunV3): Promise<void>;
 }
 export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
 
@@ -317,7 +337,7 @@ const parsedFailure = (failure: NonNullable<ClientEvidence['failure']>): RunFail
 
 /** Runs the planned task × seed × repeat grid and returns a validated `practonaut.bench/3` report at
  * session level (`null` when it was interrupted before the first run finished). */
-export async function runBench(options: BenchOptions): Promise<{ report: SessionReportV3 | null; directory: string; interrupted: boolean; planned: number }> {
+export async function runBench(options: BenchOptions): Promise<{ report: SessionReportV3 | null; directory: string; interrupted: boolean; planned: number; refused?: Error }> {
   const prepared = options.world ?? await libraryBenchWorld();
   const references: ReadonlyMap<string, BenchReference> = options.references ?? (prepared.source === 'library' ? libraryReferences(options.tasks) : new Map());
   for (const task of options.tasks) if (!prepared.world.tasks.some(value => value.id === task)) throw new Error(`unknown task ${task} in world ${prepared.world.id}`);
@@ -335,9 +355,18 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
   const reported: Reported = { model: null, apiKeySource: null, version: null }, external = options.agent.kind !== 'builtin';
   // The environment every agent of this bench starts with (also what its model variable reads).
   const agentEnv = agentEnvironment(options.agent, process.env, options.keepEnv).env;
+  const requested = { requested: requestedBilling(options.agent, options.keepEnv).class, model: requestedModelOf(options.agent, agentEnv).value };
+  let refused: Error | undefined;
   for (const [index, item] of plan.entries()) {
     if (interrupted || options.signal?.aborted) { interrupted = true; break; }
     const reference = references.get(item.taskId), runId = `${item.taskId}-s${item.seed}-r${item.repeat}`;
+    // The guard decides before the client starts and before the run folder exists; a refusal ends the
+    // bench here, with the runs that finished (PADR-0042 decision 4: refused before the client starts).
+    let handle: number | undefined;
+    if (options.guard && external) {
+      try { handle = await options.guard.start({ bench: id, run: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, agent: options.agent, ...requested }); }
+      catch (error) { refused = error instanceof Error ? error : new Error(String(error)); interrupted = true; break; }
+    }
     const home = join(directory, runId), agentDirectory = join(home, 'agent');
     await ensurePrivateDirectory(agentDirectory);
     const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
@@ -421,6 +450,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     const run = sessionRun({ runId, item, outcome, finalActions, counters, wallMs, reference: reference ? reference.steps.length : null, checker, artifacts, logs, evidence, kind: options.agent.kind });
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
+    // The run's end, judged or not, with the hashes its record binds (PADR-0044 decision 8).
+    if (handle !== undefined) await options.guard!.end(handle, run);
     if (interrupted) break;
     // --stop-on-infra: a usage limit or an API error affects every later run as well; stop here and
     // write the partial report so the operator can resume with the remaining tasks.
@@ -431,9 +462,13 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     }
     options.progress?.(`${String(index + 1).padStart(String(plan.length).length)}/${plan.length}  ${runId.padEnd(28)} ${run.pass ? 'pass' : 'FAIL'}  ${run.actions} ${new Intl.PluralRules('en').select(run.actions) === 'one' ? 'action' : 'actions'}  ${(wallMs / 1000).toFixed(1)} s${run.status === 'completed' ? '' : `  [${run.status}]`}${run.note ? `  ${run.note}` : ''}`);
   }
-  if (!runs.length) return { report: null, directory, interrupted, planned: plan.length };
+  if (!runs.length) {
+    // Refused before the first client started: no run, no report, and no empty bench folder left.
+    if (refused) { await rm(directory, { recursive: true, force: true }); throw refused; }
+    return { report: null, directory, interrupted, planned: plan.length };
+  }
   const report = await assembleReport({ options, mirror: options.mirror, prepared, world, worldBytes, worldSha256, references, referencesFile, directory, runs, reported, requestedModel: requestedModelOf(options.agent, agentEnv), planned: plan.length, partial: interrupted && runs.length < plan.length, ...(stopped ? { stopped } : {}) });
-  return { report, directory, interrupted, planned: plan.length };
+  return { report, directory, interrupted, planned: plan.length, ...(refused ? { refused } : {}) };
 }
 
 /** One /3 session run from what the runner counted and read (PADR-0044): the /2 fields, the agent's own

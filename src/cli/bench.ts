@@ -6,7 +6,7 @@ import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent, type AgentSpec } from '../bench/agents.ts';
-import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../bench/run.ts';
+import { killRunningAgents, libraryWorld, recoverBench, runBench, type StartGuard } from '../bench/run.ts';
 import { existsSync } from 'node:fs';
 import { verifyBenchArtifacts, verifyBenchV2, verifyBenchV3, type VerificationResult, type VerificationResultV2, type VerificationResultV3 } from '../bench/verify.ts';
 import { BENCH_SCHEMA_V1, BENCH_SCHEMA_V2, BenchReportError, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
@@ -149,8 +149,10 @@ async function writeAtomic(path: string, text: string | Uint8Array): Promise<voi
   catch (error) { await rm(temporary, { force: true }); throw new RuntimeError('usage', cliText('writeFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' })); }
 }
 
-/** practonaut bench --agent <preset|builtin|command> … : runs the grid, writes a validated report. */
-export async function commandBench(args: string[]): Promise<number> {
+/** practonaut bench --agent <preset|builtin|command> … : runs the grid, writes a validated report.
+ * `extra.guard`: a start guard for every client start (the project's release ledger, reached through
+ * `node tools/challenge.ts bench`; the command itself takes none). */
+export async function commandBench(args: string[], extra: { guard?: StartGuard } = {}): Promise<number> {
   const options = parseBenchArguments(args);
   let agent;
   try { agent = resolveAgent(options.agent); } catch (error) { if (error instanceof AgentTemplateError) throw new RuntimeError('usage', error.message); throw error; }
@@ -183,7 +185,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), ...(options.stopOnInfra ? { stopOnInfra: true } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), ...(options.stopOnInfra ? { stopOnInfra: true } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal, ...(extra.guard ? { guard: extra.guard } : {}) });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {
@@ -205,6 +207,8 @@ export async function commandBench(args: string[]): Promise<number> {
   else if (result.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: result.planned, tasks: report.settings.tasks.filter(task => !judged(task)).join(',') }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
   if (options.junit) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(options.junit)) }));
+  // A start the guard refused ends the bench after the runs that finished, whose report is written.
+  if (result.refused) throw result.refused;
   if (stopped) return EXIT_STOPPED;
   if (result.interrupted) return EXIT_INTERRUPTED;
   // An agent that failed (a missing or expired login, a crash) leaves runs that were judged on the board

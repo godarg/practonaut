@@ -12,6 +12,10 @@
 //                  (the agent's own context overflow)
 //   login-expired  an is_error result "OAuth token has expired", status 401, no tool call, exit 1
 //   silent-crash   no output and no tool call, exit 1
+// With PN_FAKE_STATE=<dir>, every start appends one line to <dir>/started.log (a start that never came
+// leaves no line). With PN_FAKE_SOLVE=<file> (JSON { oracles: <dir>, tasks: { <model>: [<task id>, …] } }),
+// after its observe the stand-in plays the reference of each listed task from <dir>/<task id>.json through
+// act and calls check_result, so the task passes; the other tasks fail as before.
 // With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
 // one hits the usage limit. With PN_FAKE_SLEEP_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts
 // observe and the next one observes and then never ends (its pid in <dir>/sleeper.pid): a bench to
@@ -29,9 +33,10 @@ const CLIENT = new URL('../../src/bench/mcp-client.ts', import.meta.url).href;
 
 export async function fakeClaude(dir: string): Promise<void> {
   const script = join(dir, 'fake-claude.mjs');
-  await writeFile(script, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+  await writeFile(script, `import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const out = event => process.stdout.write(JSON.stringify(event) + '\\n');
+if (process.env.PN_FAKE_STATE) appendFileSync(join(process.env.PN_FAKE_STATE, 'started.log'), (process.env.PN_FAKE_MODEL ?? '') + '\\n');
 let mode = process.env.PN_FAKE_MODE ?? 'observe';
 if (process.env.PN_FAKE_LIMIT_AFTER !== undefined && process.env.PN_FAKE_STATE) {
   const counter = join(process.env.PN_FAKE_STATE, 'starts');
@@ -66,7 +71,22 @@ const { StdioMcpClient } = await import(${JSON.stringify(CLIENT)});
 const at = process.argv.indexOf('--mcp-config');
 const server = JSON.parse(readFileSync(process.argv[at + 1], 'utf8')).mcpServers.practonaut;
 const client = await StdioMcpClient.start(server, { cwd: process.cwd(), env: process.env });
-await client.call('observe', {});
+const view = await client.call('observe', {});
+if (process.env.PN_FAKE_SOLVE && view.ok) {
+  const solve = JSON.parse(readFileSync(process.env.PN_FAKE_SOLVE, 'utf8'));
+  if ((solve.tasks[process.env.PN_FAKE_MODEL ?? ''] ?? []).includes(view.value.task.id)) {
+    const oracle = JSON.parse(readFileSync(join(solve.oracles, view.value.task.id + '.json'), 'utf8'));
+    let step = view.value.step, revision = view.value.revision; const created = [];
+    for (const [index, action] of oracle.steps.entries()) {
+      const params = {};
+      for (const [key, value] of Object.entries(action.params)) params[key] = value !== null && typeof value === 'object' ? (created[value.created] ?? '') : value;
+      const reply = await client.call('act', { name: action.name, params, baseStep: step, expectedRevision: revision });
+      if (!reply.ok) break;
+      step = reply.value.step; revision = reply.value.revision; created[index] = reply.value.created[0] ?? '';
+    }
+    await client.call('check_result', { expectedRevision: revision });
+  }
+}
 if (sleep) await new Promise(() => {});
 await client.close();
 if (mode === 'max-turns') { out({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 30, total_cost_usd: 0 }); process.exit(1); }

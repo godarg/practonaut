@@ -1,52 +1,58 @@
 /**
- * File side of the challenge tooling (`node tools/challenge.ts`, PADR-0040): writing a generated set
- * (world folder, oracle sidecars outside it, `instances.json` with the bench arguments and every
- * sidecar's SHA-256), checking a set without any agent (every reference passes, every near miss
- * fails, in separate checker processes), declaring a round from its development reports, finding the
- * model runs spent in bench folders, and the gate and its preflight from the committed declaration,
- * the development and held-out reports and their bench folders.
+ * File side of the challenge tooling (`node tools/challenge.ts`, PADR-0040 as PADR-0042 amends it):
+ * writing a generated set (world folder, oracle sidecars outside it, `instances.json` with the bench
+ * arguments and every sidecar's SHA-256), checking a set without any agent, reading the round files
+ * (probe plan, pre-probe record, declaration) as git holds them, reading the pushed release ledger,
+ * reading and re-verifying bench/3 reports, the pre-probe record, the declaration, and the gate and
+ * its preflight. 0.2.0's files are only read (round-020.ts).
  */
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { runOracle, type TaskOracle } from '../authoring/from-scenes.ts';
 import { sha256Hex, canonicalJson } from '../canonical/index.ts';
 import { checkInProcess } from '../cli/runtime.ts';
 import { packWorld } from '../package/index.ts';
 import { parseJsonEntry } from '../package/json.ts';
 import { PACKAGE_VERSION } from '../version.ts';
-import { validateBenchReport, isBenchReportV2, isSessionReportV3, BENCH_REFERENCES_FILE, type BenchReportV2 } from '../bench/report.ts';
-import { verifyBenchV2, verifyBenchV3 } from '../bench/verify.ts';
+import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, validateBenchReport, type SessionReportV3, type SessionRunV3 } from '../bench/report.ts';
+import { toView } from '../bench/view.ts';
+import { verifyBenchV3 } from '../bench/verify.ts';
 import { clientFailure, hashFile, MAX_LOG_BYTES, readLogHead, wholeLog } from '../bench/evidence.ts';
-import { CLAUDE_CODE_STREAM, SHIPPED_PARSERS } from '../bench/parsers.ts';
-import { clientInit } from '../bench/agents.ts';
+import { SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
-import type { SessionData, World } from '../world/types.ts';
-import { FAMILY_BENCH, SEED_RANGES, generateSet, taskIdOf, worldIdOf, type ChallengeSet } from './build.ts';
-import { DECLARATION_SCHEMA, RELEASE_RUNS_BEFORE_ROUNDS, ROUND, checkLadderAgent, declarationHash, developmentDigest, digestRunOf, heldOutSeeds, orderOf, pairOf, tierOf, unattestedRuns, validateDeclaration, DeclarationError, type Declaration, type DigestSession } from './declaration.ts';
-import { RUN_ARTIFACTS } from '../bench/run.ts';
-import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
-import { computeGate, mergeAgentRuns, preflightGate, rejectedByClient, rejectedByClientV3, GateInputError, renderGate, renderPreflight, type GateReport, type GateResult, type PreflightResult, type SpentRun } from './gate.ts';
-import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
-import { libraryWorld } from '../bench/run.ts';
+import { RUN_ARTIFACTS, libraryWorld } from '../bench/run.ts';
 import { safeText } from '../cli/output.ts';
-import { isDeepStrictEqual } from 'node:util';
+import type { SessionData, World } from '../world/types.ts';
+import { FAMILY_BENCH, generateSet, taskIdOf, type ChallengeSet } from './build.ts';
+import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
+import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, heldOutSeeds, reservedRuns, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
+import { computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
+import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
+import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, type Ledger } from './ledger.ts';
+import { readLedger, type LedgerPaths } from './ledger-file.ts';
+import { parseUnit, unitSlug } from './units.ts';
 
-export const SET_SCHEMA = 'practonaut.challenge-set/1';
-export const LEDGER_SCHEMA = 'practonaut.challenge-ledger/1';
-/** Bench settings of a set: the family's recommended ones, or the declared ones for a held-out set. */
+export const SET_SCHEMA = 'practonaut.challenge-set/2';
+/** The committed release ledger's file name in the release folder. */
+export const COMMITTED_LEDGER = 'release-ledger.jsonl';
+/** Bench settings of a set: the family's recommended ones, or the plan's or declaration's. */
 export interface SetBench { mirror?: 'off' | 'required'; maxActions: number; timeoutSeconds: number; checks?: number | null }
 export interface SetMeta {
-  family: Family; set: string; round?: number; difficulty: string; seeds: number[];
-  /** A held-out set: the declaration it comes from (canonical SHA-256 and the commit holding it),
-   * its declared bench settings and the ladder models for the printed command lines. */
-  declaration?: { sha256: string; commit: string }; bench?: SetBench; ladder?: readonly string[];
+  family: Family; set: string; difficulty: string; seeds: number[];
+  /** A round's set: its unit and round, and the plan (pre-probe) or declaration (held-out) it comes
+   * from — canonical SHA-256, the commit holding it and its path for the printed commands. */
+  unit?: string; round?: number; basis?: { kind: 'plan' | 'declaration'; sha256: string; commit: string; path: string }; bench?: SetBench;
+  /** The models of the round's model runs, for the printed command lines. */
+  models?: readonly string[];
 }
-/** Environment a gate bench runs with (Claude Code must not update itself during a round). */
+/** Environment a round's model benches run with (Claude Code must not update itself during a round). */
 export const ROUND_ENV = Object.freeze({ DISABLE_AUTOUPDATER: '1' });
 
 async function exists(path: string): Promise<boolean> { try { await lstat(path); return true; } catch { return false; } }
 const oracleText = (oracle: TaskOracle): string => JSON.stringify(oracle, null, 2) + '\n';
 const quoted = (value: string): string => /^[\w./:@,=+-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+const refuse = (code: string, message: string): never => { throw new GateInputError(code, message); };
 
 /** The bench arguments of a set (after `bench`): its world, the oracle files of `tasks`, one seed and
  * one repeat, its bench settings, and --stop-on-infra. */
@@ -58,8 +64,8 @@ export function benchArgs(directory: string, oracleFiles: readonly string[], ben
 
 /** Writes `<out>/world/world.json`, `<out>/oracles/<task>.json` and `<out>/instances.json`. An
  * existing `<out>` is refused unless `force`, which replaces exactly these three entries. The manifest
- * records each oracle file's SHA-256 and near-miss count (audit P1-2) and, for a held-out set, the
- * declaration it was derived from, the declared bench settings and the command lines of the round. */
+ * records each oracle file's SHA-256 and near-miss count and, for a round's set, the plan or
+ * declaration it was derived from, its bench settings and the command lines of the round. */
 export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, force = false): Promise<{ world: string; oracles: string[]; instances: string; commands: string[] }> {
   if (await exists(out)) {
     if (!force) throw new Error(`${out} exists; add --force to replace its world/, oracles/ and instances.json`);
@@ -68,8 +74,8 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   }
   await mkdir(join(out, 'world'), { recursive: true }); await mkdir(join(out, 'oracles'), { recursive: true });
   const worldPath = join(out, 'world', 'world.json');
-  // Compact: a held-out set of 26 long-horizon instances at difficulty 3 is 4.3 MB indented, above the
-  // package reader's 4 MiB per entry, and 1.5 MB compact. The gate compares the world by content.
+  // Compact: a held-out set of 26 long-horizon instances at difficulty 3 is above the package
+  // reader's 4 MiB per entry when indented. The gate compares the world by content.
   await writeFile(worldPath, JSON.stringify(set.world) + '\n', { flag: 'wx' });
   const oraclePaths: string[] = [];
   for (const oracle of set.oracles) {
@@ -79,12 +85,15 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   }
   const bench: SetBench = meta.bench ?? FAMILY_BENCH[meta.family];
   const args = ['bench', ...benchArgs(out, oraclePaths, bench)];
-  const line = (agent: string, model?: string): string => [...Object.entries(ROUND_ENV).map(([key, value]) => `${key}=${value}`), ...(model ? [`ANTHROPIC_MODEL=${quoted(model)}`] : []), 'node', 'src/cli/main.ts', 'bench', '--agent', agent, ...args.slice(1).map(quoted)].join(' ');
-  const commands = meta.ladder ? [line('oracle'), line('random'), ...meta.ladder.map(model => line('claude-code', model))] : [];
+  const env = Object.entries(ROUND_ENV).map(([key, value]) => `${key}=${value}`);
+  const builtin = (agent: string): string => [...env, 'node', 'src/cli/main.ts', 'bench', '--agent', agent, ...args.slice(1).map(quoted)].join(' ');
+  const model = (name: string): string => [...env, `ANTHROPIC_MODEL=${quoted(name)}`, 'node', 'tools/challenge.ts', 'bench', '--purpose', meta.basis!.kind === 'plan' ? 'pre-probe' : 'held-out', `--${meta.basis!.kind}`, quoted(meta.basis!.path), '--', '--agent', GATE_PRESET, ...args.slice(1).map(quoted)].join(' ');
+  const commands = meta.basis && meta.models ? [...(meta.basis.kind === 'declaration' ? [builtin('oracle'), builtin('random')] : []), ...meta.models.map(model)] : [];
   const oracles = new Map(set.oracles.map(oracle => [oracle.taskId, oracle]));
   const instances = {
     schema: SET_SCHEMA, generator: { id: generatorId(meta.family), version: generatorVersion(meta.family) }, practonaut: PACKAGE_VERSION,
-    family: meta.family, set: meta.set, ...(meta.round !== undefined ? { round: meta.round } : {}), ...(meta.declaration !== undefined ? { declaration: meta.declaration } : {}), difficulty: meta.difficulty, seeds: meta.seeds,
+    family: meta.family, set: meta.set, ...(meta.unit !== undefined ? { unit: meta.unit } : {}), ...(meta.round !== undefined ? { round: meta.round } : {}),
+    ...(meta.basis !== undefined ? { basis: { kind: meta.basis.kind, sha256: meta.basis.sha256, commit: meta.basis.commit } } : {}), difficulty: meta.difficulty, seeds: meta.seeds,
     world: { id: set.world.id, version: set.world.version, contentHash: sha256Hex(canonicalJson(set.world)) },
     instances: set.instances.map(instance => ({ taskId: instance.taskId, seed: instance.draft.seed, difficulty: instance.draft.difficulty, referenceActions: instance.oracle.steps.length, minimal: instance.minimal,
       nearMisses: instance.oracle.nearMisses.length, oracle: { sha256: sha256Hex(oracleText(oracles.get(instance.taskId)!)), nearMisses: oracles.get(instance.taskId)!.nearMisses.length },
@@ -96,8 +105,7 @@ export async function writeSet(set: ChallengeSet, out: string, meta: SetMeta, fo
   return { world: worldPath, oracles: oraclePaths, instances: instancesPath, commands };
 }
 
-/** A set's bench arguments for some of its tasks (to resume after a stop): its own arguments with
- * --tasks and only those tasks' oracle files. */
+/** A set's bench arguments for some of its tasks (to resume after a stop). */
 export async function setArgs(directory: string, tasks?: readonly string[]): Promise<string[]> {
   const manifest = JSON.parse(await readFile(join(directory, 'instances.json'), 'utf8')) as { instances: Array<{ taskId: string }>; bench: { args: string[]; declared?: SetBench; recommended: SetBench } };
   if (!tasks) return manifest.bench.args.slice(1);
@@ -141,207 +149,118 @@ export async function verifySet(dir: string, seeds: readonly number[] = [1]): Pr
   return { world, instances: world.tasks.length, references: { total: oracles.length * seeds.length, passed }, nearMisses: await judgeNearMisses(world, oracles, seeds) };
 }
 
-/** Reads, validates and re-verifies a report against its bench folder; with `sessions`, also the
- * judged session of each judged run (verified above), for the development digest. */
-export const readGateReport = (path: string, sessions = false): Promise<GateReport> => verifiedReport(path, sessions);
-async function verifiedReport(path: string, sessions = false): Promise<GateReport> {
-  const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
-  // The 0.2.0 gate reads /2 and session-level /3 reports (bench writes /3 since PADR-0044); P1 restricts 0.3.0 rounds to /3.
-  if (!isBenchReportV2(report) && !isSessionReportV3(report)) throw new GateInputError(`${basename(path)} is a ${report.schema} report${report.schema === 'practonaut.bench/3' ? ' at artifact level' : ''}; the gate needs practonaut.bench/2 or a session-level practonaut.bench/3 report`);
-  if (isBenchReportV2(report)) await verifyBenchV2(report, dirname(path), libraryWorld);
-  else {
-    // A gate takes a /3 report only when every value read from its runs' output was re-derived here and
-    // its preset was checked: a model or an isolation that is only the report's claim never reaches a round.
-    const verified = await verifyBenchV3(report, dirname(path), libraryWorld);
-    // Text from the report (a parser or preset name, a version) is data: shown escaped, never interpreted by a terminal.
-    if (verified.parsers.notShipped.length) throw new GateInputError(`${basename(path)}: values read by ${safeText(verified.parsers.notShipped.join(', '))} were not re-derived by this Practonaut; the gate takes only re-derived values`);
-    if (verified.preset === 'not-checked') throw new GateInputError(`${basename(path)}: its preset's name and command were not checked (Practonaut ${safeText(report.environment.practonaut)}); the gate needs a report this Practonaut checked`);
-  }
-  const read = new Map<string, DigestSession>();
-  if (sessions) for (const run of report.runs) {
-    if (!run.artifacts) continue;
-    const session = parseJsonEntry(await readFile(join(dirname(path), run.id, RUN_ARTIFACTS.session)), 'session.json', 64) as { hash?: unknown; log?: unknown };
-    if (typeof session.hash !== 'string' || !Array.isArray(session.log)) throw new GateInputError(`run ${run.id}: its session has no state hash and action log`);
-    read.set(run.id, { hash: session.hash, log: session.log });
-  }
-  return { report, bench: basename(dirname(resolve(path))), ...(sessions ? { sessions: read } : {}) };
-}
-export async function readDeclaration(path: string): Promise<Declaration> {
-  return validateDeclaration(parseJsonEntry(await readFile(path), 'declaration.json', 16));
-}
-
-interface LiteReport { schema?: unknown; environment?: { world?: { contentHash?: unknown } }; runs?: Array<Parameters<typeof rejectedByClient>[0] & { id?: unknown; failure?: unknown; stdout?: unknown }> }
 /** A /3 run's failure as a shipped parser re-derives it from the run's own stdout, when the report binds
  * that stdout and names a shipped parser; null otherwise (nothing then exempts the run). */
-async function rederivedFailure(runFolder: string, run: { failure?: unknown; stdout?: unknown }): Promise<Parameters<typeof rejectedByClientV3>[1]> {
+export async function rederivedFailure(runFolder: string, run: { failure?: unknown; stdout?: unknown }): Promise<RederivedFailure | null> {
   const parser = (run.failure as { parser?: unknown } | undefined)?.parser, bound = run.stdout as { sha256?: unknown; bytes?: unknown } | null | undefined;
-  if (typeof parser !== 'string' || !SHIPPED_PARSERS.has(parser) || parser !== CLAUDE_CODE_STREAM || !bound) return null;
+  if (typeof parser !== 'string' || !SHIPPED_PARSERS.has(parser) || !bound) return null;
   const path = join(runFolder, 'agent.stdout'), hashed = await hashFile(path);
   if (!hashed || hashed.sha256 !== bound.sha256 || hashed.bytes !== bound.bytes) return null;
   // The same reading as the runner's and --verify's (client-evidence.ts): the whole output, or no exemption.
   const body = await readLogHead(path, MAX_LOG_BYTES), failure = clientFailure(body?.text ?? '', wholeLog(body));
   return failure ? { reason: failure.reason, parser, code: failure.code, beforeModelWork: failure.beforeModelWork } : null;
 }
-/** A bench folder's report as far as the spend scan reads it (not validated: only its runs' statuses
- * and its world's content hash are used, to tell infra_error reruns and development benches apart). */
-function liteReport(bytes: Buffer | null): LiteReport | null {
-  if (!bytes) return null;
-  try { const value: unknown = JSON.parse(bytes.toString('utf8')); return value !== null && typeof value === 'object' ? value as LiteReport : null; } catch { return null; }
-}
+
 /**
- * The model runs spent in bench folders (second review S-2): every run folder under the roots that
- * holds an agent's own output (`agent.stdout`; built-in agents have none) of a held-out task, with
- * its model and its status where the bench's report names it; and how many such runs there are on
- * the development set (a bench of that set, or one without a report, is counted).
+ * A bench/3 report as a round reads it (PADR-0044 decision 10: the gate and the release ledger accept
+ * only `readFrom: practonaut.bench/3`, at session level until artifact mode exists): validated and
+ * re-verified against its bench folder, with the runs whose client values a shipped parser re-derived,
+ * the failure each infra_error run's stdout gives that parser, and with `sessions` the judged sessions
+ * the development digest reads. A run that was not re-derived stays the report's claim: never attested.
  */
-export async function scanSpend(roots: readonly string[], sets: { developmentHash: string; developmentTasks: readonly string[]; heldOutTasks: readonly string[] }): Promise<{ development: number; developmentRejected: number; heldOut: SpentRun[] }> {
-  const heldOut: SpentRun[] = []; let development = 0, developmentRejected = 0;
-  for (const root of [...new Set(roots.map(value => resolve(value)))]) {
-    for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
-      const folder = join(root, bench);
-      const report = liteReport(await readRegularFile(join(folder, 'report.json'), 64 * 1024 * 1024));
-      // A /3 report's runs are exempt only by a failure re-derived from their own stdout (PADR-0044
-      // decision 9); every other report keeps the 0.2.0 rule its committed rounds were counted by.
-      const rejected = async (listed: NonNullable<LiteReport['runs']>[number], runFolder: string): Promise<boolean> =>
-        report?.schema === 'practonaut.bench/3' ? rejectedByClientV3(listed, await rederivedFailure(runFolder, listed)) : rejectedByClient(listed);
-      for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
-        const match = /^(.+)-s\d+-r\d+$/.exec(entry.name);
-        if (!entry.isDirectory() || !match || !(await exists(join(folder, entry.name, 'agent.stdout')))) continue;
-        const task = match[1]!;
-        if (sets.heldOutTasks.includes(task)) {
-          const head = await readLogHead(join(folder, entry.name, 'agent.stdout'), 64 * 1024);
-          // A run its bench's report does not list (a hard kill, an older interrupted bench) is
-          // unjudged when its folder holds no checker output, and may be benched again; one that was
-          // judged but is listed nowhere stays unknown (status null) and refuses the round.
-          const listed = report?.runs?.find(run => run.id === entry.name);
-          const status = typeof listed?.status === 'string' ? listed.status : await exists(join(folder, entry.name, 'checker.json')) ? null : 'unjudged';
-          heldOut.push({ bench, runId: entry.name, taskId: task, model: clientInit(head?.text ?? '').model, status, ...(listed && await rejected(listed, join(folder, entry.name)) ? { rejected: true } : {}) });
-        } else if (sets.developmentTasks.includes(task) && (report === null || report.environment?.world?.contentHash === sets.developmentHash)) {
-          const listed = report?.runs?.find(run => run.id === entry.name);
-          if (listed && await rejected(listed, join(folder, entry.name))) developmentRejected++; else development++;
-        }
-      }
-    }
+export async function readGateReport(path: string, sessions = false): Promise<GateReport> {
+  const report = validateBenchReport(parseJsonEntry(await readFile(path), 'report.json', 64));
+  if (toView(report).readFrom !== BENCH_SCHEMA_V3) refuse('report_not_v3', `${basename(path)} is a ${safeText(report.schema)} report; a 0.3.0 round reads ${BENCH_SCHEMA_V3} reports only`);
+  if ((report as { verdictLevel?: string }).verdictLevel !== 'session') refuse('artifact_level_unavailable', `${basename(path)} is an artifact-level report; this Practonaut gates session-level units only (artifact mode comes with its own change)`);
+  const verified = await verifyBenchV3(report as SessionReportV3, dirname(path), libraryWorld);
+  const value = report as SessionReportV3, folder = dirname(path);
+  const failures = new Map<string, RederivedFailure | null>();
+  for (const run of value.runs) if (run.status === 'infra_error') failures.set(run.id, await rederivedFailure(join(folder, run.id), run));
+  const read = new Map<string, DigestSession>();
+  if (sessions) for (const run of value.runs) {
+    if (!run.artifacts) continue;
+    const session = parseJsonEntry(await readFile(join(folder, run.id, RUN_ARTIFACTS.session)), 'session.json', 64) as { hash?: unknown; log?: unknown };
+    if (typeof session.hash !== 'string' || !Array.isArray(session.log)) refuse('report_invalid', `run ${run.id}: its session has no state hash and action log`);
+    read.set(run.id, { hash: session.hash as string, log: session.log });
   }
-  return { development, developmentRejected, heldOut };
+  return { report: value, bench: basename(resolve(folder)), rederived: new Set(verified.parsers.runs), failures, ...(sessions ? { sessions: read } : {}) };
 }
 
-/** The ledger a committed gate leaves beside its report: the round's spend, read when later rounds
- * are declared. */
-const LedgerSchemaKeys = ['schema', 'family', 'round', 'declaration', 'spent', 'releaseRuns', 'heldOutRuns'] as const;
-async function earlierRounds(folder: string, own: string): Promise<Declaration['budget']['earlier']> {
-  const committed = committedFiles(folder);
-  const earlier: Declaration['budget']['earlier'] = [];
-  for (const name of committed.filter(value => /^[a-z-]+-round-\d\.declaration\.json$/.test(value) && value !== own).sort()) {
-    const ledgerName = name.replace(/-round-(\d)\.declaration\.json$/, '-round$1.ledger.json');
-    let runs: number = ROUND.roundRuns, from: 'ledger' | 'declaration' = 'declaration';
-    if (committed.includes(ledgerName)) {
-      const ledger = JSON.parse(await readFile(join(folder, ledgerName), 'utf8')) as { schema?: unknown; spent?: { total?: unknown } };
-      if (ledger.schema !== LEDGER_SCHEMA || typeof ledger.spent?.total !== 'number' || !Number.isSafeInteger(ledger.spent.total) || ledger.spent.total < 0) throw new DeclarationError(`${ledgerName} is not a gate ledger`);
-      runs = ledger.spent.total; from = 'ledger';
-    }
-    earlier.push({ declaration: name, runs, from });
-  }
-  return earlier;
+/** A round file (plan, pre-probe record, declaration) as git holds it: committed, unchanged and in a
+ * remote-tracking branch; its commit. */
+export function committedFile(path: string): string {
+  try { return declarationCommit(path).commit; }
+  catch (error) { if (error instanceof DeclarationGitError) refuse('not_committed', error.message); throw error; }
 }
+const asGate = <T>(work: () => T): T => { try { return work(); } catch (error) { if (error instanceof RoundError) refuse(error.code, error.message); throw error; } };
+async function json(path: string, name: string): Promise<unknown> { return parseJsonEntry(await readFile(path), name, 16); }
+export const readPlan = async (path: string): Promise<Plan> => { const raw = await json(path, 'plan.json'); return asGate(() => validatePlan(raw)); };
+export const readProbe = async (path: string): Promise<ProbeRecord> => { const raw = await json(path, 'probe.json'); return asGate(() => validateProbe(raw)); };
+export const readDeclaration = async (path: string): Promise<Declaration> => { const raw = await json(path, 'declaration.json'); return asGate(() => validateDeclaration(raw)); };
 
-export interface DeclareFiles { family: Family; round: number; difficulty: Difficulty | 'mixed'; development: string[]; maintainerApproved?: string[]; out: string; benchRoots?: string[] }
+/** Round file names in the release folder (PADR-0042 amended: every name carries the unit). */
+export const roundFiles = Object.freeze({
+  plan: (unit: string, round: number, probe: number): string => `${unit}-round-${round}.probe-${probe}.plan.json`,
+  probe: (unit: string, round: number, probe: number): string => `${unit}-round-${round}.probe-${probe}.json`,
+  declaration: (unit: string, round: number): string => `${unit}-round-${round}.declaration.json`,
+  gate: (unit: string, round: number): string => `${unit}-round${round}.md`,
+  gateJson: (unit: string, round: number): string => `${unit}-round${round}.gate.json`,
+});
+
 /**
- * A round's declaration from its development reports (review S4, second review B-B, S-3): each
- * re-verified, resumed reports merged, on exactly the development set the generator makes for these
- * seeds and difficulty, one judged run per instance per model on the model its report names, with an
- * explicit --mirror. The ladder is ordered by capability (Opus, Sonnet, Haiku) or, with approved
- * models, as given; the gate pair is its first and last model. The release runs before the round are
- * 35 plus the spend of every earlier round committed in the output folder.
+ * The release ledger as `declare` and `gate` read it (PADR-0042 decision 4, PADR-0044 decision 8):
+ * the committed copy in the release folder, committed, unchanged and pushed, so every record it holds
+ * is pushed; the local ledger holds no record the committed one lacks (`ledger_not_committed`); every
+ * committed version of the file is a prefix of the current one (`ledger_rewritten`).
  */
-export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[] }> {
-  const fail = (message: string): never => { throw new DeclarationError(message); };
-  const reads: GateReport[] = [];
-  for (const path of files.development) reads.push(await verifiedReport(path, true));
-  const approved = files.maintainerApproved ?? [];
-  const given: string[] = [];
-  for (const read of reads) { const name = read.report.agent.model ?? fail(`${read.report.agent.name}: a development report needs the model its client reported`); if (!given.includes(name)) given.push(name); }
-  if (given.length !== ROUND.agents) fail(`the development reports name ${given.length} models; a round has ${ROUND.agents}`);
-  // Ladder order: the three tiers by capability, otherwise as given (most capable first).
-  const ladder = given.every(name => tierOf(name) !== -1) ? [...given].sort((a, b) => tierOf(a) - tierOf(b)) : given;
-  const first = reads[0]!.report;
-  const worldHash = first.environment.world.contentHash;
-  const seeds = [...new Set(reads.flatMap(read => read.report.environment.world.generated.map(entry => entry.seed)))].sort((a, b) => a - b);
-  if (seeds.length !== ROUND.developmentInstances) fail(`a development set holds ${ROUND.developmentInstances} instances; these reports bench ${seeds.length}`);
-  if (seeds.some(seed => seed < SEED_RANGES.dev[0] || seed > SEED_RANGES.dev[1])) fail(`development seeds lie in ${SEED_RANGES.dev[0]}–${SEED_RANGES.dev[1]}`);
-  // The development set is exactly what the generator makes for these seeds (review S1).
-  const regenerated = generateSet(files.family, seeds, files.difficulty, 'dev');
-  const contentHash = sha256Hex(canonicalJson(regenerated.world));
-  const devTasks = seeds.map(seed => taskIdOf(files.family, seed));
-  const requested = first.settings.mirror;
-  if (reads.some(read => read.report.settings.mirror === 'auto')) fail('the development benches ran with --mirror auto; a round names its mirror: bench with --mirror required (or off)');
-  const bench = { mirror: requested, timeoutSeconds: first.settings.timeoutSeconds, maxActions: first.settings.maxActions, checks: first.settings.checks ?? null };
-  if (bench.maxActions > FAMILY_BENCH[files.family].maxActions) fail(`--max-actions ${bench.maxActions} is above the ${files.family} cap of ${FAMILY_BENCH[files.family].maxActions}`);
-  for (const { report } of reads) {
-    const name = report.agent.model!;
-    checkLadderAgent(report, name, approved);
-    if (unattestedRuns(report, name).length) fail(`a development run of ${name} reports no model`);
-    if (report.environment.world.contentHash !== contentHash || report.environment.world.contentHash !== worldHash) fail(`the development report of ${name} was not made on the ${files.family} development set of seeds ${seeds.join(', ')} at difficulty ${files.difficulty} (generator ${generatorVersion(files.family)})`);
-    if (report.settings.seeds.join() !== '1' || report.settings.repeats !== 1 || report.settings.tasks.some(task => !devTasks.includes(task))) fail(`the development report of ${name} does not run development instances once each (--seed-list 1 --repeats 1)`);
-    if (report.settings.mirror !== bench.mirror || report.environment.mirror !== bench.mirror || report.settings.timeoutSeconds !== bench.timeoutSeconds || report.settings.maxActions !== bench.maxActions || (report.settings.checks ?? null) !== bench.checks) fail('the development reports differ in mirror (as requested and as run), timeout, action cap or check limit');
+export async function pushedLedger(paths: LedgerPaths): Promise<LedgerInput> {
+  const text = await readFile(paths.committed, 'utf8').catch(() => refuse('ledger_not_committed', `there is no committed release ledger at ${paths.committed}; write it (ledger write), commit and push it`));
+  let committed: Ledger;
+  try { committed = parseLedger(text); } catch (error) { return refuse((error as { code?: string }).code ?? 'ledger_invalid', (error as Error).message); }
+  committedFile(paths.committed);
+  const local = await readLedger(paths.local).catch((error: Error & { code?: string }) => refuse(error.code ?? 'ledger_invalid', error.message));
+  if (local === null) refuse('ledger_missing', `there is no local release ledger at ${paths.local}`);
+  if (local!.text !== committed.text) refuse(isPrefix(committed.text, local!.text) ? 'ledger_not_committed' : 'ledger_diverged', isPrefix(committed.text, local!.text)
+    ? `the local release ledger holds ${local!.records.length - committed.records.length} records the committed one lacks; write it (ledger write), commit and push it first`
+    : 'the committed release ledger is not a prefix of the local one');
+  const versions = [];
+  for (const version of declarationVersions(paths.committed)) {
+    const old = declarationAtCommit(paths.committed, version.commit);
+    if (old === null || !isPrefix(old, committed.text)) refuse('ledger_rewritten', `the release ledger of commit ${version.commit.slice(0, 12)} is not a prefix of the current one: the ledger is only ever appended to`);
+    versions.push({ ...version, records: old!.split('\n').length - 1 });
   }
-  const digestRuns = [], passed: boolean[][] = [];
-  for (const name of ladder) {
-    const merged = mergeAgentRuns(reads.filter(read => read.report.agent.model === name), `development ${name}`);
-    const row: boolean[] = [];
-    for (const task of devTasks) {
-      const entry = merged.get(task);
-      if (!entry || entry.run.status === 'infra_error') fail(`the development run of ${name} on ${task} is ${entry ? 'an infra_error' : 'missing'}; bench it again after the limit window`);
-      const session = entry!.source.sessions?.get(entry!.run.id) ?? fail(`the development run ${entry!.run.id} of ${name} has no judged session to digest`);
-      digestRuns.push(digestRunOf(entry!.run, name, session)); row.push(entry!.run.pass);
-    }
-    passed.push(row);
-  }
-  const roots = [...(files.benchRoots ?? []), ...reads.map((_, index) => dirname(dirname(resolve(files.development[index]!))))];
-  const spent = (await scanSpend(roots, { developmentHash: contentHash, developmentTasks: devTasks, heldOutTasks: [] })).development;
-  const earlier = await earlierRounds(dirname(resolve(files.out)), basename(files.out));
-  const declaration = validateDeclaration({
-    schema: DECLARATION_SCHEMA, family: files.family, round: files.round, generator: { id: generatorId(files.family), version: generatorVersion(files.family) }, difficulty: String(files.difficulty),
-    ladder, maintainerApproved: approved, pair: pairOf(ladder), bench,
-    development: { seeds, world: { id: regenerated.world.id, contentHash }, digest: developmentDigest(digestRuns), passed, spent: Math.max(spent, ROUND.developmentRuns), order: orderOf(passed) },
-    heldOut: { instances: ROUND.heldOutInstances },
-    budget: { developmentRuns: ROUND.developmentRuns, heldOutRuns: ROUND.heldOutRuns, roundRuns: ROUND.roundRuns, releaseRunsBefore: RELEASE_RUNS_BEFORE_ROUNDS + earlier.reduce((total, entry) => total + entry.runs, 0), releaseBudget: ROUND.releaseBudget, earlier },
-  });
-  return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration) };
+  return { ledger: committed, versions };
 }
 
-/** The held-out set a declaration names, generated (`generate --set heldout --declaration`). */
+/** The pre-probe set a plan names (`generate <unit> --set probe --plan`). */
+export function probeSet(plan: Plan): ChallengeSet {
+  const family = asGate(() => familyOf(plan.unit, plan.maintainerApprovedUnit));
+  if (plan.generator.version !== generatorVersion(family)) refuse('generator_mismatch', `the plan names generator ${plan.generator.version}; this checkout's ${family} generator is ${generatorVersion(family)}`);
+  return generateSet(family, plan.seeds, plan.difficulty === 'mixed' ? 'mixed' : Number(plan.difficulty) as Difficulty, `${unitSlug(parseUnit(plan.unit).toolchain)}-r${plan.round}-probe${plan.probe}`);
+}
+/** The held-out set a declaration names (`generate <unit> --set heldout --declaration`). */
 export function heldOutSet(declaration: Declaration): { set: ChallengeSet; seeds: number[] } {
+  const family = asGate(() => familyOf(declaration.unit, declaration.maintainerApprovedUnit));
+  if (declaration.generator.version !== generatorVersion(family)) refuse('generator_mismatch', `the declaration names generator ${declaration.generator.version}; this checkout's ${family} generator is ${generatorVersion(family)}`);
   const seeds = heldOutSeeds(declaration);
-  if (declaration.generator.version !== generatorVersion(declaration.family)) throw new DeclarationError(`the declaration names generator ${declaration.generator.version}; this checkout's ${declaration.family} generator is ${generatorVersion(declaration.family)}`);
-  const difficulty = declaration.difficulty === 'mixed' ? 'mixed' : Number(declaration.difficulty) as Difficulty;
-  return { set: generateSet(declaration.family, seeds, difficulty, `r${declaration.round}`), seeds };
+  return { set: generateSet(family, seeds, declaration.difficulty === 'mixed' ? 'mixed' : Number(declaration.difficulty) as Difficulty, `${unitSlug(parseUnit(declaration.unit).toolchain)}-r${declaration.round}`), seeds };
 }
 
-/** The declaration as git holds it (committed, unchanged, pushed), with its commit. */
-export function committedDeclaration(path: string): { commit: string; versions: number } {
-  try { return declarationCommit(path); } catch (error) { if (error instanceof DeclarationGitError) throw new GateInputError(error.message); throw error; }
-}
-
-/** The held-out set folder against its regeneration (review S1, audit P1-2): the manifest names the
- * declaration and its commit, the seeds and the world; the world folder is the regenerated world;
- * every oracle file has the SHA-256 the manifest records, holds exactly the regenerated reference and
- * near misses, and has at least one near miss. */
-async function checkSetFolder(directory: string, declaration: Declaration, regenerated: ChallengeSet, seeds: readonly number[], commit: string): Promise<void> {
-  const fail = (message: string): never => { throw new GateInputError(`the held-out set: ${message}`); };
+/** A set folder against its regeneration: the manifest names the unit, round, basis and commit and the
+ * seeds; the world folder is the regenerated world; every oracle file has the SHA-256 the manifest
+ * records, holds exactly the regenerated reference and near misses, and has at least one near miss. */
+async function checkSetFolder(directory: string, regenerated: ChallengeSet, expected: { unit: string; round: number; seeds: readonly number[]; basis: { kind: 'plan' | 'declaration'; sha256: string; commit: string } }): Promise<void> {
+  const fail = (message: string): never => refuse('set_mismatch', `the ${expected.basis.kind === 'plan' ? 'pre-probe' : 'held-out'} set: ${message}`);
   const manifest = parseJsonEntry(await readFile(join(directory, 'instances.json')), 'instances.json', 64) as {
-    schema?: unknown; family?: unknown; round?: unknown; declaration?: { sha256?: unknown; commit?: unknown }; seeds?: unknown; world?: { contentHash?: unknown };
+    schema?: unknown; unit?: unknown; round?: unknown; basis?: unknown; seeds?: unknown; world?: { contentHash?: unknown };
     instances?: Array<{ taskId?: unknown; oracle?: { sha256?: unknown; nearMisses?: unknown } }>;
   };
-  if (manifest.schema !== SET_SCHEMA || manifest.family !== declaration.family || manifest.round !== declaration.round) fail(`instances.json is not the ${declaration.family} round ${declaration.round} set`);
-  if (manifest.declaration?.sha256 !== declarationHash(declaration)) fail('instances.json was not generated from this declaration');
-  if (manifest.declaration?.commit !== commit) fail(`instances.json names the declaration of commit ${String(manifest.declaration?.commit ?? 'none').slice(0, 12)}, not ${commit.slice(0, 12)}`);
-  if (!isDeepStrictEqual(manifest.seeds, [...seeds])) fail('instances.json names other seeds than the declaration derives');
-  if (manifest.world?.contentHash !== sha256Hex(canonicalJson(regenerated.world))) fail('its world is not the one the generator makes from the declaration');
-  // The world folder itself, not only the manifest: a hand-edited world.json is refused here, and a
-  // bench of one is refused by the report's content hash.
+  if (manifest.schema !== SET_SCHEMA || manifest.unit !== expected.unit || manifest.round !== expected.round) fail(`instances.json is not the ${expected.unit} round ${expected.round} set`);
+  if (!isDeepStrictEqual(manifest.basis, expected.basis)) fail(`instances.json was not generated from this ${expected.basis.kind} in commit ${expected.basis.commit.slice(0, 12)}`);
+  if (!isDeepStrictEqual(manifest.seeds, [...expected.seeds])) fail(`instances.json names other seeds than the ${expected.basis.kind}`);
+  if (manifest.world?.contentHash !== sha256Hex(canonicalJson(regenerated.world))) fail(`its world is not the one the generator makes from the ${expected.basis.kind}`);
   const worldBytes = await readFile(join(directory, 'world', 'world.json')).catch(() => fail('world/world.json is missing'));
-  if (canonicalJson(parseJsonEntry(worldBytes, 'world.json', 64)) !== canonicalJson(regenerated.world)) fail('world/world.json is not the world the generator makes from the declaration');
+  if (canonicalJson(parseJsonEntry(worldBytes, 'world.json', 64)) !== canonicalJson(regenerated.world)) fail(`world/world.json is not the world the generator makes from the ${expected.basis.kind}`);
   const listed = (manifest.instances ?? []).map(entry => entry.taskId);
   if (!isDeepStrictEqual(listed, regenerated.world.tasks.map(task => task.id))) fail('instances.json does not list exactly the regenerated tasks');
   for (const [index, entry] of (manifest.instances ?? []).entries()) {
@@ -352,88 +271,234 @@ async function checkSetFolder(directory: string, declaration: Declaration, regen
     if (entry.oracle?.nearMisses !== oracle.nearMisses.length || oracle.nearMisses.length < 1) fail(`${oracle.taskId} needs its ${oracle.nearMisses.length} near misses (at least one)`);
   }
 }
+/** The commit a set's manifest records for its plan or declaration. */
+async function setBasisCommit(directory: string): Promise<string> {
+  const manifest = parseJsonEntry(await readFile(join(directory, 'instances.json')), 'instances.json', 64) as { basis?: { commit?: unknown } };
+  return typeof manifest.basis?.commit === 'string' ? manifest.basis.commit : refuse('set_mismatch', `${directory}: instances.json names no plan or declaration commit`);
+}
+
+/**
+ * Model-run folders of a round's tasks that hold no start entry in the ledger (PADR-0042 amended,
+ * 3.1): every run folder under the bench roots with the agent's own output (`agent.stdout`; built-in
+ * agents have none) of one of the tasks, in a bench of one of the round's sets or without a report.
+ */
+export async function scanOutside(roots: readonly string[], sets: { worlds: readonly string[]; tasks: readonly string[] }, ledger: Ledger): Promise<Array<{ bench: string; run: string }>> {
+  const started = new Set(ledger.records.flatMap(record => record.kind === 'start' ? [`${record.bench}\u0000${record.run}`] : []));
+  const outside: Array<{ bench: string; run: string }> = [];
+  for (const root of [...new Set(roots.map(value => resolve(value)))]) {
+    for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
+      const folder = join(root, bench);
+      const bytes = await readRegularFile(join(folder, 'report.json'), 64 * 1024 * 1024);
+      let world: unknown = null;
+      if (bytes) try { world = (JSON.parse(bytes.toString('utf8')) as { environment?: { world?: { contentHash?: unknown } } }).environment?.world?.contentHash; } catch { world = null; }
+      if (bytes && !sets.worlds.includes(world as string)) continue;
+      for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+        const match = /^(.+)-s\d+-r\d+$/.exec(entry.name);
+        if (!entry.isDirectory() || !match || !sets.tasks.includes(match[1]!) || !(await exists(join(folder, entry.name, 'agent.stdout')))) continue;
+        if (!started.has(`${bench}\u0000${entry.name}`)) outside.push({ bench, run: entry.name });
+      }
+    }
+  }
+  return outside;
+}
+
+/** The local ledger and the committed copy of a release folder. */
+export const ledgerPaths = (folder: string, local: string): LedgerPaths => ({ local, committed: join(folder, COMMITTED_LEDGER) });
+
+export interface PlanOptions {
+  unit: string; round: number; probe: number; difficulty: Difficulty | 'mixed'; seeds: number[]; model: string;
+  bench: { mirror: 'off' | 'required'; timeoutSeconds: number; maxActions: number; checks: number | null }; maintainerApprovedUnit: boolean; shape: 'A' | 'B';
+}
+/** A probe plan from the tool's options (PADR-0044 decision 8), validated; a retune is checked against
+ * the committed record of the probe before it in the same folder. */
+export async function makePlan(options: PlanOptions, folder: string): Promise<Plan> {
+  const unit = parseUnit(options.unit);
+  const family = asGate(() => familyOf(options.unit, options.maintainerApprovedUnit));
+  const plan = asGate(() => validatePlan({
+    schema: PLAN_SCHEMA, release: RELEASE, unit: options.unit, round: options.round, probe: options.probe,
+    toolchain: { id: unit.toolchain, level: unit.level, practonaut: PACKAGE_VERSION, server: null, rules: null },
+    generator: { id: generatorId(family), version: generatorVersion(family) }, difficulty: String(options.difficulty), shape: options.shape,
+    agent: { preset: GATE_PRESET, model: options.model }, seeds: options.seeds, bench: options.bench, maintainerApprovedUnit: options.maintainerApprovedUnit,
+  }));
+  const earlier = plan.probe > 1 ? await earlierProbe(folder, plan) : await exists(join(folder, roundFiles.plan(plan.unit, plan.round, 1))) ? { plan: await readPlan(join(folder, roundFiles.plan(plan.unit, plan.round, 1))), admitted: false } : null;
+  asGate(() => checkRetune(plan, earlier));
+  // A unit is retuned once (decision 7): no probe 2 in another round of the same unit.
+  if (plan.probe === 2 && plan.round === 2 && await exists(join(folder, roundFiles.probe(plan.unit, 1, 2)))) refuse('probe_retune_exhausted', `${plan.unit} was retuned in round 1 already; a unit is retuned once`);
+  return plan;
+}
+async function earlierProbe(folder: string, plan: Plan): Promise<{ plan: Plan; admitted: boolean } | null> {
+  const planPath = join(folder, roundFiles.plan(plan.unit, plan.round, plan.probe - 1)), recordPath = join(folder, roundFiles.probe(plan.unit, plan.round, plan.probe - 1));
+  if (!(await exists(planPath)) || !(await exists(recordPath))) return null;
+  committedFile(recordPath);
+  return { plan: await readPlan(planPath), admitted: (await readProbe(recordPath)).admitted };
+}
+
+export interface ProbeFiles { plan: string; set: string; reports: string[]; ledger: string }
+/** The pre-probe record (PADR-0042 decision 7, committed whether the unit is admitted or not): the
+ * committed and pushed plan, the pre-probe set checked against its regeneration, the pre-probe reports
+ * re-verified and bound to the pushed ledger, Opus's passes and the rule's answer. */
+export async function probeFromFiles(files: ProbeFiles): Promise<{ record: ProbeRecord; text: string }> {
+  const plan = await readPlan(files.plan), planCommit = committedFile(files.plan), planHash = fileHash(plan);
+  const set = probeSet(plan);
+  await checkSetFolder(files.set, set, { unit: plan.unit, round: plan.round, seeds: plan.seeds, basis: { kind: 'plan', sha256: planHash, commit: planCommit } });
+  const reports: GateReport[] = [];
+  for (const path of files.reports) reports.push(await readGateReport(path, true));
+  const folder = dirname(resolve(files.plan));
+  const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
+  const result = asGate(() => probeRuns({ plan, planHash, worldContentHash: sha256Hex(canonicalJson(set.world)), reports, ledger: ledger.ledger }));
+  const record = asGate(() => validateProbe({
+    schema: PROBE_SCHEMA, release: RELEASE, unit: plan.unit, round: plan.round, probe: plan.probe, plan: { sha256: planHash, commit: planCommit },
+    world: { id: set.world.id, contentHash: sha256Hex(canonicalJson(set.world)) }, agent: { preset: plan.agent.preset, model: plan.agent.model },
+    outcomes: result.outcomes, passed: result.passed, admitted: admits(result.passed), rule: { low: SHAPE_B.admitLow, high: SHAPE_B.admitHigh, of: result.outcomes.length },
+    digest: result.digest, runs: result.runs, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) },
+  }));
+  return { record, text: JSON.stringify(record, null, 2) + '\n' };
+}
+
+export interface DeclareFiles { plan: string; probe: string; reports: string[]; ladder: Array<{ preset: string; model: string }>; ledger: string; out: string }
+/**
+ * A round's declaration `/2` (PADR-0042 as amended): the committed and pushed plan and pre-probe
+ * record, the pre-probe runs again (the same digest and outcomes), the ladder as declared, the
+ * previous round's seeds for a round 2, and the funding from the pushed ledger's count.
+ */
+export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[] }> {
+  const plan = await readPlan(files.plan), probe = await readProbe(files.probe);
+  const planCommit = committedFile(files.plan), probeCommit = committedFile(files.probe), planHash = fileHash(plan);
+  if (probe.plan.sha256 !== planHash || probe.plan.commit !== planCommit) refuse('round_files_mismatch', 'the pre-probe record was not made from this plan');
+  if (!probe.admitted) refuse('unit_not_admitted', `${plan.unit}: the pre-probe passed ${probe.passed} of ${probe.outcomes.length}, outside ${SHAPE_B.admitLow}–${SHAPE_B.admitHigh}; the unit is not admitted (PADR-0042 decision 7)`);
+  const folder = dirname(resolve(files.out));
+  if (folder !== dirname(resolve(files.plan))) refuse('round_files_mismatch', 'the declaration goes into the release folder of its plan');
+  if (basename(files.out) !== roundFiles.declaration(plan.unit, plan.round)) refuse('round_files_mismatch', `name the file ${roundFiles.declaration(plan.unit, plan.round)}`);
+  const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
+  const reports: GateReport[] = [];
+  for (const path of files.reports) reports.push(await readGateReport(path, true));
+  const set = probeSet(plan);
+  const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: sha256Hex(canonicalJson(set.world)), reports, ledger: ledger.ledger }));
+  if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes)) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
+  // The ladder: as declared; billing as the pre-probe's preset was set up; Claude Code attests its model.
+  const billing = reports[0]!.report.agent.billing.class;
+  const ladder = files.ladder.map(agent => ({ preset: agent.preset, client: agent.preset, model: agent.model, attestation: agent.preset === GATE_PRESET ? 'client-attested' as const : 'not-attested' as const, billing }));
+  if (ladder[0] && ladder[0].model !== plan.agent.model && ladder[0].preset === GATE_PRESET) refuse('ladder_model_mismatch', `the strongest ladder agent is the pre-probe's ${plan.agent.model}, not ${ladder[0].model}`);
+  // Round 2: the first round's declaration and gate report, committed; its held-out seeds.
+  let previous: Declaration['previous'] = null, foreignRounds = 0;
+  if (plan.round > 1) {
+    const firstPath = join(folder, roundFiles.declaration(plan.unit, 1)), gatePath = join(folder, roundFiles.gateJson(plan.unit, 1));
+    if (!(await exists(firstPath)) || !(await exists(gatePath))) refuse('previous_round', `round ${plan.round} of ${plan.unit} follows its gated first round (${roundFiles.declaration(plan.unit, 1)} and ${roundFiles.gateJson(plan.unit, 1)})`);
+    committedFile(firstPath); committedFile(gatePath);
+    const first = await readDeclaration(firstPath), seeds = heldOutSeeds(first), gated = JSON.parse(await readFile(gatePath, 'utf8')) as { verdict?: unknown };
+    if (gated.verdict === 'passes') refuse('previous_round', `${plan.unit} passed its first round; a second round is for a unit that did not`);
+    previous = { declaration: declarationHash(first), low: seeds[0]!, high: seeds.at(-1)! };
+  }
+  // Funding: the units admitted before this one and not declared yet keep their rounds; the foreign reserve.
+  const admittedBefore = (await laterUndeclaredAdmissions(folder, plan.unit, plan.round, probe)).length;
+  for (const name of await readdir(folder).catch(() => [] as string[])) if (/\.declaration\.json$/.test(name) && !name.startsWith(`${plan.unit}-`)) {
+    const other = await readDeclaration(join(folder, name)).catch(() => null);
+    if (other && other.toolchain.level === 'artifact') foreignRounds++;
+  }
+  const before = countLedger(ledger.ledger).counted, unit = parseUnit(plan.unit);
+  const heldOut = { instances: SHAPE_B.heldOut }, subscription = subscriptionAgents(ladder);
+  const raw = {
+    schema: DECLARATION_SCHEMA, release: RELEASE, unit: plan.unit, round: plan.round, alpha: ALPHA[plan.round] ?? 0.025, toolchain: plan.toolchain, generator: plan.generator, difficulty: plan.difficulty, shape: plan.shape,
+    maintainerApprovedUnit: plan.maintainerApprovedUnit,
+    probe: { probe: plan.probe, plan: { sha256: planHash, commit: planCommit }, record: { sha256: fileHash(probe), commit: probeCommit }, passed: probe.passed, instances: probe.outcomes.length },
+    ladder, pair: { strongest: ladder[0]?.model ?? plan.agent.model, weakest: ladder.at(-1)?.model ?? plan.agent.model }, bench: plan.bench,
+    development: { seeds: plan.seeds, world: { id: probe.world.id, contentHash: probe.world.contentHash }, digest: probe.digest, passed: probe.outcomes.map(entry => entry.pass) },
+    heldOut, previous,
+    budget: { subscriptionAgents: subscription, formula: (heldOut.instances + probe.outcomes.length) * subscription, roundRuns: probe.outcomes.length + heldOut.instances * subscription, cap: RELEASE_CAP,
+      before, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) }, reserved: reservedRuns(unit.toolchain, admittedBefore, foreignRounds), leave: ROUND_RULES.leave },
+  };
+  const declaration = asGate(() => validateDeclaration(raw));
+  return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration) };
+}
+/** Units admitted before `probe` (an earlier ledger position) whose round is not declared yet. */
+async function laterUndeclaredAdmissions(folder: string, unit: string, round: number, probe: ProbeRecord): Promise<string[]> {
+  const names = await readdir(folder).catch(() => [] as string[]), found: string[] = [];
+  for (const name of names) {
+    const match = /^(.+)-round-(\d+)\.probe-(\d+)\.json$/.exec(name);
+    if (!match || (match[1] === unit && Number(match[2]) === round)) continue;
+    const other = await readProbe(join(folder, name)).catch(() => null);
+    if (!other?.admitted || other.ledger.records >= probe.ledger.records) continue;
+    if (names.includes(roundFiles.declaration(other.unit, other.round))) continue;
+    found.push(`${other.unit} round ${other.round}`);
+  }
+  return found;
+}
 
 export interface GateFiles {
   declaration: string; set: string;
   development: string[]; oracle: string[]; random: string[];
   /** Held-out ladder reports (a resumed bench has several per model); none for the preflight. */
   ladder?: string[];
-  /** The oracle report of each earlier round's held-out set (required from round 2). */
-  previous?: string[]; maintainerApproved?: string[];
-  /** Folders holding bench folders, besides the parents of the given ones (spend scan). */
+  /** Folders holding bench folders, besides the parents of the given ones (the scan for runs outside the ledger). */
   benchRoots?: string[];
+  ledger: string;
 }
-type RoundData = Omit<Parameters<typeof preflightGate>[0], never> & { declaration: Declaration; commit: string };
-async function roundData(files: GateFiles, ladder: readonly GateReport[] | null): Promise<RoundData & { ladderReports: GateReport[] }> {
-  const fail = (message: string): never => { throw new GateInputError(message); };
-  const declaration = await readDeclaration(files.declaration).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
+async function roundData(files: GateFiles, ladder: readonly GateReport[] | null): Promise<Parameters<typeof preflightGate>[0]> {
+  const declaration = await readDeclaration(files.declaration), folder = dirname(resolve(files.declaration));
   // The held-out set was generated from the declaration of the commit its manifest records: the gated
-  // declaration must be that one (third review), and the commit must stay reachable on a remote.
-  const recorded = (parseJsonEntry(await readFile(join(files.set, 'instances.json')), 'instances.json', 64) as { declaration?: { commit?: unknown } }).declaration?.commit;
-  const commit = typeof recorded === 'string' ? recorded : fail('the held-out set: instances.json names no declaration commit');
-  const committed = declarationAtCommit(files.declaration, commit);
-  if (committed === null) fail(`the declaration is not in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
-  let atCommit: Declaration | null = null;
-  try { atCommit = validateDeclaration(JSON.parse(committed!)); } catch { atCommit = null; }
-  if (!atCommit || declarationHash(atCommit) !== declarationHash(declaration)) fail(`the gated declaration differs from the one in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
-  if (!commitPushed(files.declaration, commit)) fail(`commit ${commit.slice(0, 12)} of the declaration is in no remote-tracking branch; keep the round's branch pushed`);
-  const versions = declarationVersions(files.declaration);
-  const { set, seeds } = (() => { try { return heldOutSet(declaration); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } })();
-  await checkSetFolder(files.set, declaration, set, seeds, commit);
-  const read = async (paths: readonly string[]): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await verifiedReport(path)); return out; };
-  const development: GateReport[] = [];
-  for (const path of files.development) development.push(await verifiedReport(path, true));
-  const oracle = await read(files.oracle), random = await read(files.random);
-  if (!oracle.length) fail('name the oracle report(s) (--oracle)');
+  // declaration must be that one, and the commit must stay reachable on a remote.
+  const commit = await setBasisCommit(files.set);
+  const atCommit = declarationAtCommit(files.declaration, commit);
+  if (atCommit === null) refuse('declaration_changed', `the declaration is not in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
+  let committed: Declaration | null = null;
+  try { committed = validateDeclaration(JSON.parse(atCommit!)); } catch { committed = null; }
+  if (!committed || declarationHash(committed) !== declarationHash(declaration)) refuse('declaration_changed', `the gated declaration differs from the one in commit ${commit.slice(0, 12)}, from which the held-out set was generated`);
+  if (!commitPushed(files.declaration, commit)) refuse('not_committed', `commit ${commit.slice(0, 12)} of the declaration is in no remote-tracking branch; keep the round's branch pushed`);
+  const planPath = join(folder, roundFiles.plan(declaration.unit, declaration.round, declaration.probe.probe)), probePath = join(folder, roundFiles.probe(declaration.unit, declaration.round, declaration.probe.probe));
+  committedFile(planPath); committedFile(probePath);
+  const plan = await readPlan(planPath), probe = await readProbe(probePath);
+  // The gate runs with the Practonaut the plan pins (PADR-0042 amended, 3.11).
+  if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
+  const { set, seeds } = heldOutSet(declaration);
+  await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
+  const read = async (paths: readonly string[], sessions = false): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await readGateReport(path, sessions)); return out; };
+  const development = await read(files.development, true), oracle = await read(files.oracle), random = await read(files.random);
+  if (!oracle.length) refuse('baseline_missing', 'name the oracle report(s) (--oracle)');
   // Each oracle bench played the regenerated references.
   for (const [index, value] of oracle.entries()) {
     const stored = ReferencesFileSchema.parse(parseJsonEntry(await readFile(join(dirname(files.oracle[index]!), BENCH_REFERENCES_FILE)), BENCH_REFERENCES_FILE, 64));
     for (const task of value.report.settings.tasks) {
       const reference = stored.references.find(entry => entry.taskId === task), regenerated = set.oracles.find(entry => entry.taskId === task);
-      if (!reference || !regenerated || !isDeepStrictEqual(reference.steps, regenerated.steps)) fail(`the oracle report's reference for ${task} is not the regenerated one`);
+      if (!reference || !regenerated || !isDeepStrictEqual(reference.steps, regenerated.steps)) refuse('baseline_mismatch', `the oracle report's reference for ${task} is not the regenerated one`);
     }
   }
   const world = await worldFromPackage(await readFile(join(dirname(files.oracle[0]!), oracle[0]!.report.environment.world.package.path)));
   const nearMisses = await judgeNearMisses(world, set.oracles, [1]);
-  const previous = [];
-  for (const path of files.previous ?? []) {
-    const { report } = await verifiedReport(path);
-    const match = /^challenge-[a-z-]+-r(\d)$/.exec(report.environment.world.worldId);
-    if (!match || report.environment.world.worldId !== worldIdOf(declaration.family, `r${match[1]}`)) fail(`${basename(path)} is not a held-out report of ${declaration.family}`);
-    previous.push({ round: Number(match![1]), seeds: report.environment.world.generated.map(entry => entry.seed) });
+  let previousSeeds: number[] | undefined;
+  if (declaration.round > 1) {
+    const firstPath = join(folder, roundFiles.declaration(declaration.unit, 1));
+    committedFile(firstPath);
+    const first = await readDeclaration(firstPath);
+    if (declarationHash(first) !== declaration.previous?.declaration) refuse('previous_round', 'the first round\'s declaration is not the one this round names');
+    previousSeeds = heldOutSeeds(first);
   }
-  const tasks = seeds.map(seed => taskIdOf(declaration.family, seed));
-  const given = [...(files.development), ...files.oracle, ...files.random, ...(files.ladder ?? [])];
+  const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
+  const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));
+  const given = [...files.development, ...files.oracle, ...files.random, ...(files.ladder ?? [])];
   const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
-  const spent = await scanSpend(roots, { developmentHash: declaration.development.world.contentHash, developmentTasks: declaration.development.seeds.map(seed => taskIdOf(declaration.family, seed)), heldOutTasks: tasks });
+  const outside = await scanOutside(roots, { worlds: [declaration.development.world.contentHash, worldContentHash], tasks: [...declaration.development.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
   return {
-    declaration, commit, declarationGit: { commit, versions }, tasks, seeds, worldContentHash: sha256Hex(canonicalJson(set.world)), development, oracle, random,
-    nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
-    previous, maintainerApproved: files.maintainerApproved ?? [], spent, ladderReports: ladder ? [...ladder] : [],
+    plan, probe, declaration, git: { declaration: commit, versions: declarationVersions(files.declaration) },
+    probeWorld: declaration.development.world.contentHash, tasks: seeds.map(seed => taskIdOf(family, seed)), seeds, worldContentHash,
+    development, oracle, random, nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
+    ledger, outside, ...(previousSeeds ? { previousSeeds } : {}),
   };
 }
 
-/** `gate --preflight`: everything but the ladder, before any ladder run (second review S-1). */
+/** `gate --preflight`: everything but the ladder, before any ladder run. */
 export async function preflightFromFiles(files: GateFiles): Promise<{ result: PreflightResult; text: string }> {
   const data = await roundData(files, null);
   const result = preflightGate(data);
   return { result, text: renderPreflight(result) };
 }
 
-export interface Ledger { schema: typeof LEDGER_SCHEMA; family: Family; round: number; declaration: { sha256: string; commit: string }; spent: { development: number; heldOut: number; total: number }; releaseRuns: number; heldOutRuns: SpentRun[] }
-/**
- * Reads the committed declaration; regenerates its held-out set and checks the set folder against
- * it; reads, validates and re-verifies the development and held-out reports; checks that the oracle
- * reports' stored references are the regenerated ones; judges every regenerated near miss in a
- * separate checker process; finds every model run spent in the bench folders; and computes the gate
- * and the ledger of the round's spend.
- */
-export async function gateFromFiles(files: GateFiles): Promise<{ result: GateResult; markdown: string; ledger: Ledger }> {
+/** The gate: every check of the preflight and the ladder, the verdict, and the gate report /2 as
+ * Markdown and JSON. */
+export async function gateFromFiles(files: GateFiles): Promise<{ result: GateResult; markdown: string; json: string }> {
   const ladder: GateReport[] = [];
-  for (const path of files.ladder ?? []) ladder.push(await verifiedReport(path));
+  for (const path of files.ladder ?? []) ladder.push(await readGateReport(path));
   const data = await roundData(files, ladder);
   const result = computeGate({ ...data, ladder });
-  const ledger: Ledger = { schema: LEDGER_SCHEMA, family: result.family, round: result.round, declaration: { sha256: result.declaration.sha256, commit: data.commit }, spent: result.spent, releaseRuns: result.releaseRuns, heldOutRuns: [...data.spent.heldOut] };
-  void LedgerSchemaKeys;
-  return { result, markdown: renderGate(result), ledger };
+  return { result, markdown: renderGate(result), json: JSON.stringify(result, null, 2) + '\n' };
 }
+export type { SessionRunV3 };
