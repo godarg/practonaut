@@ -305,6 +305,17 @@ params substitute in labels, frame names, localized texts and literals. **Tasks*
 `conditionTexts`, one EN/DE sentence per top-level goal clause (exactly as many as clauses), which
 the Player shows instead of the formal narration.
 
+**Task set.** A world may name the task set it belongs to: `taskSet: { "id", "version" }`, with the
+patterns of the world's own `id` and `version`, optional and without a default
+([PADR-0044](adr/0044-bench-report-v3.md) decision 3). A seed selects a variant case by the first 32
+bits of the SHA-256 of the canonical JSON `{"seed": <seed>, "world": {"id", "version"}}`, modulo the
+number of cases; that `id` and `version` are the task set's when the world names one, otherwise the
+world's own. A world without the key therefore selects, hashes and validates exactly as before. Two
+worlds that hold the same tasks for two applications name the same task set (for example the first
+world's own id and version) and list the same variant cases in the same order: the same seeds then
+select the same cases on both, so a bench of each covers the same instances and `practonaut compare`
+pairs them by task identity.
+
 **Generated tasks.** A task that a generator materialised carries
 `generatedBy: { "id", "version", "seed", "parameters" }`: the generator id (lowercase letters,
 digits, `-`), its semantic version, the integer seed, and up to 16 named parameters (integer or a

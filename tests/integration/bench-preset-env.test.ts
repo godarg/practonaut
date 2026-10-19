@@ -52,9 +52,11 @@ test('the claude-code preset withholds provider keys unless --keep-env names the
     for (const name of Object.keys(KEYS)) assert.ok(named.includes(name), `${name} missing from the notice: ${named.join(', ')}`);
     for (const value of ['pn-test-anthropic-value', 'pn-test-openai-value', 'pn-test-odd-value']) assert.equal(plain.stderr.includes(value), false, 'a value in the notice');
     if (process.platform !== 'win32') { assert.ok(named.includes('PN_TEST_\\u{001b}[31m_API_KEY'), named.join(', ')); assert.equal(plain.stderr.includes('\u001b'), false, 'a raw escape on stderr'); }
-    // bench/2 records what the client reported and the names kept, never values (PADR-0034, PADR-0036).
+    // The report records what the client reported and the names kept, never values (PADR-0034, PADR-0036).
+    // This stand-in lists no offered tools in its init event, so its runs give no evidence of a tool
+    // restriction and the preset reads "not restricted" (PADR-0044 decision 6). It runs on its own login.
     const plainAgent = await agentOf(join(dir, 'plain.json'));
-    assert.deepEqual([plainAgent.isolation, plainAgent.model, plainAgent.modelSource, plainAgent.apiKeySource, plainAgent.keptEnv], ['tool-restricted-preset', 'pn-fake-claude', 'client-attested', 'none', []]);
+    assert.deepEqual([plainAgent.isolation, plainAgent.model, plainAgent.modelSource, plainAgent.apiKeySource, plainAgent.keptEnv, plainAgent.billing], ['template-unrestricted', 'pn-fake-claude', 'client-attested', 'none', [], { class: 'subscription', source: 'preset-requested' }]);
 
     const kept = bench(join(dir, 'kept.json'), '--keep-env', 'ANTHROPIC_API_KEY');
     assert.equal(kept.status, 0, kept.stderr);
@@ -64,7 +66,8 @@ test('the claude-code preset withholds provider keys unless --keep-env names the
     const keptNamed = notice(kept.stderr).split(', ');
     assert.ok(keptNamed.includes('OPENAI_API_KEY') && keptNamed.includes('CLAUDE_CODE_USE_BEDROCK') && !keptNamed.includes('ANTHROPIC_API_KEY'), keptNamed.join(', '));
     const keptAgent = await agentOf(join(dir, 'kept.json'));
-    assert.deepEqual([keptAgent.apiKeySource, keptAgent.keptEnv], ['ANTHROPIC_API_KEY', ['ANTHROPIC_API_KEY']]);
+    // A kept provider key: the preset was set up for API billing, and the client's own init says so too.
+    assert.deepEqual([keptAgent.apiKeySource, keptAgent.keptEnv, keptAgent.billing], ['ANTHROPIC_API_KEY', ['ANTHROPIC_API_KEY'], { class: 'api-key', source: 'preset-requested' }]);
     assert.equal(JSON.stringify(keptAgent).includes(KEYS.ANTHROPIC_API_KEY), false, 'a value in the report');
 
     // A command template is the user's own command: it gets the environment unchanged, so --keep-env

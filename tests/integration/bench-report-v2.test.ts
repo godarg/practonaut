@@ -35,7 +35,9 @@ function runText(html: string, runId: string): string {
 const normalPath = (html: string): string => html.replace(/<details class="tech">[\s\S]*?<\/details>/g, '');
 /** The first sentence of a library explanation (the factual part; the rest coaches a learner). */
 const firstOf = (text: string): string => text.split(/(?<=[.!?])\s+(?=\p{Lu})/u)[0]!;
-const plain = (html: string): string => html.replace(/<\/?code>/g, '').replace(/<span class="data">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+// Data (an id, a command, a flag) is set apart only by its markup: in plain text it is the words around
+// it. A range's word joiner ("0–40") is invisible.
+const plain = (html: string): string => html.replace(/\u2060/g, '').replace(/<\/?code[^>]*>/g, '').replace(/<span class="(?:data(?: id| quoted)?|name)">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fixtures: Fixtures, dir: string;
 test.before(async () => {
@@ -98,14 +100,15 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   assert.ok(connect.includes('Codes of refused actions precondition_failed ×1'), 'the code is still there for whoever looks for it');
   // Model-only and consistency-checked: the result and interval in the headline, the provenance as chips.
   const header = plain(failing.slice(0, failing.indexOf('</header>')));
-  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances consistency-checked, not re-verified model only \(no mirror\) template: tools not restricted by Practonaut model pn-script-model \(self-reported, from the command output\) \d{4}-\d{2}-\d{2}/);
-  assert.equal((failing.match(/pn-script-model \(self-reported/g) ?? []).length, 1, 'the model is named once');
+  assert.match(header, /0\/6 passed · 95 % interval 0–40 % over 6 instances session verdict consistency-checked, not re-verified model only \(no mirror\) template: tools not restricted by Practonaut model pn-script-model \(self-reported, from the command output\) \d{4}-\d{2}-\d{2}/);
+  // Counted in the text a reader sees (the model id is data inside its chip): once, in the header.
+  assert.equal((plain(failing).match(/pn-script-model \(self-reported/g) ?? []).length, 1, 'the model is named once');
   assert.ok(runText(failing, 'restyle-flow-s1-r1').includes('Schematic of the judged state, not the real Excalidraw. The bench ran model only (no mirror).'), 'model-only picture');
   assert.ok(plain(failing).includes('consistency-checked, not re-verified: the verdicts in the file add up, but the runs were not re-judged (practonaut report --verify)'));
-  assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances re-verified from the artifacts model only/);
+  assert.match(plain(await reportPage(fixtures.solved, 'en', 're-verified')), /2\/2 passed · 95 % interval 34–100 % over 2 instances session verdict re-verified from the artifacts model only/);
   assert.ok(runText(await reportPage(fixtures.timeout, 'en'), 'connect-s1-r1').includes('Timed out: the agent was stopped after 6 s, the run’s time limit; the board it left was judged.'), 'timeout');
   const unjudgedPage = await reportPage(fixtures.unjudged, 'en'), unjudged = runText(unjudgedPage, 'connect-s1-r1');
-  assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never raises a score.'), 'unjudged');
+  assert.ok(unjudged.includes('No verdict: the run could not be judged, so it counts as not passed; an infrastructure fault never counts as passed.'), 'unjudged');
   // No verdict is not a failure: the unknown mark (a dashed ring) and the words, in the table and on the card.
   assert.equal((unjudgedPage.match(/<span class="result unknown"><svg class="status-icon unknown"[^>]*><circle [^>]*stroke-dasharray/g) ?? []).length, 2);
   assert.ok(unjudged.includes('Why there is no verdict') && !unjudged.includes('Why it failed'));
@@ -127,7 +130,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   for (const name of ['Rechnungseingangsprüfung', 'Zahlungsfreigabeverfahrensdokumentation', 'Kreditorenstammdatenänderungsantragsprüfung']) assert.ok(germanRun.includes(name), name);
   assert.ok(germanRun.includes('Kein Beispielziel Diese Aufgabe hat keine geprüfte Referenz.'), 'no example target');
   assert.equal(/class="no-picture"|stroke-dasharray|dashed/.test(german.slice(german.indexOf('<body>'))), false, 'no dashed box for a missing target');
-  assert.match(plain(german), /0\/1 bestanden · 95-%-Intervall 0–80 % über 1 Instanz auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
+  assert.match(plain(german), /0\/1 bestanden · 95-%-Intervall 0–80 % über 1 Instanz Sitzungsurteil auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
   // Without its bench folder: one banner says what is missing, what still shows and how to fix it;
   // every card says in a line what it cannot show, and error classes keep their explanation (the
   // report's world is the bundled library).
@@ -244,7 +247,7 @@ test('CLI: report renders details from the bench folder, --runs names it without
   const path = join(fixtures.failing.directory, 'report.json'), html = join(dir, 'failing.html');
   const rendered = spawnSync(process.execPath, [CLI, 'report', path, '--html', html], { encoding: 'utf8' });
   assert.equal(rendered.status, 0, rendered.stderr);
-  assert.match(rendered.stdout, /^0\/6 passed · 95 % interval 0–40 % over 6 instances · consistency-checked, not re-verified/m);
+  assert.match(rendered.stdout, /^0\/6 passed · 95 % interval 0–40 % over 6 instances · session verdict · consistency-checked, not re-verified/m);
   assert.match(rendered.stdout, /^Failures \(6 of 6 runs\)$/m);
   const moved = spawnSync(process.execPath, [CLI, '--lang', 'de', 'report', path, '--runs', fixtures.failing.directory], { encoding: 'utf8' });
   assert.equal(moved.status, 0, moved.stderr); assert.match(moved.stdout, /Fehlerklasse extra-arrow: Es gibt mehr Pfeile als im Ziel \(1\)/);

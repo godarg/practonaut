@@ -263,13 +263,24 @@ verified and never part of a score.
   Practonaut's, so it cannot read files; for other agents this is the agent author's responsibility,
   and the report says so (`template-unrestricted`). A model name in the report is what the client
   said about itself.
+- A preset earns "tool-restricted" from its runs' own evidence, not from its kind
+  ([PADR-0044](../adr/0044-bench-report-v3.md) decision 6): Claude Code's `system/init` event lists
+  the tools and MCP servers it offers the model, and a run carries the evidence `tools-within-servers`
+  only when every listed tool is one Practonaut's bridge advertised (as `mcp__practonaut__<tool>`) and
+  the only listed server is `practonaut`. The report is "tool-restricted" when at least one run, and
+  every judged run, has that evidence and no run shows a tool outside (a shell or file tool, a name
+  that does not fit, more than 256 names); otherwise it reads "template: not restricted" with the
+  reason (`no-evidence` or `tool-outside-servers`). Built-ins and command templates keep their kind's
+  level.
 - Runs are sequential. Results depend on the agent's provider and model at run time; a bench
   report describes those runs, not the model in general.
 
 ## 5. The report
 
-`bench` writes `practonaut.bench/2` JSON, schema [`schemas/bench.v2.json`](../../schemas/bench.v2.json)
-([PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md)). It holds an optional `label`;
+`bench` writes `practonaut.bench/3` JSON, schema [`schemas/bench.v3.json`](../../schemas/bench.v3.json)
+([PADR-0044](../adr/0044-bench-report-v3.md)), at the **session** verdict level: everything below, and
+the facts of the next paragraph. (The `artifact` level, a foreign MCP server judged by its stored
+result, comes with artifact mode.) It holds an optional `label`;
 environment metadata (Practonaut and Excalidraw versions, Node, OS, mirror) and the **world**: its
 source (`library` or `own`), id, version and content hash (the SHA-256 of the world's canonical JSON),
 the stored package `world.pnworld` with the SHA-256 of its bytes, and the generator metadata of tasks a
@@ -281,6 +292,49 @@ isolation level, model, model source, `apiKeySource`, kept variable names); the 
 without a reference) and the summary. `settings.checks` records `--checks`; a task's own limits are
 part of the stored world.
 
+What /3 adds ([PADR-0044](../adr/0044-bench-report-v3.md)):
+
+- `verdictLevel` (`session`), repeated on every run; one level per report.
+- `environment.app`: the world's application adapter and its pinned version (`excalidraw` 0.18.1),
+  in place of `environment.excalidraw`; the native export is named per adapter (`native.excalidraw`).
+- `toolchain`: `{ kind: "practonaut", id: "practonaut", tools }`, the tool names Practonaut's bridge
+  advertised to every agent of the bench.
+- `instances`: per task and seed that has runs, its **task identity**, the SHA-256 of the task as the
+  seed materialises it without its texts (`practonaut.task-identity/1`: goal, limits, generator
+  metadata, start state and the error classes' conditions; not the title, prompt, hints, ids, the
+  world's name or application). `compare` pairs the same tasks across two worlds by it (§6).
+- The agent's identity, each value with its evidence source (`client-attested`: the preset client's
+  own output; `preset-requested`: what the preset started or asked for; `command-output`; `none`):
+  `vendor`, `client`, `clientVersion`, `requestedModel` (the client's model variable, such as
+  `ANTHROPIC_MODEL`, as the client got it), the preset's behaviour-changing `settings`, and `billing`,
+  the class the preset was set up for (`subscription` on the client's own login, `api-key` when a
+  provider key is kept by name, `unknown` for a template). `model` and `apiKeySource` keep their
+  meaning; each now comes from the first run that reports it, and `apiKeySource` is one of Claude
+  Code's values (`none`, `ANTHROPIC_API_KEY`, `apiKeyHelper`, `/login managed key`) or `other`.
+- Per external run: `stdout` (the SHA-256 and size of the whole `agent.stdout`; null when it could
+  not be read, and then nothing is derived from it), `client.parser` (the versioned parser that read
+  it, `claude-code-stream/1`), `client.tools` (the tools the client offered), `client.billing` (the
+  class its own output attests, with the statement it was read from), and per run `isolation` with
+  its evidence (§4).
+- Per run that was not judged: `failure` — `reason` (`usage_limit`, `auth`, `api_error`,
+  `no_tool_call`, `interrupted`, `runner`), the `parser` that classified it (null for the runner's own
+  reasons), the client's own `code` (a status or event identifier, never free text) and
+  `beforeModelWork` (true only when the model sent no message anywhere in the run's whole output,
+  before or after the failure). The note keeps its words.
+- `agentActions`, the agent's own actions in the final history (all of them, until a co-actor can
+  edit); mean actions and efficiency count it. The mutation log names each record's `actor`.
+
+**From /2 to /3.** Nothing is converted, and nothing needs to be: `report`, `report --verify`,
+`compare`, `--junit`, `--card` and `--badge` read `/1`, `/2` and `/3`, each validated and re-verified by
+its own rules. They read every version through one read-only view that keeps every /2 field and value
+(tested leaf by leaf on the committed reports): `environment.excalidraw` reads as `environment.app`
+(`excalidraw`), the level as `session`, the toolchain as `practonaut`, `agentActions` as the run's
+`actions`; what /2 did not record says so (the new agent fields with source `none`, billing
+`unknown`, no stdout binding, the failure of an `infra_error` run "not recorded", a /2 preset's
+isolation as given by its kind). `bench --recover` writes /3 and refuses a folder whose mutation log
+an earlier Practonaut wrote: recover it with the Practonaut that ran it. `compare` of a /2 and a /3
+report names the report format as a caveat.
+
 The bench folder (`~/.practonaut/bench/<id>/`) holds everything `report --verify` needs and nothing
 outside it is referenced, so it can be moved, archived or handed over:
 
@@ -291,7 +345,7 @@ outside it is referenced, so it can be moved, archived or handed over:
 | `references.json` | after the last agent has ended | `practonaut.bench-references/1`: task, source, world and action sequence of each referenced task |
 | `report.json` | at the end (unless `--out` names another place) | the report |
 
-`practonaut report` reads `/2` and `/1` reports (from 0.1.0; schema
+`practonaut report` reads `/3`, `/2` (from 0.2.0) and `/1` reports (from 0.1.0; schema
 [`schemas/bench.v1.json`](../../schemas/bench.v1.json), the library named by id, version and content
 hash, every run with a reference length). A bench stopped with Ctrl+C, SIGTERM or SIGHUP ends the running agent
 with its whole process group (on Windows its process tree), closes the session and writes the runs
@@ -326,7 +380,7 @@ Two levels of checking, and the output always says which one ran:
 - **Re-verification** (`practonaut report <report.json> --verify [--runs <bench folder>]`): each
   judged run keeps its committed session (`session.json`), the real-app export
   (`native.excalidraw`, with the mirror) and the checker output (`checker.json`) in its run folder,
-  and the report records their SHA-256 (`runs[].artifacts`). For a `/2` report `--verify` judges
+  and the report records their SHA-256 (`runs[].artifacts`). For a `/2` or `/3` report `--verify` judges
   against the world stored in the bench folder, so a moved folder verifies on another machine and
   with a later Practonaut. It checks, in this order, and refuses with exit 2 and a named code on the
   first difference:
@@ -349,6 +403,26 @@ Two levels of checking, and the output always says which one ran:
     condition trace from the session and the mutation log. The engine's picture cannot be re-derived
     without the engine: only its hash is checked.
 
+  For a `/3` report (session level) it also checks: the report's application adapter is the stored
+  world's, and every listed task identity is the one the stored world gives (`bench_world_changed`);
+  every external run's `agent.stdout` against its bound hash and size (`bench_artifact_changed`);
+  an external run that binds no stdout must have no readable `agent.stdout` in its folder
+  (`bench_artifact_changed`); with the parser this Practonaut ships, everything read from that stdout
+  again — the client block (model, version, figures, offered tools, attested billing), the run's
+  isolation and evidence, the run's failure whatever its status (a client failure the report leaves
+  out of a judged run is refused too), and the agent's model, `apiKeySource`, client version with its
+  source, vendor and client program, and for a report of this version its requested billing class and
+  settings (`bench_report_invalid`). A report made with this Practonaut or an older one can only name
+  parsers this one ships; any other is refused. Only a newer Practonaut's parser, or a preset this one
+  does not know, leaves the values not re-derived: the output names them, and the header line, the
+  page, the card, the badge and the JUnit properties then show the model and a preset's isolation as
+  the report's claims, never confirmed. A preset's name and command are checked against this
+  Practonaut's presets when the report was made with this version, and the output says when they were
+  not. The 0.2.0 challenge gate takes a `/3` report only when every value was re-derived and the
+  preset checked, and exempts a `/3` run from the budget only for a usage limit or a login or billing
+  error before model work that the shipped parser re-derives from the run's own bound stdout. A task's action limit is counted from the agent's own records. An artifact-level
+  report and a co-actor run are not re-verified by this version (they are refused by name).
+
   What the stored world is anchored to, `--verify` says: a library bench of this Practonaut's library
   version is this Practonaut's library; a library bench of another version, and every own world,
   only agree with their report. The report output shows the world's content hash (the SHA-256 of
@@ -370,7 +444,8 @@ What re-verification does not show: that the files came from the agent named in 
 Nothing is signed; whoever can write the bench folder can replace the artifacts and the report
 together (a valid replacement session would then have to solve the task). `/1` reports without
 artifact hashes (the example below, reports from earlier builds) can only be consistency-checked; a
-`/2` report always binds the artifacts of every judged run.
+`/2` or `/3` report always binds the artifacts of every judged run. A bound `agent.stdout` shows that
+the folder's output agrees with the report, not which program wrote it.
 
 **Reading a report.** The headline under the agent's name is the fraction of passed runs (and, with
 repeats, of passed instances — an instance passes when at least half of all its runs passed; a run
@@ -427,21 +502,43 @@ with control and bidi characters escaped, in the terminal and in HTML.
 npx practonaut compare baseline.json candidate.json [--html compare.html] [--fail-on-regression] [--verify] [--json]
 ```
 
-The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md):
+The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-report-compare.md) and,
+for the verdict level and comparisons across worlds, in [PADR-0044](../adr/0044-bench-report-v3.md):
 
-- **Comparable or refused.** Both reports must agree on the world content (its hash), the grid (the same
-  tasks and seeds), the mirror, the action budget and the isolation level; otherwise `compare` exits 2
-  with `compare_incomparable` and names every difference. Repeats, timeout, agent, model and version may
-  differ; a different timeout or version is listed as a caveat. The isolation level follows from the
-  agent kind (§2): `oracle` and `random` compare only with a built-in, the `claude-code` preset only
-  with itself, a command template only with a command template, so no flag makes the oracle a baseline
-  for your agent. As the baseline, bench a configuration of the candidate's own kind that you trust
+- **Comparable or refused.** Both reports must be at one verdict level — a session verdict and an
+  artifact-judged end state are never paired, and the refusal names `verdictLevel` with both levels
+  in words and that reason — and agree on the world content (its hash), the grid (the same
+  tasks and seeds), the mirror, the action budget, the checks per run (`--checks`) and the isolation
+  level; otherwise `compare` exits 2 with `compare_incomparable` and names every difference. Repeats,
+  timeout, agent, model and version may differ; a different timeout, Practonaut version, report
+  format (`/2` beside `/3`), toolchain, client version or client settings, and a preset's isolation
+  that rests on its kind (`/2`) on one side and on its runs' evidence (`/3`) on the other, are
+  listed as caveats. Built-ins and command templates have their kind's isolation level, a preset the
+  one its runs' evidence gives (§4): `oracle` and `random` compare only with a built-in, a
+  tool-restricted preset only with itself, a command template only with a command template or an
+  unrestricted preset, so no flag makes the oracle a baseline for your agent. As the baseline, bench a configuration of the candidate's own kind that you trust
   (for a template: the command, model and prompt you trust) on the candidate's world, grid, mirror and
   budget; the refusal says so.
 - **The unit is the instance** (task × seed). The repeats of an instance give one outcome per side:
   passed when at least half of all of them passed; a run that was not judged counts as not passed and
   is listed. Repeats are never counted as independent pairs. An instance missing on one side is listed
-  and left out.
+  and left out. When several instances share one task identity (seeds that select one variant bench
+  one board), a caveat names the number of distinct identities.
+- **The same tasks on two applications or toolchains.** Two reports of different worlds at one verdict
+  level, which both list task identities (`/3`) and whose applications or toolchains differ, are
+  paired by task identity instead of refused. The unit is then the distinct identity: every run of one
+  identity on a side, whatever its task id, seed or repeat, aggregates into one outcome by the rule
+  above. An identity on one side only is listed as not compared. Rate claims (each side's interval,
+  the McNemar verdict) use only the identities with the same number of runs on both sides; the others
+  are listed with both counts and carry none. A different outcome is a difference between the two
+  configurations, never an instance regression or fix, and `--fail-on-regression` refuses such a pair
+  (`compare_incomparable`, field `world`): a regression gate compares one world with itself. The
+  refusal says to compare without the flag only when nothing else refuses the pair; with another
+  difference (the budget, the mirror, `--checks`) it says to bench the baseline again. Titles,
+  prompts, hints, actions and behaviour rules are not compared, and the identities are the reports'
+  claims unless `--verify` re-derived them. Two worlds that name one task set
+  ([world format](../world-format.md) §2a) select the same variants for the same seeds, so benched
+  with the same seed list and repeats every identity pairs at equal counts.
 - **Instance regression**: at least three judged repeats on each side, every judged baseline repeat
   passed and every judged candidate repeat failed. `--fail-on-regression` exits 2 (`instance_regression`)
   when there is one — this is what a CI gate should use — and exits 2 (`compare_incomplete`) when a
@@ -455,7 +552,8 @@ The rules are fixed in [PADR-0039](../adr/0039-results-you-can-act-on-evidence-r
 - The page names each side by its label or file name; with `--html`, two reports that cannot be
   compared get a page that names every difference.
 - `--verify` re-verifies each report from its own folder first; the output names both reports'
-  verification status.
+  verification status (with `--json`, per side as `report --json` does: the level, the parsers whose
+  values were not re-derived and whether a preset was checked).
 
 `compare` names a regressed instance; why its runs failed is on the candidate's own report page, with
 the unmet conditions, error classes and trajectory of each run (§5):
@@ -528,7 +626,7 @@ with a named code:
 | `agent_failed` | a run's agent exited with an error or could not start (for example without a valid login); the bench writes its report, JUnit file and folder first, and compare does not run |
 | `instance_regression` | an instance with at least three judged repeats on each side passed in every baseline repeat and failed in every candidate repeat |
 | `compare_incomplete` | a candidate instance is missing, cut short, or holds a run without a verdict: a missing verdict could hide a regression, so the gate never passes it |
-| `compare_incomparable` | the two reports differ in world content, grid, mirror, action budget or isolation level |
+| `compare_incomparable` | the two reports differ in verdict level, world content, grid, mirror, action budget, checks per run or isolation level, or (with `--fail-on-regression`) were paired across worlds or read under different reading rules |
 
 Without `--fail-on-agent-error`, `bench` exits 0 when every planned run ended, whatever the verdicts and
 however the agents ended (130 when it was stopped, 2 for a refused world or oracle, 3 without a Chromium
@@ -548,8 +646,8 @@ views read:
 
 One `<testsuite>` per task in plan order, one `<testcase>` per run by seed (plan order) and repeat;
 `classname` is the instance (`<world>.<task>.seed-<seed>`), so a test view groups its repeats. Every
-suite carries the report's facts as properties (`practonaut.runs`, `practonaut.runs.unjudged`,
-`practonaut.isolation`, `practonaut.verification`, `practonaut.mirror` (`required`: the real engine ran;
+suite carries the report's facts as properties (`practonaut.verdictLevel`, `practonaut.app`,
+`practonaut.toolchain`, `practonaut.runs`, `practonaut.runs.unjudged`, `practonaut.isolation`, `practonaut.verification`, `practonaut.mirror` (`required`: the real engine ran;
 `off`: model-only; the default `--mirror auto` reads `required` when Chromium ran), world and content
 hash, label, self-reported model) and the header line as `system-out`. The schema requires a
 timestamp without zone and a host name: the timestamp is the report's creation time in UTC, the host
@@ -593,7 +691,8 @@ reader's system prefers it; it needs no browser. Both work with `--lang de`.
 What they show, and nothing more: the fraction in one unit, the instance (with one run per instance
 "16/16 passed … over 16 instances (one run each)"; with repeats the instances, and the runs beside them
 on the card) and its 95 % Wilson interval, as in the report (§5: whole percent, rounded outward;
-a percentage of the fraction only from 100 runs); n (runs, seeds, repeats); the verification status —
+a percentage of the fraction only from 100 runs); n (runs, seeds, repeats); the verdict level (beside
+the title on the card, "session verdict" in the badge); the verification status —
 consistency-checked unless `--verify` re-judged the runs, and a consistency-checked report says so on
 both; the mirror; the isolation level; the model the client reported about itself (card); runs without
 a verdict, by count; an interruption. On the card each of these facts has its evidence mark (a filled

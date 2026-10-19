@@ -5,10 +5,16 @@ import { substituteTokens, variantTokens } from "./tokens.ts";
 
 export { substituteTokens, variantTokens } from "./tokens.ts";
 
+/** The id and version a seed's variant choice is keyed by (PADR-0044 decision 3): the world/2 task set
+ * when the world names one, else the world's own id and version. Both parts are hashed, so the default
+ * keeps every existing world's choice. */
+export function variantKey(world: Pick<World, "id" | "version" | "taskSet">): { id: string; version: string } {
+  return world.taskSet ? { id: world.taskSet.id, version: world.taskSet.version } : { id: world.id, version: world.version };
+}
 /** finite-seeded-v1: first 32 hash bits mod count, with exact token substitution, then integer offsets. */
 export function variantIndex(world: World, seed: number): number {
   if (!Number.isSafeInteger(seed)) throw new WorldError("seed must be a safe integer");
-  return parseInt(stateHash({ world: { id: world.id, version: world.version }, seed }).slice(0, 8), 16) % world.variants.cases.length;
+  return parseInt(stateHash({ world: variantKey(world), seed }).slice(0, 8), 16) % world.variants.cases.length;
 }
 export function selectVariant(world: World, seed: number): Variant {
   return structuredClone(world.variants.cases[variantIndex(world, seed)]!);

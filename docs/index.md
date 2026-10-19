@@ -57,6 +57,7 @@
 · [0045](adr/0045-adapter-registry-and-browser-shell.md) Adapter registry, named refusal of unknown applications, and a shared browser shell (proposed).
 · [0046](adr/0046-vendor-neutral-presets.md) Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream (proposed).
 · [0047](adr/0047-bounded-spatial-predicates.md) Bounded spatial predicates: six layout operators over the judged geometry (proposed).
+· [0048](adr/0048-co-actor-scenario.md) Co-actor scenario: a scripted colleague edits the board mid-run (proposed).
 · [0049](adr/0049-drawio-adapter.md) draw.io as application #2: a verified download behind the shared shell, the embed protocol only, declared structural constraints, and an independent `.drawio` reader (proposed).
 
 [Archive](adr/archive/README.md): [0009](adr/archive/0009-release-and-publication.md) · [0021](adr/archive/0021-supported-unsealed-evaluation.md) · [0027](adr/archive/0027-private-player-bootstrap-handoff.md).

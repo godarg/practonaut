@@ -321,8 +321,8 @@ are accepted whenever they are ready.
   application-independent task identity for comparing the same tasks across apps and toolchains.
   Optional fields may be added until 0.3.0 ships; then it is frozen, with a migration note. Readers
   keep reading `/1` and `/2`. *Acceptance:* every committed `/1` and `/2` report still verifies; a
-  stored `/2` report rewritten as `/3` keeps every shared field deep-equal; `compare` names the
-  reason when it refuses a mixed pair.
+  stored `/2` report read as `/3` through the view keeps every shared field deep-equal; `compare`
+  names the reason when it refuses a mixed pair ([PADR-0044](adr/0044-bench-report-v3.md)).
 - **P4. More presets** (L, moved from 0.4.0): Codex CLI and local open-weight models (through
   `codex --oss` or opencode, loopback endpoint only, a run whose client does not name the loopback
   endpoint counts as a subscription run and is refused); Gemini moves to 0.4.0, because Gemini CLI
@@ -365,13 +365,16 @@ are accepted whenever they are ready.
 2. **Application #2: draw.io** (L): pinned release v32.4.1, downloaded unchanged from the official
    release on request (`practonaut setup` with the draw.io option, which names the download and its
    size first; plain `setup` stays Chromium only) and checked against its size and SHA-256 before it
-   is kept (not in the npm package, never in a CI artifact), served
+   is kept (not in the npm package, never in a CI artifact or cache), served
    from local files with a strict content policy, written and read only through the official embed
    JSON protocol, an independent `.drawio` parser in the checker, a conformance suite against the
    real app. PADRs before the adapter ships: groups across frames, and whether draw.io may start
    without the Chromium sandbox on Linux (PADR-0032). The name only describes what the adapter works
-   with ("works with draw.io"; "draw.io is a trademark of JGraph Ltd; Practonaut is not
-   affiliated"), no logo, no "draw.io" in product or package names. *Acceptance:* the 16 library
+   with ("works with draw.io"; "draw.io is a registered trademark; Practonaut is not affiliated
+   with, endorsed or sponsored by draw.io Ltd or draw.io AG"), no logo, no "draw.io" in product or
+   package names. The draw.io README (read 2026-10-18) names draw.io Ltd (previously JGraph) and
+   draw.io AG as owners and asks for prior written permission to use the trademark; whether to ask
+   first is the maintainer's decision, made before any release or post names draw.io. *Acceptance:* the 16 library
    tasks and every challenge family published at the time pass with the oracle and fail with near
    misses on draw.io (three runs agree), re-checked before the release; one report shows the same
    tasks on both apps.

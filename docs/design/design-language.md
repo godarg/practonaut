@@ -757,3 +757,39 @@ The task-limit states of 0.2.0 (changes and checks left, a failed check used, ev
 used) were looked at on captures, light and dark, at 1280 and 390 px with German, on 2026-10-15: one
 must-fix (with every change used, the refused "New variant" was still the primary button) was fixed
 and checked on new captures ([pull request #32](https://github.com/godarg/practonaut/pull/32)).
+
+Round R1 of the bench report v3 pages of 0.3.0 (the artifact-judged report, a report whose client
+values were not re-derived, the compare pages across worlds and the refusals of the regression gate
+and of runs judged in different ways) was reviewed on 2026-10-19 by an independent agent started from
+fresh context: eight registered states, light and dark, EN and DE, at 1280 and 320 px, from commit
+`a6f4fe9`, plus the result card and the badge. Verdict conditional: no blocker, 9 major and 13 minor
+findings. The majors (identifiers and flags broken by hyphenation, one caveat said three times in a
+header, artifact run cards that did not say why a run failed, five on the compare pages across worlds,
+a gate refusal that contradicted itself) were fixed, each with a test that fails on the reviewed
+commit, and the missing state with changed outcomes across worlds was registered. Consciously not
+done: "level" stays on the §3 list (the pages say "how runs were judged" instead; no rule change);
+the badge keeps the header line's facts (§10.5) and only marks the preset as a claim; a world
+difference still shows the short content hash, since that is what differs; the terminal's refusal
+keeps its decision-record number, which the pages no longer show. A re-review on the fixed state
+follows ([pull request #66](https://github.com/godarg/practonaut/pull/66)).
+
+Round R2 of the same pages was reviewed on 2026-10-19 by an independent agent started from fresh
+context: 13 states, 38 captures plus 2 badge images, from commit `440e261`. Verdict conditional: no
+blocker, 1 major and 13 minor findings; the R1 majors F2 to F9 were confirmed resolved and F1 only in
+part. The major (identifiers still split at line ends at their own hyphens, which reads like the
+page's hyphenation) was fixed: every identifier word up to 32 characters is now one unbreakable unit,
+the instance cell takes a stacked row's full width, and `test:a11y` measures every identifier word's
+line boxes, red on the reviewed commit. Consciously not done: a page title (the agent's name) and a
+quoted board label may still wrap at their own hyphens, since a title or an author's label longer
+than a phone's line has to wrap somewhere; "Wilson score interval" became "Wilson interval" rather
+than a rule question about the term of art. A short round R3 looks at the major's states again.
+
+Round R3 looked at the R2 major's states on 2026-10-19, an independent agent from fresh context: 20
+captures from commit `75c99cf`. R2-F1 was resolved on every image; verdict conditional: no blocker,
+1 major and 4 minor findings. The major (in the session compare's stacked table at 320 px the
+instance name, joined into one unit by R2, was cut inside "Seed" in its half-width cell) was fixed:
+every compare gives the instance cell the full stacked row, an instance name that fits a line is one
+unit, and `test:a11y` measures every word of the instance cell, red on the reviewed commit. The
+minors were fixed (run-count lines name their pair as the table does; "Wilson", "McNemar" and
+"Practonaut" are never hyphenated in notes and notices; a formal line wraps between its words; the
+compact table applies only where the table does not stack). Nothing was consciously left undone.

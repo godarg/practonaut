@@ -16,6 +16,9 @@
 // one hits the usage limit. With PN_FAKE_SLEEP_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts
 // observe and the next one observes and then never ends (its pid in <dir>/sleeper.pid): a bench to
 // kill mid-run.
+// Its init event lists the tools and MCP servers Claude Code offers the model, as Claude Code 2.1.299–2.1.301
+// do for the preset (the seven mcp__practonaut__ tools, the one server practonaut); PN_FAKE_TOOLS (comma-separated)
+// lists others instead, for example a shell tool.
 //   fakeClaude(dir) writes an executable `claude` into dir; put dir first on PATH.
 import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -44,7 +47,8 @@ if (process.env.PN_FAKE_SLEEP_AFTER !== undefined && process.env.PN_FAKE_STATE) 
   if (starts > Number(process.env.PN_FAKE_SLEEP_AFTER)) { sleep = true; writeFileSync(join(process.env.PN_FAKE_STATE, 'sleeper.pid'), String(process.pid)); }
 }
 if (mode === 'silent-crash') process.exit(1);
-out({ type: 'system', subtype: 'init', model: process.env.PN_FAKE_MODEL ?? null, apiKeySource: 'none', claude_code_version: process.env.PN_FAKE_VERSION ?? '2.1.0' });
+const tools = process.env.PN_FAKE_TOOLS !== undefined ? process.env.PN_FAKE_TOOLS.split(',') : ['act', 'check_result', 'explain_result', 'list_actions', 'observe', 'reset', 'undo'].map(tool => 'mcp__practonaut__' + tool);
+out({ type: 'system', subtype: 'init', tools, mcp_servers: [{ name: 'practonaut', status: 'connected' }], model: process.env.PN_FAKE_MODEL ?? null, apiKeySource: 'none', claude_code_version: process.env.PN_FAKE_VERSION ?? '2.1.0' });
 if (mode === 'usage-limit') {
   out({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour' } });
   out({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760000000', num_turns: 1, total_cost_usd: 0 });

@@ -1,0 +1,4 @@
+{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":5536,"bridgeMs":12.7,"clientMs":37.5}
+{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":950,"bridgeMs":77.8,"clientMs":95.1}
+{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":1228,"bridgeMs":44.9,"clientMs":45.5}
+{"seq":3,"id":5,"tool":"check_result","code":"ok","resultBytes":3870,"bridgeMs":13,"clientMs":13.8}

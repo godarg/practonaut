@@ -1,5 +1,6 @@
 import { ADAPTER_REGISTRY, EXCALIDRAW_APP, readBackAgrees, resolveAdapter, type AdapterRegistry, type ReadBackComparison } from '../adapters/registry.ts';
 import type { EngineLifecycleProbe } from '../adapters/browser/shell.ts';
+import { closeAfterFailure, closeWithin } from '../adapters/browser/bounded.ts';
 import type { AdapterResult, MirrorAdapter, Transition } from '../adapters/types.ts';
 import type { State, World } from '../world/types.ts';
 import type {TransactionContext} from './protocol.ts';
@@ -65,7 +66,10 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
       throw new MirrorFault('mirror_unavailable', 'Real engine operation failed');
     } finally { if (timer) clearTimeout(timer); }
   };
-  const dispose = async (): Promise<void> => { const old = adapter; adapter = undefined; if (old) await old.terminate(); };
+  // The old adapter's close has the close bound: a recovery or a close never waits longer for it. A
+  // recovery whose old adapter does not close in time fails, and the session goes on without a mirror
+  // (issue #64).
+  const dispose = async (): Promise<void> => { const old = adapter; adapter = undefined; if (old) await closeWithin(() => old.terminate()); };
   return {
     readBack: registration.readBack,
     apply: (transition,context) => bounded((engine,remaining) => engine.apply(transition, { timeoutMs: remaining }),context),
@@ -82,14 +86,14 @@ export async function createProductionMirror(initial: State, probe?: EngineLifec
           if (closed) throw unavailable();
           const replacement = await registration.create(state, { timeoutMs: MIRROR_DEADLINE_MS }, probe);
           // Close can happen during Chromium startup. The replacement must be killed before publication.
-          if (closed) { await replacement.terminate(); throw unavailable(); }
+          if (closed) throw await closeAfterFailure(unavailable(), () => replacement.terminate());
           adapter = replacement; interrupted = false;
         } else {
           const restored = await bounded(engine => engine.restoreState(state, { timeoutMs: MIRROR_DEADLINE_MS }));
           if (!restored.ok || !agrees(restored.state, state)) throw new MirrorFault('mirror_unavailable', 'Mirror rollback failed');
         }
         if (!agrees(await bounded(engine => engine.snapshot()), state)) throw new MirrorFault('mirror_unavailable', 'Mirror recovery read-back differs');
-      } catch (error) { interrupted = true; await dispose(); throw error; }
+      } catch (error) { interrupted = true; throw await closeAfterFailure(error, dispose); }
     }),
     close: async () => {
       closed = true; // Synchronous terminal marker; queued recovery can never relaunch.

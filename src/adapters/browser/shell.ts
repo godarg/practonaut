@@ -205,7 +205,7 @@ const LAUNCH_ARGS = ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
 async function launchWithin(chromium: ChromiumLike, remaining: () => number, signal: AbortSignal | undefined, context: LaunchContext | undefined, sink: Sink): Promise<Browser> {
   const launching = launchChromium(chromium, () => ({ headless: true, timeout: remaining(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: [...LAUNCH_ARGS], proxy: { server: sink.server, bypass: '<-loopback>' } }), context);
   try {
-    return (await within(() => launching, { timeoutMs: remaining(), signal }, { timeout: () => new BrowserDeadlineError(), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled during launch') })).browser;
+    return (await within(() => launching, { timeoutMs: remaining(), signal }, { timeout: () => new BrowserDeadlineError('launch'), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled during launch') })).browser;
   } catch (error) {
     void launching.then(({ browser }) => closeBrowser(browser)).catch(() => undefined);
     throw error;
@@ -240,7 +240,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const deadline = performance.now() + (options.launchMs ?? BROWSER_BOUNDS.launch);
   const remaining = (): number => Math.max(1, deadline - performance.now());
   const startMs = Math.max(1, options.initializeMs ?? BROWSER_BOUNDS.initialize);
-  const chromium = options.chromium ?? (await bounded(import('playwright-core'), remaining())).chromium;
+  const chromium = options.chromium ?? (await bounded(import('playwright-core'), remaining(), 'launch')).chromium;
   if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
   const denied: string[] = [];
   const sink = await startSink();
@@ -301,12 +301,12 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   try {
     requireStart(); // Includes abort while the launch was pending.
     // Every setup call shares the launch deadline: a browser that never answers cannot hold the start.
-    context = await wait(() => bounded(browser.newContext({ viewport: options.viewport ?? { width: 1600, height: 1000 }, serviceWorkers: 'block' }), deadline - performance.now()));
+    context = await wait(() => bounded(browser.newContext({ viewport: options.viewport ?? { width: 1600, height: 1000 }, serviceWorkers: 'block' }), deadline - performance.now(), 'setup'));
     requireStart();
-    await wait(() => bounded(context!.route('**/*', route), deadline - performance.now()));
-    await wait(() => bounded(context!.routeWebSocket(() => true, socket), deadline - performance.now()));
+    await wait(() => bounded(context!.route('**/*', route), deadline - performance.now(), 'setup'));
+    await wait(() => bounded(context!.routeWebSocket(() => true, socket), deadline - performance.now(), 'setup'));
     requireStart();
-    page = await wait(() => bounded(context!.newPage(), deadline - performance.now()));
+    page = await wait(() => bounded(context!.newPage(), deadline - performance.now(), 'setup'));
     requireStart();
   } catch (primaryError) { return closeOwned(primaryError); }
   /** Replaces the current page. `guard` decides, after the new page exists, whether the caller may
@@ -317,7 +317,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
     try { guard?.(); } catch (error) { await fresh.close().catch(() => undefined); throw error; }
     page = fresh; return fresh;
   };
-  const shellStop = { timeout: () => new BrowserDeadlineError(), cancel: () => new BrowserDeadlineError() };
+  const shellStop = { timeout: () => new BrowserDeadlineError('rollback', startMs), cancel: () => new BrowserDeadlineError('rollback', startMs) };
   /** Writes the committed scene back into the intact page after a failed result, as an operation of
    * its own within the start's deadline; false when it did not finish. */
   const undo = async <S>(scene: SceneIO<S>, before: S): Promise<boolean> => {
@@ -389,7 +389,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const start = asOperation(() => initialize(shell));
   try {
     requireStart();
-    await within(start.run, { timeoutMs: startMs, signal: options.signal }, { timeout: () => new BrowserDeadlineError(), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled') });
+    await within(start.run, { timeoutMs: startMs, signal: options.signal }, { timeout: () => new BrowserDeadlineError('start', startMs), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled') });
     requireStart();
   } catch (primaryError) { start.end(); return closeOwned(primaryError); }
   finally { start.end(); initializing = false; }

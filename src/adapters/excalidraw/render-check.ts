@@ -1,6 +1,6 @@
 import type { Artifact } from '../types.ts';
 import type { RawElement } from './raw.ts';
-import { BROWSER_BOUNDS, bounded } from '../browser/bounded.ts';
+import { BROWSER_BOUNDS, bounded, withClose } from '../browser/bounded.ts';
 import { launchChromium } from '../browser/chromium.ts';
 /** Step containers of world/1 (rectangle) and world/2 (also ellipse, diamond); checked by their box. */
 const STEP_SHAPES = ['rectangle', 'ellipse', 'diamond'];
@@ -22,9 +22,11 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
       arrows.push({ id: arrow.id, end, gap, ok: gap <= 12 });
     }
   }
-  const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch);
+  const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch, 'launch');
   const { browser } = await launchChromium(chromium, () => ({ headless: true }));
-  try {
+  // After a failure the close has the close bound, and a failed close never replaces the check's own
+  // failure (issue #64); after a result it runs as before.
+  return withClose(async (): Promise<RenderReport> => {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', route => route.abort());
     const page = await context.newPage();
@@ -83,5 +85,5 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
     }
     if (screenshotPath) await page.locator('svg').first().screenshot({ path: screenshotPath });
     return { ok: arrows.every(a => a.ok) && labels.every(l => l.ok) && labels.length > 0, arrows, labels };
-  } finally { await browser.close(); }
+  }, () => browser.close());
 }

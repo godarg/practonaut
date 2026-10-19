@@ -196,3 +196,33 @@ test('the native Open repeat runs only the H1 native file test, by hand, 20 time
   assert.equal(uploads.length, 1); assert.equal(uploads[0]!.if, '${{ failure() }}');
   assert.ok(all.indexOf(uploads[0]!) > check, 'the upload comes after the test and its check');
 });
+
+// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside the file they
+// ran beside in the failed Windows runs, and keeps the close timings after a pass too.
+test('the host deadline repeat runs both deadline tests beside challenge-round, by hand, on each CI platform, and fails unless every attempt passed', () => {
+  const doc = workflow('.github/workflows/host-deadline-repeat.yml');
+  assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
+  assert.deepEqual(doc.permissions, { contents: 'read' });
+  assert.equal(map(doc.concurrency)['cancel-in-progress'], 'false');
+  const jobs = Object.values(map(doc.jobs)).map(map);
+  assert.equal(jobs.length, 1);
+  for (const job of jobs) assert.equal(/^test \(|^secret scan$|^node \d/.test(String(job.name)), false, String(job.name));
+  const job = jobs[0]!, strategy = map(job.strategy), matrix = map(strategy.matrix);
+  assert.deepEqual(matrix.os, PLATFORMS);
+  assert.equal(strategy['fail-fast'], 'false', 'one failed run does not cancel the others');
+  const all = list(job.steps).map(map);
+  const build = all.findIndex(step => runWords(step).join(' ') === 'node tools/build-engine.ts');
+  const runs = all.flatMap((step, index) => runWords(step).includes('tools/amplify-host-deadline.ts') ? [index] : []);
+  assert.equal(runs.length, 1, 'one amplifier command');
+  const run = runs[0]!, argv = runWords(all[run]!);
+  const value = (name: string): string | undefined => argv[argv.indexOf(name) + 1];
+  assert.ok(build >= 0 && build < run, 'the engine is built before the tests');
+  assert.equal(value('--beside'), 'tests/integration/challenge-round.test.ts');
+  assert.equal(value('--cpu'), '1', 'no throttling: the conditions of the failed runs');
+  assert.ok(Number(value('--runs')) * list(matrix.repeat).length >= 100, 'at least 100 attempts of each test per platform');
+  assert.ok(argv.includes('--require-pass'), 'a step that ran no test or a failing one fails');
+  assert.equal(all[run]!.if, undefined);
+  const uploads = all.filter(step => String(step.uses ?? '').startsWith('actions/upload-artifact@') && step.with !== undefined && map(step.with).path === '.local/amplify-host-deadline/');
+  assert.equal(uploads.length, 1); assert.equal(uploads[0]!.if, '${{ !cancelled() }}', 'the timings are kept after a pass too');
+  assert.ok(all.indexOf(uploads[0]!) > run);
+});

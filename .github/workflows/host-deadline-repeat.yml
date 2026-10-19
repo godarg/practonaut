@@ -1,0 +1,67 @@
+name: host deadline repeat
+# Issue #64: the two real-mirror tests of tests/integration/host-deadline.test.ts, repeated on every CI
+# platform beside challenge-round.test.ts, as test:integration (two files at a time) ran them in both
+# failed Windows runs (docs/testing.md, "Host deadline tests"). By hand only; its jobs are not
+# required checks and never answer for `test (<os>)` or `secret scan`. Each job runs the opt-in
+# amplifier (tools/amplify-host-deadline.ts) for 30 attempts of each test without throttling, keeps
+# Playwright's browser-process log for every attempt and uploads the summary, so each browser close
+# is split into Chromium's exit and the removal of Playwright's temporary profile.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: host-deadline-repeat-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deadline:
+    name: host deadline (${{ matrix.os }}, ${{ matrix.repeat }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        repeat: [1, 2, 3, 4, 5]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Cache Playwright Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium (Linux, with system dependencies)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium
+        if: runner.os != 'Linux'
+        run: npx playwright install chromium
+      - name: Build the engine
+        run: node tools/build-engine.ts
+      # A name pattern that selects no test still exits 0: --require-pass reads every attempt's TAP
+      # report with tools/require-test-passed.ts and fails the step unless each test has 30 reports
+      # and every one of them shows that it ran and passed.
+      - name: The two host deadline tests, 30 times each, beside challenge-round
+        shell: bash
+        run: node --import ./tests/support/test-home.ts tools/amplify-host-deadline.ts --runs 30 --cpu 1 --beside tests/integration/challenge-round.test.ts --require-pass
+      # The summary (close durations and their split) and every attempt's TAP report with the
+      # Playwright log, on success too: they are the measurement.
+      - name: Upload the amplifier record
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-deadline-${{ matrix.os }}-${{ matrix.repeat }}-${{ github.run_attempt }}
+          path: .local/amplify-host-deadline/
+          if-no-files-found: ignore
+          retention-days: 14

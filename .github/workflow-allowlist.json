@@ -3,6 +3,7 @@
   "paths": [
     ".local/native-chart-paper/",
     ".local/native-transfer/",
+    ".local/amplify-host-deadline/",
     ".local/drawio-conformance/summary.json",
     "~/.cache/ms-playwright",
     "~/Library/Caches/ms-playwright",

@@ -8,6 +8,34 @@ All notable changes are recorded here. The format follows
 
 ### Added
 
+- Bench report `practonaut.bench/3` ([PADR-0044](docs/adr/0044-bench-report-v3.md), issue #46; schema
+  `schemas/bench.v3.json`): `bench` writes it at the session verdict level. It names the verdict level
+  (on every run, and on the header line, card, badge, JUnit properties and compare page), the
+  application (`environment.app`, replacing `environment.excalidraw`) and the toolchain with the tool
+  names Practonaut's bridge advertised; a task identity per instance; the agent's vendor, client,
+  client version, requested model, settings and requested billing class, each with its evidence
+  source; per external run the SHA-256 of its whole `agent.stdout`, the versioned parser that read it
+  (`claude-code-stream/1`), the tools its client offered and the billing class its own output attests;
+  a structured `failure` for every run that was not judged (reason, parser, the client's own code,
+  whether it came before model work); and the agent's own action count. A preset is "tool-restricted"
+  only from its runs' evidence of the tools its client offered. The validator also holds the
+  artifact-judged level that artifact mode will write.
+- `report --verify` re-verifies /3 reports: the application adapter and every task identity against
+  the stored world, every stdout against its hash (and no readable stdout behind an unbound run), and
+  every value the shipped parser reads from it — the client block, isolation, the failure of any run,
+  and the agent's model, `apiKeySource`, client version, vendor, client, and for its own version the
+  requested billing and settings. A report of this or an older Practonaut that names a parser this one
+  does not ship is refused; a newer one's values are shown as the report's claims on every surface and
+  are never taken by the challenge gate, which exempts a /3 run from the budget only by a failure its
+  shipped parser re-derives. An application adapter id can no longer name a path.
+- `compare` refuses reports of different verdict levels by name, and different `--checks`; it pairs
+  the same tasks benched on two applications or toolchains by task identity (the distinct identity is
+  the unit, rate claims only at equal run counts, no regression labels; `--fail-on-regression`
+  refuses such a pair), and names more caveats (report format, isolation basis, toolchain, client
+  version and settings, shared identities).
+- World/2 may name its task set (`taskSet: { id, version }`): variant selection then hashes the task
+  set's id and version instead of the world's own, so two worlds of one task set select the same cases
+  for the same seeds. Worlds without it are unchanged.
 - **Adapter registry** (PADR-0045, proposed; roadmap 0.3.0 Must 1): adapters are chosen by the
   world's `app.adapterId` through `src/adapters/registry.ts` (app versions, world schemas, runtime
   kind `bundled` or `downloaded`, read-back comparison, factory); only Excalidraw 0.18.1 is
@@ -87,11 +115,39 @@ All notable changes are recorded here. The format follows
   steps) judged on step boxes and on straight lines between step centres, with a cost bound per
   clause, EN/DE narration, the judged geometry drawn in the Player and the report, and the outline of
   the `challenge-layout` generator. No behaviour changes yet.
+- Migration from `/2` to `/3`: nothing to convert. `report`, `--verify`, `compare`, `--junit`,
+  `--card` and `--badge` read `/1`, `/2` and `/3` through one read-only view that keeps every `/2`
+  field (tested leaf by leaf on the committed reports) and says what an older report did not record;
+  `/1` and `/2` keep their schemas and rules unchanged ([benchmarks](docs/benchmarks/README.md) §5).
+  `bench --recover` writes `/3` and refuses a folder an earlier Practonaut wrote. The 0.2.0 challenge
+  gate reads `/2` and session-level `/3` reports.
+- A browser that runs out of time says which operation and which bound: "Browser close exceeded its
+  deadline of 8000 ms" instead of "Browser operation exceeded its deadline" (launch, setup, start,
+  rollback, close, settlement; issue #64, where the Windows failures were the 8 s close of the real
+  browser in the host deadline tests' cleanup). Bounds and behaviour are unchanged. For developers:
+  `npm run amplify:host-deadline` repeats those two tests under load and times every browser close,
+  and the manual `host-deadline-repeat` workflow runs it on each CI platform
+  ([testing](docs/testing.md#host-deadline-tests)).
 
 ### Fixed
 
 - `setup --app drawio`: a wait cut short by the download's absolute deadline is reported as the
   deadline, not as a stall or a connect timeout (a timer can fire a fraction of a millisecond early).
+- A browser close after a failure no longer replaces that failure (issue #64). When a session or
+  host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
+  an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
+  or a render check or report card fails, the close that follows runs within the close bound
+  (graceful 3 s + forced 5 s) and the caller gets the original failure, with the close's failure kept
+  next to it as `closeError`. A failed host start tries every cleanup step on its own (the listener,
+  ending its connections and event streams first; the author store; the session; the diagnostics;
+  the credential), and a mirror waits no longer than the close bound for an old adapter, in a
+  recovery too. Before, a close or cleanup step that failed replaced the failure (a native transfer
+  export reported "Browser close exceeded its deadline" instead of its own error; a diagnostics file
+  already gone made a failed start report `ENOENT` and keep its credential), and a close that never
+  finished held these paths forever: a failed host start never removed its credential, an open event
+  stream held a failed editor start for good, and an interrupted mirror recovery kept the session's
+  write lock.
+
 - The native file transfer's Open (`nativeFileTransfer`, the integration test "H1 native file", issue
   #45) sent its shortcut in the same tick as Playwright's `filechooser` listener. On macOS with the
   renderer throttled 20x, 28 of 30 Opens lost their file dialog before the change and 0 of 30 after;

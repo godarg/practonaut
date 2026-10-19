@@ -81,6 +81,9 @@ export interface PrivateWorldSource {
 export type WorldSchemaId = "practonaut.world/1" | "practonaut.world/2";
 export interface World {
   schema: WorldSchemaId; id: string; version: string;
+  /** world/2: the task set whose id and version select variant cases instead of the world's own
+   * (PADR-0044 decision 3); absent, the world's own id and version. */
+  taskSet?: { id: string; version: string };
   /** The application and its pinned version (PADR-0045: one of the known apps of src/world/apps.ts). */
   app: WorldApp & { fontFamilies: number[]; excludedAttributes: Record<string, string> };
   units: Record<string, string>;
