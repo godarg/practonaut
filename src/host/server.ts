@@ -26,7 +26,8 @@ import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
 import { CLOSE_BOUND_MS } from '../adapters/browser/bounded.ts';
 import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
-import { CLOSE_SAFETY_MS, CloseRequested, closeAfterFailure, closeBy, closeDeadline, type Closing } from '../adapters/browser/close.ts';
+import { CANCELLED, CLOSE_SAFETY_MS, CloseRequested, closeAfterFailure, closeBy, closeDeadline, type CloseResult, type Closing } from '../adapters/browser/close.ts';
+import { AdapterInitializationError } from '../adapters/browser/shell.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string;
   /** Test seam: how the demonstration waits before each step (real timers when absent; the CLI never sets it). */
@@ -174,6 +175,20 @@ export async function admitChildHost(child: Pick<RunningHost, 'close'>, value: u
   try { requireReplyBudget({ ok: true, value }); } catch (error) { throw await closeAfterFailure(error, deadline => child.close(deadline)); }
 }
 /**
+ * How a practice host's start that its parent stopped settled, as a close (re-review of PR #69): the
+ * expected end of an aborted start is *cancelled*, or the outcome of its browser's close under the
+ * deadline handed down (*abandoned* included). A cleanup step of the start that did not close (its
+ * credential's removal, its diagnostics, a failed browser close) is *failed*, so the parent's
+ * shutdown is not reported clean.
+ */
+export function childStartOutcome(error: unknown): CloseResult {
+  const cleanup = typeof error === 'object' && error !== null && Object.hasOwn(error, 'closeError') ? (error as { closeError: unknown }).closeError : undefined;
+  if (cleanup !== undefined) return { outcome: 'failed', error: cleanup };
+  const browser = error instanceof AdapterInitializationError ? error.closeResult : undefined;
+  if (browser?.outcome === 'failed' || browser?.outcome === 'abandoned') return browser;
+  return CANCELLED;
+}
+/**
  * The practice hosts an author host starts, from the first moment of their start (review of PR #69,
  * Codex 3). The author host's shutdown stops every start under way — an abort that carries the
  * close's deadline, so the child's mirror start closes what it owns by then — and closes what each
@@ -205,7 +220,7 @@ export class ChildHosts {
     const closes = [...this.running].map(child => (by: number): Closing => child.close(by));
     for (const { stop, started } of this.starting) {
       stop.abort(new CloseRequested(deadline));
-      closes.push(by => started.then(child => child.close(by), () => undefined));
+      closes.push(by => started.then(child => child.close(by), childStartOutcome));
     }
     this.running.clear();
     return closes;

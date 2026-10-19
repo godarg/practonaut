@@ -5,14 +5,14 @@
 // deadline down and reads the outcome: no outer timer turns an abandoned close into a failure.
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserBudgetError, BrowserLedger, startBrowser } from '../../src/adapters/browser/ledger.ts';
 import { CloseRequested, type CloseResult } from '../../src/adapters/browser/close.ts';
-import { LAUNCH_AFTER_WAIT_MS, startShell, type BrowserShell } from '../../src/adapters/browser/shell.ts';
+import { AdapterError, AdapterInitializationError, LAUNCH_AFTER_WAIT_MS, startShell, type BrowserShell } from '../../src/adapters/browser/shell.ts';
 import { ADAPTER_REGISTRY, type AdapterRegistry } from '../../src/adapters/registry.ts';
 import type { AdapterOptions, MirrorAdapter } from '../../src/adapters/types.ts';
 import { renderCheck } from '../../src/adapters/excalidraw/render-check.ts';
@@ -20,7 +20,7 @@ import { renderCardPngs } from '../../src/bench/card-png.ts';
 import { chromiumStarts } from '../../src/cli/browser-start.ts';
 import { createProductionMirror, type PracticeMirror } from '../../src/host/mirror.ts';
 import { createPracticeController, type BrowserCloseDiagnostic } from '../../src/host/session.ts';
-import { ChildHosts, httpFailure, startHost, status } from '../../src/host/server.ts';
+import { ChildHosts, childStartOutcome, httpFailure, startHost, status } from '../../src/host/server.ts';
 import { HOST_ERROR_CODES } from '../../src/host/protocol.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { State, World } from '../../src/world/types.ts';
@@ -385,4 +385,37 @@ test('a refused sandbox setting takes no slot', async () => {
   await assert.rejects(startBrowser('start-check', fakeChromium().chromium, () => ({}), { ledger, context: { env } }), /PRACTONAUT_CHROMIUM_SANDBOX must be "require" or unset/);
   await assert.rejects(startShell({ chromium: fakeChromium().chromium, ledger, launchContext: { ...LAUNCH, env }, origins: {} }, async () => {}), /PRACTONAUT_CHROMIUM_SANDBOX/);
   assert.deepEqual(ledger.records(), [], 'no entry, no slot');
+});
+
+// --- Re-review of PR #69 (Codex major): a stopped child start's failed cleanup was reported closed ---
+
+test('a stopped child start: an expected abort is cancelled, a cleanup that did not close is failed', () => {
+  const cleanupFailed = Object.defineProperty(new AdapterError('cancelled', 'stopped'), 'closeError', { value: Object.assign(new Error('EACCES: permission denied, unlink'), { code: 'EACCES' }), enumerable: false });
+  assert.deepEqual(childStartOutcome(new AdapterError('cancelled', 'Engine initialization cancelled during launch')), { outcome: 'cancelled' });
+  assert.equal(childStartOutcome(cleanupFailed).outcome, 'failed');
+  assert.match(String((childStartOutcome(cleanupFailed) as { error?: unknown }).error), /EACCES/);
+  const browserFailed = new AdapterInitializationError(new AdapterError('cancelled', 'stopped'), new Error('close failed'), [], 0, { outcome: 'failed', error: new Error('close failed') });
+  assert.equal(childStartOutcome(browserFailed).outcome, 'failed');
+  const browserAbandoned = new AdapterInitializationError(new AdapterError('cancelled', 'stopped'), undefined, [], 0, { outcome: 'abandoned' });
+  assert.deepEqual(childStartOutcome(browserAbandoned), { outcome: 'abandoned' }, 'abandoned under the deadline handed down is no failure');
+});
+
+test('a parent\'s shutdown that stops a child whose credential cannot be removed is not reported clean', { skip: process.platform === 'win32' ? 'POSIX: the test makes the child\'s token directory read-only' : false }, async t => {
+  const children = new ChildHosts(), assets = stubAssets();
+  const parentTokens = mkdtempSync(join(realpathSync(tmpdir()), 'pn-close-parent-')), childTokens = mkdtempSync(join(realpathSync(tmpdir()), 'pn-close-child-'));
+  t.after(() => { chmodSync(childTokens, 0o700); for (const directory of [childTokens, parentTokens, assets]) rmSync(directory, { recursive: true, force: true }); });
+  const host = await startHost(world(), { seed: 1, mirror: 'off', assetDirectory: assets, tokenDirectory: parentTokens, childHosts: children });
+  let waiting = false;
+  // The child's session start waits for the parent's abort; by then its credential exists, and the
+  // directory holding it has become read-only, so its start's cleanup cannot remove it (EACCES).
+  const launched = children.launch(signal => startHost(world(), { seed: 1, assetDirectory: assets, tokenDirectory: childTokens, signal, controllerFactory: async (_value, options) => {
+    waiting = true;
+    return new Promise<never>((_, reject) => { (options as { signal: AbortSignal }).signal.addEventListener('abort', () => { chmodSync(childTokens, 0o500); reject(new AdapterError('cancelled', 'Engine initialization cancelled')); }, { once: true }); });
+  } }), async () => 'started');
+  launched.catch(() => undefined);
+  for (let turn = 0; turn < 200 && !waiting; turn++) await sleep(5);
+  assert.ok(waiting, 'the child is starting');
+  await assert.rejects(host.close(performance.now() + 300), /could not be fully confirmed/, 'the failed cleanup of the stopped child is a failed step');
+  chmodSync(childTokens, 0o700);
+  assert.equal(readdirSync(childTokens).some(name => name.endsWith('.token')), true, 'the child\'s credential is still there: the failure is real');
 });
