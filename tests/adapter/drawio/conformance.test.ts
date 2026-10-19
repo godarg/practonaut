@@ -22,6 +22,19 @@ const availability = await drawioAvailability();
 /** The node process's and the Chromium tree's bounds (decision 3.6). */
 const NODE_RSS_MAX = 1024 ** 3, CHROMIUM_TREE_RSS_MAX = 1.5 * 1024 **3;
 
+/** Per task (a library task, or `family/<family>/<task>`): references passed, near misses and starts failed, each of its total. */
+function byTask(record: RunRecord): Record<string, { referencesPassed: string; nearMissesFailed: string; startsFailed: string }> {
+  const out: Record<string, { references: [number, number]; nearMisses: [number, number]; starts: [number, number] }> = {};
+  for (const sequence of record.sequences) {
+    const task = sequence.key.split('/').slice(0, -2).join('/');
+    const entry = out[task] ??= { references: [0, 0], nearMisses: [0, 0], starts: [0, 0] };
+    const passed = sequence.applied && 'passed' in sequence.verdict ? sequence.verdict.passed : null;
+    const slot = sequence.kind === 'reference' ? entry.references : sequence.kind === 'start' ? entry.starts : entry.nearMisses;
+    slot[1]++; if (sequence.kind === 'reference' ? passed === true : passed === false) slot[0]++;
+  }
+  return Object.fromEntries(Object.entries(out).map(([task, e]) => [task, { referencesPassed: `${e.references[0]}/${e.references[1]}`, nearMissesFailed: `${e.nearMisses[0]}/${e.nearMisses[1]}`, startsFailed: `${e.starts[0]}/${e.starts[1]}` }]));
+}
+
 function run(order: Order, seed: number, index: number): RunRecord {
   const out = join(OUT, `run-${index}.json`);
   rmSync(out, { force: true });
@@ -67,7 +80,7 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
     platform: `${process.platform}-${process.arch}`, node: process.version,
     playwright: (JSON.parse(readFileSync(join(root, 'node_modules/playwright-core/package.json'), 'utf8')) as { version: string }).version,
     sandbox: 'required', pin: { version: DRAWIO_PIN.version, size: DRAWIO_PIN.size, sha256: DRAWIO_PIN.sha256 },
-    runs: runs.map(record => ({ order: record.order, seed: record.seed, sequences: record.sequences.length, steps: record.sequences.reduce((n, s) => n + s.steps, 0), startMs: Math.round(record.startMs), peakRss: record.peakRss, refusedRequests: record.refusedRequests.length })),
+    runs: runs.map(record => ({ order: record.order, seed: record.seed, sequences: record.sequences.length, steps: record.sequences.reduce((n, s) => n + s.steps, 0), startMs: Math.round(record.startMs), peakRss: record.peakRss, refusedRequests: record.refusedRequests.length, byTask: byTask(record) })),
     disagreements, problems: problems.slice(0, 50),
     sequences: Object.fromEntries(runs[0]!.sequences.map(sequence => [sequence.key, { kind: sequence.kind, exports: sequence.exports, native: sequence.native, png: sequence.png, verdict: sequence.verdict }])),
   };

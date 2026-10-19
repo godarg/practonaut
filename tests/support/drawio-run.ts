@@ -21,7 +21,10 @@ import { checkSubmission } from '../../src/checker/index.ts';
 import { sha256Hex } from '../../src/canonical/index.ts';
 import { Session } from '../../src/core/index.ts';
 import { LIBRARY_CASES } from '../../src/library/index.ts';
-import type { Action, State } from '../../src/world/types.ts';
+import type { Action, State, World } from '../../src/world/types.ts';
+import type { TaskOracle } from '../../src/authoring/from-scenes.ts';
+import { generateSet } from '../../src/challenge/build.ts';
+import { FAMILIES } from '../../src/challenge/families.ts';
 import { drawioLibrary, drawioTaskWorld, drawioTestRuntime } from './drawio.ts';
 
 export type Order = 'forward' | 'reverse' | 'shuffle';
@@ -33,6 +36,7 @@ export interface SequenceRecord {
 }
 export interface RunRecord {
   schema: 'practonaut.drawio-run/1'; order: Order; seed: number; keys: string[]; sequences: SequenceRecord[];
+  /** `startMs`: the adapter's start in this run, from the call to its first scene confirmed. */
   refusedRequests: string[]; startMs: number; peakRss: { node: number; chromiumTree: number | null };
 }
 
@@ -60,33 +64,42 @@ export function chromiumTreeRss(): number | null {
   } catch { return null; }
 }
 
-interface Planned { key: string; taskId: string; variantCase: string; seed: number; kind: SequenceRecord['kind']; nearMiss?: string; steps: Array<{ name: string; params: Record<string, unknown> }> }
+interface Planned { key: string; source: string; world: World; taskId: string; variantCase: string; seed: number; kind: SequenceRecord['kind']; nearMiss?: string; steps: Array<{ name: string; params: Record<string, unknown> }> }
+/** The families the conformance layer runs (decision 8.5): every family the generator has, seeds 1–3, difficulty mixed. */
+export const FAMILY_SEEDS = [1, 2, 3] as const;
+const sequencesOf = (source: string, world: World, oracle: TaskOracle, cases: readonly string[]): Planned[] => cases.flatMap(variantCase => {
+  const seed = oracle.seeds[variantCase]!, taskId = oracle.taskId, slice = drawioTaskWorld(world, taskId), prefix = `${source}${taskId}/${variantCase}`;
+  const base = { source, world: slice, taskId, variantCase, seed };
+  return [
+    { ...base, key: `${prefix}/start`, kind: 'start' as const, steps: [] },
+    { ...base, key: `${prefix}/reference`, kind: 'reference' as const, steps: oracle.steps },
+    ...oracle.nearMisses.map(miss => ({ ...base, key: `${prefix}/${miss.id}`, kind: 'near-miss' as const, nearMiss: miss.id, steps: miss.steps })),
+  ];
+});
+/** Every planned sequence: the library's 16 tasks × 3 cases, then each family's instances on seeds 1–3
+ * written for draw.io by the generator (`--app drawio`). */
 export function plannedSequences(): Planned[] {
-  const { library } = drawioLibrary();
-  return library.tasks.flatMap(task => LIBRARY_CASES.flatMap(variantCase => {
-    const seed = task.oracle.seeds[variantCase]!;
-    const base = { taskId: task.id, variantCase, seed };
-    return [
-      { ...base, key: `${task.id}/${variantCase}/start`, kind: 'start' as const, steps: [] },
-      { ...base, key: `${task.id}/${variantCase}/reference`, kind: 'reference' as const, steps: task.oracle.steps },
-      ...task.oracle.nearMisses.map(miss => ({ ...base, key: `${task.id}/${variantCase}/${miss.id}`, kind: 'near-miss' as const, nearMiss: miss.id, steps: miss.steps })),
-    ];
-  }));
+  const { world, library } = drawioLibrary();
+  const families = FAMILIES.flatMap(family => {
+    const set = generateSet(family, FAMILY_SEEDS, 'mixed', 'dev', 'drawio');
+    return set.oracles.flatMap(oracle => sequencesOf(`family/${family}/`, set.world, oracle, ['drawn']));
+  });
+  return [...library.tasks.flatMap(task => sequencesOf('', world, task.oracle, LIBRARY_CASES)), ...families];
 }
 
 export async function runProtocol(order: Order, seed: number): Promise<RunRecord> {
-  const { world } = drawioLibrary(), runtime = drawioTestRuntime();
+  const runtime = drawioTestRuntime();
   const plan = ordered(plannedSequences(), order, seed);
   let peakTree = chromiumTreeRss();
   const sample = setInterval(() => { const now = chromiumTreeRss(); if (now !== null) peakTree = Math.max(peakTree ?? 0, now); }, 250);
-  const first = plan[0]!, firstWorld = drawioTaskWorld(world, first.taskId);
-  const adapter = await createDrawioAdapter(new Session(firstWorld, first.seed, first.taskId).state, {}, undefined, { runtimePath: runtime.runtimePath });
-  const startMs = performance.now();
+  const first = plan[0]!, starting = performance.now();
+  const adapter = await createDrawioAdapter(new Session(first.world, first.seed, first.taskId).state, {}, undefined, { runtimePath: runtime.runtimePath });
+  const startMs = performance.now() - starting;
   const sequences: SequenceRecord[] = [];
   let refusedRequests: string[] = [];
   try {
     for (const planned of plan) {
-      const slice = drawioTaskWorld(world, planned.taskId);
+      const slice = planned.world;
       const record: SequenceRecord = { key: planned.key, taskId: planned.taskId, variantCase: planned.variantCase, kind: planned.kind, ...(planned.nearMiss ? { nearMiss: planned.nearMiss } : {}), steps: 0, applied: true, exports: [], native: '', png: '', verdict: { refused: 'not reached' } };
       sequences.push(record);
       const resolved = runOracle(slice, planned.seed, planned.taskId, planned.steps as never);
