@@ -5,7 +5,7 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import { launchChromium } from '../adapters/browser/chromium.ts';
+import { startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
 
@@ -23,11 +23,16 @@ export function launchFailureDetail(error: unknown): string {
   return safeText(telling).slice(0, 240);
 }
 
-export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS): Promise<StartResult> {
+/** Test seams: a fake Playwright `chromium`, a ledger of the test's own (default: the process's). */
+export interface StartCheckSeams { chromium?: ChromiumLauncher; ledger?: BrowserLedger }
+/** The answer does not wait for a slow close: the close runs under the close contract (PADR-0050),
+ * and an abandoned or failed close leaves the answer as it is; the browser keeps its slot until its
+ * end is proven. */
+export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS, seams: StartCheckSeams = {}): Promise<StartResult> {
   try {
-    const { chromium } = await import('playwright-core');
-    const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-    await browser.close().catch(() => {});
+    const chromium = seams.chromium ?? (await import('playwright-core')).chromium;
+    const { lease, sandbox } = await startBrowser('start-check', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: seams.ledger });
+    await lease.close();
     return { ok: true, sandbox };
   } catch (error) { return { ok: false, detail: launchFailureDetail(error) }; }
 }

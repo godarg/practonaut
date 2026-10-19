@@ -8,6 +8,7 @@ import type { Browser, LaunchOptions } from 'playwright-core';
 import { BrowserDeadlineError, closeBrowser } from '../../src/adapters/browser/bounded.ts';
 import { AdapterError, AdapterInitializationError, artifactOf, capturePng, serialQueue, startShell, type BrowserShell, type SceneIO, type ShellOptions } from '../../src/adapters/browser/shell.ts';
 import type { AdapterResult } from '../../src/adapters/types.ts';
+import { BrowserLedger } from '../../src/adapters/browser/ledger.ts';
 
 /** A page holds one scene; a closed page refuses every later write, as a closed Playwright page does. */
 class FakePage {
@@ -27,10 +28,14 @@ class FakeContext {
   newPageGate: Promise<void> | undefined;
   async newPage(): Promise<FakePage> { const gate = this.newPageGate; this.newPageGate = undefined; if (gate) await gate; const page = new FakePage(); this.pages.push(page); return page; }
 }
+/** Connected until its close, as Playwright's client reports it (the ledger proves an end only for a
+ * close asked while connected, PADR-0050). */
 class FakeBrowser {
-  closed = 0; context = new FakeContext(); contextGate: Promise<void> | undefined;
+  closed = 0; context = new FakeContext(); contextGate: Promise<void> | undefined; connected = true;
   async newContext(): Promise<FakeContext> { if (this.contextGate) await this.contextGate; return this.context; }
-  async close(): Promise<void> { this.closed++; }
+  async close(): Promise<void> { this.closed++; this.connected = false; }
+  isConnected(): boolean { return this.connected; }
+  on(): this { return this; }
 }
 /** A chromium whose launch resolves when `release` is called (or at once). */
 function fakeChromium(immediate = true) {
@@ -39,7 +44,8 @@ function fakeChromium(immediate = true) {
   return { browser, calls, release: () => release?.(), chromium: { launch: async (options: LaunchOptions = {}): Promise<Browser> => { calls.push(options); await gate; return browser as unknown as Browser; } } };
 }
 const SANDBOX = { env: {}, platform: 'darwin' as const, memo: { unavailable: false } };
-const base = (chromium: NonNullable<ShellOptions['chromium']>, extra: Partial<ShellOptions> = {}): ShellOptions => ({ chromium, launchContext: { ...SANDBOX, memo: { unavailable: false } }, origins: {}, ...extra });
+// Each shell takes its slot from a ledger of its own, so the tests' browsers never fill the process's.
+const base = (chromium: NonNullable<ShellOptions['chromium']>, extra: Partial<ShellOptions> = {}): ShellOptions => ({ chromium, launchContext: { ...SANDBOX, memo: { unavailable: false } }, origins: {}, ledger: new BrowserLedger(), ...extra });
 const tick = (ms = 0): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 // Issue #64: the CI log said only "Browser operation exceeded its deadline"; which bound it was had

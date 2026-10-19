@@ -118,7 +118,7 @@ export function countingController(inner: PracticeController, counters: RunCount
     png: context => inner.png(context),
     export: (request, context, options) => inner.export(request, context, options),
     subscribe: listener => inner.subscribe(listener),
-    close: () => inner.close(),
+    close: deadline => inner.close(deadline),
   };
   return controller;
 }

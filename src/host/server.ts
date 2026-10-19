@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { parseJsonEntry } from "../package/json.ts";
 import type { World } from "../world/types.ts";
-import { createPracticeSession, type MirrorDiagnostic, type PracticeSessionOptions } from "./session.ts";
+import { createPracticeSession, type BrowserCloseDiagnostic, type MirrorDiagnostic, type PracticeSessionOptions } from "./session.ts";
 import { ACTOR_CLIENT, HOST_ROUTES, TOKEN_HEADER, type ControllerFactory, type DemonstrationInfo, type HostErrorCode, type HostEvent, type HostReply, type ModelOnlyNotice, type MutationDeltaReply, type MutationReply, type PracticeController, type RunningHost, type ServeOptions } from "./protocol.ts";
 import { demonstrationWorld, withDemonstration, type DemonstrationControl } from './demonstration.ts';
 import { HOST_LIMITS, RequestBudget } from "./limits.ts";
@@ -24,7 +24,8 @@ import { CheckerError } from '../checker/index.ts';
 import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
-import { BROWSER_BOUNDS, closeAfterFailure } from '../adapters/browser/bounded.ts';
+import { CLOSE_BOUND_MS } from '../adapters/browser/bounded.ts';
+import { CLOSE_SAFETY_MS, closeAfterFailure, closeBy, closeDeadline, type Closing } from '../adapters/browser/close.ts';
 
 export interface HostOptions extends ServeOptions { controllerFactory?: ControllerFactory; assetDirectory?: string; requireOffline?: boolean; phase3?: boolean; localDirectory?: string;
   /** Test seam: how the demonstration waits before each step (real timers when absent; the CLI never sets it). */
@@ -53,7 +54,7 @@ class DiagnosticError extends Error {
   readonly code: 'diagnostic_limit' | 'diagnostic_unavailable';
   constructor(code: DiagnosticError['code']) { super(code === 'diagnostic_limit' ? 'Mirror diagnostic exceeds file budget' : 'Private mirror diagnostic cannot be persisted'); this.code = code; }
 }
-async function privateDiagnostics(tokenFile: string, token: string, codes: () => readonly string[], authorToken?:string): Promise<{ write(record: MirrorDiagnostic): Promise<void>; close(): Promise<void>; discard(): Promise<void> }> {
+async function privateDiagnostics(tokenFile: string, token: string, codes: () => readonly string[], authorToken?:string): Promise<{ write(record: MirrorDiagnostic | BrowserCloseDiagnostic): Promise<void>; close(): Promise<void>; discard(): Promise<void> }> {
   const path = tokenFile.replace(/\.token$/, '.mirror.jsonl');
   // Positioned writes instead of O_APPEND: Windows opens an append-only handle without the write
   // access that truncation (the rotation below) needs.
@@ -134,16 +135,20 @@ function headers(response: ServerResponse): void {
 function requireReplyBudget(value: unknown): void {
   if (Buffer.byteLength(JSON.stringify(value)) > HOST_LIMITS.replyBytes - 2048) throw new HostError('result_too_large', 'Result exceeds HTTP budget before admission');
 }
-/** After a failed start, every cleanup step is tried on its own, each within the close bound, and none
- * of them replaces the start's failure; their failures are kept next to it (issue #64). */
-async function cleanUpAfterStart(failure: unknown, ...steps: Array<() => unknown>): Promise<unknown> {
-  for (const step of steps) await closeAfterFailure(failure, async () => { await step(); });
+/** A cleanup step's own outcome when it is a close under the contract (the controller's); any other
+ * value counts as done. */
+const closingOf = (value: unknown): Closing => Promise.resolve(value).then(settled => typeof settled === 'object' && settled !== null && 'outcome' in settled ? settled as { outcome: 'closed' } : undefined);
+/** After a failed start, every cleanup step is tried on its own under the close contract (PADR-0050),
+ * each with its own deadline, and none of them replaces the start's failure; a step that did not close
+ * is kept next to it (issue #64). */
+async function cleanUpAfterStart(failure: unknown, ...steps: Array<(deadline: number) => unknown>): Promise<unknown> {
+  for (const step of steps) await closeAfterFailure(failure, deadline => closingOf(step(deadline)));
   return failure;
 }
 /** A practice host started for the author is answered only when its reply fits the budget; one that
- * does not is closed again within the close bound, and the budget's refusal stays the error (issue #64). */
+ * does not is closed again under the close contract, and the budget's refusal stays the error (issue #64). */
 export async function admitChildHost(child: Pick<RunningHost, 'close'>, value: unknown): Promise<void> {
-  try { requireReplyBudget({ ok: true, value }); } catch (error) { throw await closeAfterFailure(error, () => child.close()); }
+  try { requireReplyBudget({ ok: true, value }); } catch (error) { throw await closeAfterFailure(error, deadline => child.close(deadline)); }
 }
 function json(response: ServerResponse, code: number, value: unknown): void {
   let bytes = Buffer.from(JSON.stringify(value));
@@ -206,7 +211,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   try { diagnostics = await privateDiagnostics(credential.path, token, () => issued, authorToken); }
   catch { await credential.remove(); throw new DiagnosticError('diagnostic_unavailable'); }
   let controller: PracticeController;
-  const sessionOptions: PracticeSessionOptions = { ...options, onMirrorDiagnostic: record => diagnostics.write(record), admitView: view => requireReplyBudget({ ok: true, value: { view } }) };
+  const sessionOptions: PracticeSessionOptions = { ...options, onMirrorDiagnostic: record => diagnostics.write(record), onBrowserClose: record => diagnostics.write(record), admitView: view => requireReplyBudget({ ok: true, value: { view } }) };
   try { controller = await (options.controllerFactory ?? createPracticeSession)(world, sessionOptions); }
   catch (error) { throw await cleanUpAfterStart(error, () => diagnostics.discard(), () => credential.remove()); }
   // The bundled example's demonstration owns the session while it runs; every surface goes through it.
@@ -221,7 +226,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   let editorAssets: Awaited<ReturnType<typeof startEditorAssets>> | undefined;
   if (options.phase3) {
     try { author = await createAuthorController(options.localDirectory ?? dataPaths().home); }
-    catch (error) { throw await cleanUpAfterStart(error, () => controller.close(), () => diagnostics.discard(), () => credential.remove()); }
+    catch (error) { throw await cleanUpAfterStart(error, deadline => controller.close(deadline), () => diagnostics.discard(), () => credential.remove()); }
   }
   let origin = ""; let busy = false;
   const children = new Set<RunningHost>();
@@ -407,7 +412,7 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   const heartbeat = setInterval(() => { for (const response of streams) sendEvent(response, { type: "heartbeat", revision: controller.view().revision }); }, HOST_LIMITS.heartbeatMs); heartbeat.unref();
   try {
     await new Promise<void>((ready, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.off("error", reject); ready(); }); });
-  } catch (error) { clearInterval(heartbeat); throw await cleanUpAfterStart(error, unsubscribe, () => controller.close(), () => diagnostics.discard(), () => credential.remove()); }
+  } catch (error) { clearInterval(heartbeat); throw await cleanUpAfterStart(error, unsubscribe, deadline => controller.close(deadline), () => diagnostics.discard(), () => credential.remove()); }
   const address = server.address(); if (!address || typeof address === "string") throw new HostError("host_rejected", "Listener address unavailable");
   origin = `http://127.0.0.1:${address.port}`;
   if (options.phase3) {
@@ -417,30 +422,36 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
     catch (error) {
       clearInterval(heartbeat);
       const closeListener = (): Promise<void> => new Promise<void>(done => { for (const response of streams) response.destroy(); server.close(() => done()); server.closeAllConnections(); });
-      throw await cleanUpAfterStart(error, unsubscribe, closeListener, () => author?.close(), () => controller.close(), () => diagnostics.discard(), () => credential.remove());
+      throw await cleanUpAfterStart(error, unsubscribe, closeListener, () => author?.close(), deadline => controller.close(deadline), () => diagnostics.discard(), () => credential.remove());
     }
   }
   let closePromise: Promise<void> | undefined;
-  return { origin, url: `${origin}/#code=${code}`, port: address.port, token, code, tokenFile: credential.path, issueUrl() { return `${origin}/#code=${issueCode()}`; }, close() {
+  return { origin, url: `${origin}/#code=${code}`, port: address.port, token, code, tokenFile: credential.path, issueUrl() { return `${origin}/#code=${issueCode()}`; }, close(deadline?: number) {
     if (closePromise) return closePromise;
     closePromise = (async () => {
-      const deadline = performance.now() + 12_000; let failed = false;
+      // Every browser close below gets one deadline (PADR-0050) and settles by it as closed, abandoned
+      // or failed; the host arms no timer of its own at or before it. Its safety timer ends later than
+      // that deadline, and its firing counts as a failure.
+      const requested = performance.now(), browsers = deadline ?? closeDeadline(requested);
+      const overall = Math.max(requested + 12_000, browsers + CLOSE_SAFETY_MS); let failed = false;
+      /** A step that closes no browser: within the close bound, and never past the safety bound. */
       const step = async (operation: () => Promise<void>): Promise<void> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try { await Promise.race([Promise.resolve().then(operation), new Promise<never>((_, reject) => {
-          // Each step may take as long as a browser's own bounded close (graceful + forced); a shorter cap
-          // reported a slow but completed Chromium close on a loaded machine as unconfirmed.
-          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced, deadline - performance.now())));
+          timer = setTimeout(() => reject(new Error('Session close deadline reached')), Math.max(1, Math.min(CLOSE_BOUND_MS, overall - performance.now())));
         })]); } catch { failed = true; } finally { clearTimeout(timer); }
       };
+      /** A close under the contract: the deadline goes down, the outcome comes up. An abandoned close
+       * does not fail the host's close (its session recorded it); only a failed one does. */
+      const browserStep = async (close: (by: number) => Closing): Promise<void> => { if ((await closeBy(close, browsers, overall)).outcome === 'failed') failed = true; };
       clearInterval(heartbeat);
       try { unsubscribe(); } catch { failed = true; }
       for (const response of streams) { try { response.destroy(); } catch { failed = true; } }
       try {
         await Promise.all([
           step(() => new Promise<void>((done, reject) => { server.close(error => error ? reject(error) : done()); server.closeAllConnections(); })),
-          ...[...children].map(child => step(() => child.close())),
-          step(() => author?.close() ?? Promise.resolve()), step(() => editorAssets?.close() ?? Promise.resolve()), step(() => controller.close()),
+          ...[...children].map(child => browserStep(by => child.close(by))),
+          step(() => author?.close() ?? Promise.resolve()), step(() => editorAssets?.close() ?? Promise.resolve()), browserStep(by => controller.close(by)),
         ]);
         children.clear();
       } finally {

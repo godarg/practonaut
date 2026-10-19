@@ -147,7 +147,9 @@ export interface RunningHost {
   origin: string; url: string; port: number; token: string; code: string; tokenFile: string;
   /** Issues a new one-use bootstrap link and revokes the previous unused one. */
   issueUrl(): string;
-  close(): Promise<void>;
+  /** Closes the host. Its browser closes run under the close contract with `deadline` (default: now
+   * plus 8 s, PADR-0050); it rejects ("could not be fully confirmed") only when a close failed. */
+  close(deadline?: number): Promise<void>;
 }
 
 /** Internal seam between HTTP ownership and atomic kernel/mirror ownership. */
@@ -165,6 +167,8 @@ export interface PracticeController {
   subscribe(listener: (event: HostEvent) => void): () => void;
   editor?(request: import('./author-protocol.ts').EditorGestureRequest,context?:TransactionContext): Promise<HostReply<MutationReply>>;
   scene?(): import('../adapters/excalidraw/raw.ts').RawElement[];
-  close(): Promise<void>;
+  /** Closes the session and its mirror under the close contract (PADR-0050): settles by `deadline` and
+   * passes the outcome up; nothing returned counts as closed. */
+  close(deadline?: number): Promise<import('../adapters/browser/close.ts').CloseResult | void>;
 }
 export type ControllerFactory = (world: World, options?: ServeOptions) => Promise<PracticeController>;
