@@ -9,7 +9,7 @@
  */
 import { isolationOf, refusalHint, type CompareOptions, type Comparison, type Difference, type InstanceName, type InstancePair, type SideRate } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
-import { fill, sentence, TEXT, type Words } from './report-text.ts';
+import { appText, fill, sentence, TEXT, type Words } from './report-text.ts';
 import { agentIds, appName, banner, chips, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
 import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
@@ -62,7 +62,7 @@ function sideFacts(input: Side, other: Side, t: Words, language: Language): stri
   // A built-in has no model: its isolation chip already says "no language model", once.
   const model = report.agent.kind === 'builtin' ? [] : [modelHeadline(report, language)];
   const isolation = { 'builtin-baseline': t.isolationBuiltin, 'tool-restricted-preset': t.isolationPreset, 'template-unrestricted': t.isolationTemplate }[isolationOf(report)];
-  const mirror = report.verdictLevel === 'artifact' ? [] : [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff];
+  const mirror = report.verdictLevel === 'artifact' ? [] : [report.environment.mirror === 'required' ? appText(t.mirrorOn, report.environment.app.adapterId) : t.mirrorOff];
   return [...app, ...worldFact, report.agent.name, ...(report.label !== undefined ? [report.label] : []), levelShort(report.verdictLevel, language), ...model, ...mirror, isolation, ...noSandbox(report, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, report.createdAt.slice(0, 10)];
 }
 /** The identifiers among a side's facts: data, never hyphenated. */
