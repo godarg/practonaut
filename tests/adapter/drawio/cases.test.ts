@@ -24,7 +24,7 @@ const model = (cells: string): string => `<mxGraphModel><root>${ROOTS}${cells}</
 const vertex = (id: string, value: string, style: string, parent = '1', geometry = '<mxGeometry x="300" y="300" width="100" height="50" as="geometry"/>', more = ''): string => `<mxCell id="${id}" value="${value}" style="${style}" vertex="1" parent="${parent}"${more}>${geometry}</mxCell>`;
 const geo = (x: number | string, y: number | string, w: number | string = 100, h: number | string = 50, extra = ''): string => `<mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"${extra}/>`;
 /** A step at the origin: draw.io's SVG places the drawing's top-left corner at 0, 0, so it anchors the boxes. */
-const REF = vertex('ref', 'Ref', 'rounded=0;html=0;', '1', geo(0, 0));
+const REF = vertex('ref', 'Ref', 'rounded=0;html=0;strokeColor=#000000;fillColor=none;', '1', geo(0, 0));
 /** The SVG of one cell: from its `data-cell-id` group to the next cell's. */
 const cellSvg = (svg: string, id: string): string => { const at = svg.indexOf(`data-cell-id="${id}"`); if (at < 0) return ''; const next = svg.indexOf('data-cell-id="', at + 10); return svg.slice(at, next < 0 ? undefined : next); };
 const SHAPES = /<(path|ellipse|rect|circle|polygon|polyline)\b/g;
@@ -113,32 +113,80 @@ test('arrow markers: draw.io draws a head for every listed marker and none for "
     for (const marker of ['', 'bogus']) assert.equal(await shapes(marker), none, `endArrow=${marker}`);
     assert.ok(await shapes(undefined) > none, 'no endArrow key: draw.io\'s default head');
     for (const marker of DRAWIO_MARKERS) assert.ok(await shapes(marker) > none, `endArrow=${marker} draws no head`);
+    // startArrow is the one edge key the reader accepts beyond the adapter's own writes (review m2c): for
+    // every listed marker draw.io draws one head, at the source (s spans x 0..100, t spans x 400..500),
+    // and the reader reads the arrow from t to s. With endArrow, the head is at the target.
+    const heads = async (style: string): Promise<number[]> => {
+      const xml = model(vertex('s', 'S', 'rounded=0;html=0;strokeColor=#000000;fillColor=none;', '1', geo(0, 0)) + vertex('t', 'T', 'rounded=0;html=0;strokeColor=#000000;fillColor=none;', '1', geo(400, 0)) + `<mxCell id="e" value="" style="${style}" edge="1" parent="1" source="s" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>`);
+      await adapter.conformanceWrite(xml, []);
+      const drawn = [...cellSvg((await adapter.exportArtifact()).svg, 'e').matchAll(/<(path|ellipse)\b[^>]*>/g)].slice(1).map(([tag]) => {
+        const cx = /\bcx="([^"]+)"/.exec(tag)?.[1];
+        if (cx !== undefined) return Number(cx);
+        const xs = /\bd="([^"]+)"/.exec(tag)![1]!.match(/-?\d+(?:\.\d+)?/g)!.map(Number).filter((_, i) => i % 2 === 0);
+        return (Math.min(...xs) + Math.max(...xs)) / 2;
+      });
+      const arrow = Object.values(parseDrawio(xml).state.objects).find(o => o.type === 'arrow') as { from: string; to: string };
+      assert.deepEqual([arrow.from, arrow.to], style.startsWith('startArrow') ? ['t', 's'] : ['s', 't'], style);
+      return drawn;
+    };
+    for (const marker of DRAWIO_MARKERS) {
+      const start = await heads(`startArrow=${marker};endArrow=none;html=0;`), end = await heads(`endArrow=${marker};html=0;`);
+      assert.equal(start.length, 1, `startArrow=${marker}: one head`); assert.ok(start[0]! < 250, `startArrow=${marker}: the head is at the source (${start[0]})`);
+      assert.equal(end.length, 1, `endArrow=${marker}: one head`); assert.ok(end[0]! > 250, `endArrow=${marker}: the head is at the target (${end[0]})`);
+    }
   } finally { await adapter.close(); }
 });
 
 test('the reader against draw.io: for every differential fixture it agrees with the app\'s export and drawing, or refuses', { skip, timeout: 600_000 }, async () => {
-  const fixtures: Array<{ id: string; xml: string; refused?: string; hidden?: string[] }> = [
-    { id: 'crlf-in-attribute', xml: model(REF + vertex('a', 'a\r\nb', 'rounded=0;html=0;')) },
+  const S = 'rounded=0;html=0;strokeColor=#000000;fillColor=none;', E = 'ellipse;html=0;strokeColor=#000000;fillColor=none;', R = 'rhombus;html=0;strokeColor=#000000;fillColor=none;';
+  const FRAME = 'swimlane;container=1;collapsible=0;startSize=30;html=0;';
+  const group = (id: string, parent: string, g: string): string => vertex(id, '', 'group;', parent, g, ' connectable="0"');
+  const T = vertex('t', 'T', S, '1', geo(400, 0));
+  const arrow = (style: string): string => `<mxCell id="e" value="" style="${style}" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+  // Read: the reader must agree with draw.io's export and drawing. Refused: by the reason named.
+  const fixtures: Array<{ id: string; xml: string; refused?: string }> = [
+    { id: 'crlf-in-attribute', xml: model(REF + vertex('a', 'a\r\nb', S)) },
+    { id: 'upper-case-colour', xml: model(REF + vertex('a', 'Blue', 'rounded=0;html=0;strokeColor=#6C8EBF;fillColor=#DAE8FC;')) },
+    { id: 'shapes', xml: model(REF + vertex('a', 'Round', E, '1', geo(200, 0)) + vertex('b', 'Diamond', R, '1', geo(400, 0))) },
+    { id: 'start-head', xml: model(REF + T + arrow('startArrow=classic;endArrow=none;html=0;')) },
+    { id: 'no-html-key', xml: model(REF + vertex('a', 'Plain', 'rounded=0;strokeColor=#000000;fillColor=none;')) },
+    { id: 'object-label', xml: model(REF + `<object id="a" label="Wrapped"><mxCell style="${S}" vertex="1" parent="1">${geo(200, 0)}</mxCell></object>`) },
+    { id: 'user-object-label', xml: model(REF + `<UserObject id="a" label="User"><mxCell style="${S}" vertex="1" parent="1">${geo(200, 0)}</mxCell></UserObject>`) },
+    { id: 'offsets-integer', xml: model(REF + vertex('f', 'Lane', FRAME, '1', geo(200, 100, 500, 300)) + group('pn:group:g', 'f', geo(20, 40, 400, 120)) + vertex('a', 'Inner', E, 'pn:group:g', geo(10, 5, 120, 60)) + vertex('b', 'Other', R, 'pn:group:g', geo(200, 5, 120, 60))) },
+    { id: 'offsets-fractional', xml: model(REF + vertex('f', 'Lane', FRAME, '1', geo(200.5, 100.25, 500, 300)) + group('pn:group:g', 'f', geo(20.5, 40, 400, 120)) + vertex('a', 'Inner', E, 'pn:group:g', geo(10.25, 5, 120.5, 60)) + vertex('b', 'Other', S, 'pn:group:g', geo(200.4, 5.6, 120, 60))) },
     { id: 'adjacent-attributes', xml: model(REF + '<mxCell id="a"vertex="1" parent="1">' + geo(10, 10) + '</mxCell>'), refused: 'xml_invalid' },
-    { id: 'character-1', xml: model(REF + vertex('a', 'x&#1;y', 'rounded=0;html=0;')), refused: 'xml_invalid' },
+    { id: 'character-1', xml: model(REF + vertex('a', 'x&#1;y', S)), refused: 'xml_invalid' },
+    { id: 'comment-double-dash', xml: model(REF).replace('<root>', '<root><!-- a--b -->'), refused: 'xml_invalid' },
     { id: 'compressed-and-model', xml: `<mxfile><diagram id="p">eJx${model(REF)}</diagram></mxfile>`, refused: 'diagram_invalid' },
-    { id: 'two-geometries', xml: model(REF + `<mxCell id="a" value="A" style="rounded=0;html=0;" vertex="1" parent="1">${geo(300, 300)}${geo(500, 300)}</mxCell>`), refused: 'cell_invalid' },
-    { id: 'hex-coordinate', xml: model(REF + vertex('a', 'A', 'rounded=0;html=0;', '1', geo('0x1F4', 300))), refused: 'geometry_invalid' },
-    { id: 'vertex-true', xml: model(REF + vertex('a', 'A', 'rounded=0;html=0;').replace('vertex="1"', 'vertex="true"')), refused: 'cell_invalid' },
-    { id: 'hidden-and-collapsed', xml: model(REF + vertex('f', 'Lane', 'swimlane;container=1;collapsible=0;startSize=30;html=0;', '1', geo(200, 200, 400, 300), ' visible="0"') + vertex('h', 'HiddenChild', 'rounded=0;html=0;', 'f', geo(20, 50)) + vertex('c', 'Box', 'swimlane;container=1;startSize=30;html=0;', '1', geo(700, 200, 300, 200), ' collapsed="1"') + vertex('k', 'CollapsedChild', 'rounded=0;html=0;', 'c', geo(20, 50)) + vertex('v', 'Visible', 'rounded=0;html=0;', '1', geo(1100, 200))), hidden: ['HiddenChild', 'CollapsedChild'] },
-    { id: 'edge-label-vertex', xml: model(REF + vertex('t', 'T', 'rounded=0;html=0;', '1', geo(400, 0)) + '<mxCell id="e" value="" style="endArrow=classic;html=0;" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>' + vertex('l', 'Label', 'text;html=0;', 'e', '<mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>', ' connectable="0"')) },
-    { id: 'ellipse-shape-rhombus', xml: model(REF + vertex('a', 'A', 'ellipse;shape=rhombus;html=0;')), refused: 'unmodeled_value' },
-    { id: 'shape-ellipse-rhombus', xml: model(REF + vertex('a', 'A', 'shape=ellipse;rhombus;html=0;')), refused: 'unmodeled_value' },
+    { id: 'two-geometries', xml: model(REF + `<mxCell id="a" value="A" style="${S}" vertex="1" parent="1">${geo(300, 300)}${geo(500, 300)}</mxCell>`), refused: 'cell_invalid' },
+    { id: 'hex-coordinate', xml: model(REF + vertex('a', 'A', S, '1', geo('0x1F4', 300))), refused: 'geometry_invalid' },
+    { id: 'cancelling-offsets', xml: model(REF + group('g', '1', geo('9223372036854775808', 0, 300, 100)) + vertex('a', 'A', S, 'g', geo('-9223372036854775808', 0))), refused: 'geometry_invalid' },
+    { id: 'vertex-true', xml: model(REF + vertex('a', 'A', S).replace('vertex="1"', 'vertex="true"')), refused: 'cell_invalid' },
+    { id: 'hidden', xml: model(REF + vertex('h', 'Hidden', S, '1', geo(200, 200), ' visible="0"')), refused: 'unmodeled_value' },
+    { id: 'collapsed', xml: model(REF + vertex('c', 'Box', FRAME, '1', geo(700, 200, 300, 200), ' collapsed="1"') + vertex('k', 'Inside', S, 'c', geo(20, 50))), refused: 'unmodeled_value' },
+    { id: 'no-label', xml: model(REF + vertex('a', 'A', `${S}noLabel=1;`)), refused: 'unmodeled_value' },
+    { id: 'transparent', xml: model(REF + vertex('a', 'A', `${S}opacity=0;textOpacity=0;`)), refused: 'unmodeled_value' },
+    { id: 'edge-label-vertex', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('l', 'Label', S, 'e', geo(0, 0))), refused: 'structure_invalid' },
+    { id: 'plain-cell-offset', xml: model(REF + '<mxCell id="p" parent="1"><mxGeometry x="300" as="geometry"/></mxCell>' + vertex('a', 'A', S, 'p', geo(10, 10))), refused: 'structure_invalid' },
+    { id: 'vertex-under-root', xml: model(REF + vertex('a', 'A', S, '0', geo(10, 10))), refused: 'structure_invalid' },
+    { id: 'container-step', xml: model(REF + vertex('a', 'A', `${S}container=1;`)), refused: 'unmodeled_value' },
+    { id: 'unknown-name', xml: model(REF + vertex('a', 'A', `pnbox;${S}`)), refused: 'unmodeled_value' },
+    { id: 'unknown-shape', xml: model(REF + vertex('a', 'A', 'shape=pnbox;html=0;strokeColor=#000000;fillColor=none;')), refused: 'unmodeled_value' },
+    { id: 'ellipse-shape-rhombus', xml: model(REF + vertex('a', 'A', 'ellipse;shape=rhombus;html=0;strokeColor=#000000;fillColor=none;')), refused: 'unmodeled_value' },
     { id: 'swimlane-shape-ellipse', xml: model(REF + vertex('a', 'A', 'swimlane;shape=ellipse;html=0;')), refused: 'unmodeled_value' },
-    { id: 'end-arrow-empty', xml: model(REF + vertex('t', 'T', 'rounded=0;html=0;', '1', geo(400, 0)) + '<mxCell id="e" value="" style="endArrow=;html=0;" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>') },
-    { id: 'start-arrow-bogus', xml: model(REF + vertex('t', 'T', 'rounded=0;html=0;', '1', geo(400, 0)) + '<mxCell id="e" value="" style="startArrow=bogus;endArrow=none;html=0;" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>'), refused: 'unmodeled_value' },
-    { id: 'end-arrow-bogus', xml: model(REF + vertex('t', 'T', 'rounded=0;html=0;', '1', geo(400, 0)) + '<mxCell id="e" value="" style="endArrow=bogus;html=0;" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>'), refused: 'unmodeled_value' },
-    { id: 'group-ids-collide', xml: model(REF + vertex('g1', '', 'group;', '1', geo(200, 200, 300, 100)) + vertex('pn:group:g1', '', 'group;', '1', geo(200, 400, 300, 100)) + vertex('a', 'A', 'rounded=0;html=0;', 'g1', geo(0, 0)) + vertex('b', 'B', 'rounded=0;html=0;', 'pn:group:g1', geo(0, 0))), refused: 'duplicate_id' },
-    { id: 'html-label-spaces', xml: model(REF + vertex('a', ' A ', 'rounded=0;html=1;')), refused: 'markup_label' },
-    { id: 'zero-width', xml: model(REF + vertex('a', 'A', 'rounded=0;html=0;', '1', geo(300, 300, 0, 50))), refused: 'geometry_invalid' },
-    { id: 'relative-ancestor', xml: model(REF + vertex('g', '', 'group;', '1', geo(0.1, 0.1, 300, 100, ' relative="1"')) + vertex('a', 'A', 'rounded=0;html=0;', 'g', geo(10, 10))), refused: 'geometry_invalid' },
-    { id: 'offsets-integer', xml: model(REF + vertex('f', 'Lane', 'swimlane;container=1;collapsible=0;startSize=30;html=0;', '1', geo(200, 100, 500, 300)) + vertex('pn:group:g', '', 'group;', 'f', geo(20, 40, 400, 120)) + vertex('a', 'Inner', 'ellipse;html=0;', 'pn:group:g', geo(10, 5, 120, 60)) + vertex('b', 'Other', 'rhombus;html=0;', 'pn:group:g', geo(200, 5, 120, 60))) },
-    { id: 'offsets-fractional', xml: model(REF + vertex('f', 'Lane', 'swimlane;container=1;collapsible=0;startSize=30;html=0;', '1', geo(200.5, 100.25, 500, 300)) + vertex('pn:group:g', '', 'group;', 'f', geo(20.5, 40, 400, 120)) + vertex('a', 'Inner', 'ellipse;html=0;', 'pn:group:g', geo(10.25, 5, 120.5, 60)) + vertex('b', 'Other', 'rounded=0;html=0;', 'pn:group:g', geo(200.4, 5.6, 120, 60))) },
+    { id: 'leading-semicolon', xml: model(REF + vertex('a', 'A', `;${S}`)), refused: 'unmodeled_value' },
+    { id: 'relative-true', xml: model(REF + vertex('a', 'A', S, '1', geo(10, 10, 100, 50, ' relative="true"'))), refused: 'unmodeled_value' },
+    { id: 'object-inner-value', xml: model(REF + `<object id="a" label="New"><mxCell value="Old" style="${S}" vertex="1" parent="1">${geo(10, 10)}</mxCell></object>`), refused: 'cell_invalid' },
+    { id: 'value-child', xml: model(REF + `<mxCell id="a" value="New" style="${S}" vertex="1" parent="1"><add as="value" value="Old"/>${geo(10, 10)}</mxCell>`), refused: 'cell_invalid' },
+    { id: 'end-arrow-empty', xml: model(REF + T + arrow('endArrow=;html=0;')), refused: 'unmodeled_value' },
+    { id: 'start-arrow-bogus', xml: model(REF + T + arrow('startArrow=bogus;endArrow=none;html=0;')), refused: 'unmodeled_value' },
+    { id: 'end-arrow-bogus', xml: model(REF + T + arrow('endArrow=bogus;html=0;')), refused: 'unmodeled_value' },
+    { id: 'edge-no-stroke', xml: model(REF + T + arrow('endArrow=classic;html=0;strokeColor=none;')), refused: 'unmodeled_value' },
+    { id: 'edge-end-size', xml: model(REF + T + arrow('startArrow=classic;endArrow=classic;endSize=0;html=0;')), refused: 'unmodeled_value' },
+    { id: 'group-ids-collide', xml: model(REF + group('g1', '1', geo(200, 200, 300, 100)) + group('pn:group:g1', '1', geo(200, 400, 300, 100)) + vertex('a', 'A', S, 'g1', geo(0, 0)) + vertex('b', 'B', S, 'pn:group:g1', geo(0, 0))), refused: 'duplicate_id' },
+    { id: 'html-label', xml: model(REF + vertex('a', ' A ', 'rounded=0;html=1;strokeColor=#000000;fillColor=none;')), refused: 'markup_label' },
+    { id: 'zero-width', xml: model(REF + vertex('a', 'A', S, '1', geo(300, 300, 0, 50))), refused: 'geometry_invalid' },
+    { id: 'relative-ancestor', xml: model(REF + group('g', '1', geo(0.1, 0.1, 300, 100, ' relative="1"')) + vertex('a', 'A', S, 'g', geo(10, 10))), refused: 'unmodeled_value' },
   ];
   const adapter = await start();
   try {
@@ -155,10 +203,6 @@ test('the reader against draw.io: for every differential fixture it agrees with 
         if (object.type !== 'step') continue;
         assert.ok(cellSvg(svg, object.id).includes(`>${object.label.replace(/\s+/g, ' ')}<`) || cellSvg(svg, object.id).includes(object.label.split(/\s/)[0]!), `${fixture.id}: ${object.id}'s label is not drawn`);
         assert.deepEqual(drawnBox(svg, object.id), { x: object.x, y: object.y, width: object.width, height: object.height }, `${fixture.id}: ${object.id}'s box`);
-      }
-      for (const text of fixture.hidden ?? []) {
-        assert.ok(!svg.includes(`>${text}<`), `${fixture.id}: draw.io draws ${text}`);
-        assert.ok(!JSON.stringify(read.state).includes(text), `${fixture.id}: the reader reads ${text}`);
       }
     }
   } finally { await adapter.close(); }

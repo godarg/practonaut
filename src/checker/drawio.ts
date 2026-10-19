@@ -1,9 +1,14 @@
 /**
- * The checker's own `.drawio` reader (PADR-0049 decision 6): any draw.io file -> the world/2 state a
- * goal is judged on, plus what it does not model. Independent of the adapter (architecture §2): its own
- * bounded XML tokenizer, style parser and colour table; it imports nothing from `src/adapters` or
- * `src/core`. Where draw.io's codec would read a form differently, it follows the codec or refuses the
- * file; it never reads something the app does not show.
+ * The checker's own `.drawio` reader (PADR-0049 decision 6, made allowlist-based after review m2c): a
+ * draw.io file -> the world/2 state a goal is judged on. Independent of the adapter (architecture §2):
+ * its own bounded XML tokenizer, style parser and tables; it imports nothing from `src/adapters` or
+ * `src/core`.
+ *
+ * It reads exactly the vocabulary the adapter writes — elements, attributes, style names, style keys and
+ * their values from the tables below — and refuses everything else. Chasing each way draw.io can hide,
+ * move or relabel a cell does not converge; an allowlist does. So a file passes only when it holds
+ * nothing the reader does not model, and the reader never reads something the app does not show.
+ * `check` on hand-drawn files is therefore strict until artifact mode (Must 3) decides otherwise.
  *
  * Refusals are `artifact_invalid` with `details.reason` from a closed list.
  */
@@ -13,11 +18,13 @@ import type { Arrow, Frame, State, StepV2, StrokeColor, FillColor, Shape } from 
 import { CheckerError } from "./errors.ts";
 import { validateSubmissionState } from "./state.ts";
 
-export const DRAWIO_READER_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, inflated: 10 * 1024 * 1024, elements: 50_000, depth: 64, attributes: 128, attributeChars: 65_536, styleChars: 4_096, styleKeys: 128, cells: 5_000, coordinate: 1_000_000, labelCodePoints: 4_096 });
+export const DRAWIO_READER_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, inflated: 10 * 1024 * 1024, elements: 50_000, depth: 64, attributes: 128, attributeChars: 65_536, styleChars: 4_096, styleKeys: 128, cells: 5_000, coordinate: 1_000_000, labelChars: 4_096, nameChars: 256 });
 export type DrawioRefusal = "too_large" | "xml_invalid" | "xml_doctype" | "pages_unsupported" | "diagram_invalid" | "cell_invalid" | "duplicate_id" | "structure_invalid" | "geometry_invalid" | "markup_label" | "text_invalid" | "unmodeled_value";
+export const DRAWIO_REFUSALS: readonly DrawioRefusal[] = Object.freeze(["too_large", "xml_invalid", "xml_doctype", "pages_unsupported", "diagram_invalid", "cell_invalid", "duplicate_id", "structure_invalid", "geometry_invalid", "markup_label", "text_invalid", "unmodeled_value"]);
 const refuse = (reason: DrawioRefusal, message: string): never => { throw new CheckerError("artifact_invalid", `.drawio: ${message}`, { reason }); };
+const shown = (value: string): string => value.slice(0, 64);
 
-// ---------- XML (the subset draw.io writes) ----------
+// ---------- XML (well-formed, without namespaces or declarations) ----------
 interface El { name: string; attrs: Record<string, string>; children: Array<El | string> }
 const xmlChar = (c: number): boolean => c === 9 || c === 10 || c === 13 || (c >= 0x20 && c <= 0xd7ff) || (c >= 0xe000 && c <= 0xfffd) || (c >= 0x10000 && c <= 0x10ffff);
 const PREDEFINED: Readonly<Record<string, string>> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
@@ -33,7 +40,8 @@ function decode(text: string): string {
     return Object.hasOwn(PREDEFINED, body) ? PREDEFINED[body]! : refuse("xml_invalid", `an unknown entity ${whole}`);
   });
 }
-/** One XML document: end-of-line handling first, then a strict, bounded reading. */
+/** One XML document: end-of-line handling first, then a strict, bounded reading. Not well-formed or
+ * not namespace-well-formed input is refused (a draw.io file holds neither namespaces nor DOCTYPE). */
 export function parseXml(raw: string): El {
   if (raw.length > DRAWIO_READER_LIMITS.bytes) refuse("too_large", "the document is over the size limit");
   const input = raw.replace(/\r\n?/g, "\n");
@@ -41,19 +49,39 @@ export function parseXml(raw: string): El {
   let i = 0, count = 0;
   const top: El = { name: "#document", attrs: {}, children: [] };
   const stack: El[] = [top];
-  const nameAt = /[A-Za-z_:][A-Za-z0-9_.:-]*/y, spaceAt = /[ \t\n]*/y;
+  // Names without a colon: a prefix would need a namespace declaration, which no draw.io file has.
+  const nameAt = /[A-Za-z_][A-Za-z0-9_.-]*/y, spaceAt = /[ \t\n]*/y;
   const space = (): number => { spaceAt.lastIndex = i; spaceAt.exec(input); const n = spaceAt.lastIndex - i; i = spaceAt.lastIndex; return n; };
-  const name = (): string => { nameAt.lastIndex = i; const m = nameAt.exec(input); if (!m) refuse("xml_invalid", `a name was expected at ${i}`); i = nameAt.lastIndex; return m![0]; };
+  const name = (): string => {
+    nameAt.lastIndex = i; const m = nameAt.exec(input);
+    if (!m) refuse("xml_invalid", `a name was expected at ${i}`);
+    i = nameAt.lastIndex;
+    if (input[i] === ":") refuse("xml_invalid", "a namespace prefix (namespaces are not read)");
+    return m![0];
+  };
   while (i < input.length) {
     const lt = input.indexOf("<", i), end = lt < 0 ? input.length : lt;
     if (end > i) {
       const text = input.slice(i, end);
+      if (text.includes("]]>")) refuse("xml_invalid", "]]> in character data");
       if (stack.length === 1) { if (text.trim()) refuse("xml_invalid", "text outside the root element"); }
       else stack.at(-1)!.children.push(decode(text));
       i = end; continue;
     }
-    if (input.startsWith("<?", i)) { const close = input.indexOf("?>", i); if (close < 0 || stack.length > 1 || top.children.length) refuse("xml_invalid", "a misplaced processing instruction"); i = close + 2; continue; }
-    if (input.startsWith("<!--", i)) { const close = input.indexOf("-->", i + 4); if (close < 0) refuse("xml_invalid", "an unterminated comment"); i = close + 3; continue; }
+    if (input.startsWith("<?", i)) {
+      const close = input.indexOf("?>", i);
+      if (close < 0 || stack.length > 1 || top.children.length) refuse("xml_invalid", "a misplaced processing instruction");
+      // The XML declaration only at the very start, once; no other processing instruction.
+      if (i !== 0 || !/^<\?xml[ \t\n]/.test(input.slice(i, close + 2))) refuse("xml_invalid", "a processing instruction other than one XML declaration at the start");
+      i = close + 2; continue;
+    }
+    if (input.startsWith("<!--", i)) {
+      const close = input.indexOf("-->", i + 4);
+      if (close < 0) refuse("xml_invalid", "an unterminated comment");
+      const body = input.slice(i + 4, close);
+      if (body.includes("--") || body.endsWith("-")) refuse("xml_invalid", "-- inside a comment");
+      i = close + 3; continue;
+    }
     if (input.startsWith("<![CDATA[", i)) { const close = input.indexOf("]]>", i); if (close < 0 || stack.length === 1) refuse("xml_invalid", "a misplaced CDATA section"); stack.at(-1)!.children.push(input.slice(i + 9, close)); i = close + 3; continue; }
     if (input.startsWith("<!", i)) refuse("xml_doctype", "DOCTYPE and declarations are refused");
     if (input.startsWith("</", i)) {
@@ -102,16 +130,20 @@ export function parseXml(raw: string): El {
 const elements = (e: El): El[] => e.children.filter((c): c is El => typeof c !== "string");
 const textOf = (e: El): string => e.children.map(c => typeof c === "string" ? c : textOf(c)).join("");
 
-/** draw.io's compressed page: Base64 of raw deflate of the URI-encoded model. */
+/** draw.io's compressed page, decoded as draw.io decodes it: Base64 without ASCII white space (atob),
+ * raw inflate, UTF-8 (pako `to: 'string'`), then URI decoding. */
 function inflatePage(text: string): string {
-  const compact = text.replace(/\s+/g, "");
+  const compact = text.replace(/[\t\n\f\r ]+/g, "");
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) refuse("diagram_invalid", "a compressed page that is not Base64");
   let bytes: Buffer;
   try { bytes = inflateRawSync(Buffer.from(compact, "base64"), { maxOutputLength: DRAWIO_READER_LIMITS.inflated }); }
   catch { return refuse("diagram_invalid", "a compressed page that does not inflate within the limit"); }
-  try { return decodeURIComponent(bytes.toString("latin1")); } catch { return refuse("diagram_invalid", "a compressed page that is not URI-encoded"); }
+  let utf8: string;
+  try { utf8 = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return refuse("diagram_invalid", "a compressed page that is not UTF-8"); }
+  try { return decodeURIComponent(utf8); } catch { return refuse("diagram_invalid", "a compressed page that is not URI-encoded"); }
 }
-/** The one page's `mxGraphModel`. */
+/** The one page's `mxGraphModel` root. File metadata (attributes of `mxfile`, `diagram`, `mxGraphModel`)
+ * is not read. */
 function modelOf(top: El): El {
   let model = top;
   if (top.name === "mxfile") {
@@ -132,93 +164,155 @@ function modelOf(top: El): El {
   if (model.name !== "mxGraphModel") refuse("diagram_invalid", `expected mxGraphModel, found ${model.name.slice(0, 32)}`);
   const roots = elements(model);
   if (roots.length !== 1 || roots[0]!.name !== "root") refuse("diagram_invalid", "the model needs exactly one root");
+  if (textOf(roots[0]!).trim() !== "") refuse("diagram_invalid", "text inside the model's root");
   return roots[0]!;
 }
 
+// ---------- the allowlist: the adapter's own vocabulary ----------
+/** Attributes read on a cell; any other attribute (visibility, collapsing, data, links …) is refused. */
+const CELL_ATTRIBUTES: ReadonlySet<string> = new Set(["id", "value", "style", "vertex", "edge", "parent", "source", "target", "connectable"]);
+/** An `object`/`UserObject` holds an id and a label; its inner `mxCell` holds no id and no value. */
+const OBJECT_ATTRIBUTES: ReadonlySet<string> = new Set(["id", "label"]);
+const INNER_CELL_ATTRIBUTES: ReadonlySet<string> = new Set(["style", "vertex", "edge", "parent", "source", "target", "connectable"]);
+const VERTEX_GEOMETRY: ReadonlySet<string> = new Set(["x", "y", "width", "height", "as"]);
+const EDGE_GEOMETRY: ReadonlySet<string> = new Set(["relative", "as"]);
+const POINT_ATTRIBUTES: ReadonlySet<string> = new Set(["x", "y", "as"]);
+/** Style names and keys per kind of cell, with their accepted values (`null`: a value from a table). */
+const STEP_NAMES: Readonly<Record<string, Shape>> = Object.freeze(Object.assign(Object.create(null) as Record<string, Shape>, { ellipse: "ellipse", rhombus: "diamond" }));
+// `html=1` makes a label markup: it passes the style table and is refused by the label rule (markup_label).
+const STEP_KEYS: Readonly<Record<string, readonly string[] | null>> = Object.freeze({ rounded: ["0"], html: ["0", "1"], strokeColor: null, fillColor: null });
+const FRAME_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({ container: ["1"], collapsible: ["0"], startSize: ["30"], html: ["0", "1"] });
+const FRAME_REQUIRED = ["container", "collapsible", "startSize"] as const;
+const EDGE_KEYS: Readonly<Record<string, readonly string[] | null>> = Object.freeze({ startArrow: null, endArrow: null, html: ["0"] });
+// The reader's own colour tables (lower case), as null-prototype lookups.
+const STROKES: Readonly<Record<string, StrokeColor>> = Object.freeze(Object.assign(Object.create(null) as Record<string, StrokeColor>, { "#000000": "black", "#b85450": "red", "#82b366": "green", "#6c8ebf": "blue", "#d79b00": "orange" }));
+const FILLS: Readonly<Record<string, FillColor>> = Object.freeze(Object.assign(Object.create(null) as Record<string, FillColor>, { none: "none", "#f8cecc": "red", "#d5e8d4": "green", "#dae8fc": "blue", "#fff2cc": "yellow" }));
+/** Arrow markers the pinned app draws a head for (checked against the app by the conformance suite). */
+export const DRAWIO_MARKERS: readonly string[] = Object.freeze(["classic", "classicThin", "block", "blockThin", "open", "openThin", "oval", "diamond", "diamondThin"]);
+const NO_MARKER = new Set(["none", ""]);
+
 // ---------- cells ----------
-interface Geometry { x: number; y: number; width: number; height: number; relative: boolean }
-interface Cell { id: string; parent: string | null; value: string; style: string; vertex: boolean; edge: boolean; visible: boolean; collapsed: boolean; source: string | null; target: string | null; geometry: Geometry | null; placeholders: boolean; data: boolean }
+interface Point { x: number; y: number }
+interface Geometry { x: number; y: number; width: number; height: number }
+interface Cell { id: string; parent: string | null; value: string; style: string; vertex: boolean; edge: boolean; source: string | null; target: string | null; connectable: string | undefined; geometry: Geometry | null; attrs: Record<string, string> }
 const NUMBER = /^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/;
-const flag = (value: string | undefined, field: string, id: string): boolean => {
-  if (value === undefined || value === "0") return false;
-  if (value === "1") return true;
-  return refuse("cell_invalid", `${field}="${value.slice(0, 16)}" on ${id.slice(0, 64)} (only 0 or 1)`);
+/** A coordinate or size: the number grammar, finite, within ±1,000,000 on its own, so no sum of
+ * ancestors can cancel out a far offset. */
+const coordinate = (raw: string | undefined, key: string, id: string): number => {
+  if (raw === undefined) return 0;
+  if (!NUMBER.test(raw)) refuse("geometry_invalid", `${key}="${raw.slice(0, 16)}" on ${shown(id)}`);
+  const value = Number(raw);
+  if (!Number.isFinite(value) || Math.abs(value) > DRAWIO_READER_LIMITS.coordinate) refuse("geometry_invalid", `${key} outside ±1,000,000 on ${shown(id)}`);
+  return value;
 };
-function geometryOf(cell: El, id: string): Geometry | null {
-  const geometries = elements(cell).filter(child => child.attrs.as === "geometry");
-  if (geometries.length > 1) refuse("cell_invalid", `two geometries on ${id.slice(0, 64)}`);
-  const g = geometries[0];
-  if (!g) return null;
-  if (g.name !== "mxGeometry") refuse("cell_invalid", `a geometry that is not an mxGeometry on ${id.slice(0, 64)}`);
-  const number = (key: string): number => {
-    const raw = g.attrs[key];
-    if (raw === undefined) return 0;
-    if (!NUMBER.test(raw)) refuse("geometry_invalid", `${key}="${raw.slice(0, 16)}" on ${id.slice(0, 64)}`);
-    return Number(raw);
-  };
-  return { x: number("x"), y: number("y"), width: number("width"), height: number("height"), relative: g.attrs.relative === "1" };
+const flag = (value: string | undefined, field: string, id: string): boolean => {
+  if (value === undefined) return false;
+  if (value === "1") return true;
+  return refuse("cell_invalid", `${field}="${value.slice(0, 16)}" on ${shown(id)} (only 1, or absent)`);
+};
+function only(attrs: Record<string, string>, allowed: ReadonlySet<string>, what: string, id: string): void {
+  for (const key of Object.keys(attrs)) if (!allowed.has(key)) refuse("unmodeled_value", `${key} on ${what} ${shown(id)}`);
+}
+function geometryOf(cell: El, id: string, vertex: boolean): Geometry | null {
+  const children = elements(cell);
+  if (children.length === 0) return null;
+  // One child: the cell's geometry. Value or style children (`<add as="value">`), points of a vertex,
+  // alternate bounds and anything else are refused.
+  if (children.length > 1 || children[0]!.name !== "mxGeometry" || children[0]!.attrs.as !== "geometry") refuse("cell_invalid", `a child other than one geometry on ${shown(id)}`);
+  const g = children[0]!;
+  if (vertex) {
+    only(g.attrs, VERTEX_GEOMETRY, "the geometry of", id);
+    if (elements(g).length) refuse("cell_invalid", `points on the geometry of vertex ${shown(id)}`);
+    return { x: coordinate(g.attrs.x, "x", id), y: coordinate(g.attrs.y, "y", id), width: coordinate(g.attrs.width, "width", id), height: coordinate(g.attrs.height, "height", id) };
+  }
+  // An edge's geometry: relative="1" exactly, and at most a source and a target point.
+  only(g.attrs, EDGE_GEOMETRY, "the geometry of", id);
+  if (g.attrs.relative !== "1") refuse("geometry_invalid", `an edge geometry that is not relative="1" on ${shown(id)}`);
+  const seen = new Set<string>();
+  for (const point of elements(g)) {
+    if (point.name !== "mxPoint" || !["sourcePoint", "targetPoint"].includes(point.attrs.as ?? "") || seen.has(point.attrs.as!)) refuse("cell_invalid", `an edge point other than one source and one target point on ${shown(id)}`);
+    seen.add(point.attrs.as!);
+    only(point.attrs, POINT_ATTRIBUTES, "a point of", id);
+    coordinate(point.attrs.x, "x", id); coordinate(point.attrs.y, "y", id);
+    if (elements(point).length) refuse("cell_invalid", `a point with children on ${shown(id)}`);
+  }
+  return { x: 0, y: 0, width: 0, height: 0 };
 }
 function cellsOf(root: El): Cell[] {
   const out: Cell[] = [];
   for (const entry of elements(root)) {
     if (out.length >= DRAWIO_READER_LIMITS.cells) refuse("too_large", "too many cells");
-    let element: El, id: string | undefined, value: string | undefined, placeholders = false, data = false;
-    if (entry.name === "mxCell") { element = entry; id = entry.attrs.id; value = entry.attrs.value; }
-    else if (entry.name === "object" || entry.name === "UserObject") {
+    let element: El, id: string | undefined, value: string | undefined;
+    if (entry.name === "mxCell") {
+      element = entry; id = entry.attrs.id; value = entry.attrs.value;
+      only(entry.attrs, CELL_ATTRIBUTES, "cell", id ?? "?");
+    } else if (entry.name === "object" || entry.name === "UserObject") {
+      // A user object holds only an id and a label; draw.io takes the inner cell's value over the label.
+      only(entry.attrs, OBJECT_ATTRIBUTES, entry.name, entry.attrs.id ?? "?");
       const inner = elements(entry);
       if (inner.length !== 1 || inner[0]!.name !== "mxCell") refuse("cell_invalid", `${entry.name} without exactly one mxCell`);
-      element = inner[0]!; id = entry.attrs.id; value = entry.attrs.label; placeholders = entry.attrs.placeholders === "1";
-      data = Object.keys(entry.attrs).some(key => key !== "id" && key !== "label" && key !== "placeholders");
+      element = inner[0]!; id = entry.attrs.id; value = entry.attrs.label;
+      if (Object.hasOwn(element.attrs, "value")) refuse("cell_invalid", `${entry.name} ${shown(id ?? "?")} whose inner cell has a value`);
+      only(element.attrs, INNER_CELL_ATTRIBUTES, "the inner cell of", id ?? "?");
     } else return refuse("cell_invalid", `an unexpected element ${entry.name.slice(0, 32)} in the root`);
     if (id === undefined) refuse("cell_invalid", "a cell without an id");
+    if (textOf(element).trim() !== "") refuse("cell_invalid", `text inside cell ${shown(id!)}`);
     const a = element.attrs;
     const vertex = flag(a.vertex, "vertex", id!), edge = flag(a.edge, "edge", id!);
-    if (vertex && edge) refuse("cell_invalid", `${id!.slice(0, 64)} is both a vertex and an edge`);
-    const geometry = geometryOf(element, id!);
-    if ((vertex || edge) && !geometry) refuse("cell_invalid", `${id!.slice(0, 64)} has no geometry`);
+    if (vertex && edge) refuse("cell_invalid", `${shown(id!)} is both a vertex and an edge`);
+    // A cell that is neither a vertex nor an edge (the root, a layer) carries no geometry: draw.io's view
+    // would add its offset to everything below it.
+    if (!vertex && !edge && elements(element).length) refuse("structure_invalid", `${shown(id!)} carries a geometry but is neither a vertex nor an edge`);
+    const geometry = vertex || edge ? geometryOf(element, id!, vertex) : null;
+    if ((vertex || edge) && !geometry) refuse("cell_invalid", `${shown(id!)} has no geometry`);
     const style = a.style ?? "";
     if (style.length > DRAWIO_READER_LIMITS.styleChars) refuse("too_large", "a style over the limit");
-    const visible = a.visible === undefined ? true : flag(a.visible, "visible", id!);
-    out.push({ id: id!, parent: a.parent ?? null, value: value ?? "", style, vertex, edge, visible, collapsed: flag(a.collapsed, "collapsed", id!), source: a.source ?? null, target: a.target ?? null, geometry, placeholders, data });
+    out.push({ id: id!, parent: a.parent ?? null, value: value ?? "", style, vertex, edge, source: a.source ?? null, target: a.target ?? null, connectable: a.connectable, geometry, attrs: a });
   }
   return out;
 }
 
 // ---------- styles, values, ids ----------
+/** A style string: named styles, then `key=value` pairs. A leading `;` (which drops draw.io's default
+ * style), an empty segment inside, a repeated key and more than one name are refused. */
 function styleOf(style: string, id: string): { names: string[]; keys: Record<string, string> } {
   const names: string[] = [], keys = Object.create(null) as Record<string, string>;
-  for (const part of style.split(";")) {
-    if (!part) continue;
+  const parts = style.split(";");
+  if (parts.at(-1) === "") parts.pop();
+  for (const part of parts) {
+    if (!part) refuse("unmodeled_value", `an empty style segment (a leading ;) on ${shown(id)}`);
     const eq = part.indexOf("=");
-    if (eq < 0) names.push(part); else keys[part.slice(0, eq)] = part.slice(eq + 1);
+    if (eq < 0) { names.push(part); continue; }
+    const key = part.slice(0, eq);
+    if (Object.hasOwn(keys, key)) refuse("unmodeled_value", `${key.slice(0, 32)} twice on ${shown(id)}`);
+    keys[key] = part.slice(eq + 1);
   }
-  if (names.length + Object.keys(keys).length > DRAWIO_READER_LIMITS.styleKeys) refuse("too_large", `too many style keys on ${id.slice(0, 64)}`);
+  if (names.length + Object.keys(keys).length > DRAWIO_READER_LIMITS.styleKeys) refuse("too_large", `too many style keys on ${shown(id)}`);
+  if (names.length > 1) refuse("unmodeled_value", `more than one style name on ${shown(id)}`);
   return { names, keys };
 }
-// The reader's own table of the colours draw.io files of Practonaut hold (lower case).
-const STROKES: Readonly<Record<string, StrokeColor>> = { "#000000": "black", "#b85450": "red", "#82b366": "green", "#6c8ebf": "blue", "#d79b00": "orange" };
-const FILLS: Readonly<Record<string, FillColor>> = { none: "none", "#f8cecc": "red", "#d5e8d4": "green", "#dae8fc": "blue", "#fff2cc": "yellow" };
-/** Arrow markers the pinned app draws a head for (checked against the app by the conformance suite). */
-export const DRAWIO_MARKERS: readonly string[] = Object.freeze(["classic", "classicThin", "block", "blockThin", "open", "openThin", "oval", "diamond", "diamondThin"]);
-const NO_MARKER = new Set(["none", ""]);
+function keysWithin(keys: Record<string, string>, table: Readonly<Record<string, readonly string[] | null>>, id: string): void {
+  for (const [key, value] of Object.entries(keys)) {
+    if (!Object.hasOwn(table, key)) refuse("unmodeled_value", `style key ${key.slice(0, 32)} on ${shown(id)}`);
+    const values = table[key];
+    if (values && !values.includes(value)) refuse("unmodeled_value", `${key.slice(0, 32)}=${value.slice(0, 16)} on ${shown(id)}`);
+  }
+}
 const SEMANTIC = /^[A-Za-z0-9_-]{1,64}$/;
 const RESERVED = new Set(["__proto__", "prototype", "constructor"]);
 const derived = (raw: string, prefix: string): string => `${prefix}-${createHash("sha256").update(raw).digest("hex").slice(0, 40)}`;
 const semanticId = (raw: string, prefix: string): string => SEMANTIC.test(raw) && !RESERVED.has(raw) ? raw : derived(raw, prefix);
-function label(cell: Cell, html: string | undefined): string {
-  if (html !== undefined && html !== "0" && html !== "1") refuse("unmodeled_value", `html=${html.slice(0, 8)} on ${cell.id.slice(0, 64)}`);
-  const value = cell.value;
-  // With html=1 the value is HTML; only text that HTML shows exactly as written is read.
-  if (html === "1" && (/[<&\t\n\r]/.test(value) || / {2}/.test(value) || value !== value.trim())) refuse("markup_label", `an HTML label on ${cell.id.slice(0, 64)}`);
-  if (cell.placeholders && value.includes("%")) refuse("markup_label", `a placeholder label on ${cell.id.slice(0, 64)}`);
-  const normalized = value.normalize("NFC");
+/** A label or frame name: plain text (`html` absent or 0; with html=1 the value is markup), NFC, no
+ * invisible format characters, within the world's text limits. */
+function label(cell: Cell, html: string | undefined, limit: number): string {
+  if (html === "1") refuse("markup_label", `an HTML label on ${shown(cell.id)}`);
+  const normalized = cell.value.normalize("NFC");
   if (/\p{Cf}/u.test(normalized)) refuse("text_invalid", "invisible format characters in a label");
-  if ([...normalized].length > DRAWIO_READER_LIMITS.labelCodePoints) refuse("text_invalid", "a label over the limit");
+  if (normalized.length > limit) refuse("text_invalid", `a label or name over ${limit} characters`);
   return normalized;
 }
 
-export interface DrawioUnmodeled { id: string; reason: "hidden" | "edge_label" | "other_shape" | "group_of_frames" | "nested_frame" | "data_attributes" | "edge_value" }
-export interface DrawioReport { state: State; unmodeled: DrawioUnmodeled[] }
+export interface DrawioReport { state: State }
 
 /** Reads a `.drawio` file (one page, plain or compressed, or a bare `mxGraphModel`). */
 export function parseDrawio(input: string | Uint8Array): DrawioReport {
@@ -226,51 +320,72 @@ export function parseDrawio(input: string | Uint8Array): DrawioReport {
   if (bytes.length > DRAWIO_READER_LIMITS.bytes) refuse("too_large", "the file is over 10 MiB");
   const cells = cellsOf(modelOf(parseXml(bytes.toString("utf8"))));
   const byId = new Map<string, Cell>();
-  for (const cell of cells) { if (byId.has(cell.id)) refuse("duplicate_id", `two cells share the id ${cell.id.slice(0, 64)}`); byId.set(cell.id, cell); }
+  for (const cell of cells) { if (byId.has(cell.id)) refuse("duplicate_id", `two cells share the id ${shown(cell.id)}`); byId.set(cell.id, cell); }
   const roots = cells.filter(cell => cell.parent === null);
   if (roots.length !== 1) refuse("structure_invalid", `${roots.length} root cells`);
   const root = roots[0]!;
-  // Parent chains: nearest first; existing parents, no cycle, no edge under an edge.
+  // Parent chains, nearest first: existing parents, no cycle.
   const chains = new Map<string, string[]>();
   for (const cell of cells) {
     const chain: string[] = [];
     let current = cell.parent;
     while (current !== null) {
-      if (current === cell.id || chain.includes(current) || chain.length >= DRAWIO_READER_LIMITS.depth) refuse("structure_invalid", `a parent cycle at ${cell.id.slice(0, 64)}`);
+      if (current === cell.id || chain.includes(current) || chain.length >= DRAWIO_READER_LIMITS.depth) refuse("structure_invalid", `a parent cycle at ${shown(cell.id)}`);
       const parent = byId.get(current);
-      if (!parent) refuse("structure_invalid", `the parent of ${cell.id.slice(0, 64)} does not exist`);
+      if (!parent) refuse("structure_invalid", `the parent of ${shown(cell.id)} does not exist`);
       chain.push(current); current = parent!.parent;
     }
     chains.set(cell.id, chain);
-    if (cell.edge && cell.parent !== null && byId.get(cell.parent)!.edge) refuse("structure_invalid", `edge ${cell.id.slice(0, 64)} has an edge as its parent`);
   }
-  const unmodeled: DrawioUnmodeled[] = [];
+  // The root and the layers below it hold only their ids: no value, style, flags or geometry.
   const layers = new Set(cells.filter(cell => cell.parent === root.id).map(cell => cell.id));
-  // Hidden: a cell that is not visible, or below one that is hidden or collapsed.
-  const hidden = (cell: Cell): boolean => !cell.visible || chains.get(cell.id)!.some(id => !byId.get(id)!.visible || byId.get(id)!.collapsed);
-  type Kind = "frame" | "group" | "step" | "edge" | "skip";
-  const kinds = new Map<string, Kind>(), shapes = new Map<string, Shape>();
   for (const cell of cells) {
-    if (cell === root || layers.has(cell.id)) { kinds.set(cell.id, "skip"); continue; }
-    if (hidden(cell)) { kinds.set(cell.id, "skip"); unmodeled.push({ id: cell.id, reason: "hidden" }); continue; }
-    // Edge labels first: a vertex under an edge is the edge's label, before any other parent rule.
-    if (cell.vertex && cell.parent !== null && byId.get(cell.parent)!.edge) { kinds.set(cell.id, "skip"); unmodeled.push({ id: cell.id, reason: "edge_label" }); continue; }
-    if (cell.edge) { kinds.set(cell.id, "edge"); continue; }
-    if (!cell.vertex) { kinds.set(cell.id, "skip"); unmodeled.push({ id: cell.id, reason: "other_shape" }); continue; }
-    // The effective shape before any classification: more than one shape-determining token is refused.
-    const { names, keys } = styleOf(cell.style, cell.id);
-    const tokens = [...names, ...(keys.shape !== undefined ? [`shape=${keys.shape}`] : [])];
-    if (tokens.length > 1) refuse("unmodeled_value", `more than one shape token on ${cell.id.slice(0, 64)}`);
-    const token = tokens[0];
-    const container = keys.container === "1";
-    if (token === "swimlane" || token === "shape=swimlane" || (token === undefined && container)) { kinds.set(cell.id, "frame"); continue; }
-    if (token === "group") { kinds.set(cell.id, "group"); continue; }
-    const shape: Shape | undefined = token === undefined || token === "shape=rectangle" ? "rectangle" : token === "ellipse" || token === "shape=ellipse" ? "ellipse" : token === "rhombus" || token === "shape=rhombus" ? "diamond" : undefined;
-    if (shape === undefined) { kinds.set(cell.id, "skip"); unmodeled.push({ id: cell.id, reason: "other_shape" }); continue; }
-    if (container) refuse("unmodeled_value", `a step shape that is also a container on ${cell.id.slice(0, 64)}`);
-    kinds.set(cell.id, "step"); shapes.set(cell.id, shape);
+    if (cell !== root && !layers.has(cell.id)) continue;
+    if (cell.vertex || cell.edge) refuse("structure_invalid", `${shown(cell.id)} is a ${cell.vertex ? "vertex" : "edge"} in place of the root or a layer`);
+    if (Object.keys(cell.attrs).some(key => key !== "id" && key !== "parent")) refuse("unmodeled_value", `the root or layer ${shown(cell.id)} carries more than its id`);
   }
-  for (const cell of cells) if (cell.data && kinds.get(cell.id) !== "skip") unmodeled.push({ id: cell.id, reason: "data_attributes" });
+  type Kind = "frame" | "group" | "step" | "edge";
+  const kinds = new Map<string, Kind>(), shapes = new Map<string, Shape>(), styles = new Map<string, Record<string, string>>();
+  for (const cell of cells) {
+    if (cell === root || layers.has(cell.id)) continue;
+    if (!cell.vertex && !cell.edge) refuse("structure_invalid", `${shown(cell.id)} is neither a vertex nor an edge`);
+    const { names, keys } = styleOf(cell.style, cell.id);
+    styles.set(cell.id, keys);
+    const name = names[0];
+    if (cell.edge) {
+      if (name !== undefined) refuse("unmodeled_value", `a style name on edge ${shown(cell.id)}`);
+      keysWithin(keys, EDGE_KEYS, cell.id);
+      if (cell.connectable !== undefined) refuse("unmodeled_value", `connectable on edge ${shown(cell.id)}`);
+      kinds.set(cell.id, "edge"); continue;
+    }
+    if (name === "swimlane") {
+      keysWithin(keys, FRAME_KEYS, cell.id);
+      for (const key of FRAME_REQUIRED) if (!Object.hasOwn(keys, key)) refuse("unmodeled_value", `a frame without ${key} on ${shown(cell.id)}`);
+      if (cell.connectable !== undefined) refuse("unmodeled_value", `connectable on frame ${shown(cell.id)}`);
+      kinds.set(cell.id, "frame"); continue;
+    }
+    if (name === "group") {
+      if (Object.keys(keys).length) refuse("unmodeled_value", `style keys on group ${shown(cell.id)}`);
+      if (cell.connectable !== undefined && cell.connectable !== "0") refuse("unmodeled_value", `connectable=${cell.connectable.slice(0, 8)} on group ${shown(cell.id)}`);
+      if (cell.value !== "") refuse("unmodeled_value", `a label on group ${shown(cell.id)}`);
+      kinds.set(cell.id, "group"); continue;
+    }
+    if (name !== undefined && !Object.hasOwn(STEP_NAMES, name)) refuse("unmodeled_value", `style name ${name.slice(0, 32)} on ${shown(cell.id)}`);
+    keysWithin(keys, STEP_KEYS, cell.id);
+    if (name !== undefined && Object.hasOwn(keys, "rounded")) refuse("unmodeled_value", `rounded on a ${name} on ${shown(cell.id)}`);
+    if (cell.connectable !== undefined) refuse("unmodeled_value", `connectable on step ${shown(cell.id)}`);
+    kinds.set(cell.id, "step"); shapes.set(cell.id, name === undefined ? "rectangle" : STEP_NAMES[name]!);
+  }
+  // Where each kind may sit, as the adapter writes it: frames on a layer; groups on a layer or in a frame;
+  // steps on a layer, in a frame or in a group; edges on a layer or in a frame. Nothing else.
+  const parentKind = (cell: Cell): Kind | "layer" => layers.has(cell.parent!) ? "layer" : kinds.get(cell.parent!)!;
+  const PLACES: Readonly<Record<Kind, ReadonlyArray<Kind | "layer">>> = { frame: ["layer"], group: ["layer", "frame"], step: ["layer", "frame", "group"], edge: ["layer", "frame"] };
+  for (const cell of cells) {
+    const kind = kinds.get(cell.id);
+    if (kind === undefined) continue;
+    const place = parentKind(cell);
+    if (!PLACES[kind].includes(place)) refuse("structure_invalid", `a ${kind} inside a ${place}: ${shown(cell.id)}`);
+  }
   // Semantic ids: kept when they fit the pattern, derived otherwise; group ids injective over group cells.
   const ids = new Map<string, string>(), used = new Set<string>();
   const assign = (cell: Cell, prefix: string): string => {
@@ -284,58 +399,54 @@ export function parseDrawio(input: string | Uint8Array): DrawioReport {
     const groupId = cell.id.startsWith("pn:group:") ? semanticId(cell.id.slice("pn:group:".length), "g") : semanticId(cell.id, "g");
     if (usedGroups.has(groupId)) refuse("duplicate_id", `two group cells read as group ${groupId}`);
     usedGroups.add(groupId); groupIds.set(cell.id, groupId);
-    // A group with a frame below it groups frames, not steps.
-    if (cells.some(other => kinds.get(other.id) === "frame" && chains.get(other.id)!.includes(cell.id))) unmodeled.push({ id: cell.id, reason: "group_of_frames" });
   }
   const objects: Record<string, Frame | StepV2 | Arrow> = Object.create(null) as Record<string, Frame | StepV2 | Arrow>;
   const frameOf = (cell: Cell): string | null => { const f = chains.get(cell.id)!.find(id => kinds.get(id) === "frame"); return f === undefined ? null : f; };
   for (const cell of cells) {
     if (kinds.get(cell.id) !== "frame") continue;
-    if (frameOf(cell) !== null) unmodeled.push({ id: cell.id, reason: "nested_frame" });
     const id = assign(cell, "f");
-    objects[id] = { id, type: "frame", deleted: false, name: label(cell, styleOf(cell.style, cell.id).keys.html) };
+    objects[id] = { id, type: "frame", deleted: false, name: label(cell, styles.get(cell.id)!.html, DRAWIO_READER_LIMITS.nameChars) };
   }
   for (const cell of cells) {
     if (kinds.get(cell.id) !== "step") continue;
-    const { keys } = styleOf(cell.style, cell.id);
-    const g = cell.geometry!;
-    const chain = chains.get(cell.id)!;
-    if (g.relative || chain.some(a => byId.get(a)!.vertex && byId.get(a)!.geometry?.relative)) refuse("geometry_invalid", `relative geometry on or above ${cell.id.slice(0, 64)}`);
-    if (g.width <= 0 || g.height <= 0) refuse("geometry_invalid", `a step without a positive size: ${cell.id.slice(0, 64)}`);
-    let x = g.x, y = g.y;
-    for (const a of chain) { const ancestor = byId.get(a)!; if (ancestor.vertex && ancestor.geometry) { x += ancestor.geometry.x; y += ancestor.geometry.y; } }
-    // Rounded by edges (PADR-0047 decision 10); a collapsed box is widened to 1 px.
-    const left = Math.round(x), top = Math.round(y);
-    const right = Math.max(left + 1, Math.round(x + g.width)), bottom = Math.max(top + 1, Math.round(y + g.height));
-    for (const edge of [left, top, right, bottom]) if (Math.abs(edge) > DRAWIO_READER_LIMITS.coordinate) refuse("geometry_invalid", `a box edge outside ±1,000,000 on ${cell.id.slice(0, 64)}`);
-    const strokeRaw = keys.strokeColor === undefined ? "#000000" : keys.strokeColor.toLowerCase();
-    const fillRaw = keys.fillColor === undefined ? "none" : keys.fillColor.toLowerCase();
-    const stroke = STROKES[strokeRaw], fill = FILLS[fillRaw];
-    if (!stroke || !fill) refuse("unmodeled_value", `a colour outside the table on ${cell.id.slice(0, 64)}`);
-    // The outermost group between the step and its frame (or the layer).
-    const frameIndex = chain.findIndex(a => kinds.get(a) === "frame");
-    const below = frameIndex < 0 ? chain : chain.slice(0, frameIndex);
-    const group = [...below].reverse().find(a => kinds.get(a) === "group");
+    const keys = styles.get(cell.id)!, g = cell.geometry!, chain = chains.get(cell.id)!;
+    if (g.width <= 0 || g.height <= 0) refuse("geometry_invalid", `a step without a positive size: ${shown(cell.id)}`);
+    // Offsets summed root first, as draw.io's view accumulates them; each is bounded on its own.
+    let x = 0, y = 0;
+    for (const a of [...chain].reverse()) { const ancestor = byId.get(a)!; if (ancestor.geometry) { x += ancestor.geometry.x; y += ancestor.geometry.y; } }
+    x += g.x; y += g.y;
+    // Rounded by edges (PADR-0047 decision 10).
+    const left = Math.round(x), top = Math.round(y), right = Math.round(x + g.width), bottom = Math.round(y + g.height);
+    for (const edge of [left, top, right, bottom]) if (!Number.isFinite(edge) || Math.abs(edge) > DRAWIO_READER_LIMITS.coordinate) refuse("geometry_invalid", `a box edge outside ±1,000,000 on ${shown(cell.id)}`);
+    if (right <= left || bottom <= top) refuse("geometry_invalid", `a step that rounds to no area: ${shown(cell.id)}`);
+    const strokeRaw = keys.strokeColor?.toLowerCase(), fillRaw = keys.fillColor?.toLowerCase();
+    if (strokeRaw === undefined || fillRaw === undefined || !Object.hasOwn(STROKES, strokeRaw) || !Object.hasOwn(FILLS, fillRaw)) refuse("unmodeled_value", `a colour outside the table, or none given, on ${shown(cell.id)}`);
+    const group = cell.parent !== null && kinds.get(cell.parent) === "group" ? cell.parent : undefined;
+    const frame = frameOf(cell);
     const id = assign(cell, "s");
-    objects[id] = { id, type: "step", deleted: false, frameId: frameIndex < 0 ? null : ids.get(chain[frameIndex]!)!, label: label(cell, keys.html), x: left, y: top, width: right - left, height: bottom - top, shape: shapes.get(cell.id)!, groupId: group === undefined ? null : groupIds.get(group)!, stroke: stroke!, fill: fill! };
+    objects[id] = { id, type: "step", deleted: false, frameId: frame === null ? null : ids.get(frame)!, label: label(cell, keys.html, DRAWIO_READER_LIMITS.labelChars), x: left, y: top, width: right - left, height: bottom - top, shape: shapes.get(cell.id)!, groupId: group === undefined ? null : groupIds.get(group)!, stroke: STROKES[strokeRaw!]!, fill: FILLS[fillRaw!]! };
   }
   for (const cell of cells) {
     if (kinds.get(cell.id) !== "edge") continue;
-    const { keys } = styleOf(cell.style, cell.id);
-    for (const key of ["startArrow", "endArrow"] as const) { const v = keys[key]; if (v !== undefined && !NO_MARKER.has(v) && !DRAWIO_MARKERS.includes(v)) refuse("unmodeled_value", `${key}=${v.slice(0, 16)} on ${cell.id.slice(0, 64)}`); }
+    const keys = styles.get(cell.id)!;
+    if (cell.value !== "") refuse("unmodeled_value", `a label on edge ${shown(cell.id)}`);
+    for (const key of ["startArrow", "endArrow"] as const) { const v = keys[key]; if (v !== undefined && !NO_MARKER.has(v) && !DRAWIO_MARKERS.includes(v)) refuse("unmodeled_value", `${key}=${v.slice(0, 16)} on ${shown(cell.id)}`); }
+    // One head shows the direction: at the end when endArrow is absent (draw.io's default) or a marker,
+    // at the start when startArrow is a marker. No head, or a head at each end, shows none.
     const endHead = keys.endArrow === undefined || !NO_MARKER.has(keys.endArrow), startHead = keys.startArrow !== undefined && !NO_MARKER.has(keys.startArrow);
+    if (endHead === startHead) refuse("unmodeled_value", `an edge without exactly one head: ${shown(cell.id)}`);
     const end = (ref: string | null): string | null => {
       if (ref === null) return null;
-      if (!byId.has(ref)) refuse("structure_invalid", `edge ${cell.id.slice(0, 64)} names a missing end`);
-      return kinds.get(ref) === "step" ? ids.get(ref)! : null;
+      if (!byId.has(ref)) refuse("structure_invalid", `edge ${shown(cell.id)} names a missing end`);
+      if (kinds.get(ref) !== "step") refuse("structure_invalid", `edge ${shown(cell.id)} ends at a cell that is not a step`);
+      return ids.get(ref)!;
     };
     let from = end(cell.source), to = end(cell.target);
-    if (startHead && !endHead) [from, to] = [to, from];
-    if (cell.value !== "") unmodeled.push({ id: cell.id, reason: "edge_value" });
+    if (startHead) [from, to] = [to, from];
     const id = assign(cell, "a");
     const ends = [from, to].filter((e): e is string => e !== null).map(e => (objects[e] as StepV2).frameId);
     const frameId = ends.length ? (ends.every(f => f === ends[0]) ? ends[0]! : null) : (frameOf(cell) === null ? null : ids.get(frameOf(cell)!) ?? null);
     objects[id] = { id, type: "arrow", deleted: false, frameId, from, to };
   }
-  return { state: validateSubmissionState({ objects }, undefined, 2), unmodeled };
+  return { state: validateSubmissionState({ objects }, undefined, 2) };
 }
