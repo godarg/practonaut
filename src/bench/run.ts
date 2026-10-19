@@ -376,7 +376,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: BenchRe
       if (outcome.status === 'infra_error') throw new ClientInfraError(outcome);
       // Judge the host's committed session, independently, in separate checker processes.
       const view = inner!.view(); finalActions = view.log.length;
-      const session: SessionData = { schema: 'practonaut.session/1', world: view.world, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
+      // The session names its world by id and version only; the view's adapter id is not session data.
+      const session: SessionData = { schema: 'practonaut.session/1', world: { id: view.world.id, version: view.world.version }, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
       const sessionText = JSON.stringify(session);
       const sessionRaw = await checkInProcess(world, sessionText, { seed: item.seed, taskId: item.taskId });
       let nativeText: string | null = null, nativeRaw: CheckerVerdict | null = null;
