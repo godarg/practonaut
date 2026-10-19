@@ -12,6 +12,7 @@
  */
 import { isDeepStrictEqual } from 'node:util';
 import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
+import { sha256Hex } from '../canonical/index.ts';
 import type { SessionReportV3, SessionRunV3 } from '../bench/report.ts';
 import { SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { safeText } from '../cli/output.ts';
@@ -280,6 +281,10 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     || !isDeepStrictEqual(declaration.generator, probePlan.generator) || declaration.difficulty !== probePlan.difficulty || !isDeepStrictEqual(declaration.development.seeds, probePlan.seeds) || declaration.development.world.contentHash !== input.probeWorld)
     fail('round_files_mismatch', 'the declaration does not repeat its probe plan (unit, round, toolchain, generator, difficulty, seeds, settings, pre-probe world)');
   if (declaration.alpha !== ALPHA[declaration.round]) fail('alpha_invalid', `round ${declaration.round} decides at α = ${ALPHA[declaration.round]}`);
+  // The ledger the pre-probe record and the declaration counted is a prefix of the one gated now.
+  const lines = ledger.text.slice(0, -1).split('\n');
+  for (const [label, at] of [['pre-probe record', probe.ledger], ['declaration', declaration.budget.ledger]] as const)
+    if (at.records > lines.length || sha256Hex(lines[at.records - 1]!) !== at.head) fail('ledger_rewritten', `the release ledger the ${label} counted (${at.records} records) is not a prefix of the pushed one`);
   // Every earlier round's held-out instances are other instances (PADR-0042 decision 11).
   if (declaration.round > 1 && !input.previousSeeds?.length) fail('previous_round', `round ${declaration.round} needs the first round's declaration`);
   if (input.previousSeeds?.some(seed => input.seeds.includes(seed))) fail('heldout_overlap', 'this round reuses held-out instances of the first round');

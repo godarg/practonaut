@@ -131,7 +131,7 @@ export function declarationOf(plan: Plan, record: ProbeRecord, extra: Partial<De
     ladder, pair: { strongest: OPUS, weakest: HAIKU }, bench: plan.bench,
     development: { seeds: plan.seeds, world: { id: record.world.id, contentHash: PROBE_WORLD }, digest: record.digest, passed: record.outcomes.map(entry => entry.pass) },
     heldOut: { instances: 26 }, previous: null,
-    budget: { subscriptionAgents: 3, formula: 99, roundRuns: 85, cap: 800, before: 7, ledger: { records: 15, head: hash('7') }, reserved: 198, leave: 40, ...budget }, ...extra,
+    budget: { subscriptionAgents: 3, formula: 99, roundRuns: 85, cap: 800, before: 7, ledger: { ...record.ledger }, reserved: 198, leave: 40, ...budget }, ...extra,
   } as Declaration;
 }
 

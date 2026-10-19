@@ -311,7 +311,10 @@ test('the gate holds to its files: the plan and record the declaration follows f
   refused(() => computeGate({ ...input, plan: planOf({ seeds: [1, 2, 3, 4, 5, 6, 8] }) }), 'round_files_mismatch');
   refused(() => computeGate({ ...input, probe: { ...input.probe, passed: 2 } }), 'round_files_mismatch');
   const rerun = probeReport(3, { runs: (task, pass) => presetRun(task, task === 'repair-7' ? true : pass, OPUS) });
-  refused(() => computeGate({ ...input, development: [rerun], ledger: { ...input.ledger, ledger: ledgerOf([{ reports: [rerun], purpose: 'pre-probe', basis: fileHash(round.plan) }, { reports: input.ladder as GateReport[], purpose: 'held-out', basis: fileHash(round.declaration) }]) } }), 'development_mismatch', /outcomes|digests/);
+  // Another pre-probe run in its place: the ledger the record and the declaration counted is no longer
+  // a prefix of the gated one.
+  refused(() => computeGate({ ...input, development: [rerun], ledger: { ...input.ledger, ledger: ledgerOf([{ reports: [rerun], purpose: 'pre-probe', basis: fileHash(round.plan) }, { reports: input.ladder as GateReport[], purpose: 'held-out', basis: fileHash(round.declaration) }]) } }), 'ledger_rewritten', /the pre-probe record counted \(15 records\)/);
+  refused(() => computeGate({ ...input, declaration: { ...input.declaration, budget: { ...input.declaration.budget, ledger: { records: 15, head: hash('7') } } } }), 'ledger_rewritten', /the declaration counted/);
   // The same outcomes from another board (another action log): only the digest tells.
   const probe = round.probe[0]!, other = new Map(probe.sessions!); other.set(probe.report.runs[0]!.id, { hash: 'state-other', log: [] });
   refused(() => computeGate({ ...input, development: [{ ...probe, sessions: other }] }), 'development_mismatch', /are not the ones the declaration digests/);

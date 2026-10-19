@@ -390,7 +390,7 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
     previous = { declaration: declarationHash(first), low: seeds[0]!, high: seeds.at(-1)! };
   }
   // Funding: the units admitted before this one and not declared yet keep their rounds; the foreign reserve.
-  const admittedBefore = (await laterUndeclaredAdmissions(folder, plan.unit, plan.round, probe)).length;
+  const admittedBefore = (await earlierUndeclaredAdmissions(folder, plan.unit, plan.round, probe)).length;
   for (const name of await readdir(folder).catch(() => [] as string[])) if (/\.declaration\.json$/.test(name) && !name.startsWith(`${plan.unit}-`)) {
     const other = await readDeclaration(join(folder, name)).catch(() => null);
     if (other && other.toolchain.level === 'artifact') foreignRounds++;
@@ -411,7 +411,7 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
   return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration) };
 }
 /** Units admitted before `probe` (an earlier ledger position) whose round is not declared yet. */
-async function laterUndeclaredAdmissions(folder: string, unit: string, round: number, probe: ProbeRecord): Promise<string[]> {
+async function earlierUndeclaredAdmissions(folder: string, unit: string, round: number, probe: ProbeRecord): Promise<string[]> {
   const names = await readdir(folder).catch(() => [] as string[]), found: string[] = [];
   for (const name of names) {
     const match = /^(.+)-round-(\d+)\.probe-(\d+)\.json$/.exec(name);
