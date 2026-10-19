@@ -9,6 +9,12 @@
  * exemption only from structure. Pure: the caller reads, validates and re-verifies the reports, reads
  * git and the ledger, regenerates the sets and judges the near misses. Board text never enters the
  * result or the Markdown.
+ *
+ * Seams for later changes: artifact-level units (their reports, the digest's `result`/`state` runs and
+ * baselines through the foreign server) come with artifact mode, which until then is refused by the
+ * unit check and by `readGateReport`; co-actor units need `verifySchedule` on every held-out run
+ * (PADR-0048 decision 12), and until the scenario strand adds it `report --verify` refuses a report
+ * with scenarios, so none reaches this gate.
  */
 import { isDeepStrictEqual } from 'node:util';
 import { mcnemarExact, mcnemarPower, wilson } from '../bench/stats.ts';
