@@ -5,7 +5,7 @@
 // finished. A referenced timer stands for Playwright's pipes and close timer: Node cannot exit by
 // itself. `process.exit` reports when it was called and which session credentials still existed.
 import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
+
 import type { Browser } from 'playwright-core';
 import { processLedger } from '../../src/adapters/browser/ledger.ts';
 
@@ -22,7 +22,8 @@ const exit = process.exit.bind(process);
 process.exit = ((code?: number) => {
   clearInterval(alive);
   let tokens = 0;
-  try { tokens = readdirSync(join(process.env.PRACTONAUT_HOME ?? '', 'host')).filter(name => name.endsWith('.token')).length; } catch { /* No host directory: no credential. */ }
+  // Every session credential anywhere under the home: the session hosts' and every bench run's (`<bench folder>/<run>/host`).
+  try { tokens = readdirSync(process.env.PRACTONAUT_HOME ?? '', { recursive: true }).filter(name => String(name).endsWith('.token')).length; } catch { /* No home: no credential. */ }
   process.stderr.write(`[exit-rule] process.exit(${String(code)}) tokens=${tokens}\n`, () => exit(code));
   return undefined as never;
 }) as typeof process.exit;

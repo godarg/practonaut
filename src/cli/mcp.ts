@@ -52,14 +52,17 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
 }
 
 /** The end of an MCP session, once: the stdio server, the launcher, then the host, whose close removes
- * its token file. Only then has the command's shutdown finished, and `finish` reports the browser
- * ledger and arms the 35 s rule (PADR-0050, decision 9); a host that is open never exits through it. */
-export function mcpShutdown(steps: { handle: { close(): Promise<unknown> }; launcher: () => { remove(): Promise<unknown> } | undefined; host: Pick<RunningHost, 'close'> | undefined; finish: () => Promise<unknown> }): () => Promise<void> {
+ * its token file. Each step is tried on its own, so one that fails (a launcher file that cannot be
+ * removed) never skips the host's close. Only then has the command's shutdown finished, and `finish`
+ * reports the browser ledger and arms the 35 s rule (PADR-0050, decision 9) — with `hostClosed` false
+ * when the host's close failed: then it reports, says so, and arms nothing that could exit past it. */
+export function mcpShutdown(steps: { handle: { close(): Promise<unknown> }; launcher: () => { remove(): Promise<unknown> } | undefined; host: Pick<RunningHost, 'close'> | undefined; finish: (hostClosed: boolean) => Promise<unknown> }): () => Promise<void> {
   let stopping: Promise<void> | undefined;
   return () => stopping ??= (async () => {
-    try { await steps.handle.close(); await steps.launcher()?.remove(); await steps.host?.close(); }
-    catch { process.exitCode = 3; }
-    await steps.finish();
+    for (const step of [() => steps.handle.close(), () => steps.launcher()?.remove()]) { try { await step(); } catch { process.exitCode = 3; } }
+    let hostClosed = true;
+    try { await steps.host?.close(); } catch { process.exitCode = 3; hostClosed = false; }
+    await steps.finish(hostClosed);
   })();
 }
 
@@ -97,7 +100,12 @@ export async function commandMcp(args: string[]): Promise<number> {
         process.stderr.write(await openInBrowser(launcher.path) ? cliText('openStarted', { url: host.url }) : cliText('openFailed', { url: host.url }));
       } catch { process.stderr.write(cliText('openFailed', { url: host.url })); }
     }
-    const shutDown = mcpShutdown({ handle, launcher: () => launcher, host, finish: deferCommandEnd() });
+    const end = deferCommandEnd();
+    const shutDown = mcpShutdown({ handle, launcher: () => launcher, host, finish: async hostClosed => {
+      if (hostClosed) return end();
+      process.stderr.write(cliText('closeFailed'));
+      return end({ armExit: false });
+    } });
     const stop = (): void => { void shutDown(); };
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, stop);
     // When the client goes away the bridge stops; a self-started session's host and mirror close with it.

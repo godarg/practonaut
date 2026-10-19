@@ -133,7 +133,7 @@ test('the real CLI (A): run prints its result when the stalled close is abandone
   assert.ok(exitedAfter >= 29_000 && exitedAfter < 45_000, `the CLI exited ${Math.round(exitedAfter)} ms after the close request: after Playwright's forced end, not before`);
   assert.equal(run.stderr().includes('[close-stall] process.exit'), false, 'a natural exit: Playwright\'s forced end proved the end before the 35 s rule');
   assert.match(run.stderr(), /browser \d+ \(mirror\): close abandoned at its deadline, still running; process end not proven yet/);
-  assert.match(run.stderr(), /Waiting for 1 browser to close; Playwright ends them within 30 s of the request\./);
+  assert.match(run.stderr(), /Waiting for 1 browser to close; Playwright ends it within 30 s of the request\./);
   assert.deepEqual(survivors(recorded), [], 'none of the recorded processes remains');
   assert.deepEqual(playwrightDirectories(temporary), [], 'the profile and artifacts directories are gone');
 });
@@ -157,13 +157,42 @@ test('the real CLI (B): a bench whose second interrupt calls process.exit while 
   assert.deepEqual(playwrightDirectories(temporary), [], 'Playwright\'s exit handler removed the directories');
 });
 
-test('the real CLI on Windows: run leaves no spawned browser and no directory behind', { skip: process.platform === 'win32' ? false : 'Windows only; POSIX runs the stalled tests above', timeout: 240_000 }, async t => {
+// Review of PR #69 (effects-5): Ctrl+C while the command says it waits for a browser killed Node past
+// Playwright's exit handler, and the mirror's directories were left behind.
+test('the real CLI (C): Ctrl+C during the wait for a browser ends the command through process.exit, and nothing is left', { skip: process.platform === 'win32' ? 'POSIX: a Ctrl+C cannot be sent to a Windows child' : false, timeout: 240_000 }, async t => {
+  const directory = mkdtempSync(join(realpathSync(tmpdir()), 'pn-cli-close-c-')), { world, actions } = pack(directory);
+  const run = startStalled(t, ['run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], directory);
+  const { pid } = await stopBrowserAtClose(run, directory);
+  assert.ok(await until(() => run.stderr().includes('Waiting for 1 browser to close'), 30_000), run.stderr());
+  const recorded = descendantsOf(run.child.pid!), temporary = join(directory, 'tmp');
+  assert.ok(recorded.some(row => row.pid === pid), 'the browser is alive while the command waits');
+  assert.equal(playwrightDirectories(temporary).length, 2, 'the mirror\'s directories are there');
+  run.child.kill('SIGINT');
+  assert.equal(await run.exited, 130, run.stderr());
+  assert.match(run.stderr(), /\[close-stall\] process\.exit\(130\)/, 'the signal went through process.exit, so Playwright\'s exit handler ran');
+  assert.ok(await until(() => survivors(recorded).length === 0, 5_000), `survivors: ${JSON.stringify(survivors(recorded).map(row => row.pid))}`);
+  assert.deepEqual(playwrightDirectories(temporary), [], 'the directories are gone');
+});
+
+// Review of PR #69 (Codex gap): without a stall, the cleanup assertions could pass on a folder nothing
+// used. The run is watched while it runs: Playwright's directories must appear in the CLI's temporary
+// directory before the test asserts that they are gone. Runs on every platform; Windows has only this one.
+test('the real CLI without a stall: the directories appear where the test put the temporary directory, and nothing is left after the exit', { timeout: 240_000 }, async t => {
   const directory = mkdtempSync(join(realpathSync(tmpdir()), 'pn-cli-close-w-')), { world, actions } = pack(directory);
   const temporary = join(directory, 'tmp'), home = join(directory, 'home');
   mkdirSync(temporary); mkdirSync(home);
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const result = spawnSync(process.execPath, [CLI, 'run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], { cwd: directory, encoding: 'utf8', timeout: 120_000, env: { ...process.env, PRACTONAUT_HOME: home, ...temporaryDirectoryOf(temporary) } });
-  assert.equal(result.status, 0, result.stderr);
+  const child = spawn(process.execPath, [CLI, 'run', world, '--seed', '1', '--actions', actions, '--mirror', 'required'], { cwd: directory, env: { ...process.env, PRACTONAUT_HOME: home, ...temporaryDirectoryOf(temporary) } });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; }); child.stdout.resume();
+  const exited = new Promise<number | null>(resolve => child.on('close', code => resolve(code)));
+  const seen = new Set<string>();
+  let running = true;
+  void exited.then(() => { running = false; });
+  while (running) { for (const name of playwrightDirectories(temporary)) seen.add(name); await sleep(10); }
+  assert.equal(await exited, 0, stderr);
+  assert.ok([...seen].filter(name => name.startsWith('playwright_chromiumdev_profile-')).length >= 1 && [...seen].filter(name => name.startsWith('playwright-artifacts-')).length >= 1,
+    `Playwright's profile and artifacts directories appeared under the CLI's temporary directory: ${[...seen].join(', ')}`);
   assert.deepEqual(processesWith(temporary), [], 'no process started with the CLI\'s temporary directory remains');
-  assert.deepEqual(playwrightDirectories(temporary), []);
+  assert.deepEqual(playwrightDirectories(temporary), [], 'and no directory');
 });

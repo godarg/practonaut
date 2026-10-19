@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ import type { Browser } from 'playwright-core';
 import { BrowserLedger } from '../../src/adapters/browser/ledger.ts';
 import { afterMain, deferCommandEnd, finishCommand, ledgerLines, resetCommandEnd } from '../../src/cli/browser-exit.ts';
 import { mcpShutdown } from '../../src/cli/mcp.ts';
-import { setCliLanguage } from '../../src/cli/messages.ts';
+import { cliText, setCliLanguage } from '../../src/cli/messages.ts';
 import { FakeBrowser, advance, flush } from '../support/fake-browser.ts';
 
 /** Codex's combined path: a close that fulfils after the connection dropped, its child still alive. */
@@ -28,7 +28,10 @@ async function unproven(ledger: BrowserLedger, browser = new FakeBrowser()): Pro
 }
 function recorder() {
   const events: string[] = [];
-  return { events, settings: { write: async (text: string) => { events.push(`write ${text.trim()}`); }, flush: async () => { events.push('flush'); }, exit: (code?: number) => { events.push(`exit ${String(code)}`); } } };
+  // Signal handlers go to the recorder, never to this test process.
+  const signals = new Map<string, () => void>();
+  return { events, signals, settings: { write: async (text: string) => { events.push(`write ${text.trim()}`); }, flush: async () => { events.push('flush'); }, exit: (code?: number) => { events.push(`exit ${String(code)}`); },
+    onSignal: (signal: string, handler: () => void) => { signals.set(signal, handler); return () => { signals.delete(signal); }; } } };
 }
 
 test('the combined path keeps the slot, and the command exits 35 s after its last close request, after its writes', async t => {
@@ -42,12 +45,11 @@ test('the combined path keeps the slot, and the command exits 35 s after its las
   assert.deepEqual(events, [
     'flush',
     'write practonaut: browser 1 (mirror): closed; process end not proven (disconnected before its close); its slot is held until Practonaut exits; directory cleanup unconfirmed.',
-    'write practonaut: Waiting for 1 browser to close; Playwright ends them within 30 s of the request.',
-  ], 'the command\'s output is flushed and the ledger reported before anything else');
-  await advance(t, () => events.length > 3, 34_500);
-  assert.equal(events.length, 3, 'no exit before 35 s');
-  await advance(t, () => events.length > 3, 1_000);
-  assert.equal(events[3], `exit ${String(process.exitCode)}`, 'process.exit with the command\'s own exit code');
+  ], 'the command\'s output is flushed and the ledger reported before anything else; no promise of Playwright\'s 30 s for a browser it no longer closes');
+  await advance(t, () => events.length > 2, 34_500);
+  assert.equal(events.length, 2, 'no exit before 35 s');
+  await advance(t, () => events.length > 2, 1_000);
+  assert.equal(events[2], `exit ${String(process.exitCode)}`, 'process.exit with the command\'s own exit code');
 });
 
 test('no exit when the browser\'s end is proven before the rule fires', async t => {
@@ -67,7 +69,8 @@ test('no exit when the browser\'s end is proven before the rule fires', async t 
 test('the rule fires at once when 35 s have passed since the last close request; nothing is armed when all is released', async t => {
   const ledger = new BrowserLedger();
   await unproven(ledger);
-  Object.defineProperty(ledger, 'lastCloseRequestAt', { get: () => performance.now() - 40_000 });
+  const past = performance.now() - 40_000;
+  Object.defineProperty(ledger, 'lastCloseRequestAt', { get: () => past });
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const late = recorder();
   await finishCommand({ ledger, ...late.settings });
@@ -88,7 +91,7 @@ test('the ledger\'s lines name each statement in German as well', async () => {
   try {
     assert.deepEqual(ledgerLines(ledger), [
       'practonaut: Browser 1 (Berichtskarte): Schließen bei Fristende aufgegeben, läuft noch; Prozessende noch nicht belegt; Aufräumen der Verzeichnisse unbestätigt.\n',
-      'practonaut: Browser 2 (Startprüfung): Start abgelehnt; Prozessende nicht belegt; sein Platz bleibt 35 s nach der Ablehnung belegt; Aufräumen der Verzeichnisse unbestätigt.\n',
+      'practonaut: Browser 2 (Startprüfung): Start abgelehnt; Prozessende nicht belegt; ein beim Start erzeugter Prozess endet womöglich noch, daher bleibt sein Platz 35 s nach der Ablehnung belegt; Aufräumen der Verzeichnisse unbestätigt.\n',
     ]);
   } finally { setCliLanguage('en'); }
   browser.closing.finish();
@@ -117,10 +120,108 @@ test('a deferred command is not finished when main returns', async () => {
   const finish = deferCommandEnd({ ledger, ...settings });
   await afterMain({ ledger, ...settings });
   assert.deepEqual(events, [], 'main\'s end did nothing');
-  const timer = await finish() as ReturnType<typeof setTimeout> | undefined;
-  clearTimeout(timer);
-  assert.equal(events.length, 3, 'the deferred end reported and armed the rule');
+  const rule = await finish();
+  assert.ok(rule, 'the deferred end armed the rule');
+  rule.cancel();
+  assert.equal(events.length, 2, 'the deferred end reported');
   resetCommandEnd();
+});
+
+// Review of PR #69 (Codex 1): the rule read the last close request once, when it was armed. A browser
+// whose launch arrives late goes to its one close after that; the exit must still wait 35 s from it.
+test('the 35 s rule follows a close requested after it was armed', async t => {
+  const ledger = new BrowserLedger(); await unproven(ledger);
+  let last = 0, now = 0;
+  Object.defineProperty(ledger, 'lastCloseRequestAt', { get: () => last });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { events, settings } = recorder();
+  await finishCommand({ ledger, ...settings, now: () => now });
+  const pass = async (until: number): Promise<void> => { while (now < until) { t.mock.timers.tick(250); now += 250; await flush(); } };
+  await pass(10_000);
+  last = 10_000; // A late browser's one close is requested now.
+  await pass(44_750);
+  assert.equal(events.some(event => event.startsWith('exit')), false, 'no exit 35 s after the first request, nor before 35 s after the late one');
+  await pass(45_500);
+  assert.equal(events.filter(event => event.startsWith('exit')).length, 1, 'the exit comes 35 s after the latest request');
+});
+
+// Review of PR #69 (effects-5): Ctrl+C during the wait killed Node past Playwright's exit handler.
+test('while the rule waits, a signal ends the command through process.exit with its signal code', async t => {
+  const ledger = new BrowserLedger(); await unproven(ledger);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { events, signals, settings } = recorder();
+  await finishCommand({ ledger, ...settings });
+  assert.deepEqual([...signals.keys()].sort(), ['SIGHUP', 'SIGINT', 'SIGTERM']);
+  signals.get('SIGINT')!();
+  assert.equal(events.at(-1), 'exit 130');
+  assert.equal(signals.size, 0, 'the other handlers are removed');
+  await advance(t, () => false, 40_000);
+  assert.equal(events.filter(event => event.startsWith('exit')).length, 1, 'the rule does not exit a second time');
+  const quiet = recorder();
+  await finishCommand({ ledger: new BrowserLedger(), ...quiet.settings });
+  assert.equal(quiet.signals.size, 0, 'no handler when nothing is held');
+});
+
+// Review of PR #69 (effects-4): the wait line counted entries with nothing of Playwright's left.
+test('the wait line counts only browsers whose close or launch still runs', async () => {
+  setCliLanguage('en');
+  const ledger = new BrowserLedger();
+  const rejected = await ledger.reserve('start-check', { waitMs: 1 });
+  await rejected.launch(() => Promise.reject(new Error('Chromium sandbox policy'))).catch(() => undefined);
+  await unproven(ledger);
+  const only = recorder();
+  const rule = await finishCommand({ ledger, ...only.settings });
+  rule?.cancel();
+  assert.equal(only.events.some(event => event.includes('Waiting for')), false, 'a rejected launch and a disconnected browser are not browsers Playwright still closes');
+  assert.match(only.events[1] ?? '', /launch rejected; process end not proven; a process the launch spawned may still be ending, so its slot is held for 35 s after the rejection/);
+  const closing = new FakeBrowser('held'), lease = await ledger.reserve('render-check', { waitMs: 1 });
+  await lease.launch(() => Promise.resolve({ browser: closing as unknown as Browser, sandbox: true }));
+  void lease.close(performance.now());
+  await flush();
+  const one = recorder();
+  (await finishCommand({ ledger, ...one.settings }))?.cancel();
+  assert.equal(one.events.at(-1), 'write practonaut: Waiting for 1 browser to close; Playwright ends it within 30 s of the request.');
+  closing.closing.finish();
+});
+
+// Review of PR #69 (Codex 2, contract-mcp-finish-host-open, effects-2): a failing step skipped the
+// host's close, and the command's end still armed the rule with the host open.
+test('practonaut mcp: every shutdown step is tried on its own, and the rule is armed only once the host closed', async () => {
+  const saved = process.exitCode;
+  try {
+    const order: string[] = [];
+    const failing = mcpShutdown({
+      handle: { close: async () => { order.push('stdio'); throw new Error('stdio close failed'); } },
+      launcher: () => ({ remove: async () => { order.push('launcher'); throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } }),
+      host: { close: async () => { order.push('host closed'); } },
+      finish: async hostClosed => { order.push(`command end, host closed: ${hostClosed}`); },
+    });
+    await failing();
+    assert.deepEqual(order, ['stdio', 'launcher', 'host closed', 'command end, host closed: true']);
+    assert.equal(process.exitCode, 3, 'the failed steps set the exit code');
+    const ends: boolean[] = [];
+    await mcpShutdown({ handle: { close: async () => {} }, launcher: () => undefined, host: { close: async () => { throw new Error('Session shutdown could not be fully confirmed'); } }, finish: async hostClosed => { ends.push(hostClosed); } })();
+    assert.deepEqual(ends, [false], 'a host that did not close is reported as such');
+    const ledger = new BrowserLedger(); await unproven(ledger);
+    const { events, signals, settings } = recorder();
+    assert.equal(await finishCommand({ ledger, ...settings, armExit: false }), undefined, 'no rule is armed past a host that did not close');
+    assert.equal(signals.size, 0);
+    assert.match(events.join('\n'), /browser 1 \(mirror\)/, 'the ledger is still reported');
+  } finally { process.exitCode = saved; }
+});
+
+// Review of PR #69 (effects-9): German texts for a count of 1.
+test('the budget and wait texts agree with a count of 1 in German and English', () => {
+  setCliLanguage('de');
+  try {
+    assert.match(cliText('benchBudgetRuns', { n: 1 }), /^1 Lauf konnte nicht bewertet werden/);
+    assert.match(cliText('benchBudgetRuns', { n: 2 }), /^2 Läufe konnten nicht bewertet werden/);
+    assert.match(cliText('browsersWaiting', { count: 1 }), /von 1 Browser; Playwright beendet ihn spätestens/);
+    assert.match(cliText('browsersWaiting', { count: 2 }), /von 2 Browsern; Playwright beendet sie spätestens/);
+    assert.match(cliText('browserBudgetExhausted', { running: 7, closing: 1, budget: 8 }), /7 laufen und 1 schließt gerade/);
+    assert.match(cliText('browserBudgetExhausted', { running: 1, closing: 7, budget: 8 }), /1 läuft und 7 schließen gerade/);
+  } finally { setCliLanguage('en'); }
+  assert.match(cliText('browsersWaiting', { count: 1 }), /Waiting for 1 browser to close; Playwright ends it within/);
 });
 
 // The real CLI, per command kind: a preload puts the combined path into the process ledger with its
@@ -147,9 +248,11 @@ function endedThroughRule(name: string, ended: Ended): void {
   assert.equal(ended.code, 0, `${name}: ${ended.stderr}`);
   const lines = ended.stderr.split('\n');
   const ledger = lines.findIndex(line => line.includes('browser 1 (mirror): closed; process end not proven'));
-  const waiting = lines.findIndex(line => line.includes('Waiting for 1 browser to close'));
+  // The preload's browser disconnected before its close: nothing of Playwright's is left to wait for.
+  assert.equal(lines.some(line => line.includes('Waiting for')), false, `${name}: no wait promised`);
+  // Every credential under the home counts, bench runs' included (review of PR #69, effects-7).
   const exit = lines.findIndex(line => line.startsWith('[exit-rule] process.exit(0) tokens=0'));
-  assert.ok(ledger >= 0 && waiting > ledger && exit > waiting, `${name}: the ledger's lines, then the exit, with no credential left:\n${ended.stderr}`);
+  assert.ok(ledger >= 0 && exit > ledger, `${name}: the ledger's lines, then the exit, with no credential left:\n${ended.stderr}`);
 }
 
 test('every command kind ends through the rule only after its own shutdown (real CLI)', { timeout: 180_000 }, async () => {
@@ -185,5 +288,31 @@ test('the real CLI names a full browser budget with the counts and the remedy, i
     assert.equal(english.stderr.trim(), 'practonaut: no browser could start: 5 running and 3 closing of 8 allowed, and none closed within the launch bound. Wait until they have closed, or restart Practonaut. [browser_budget_exhausted]');
     assert.equal(german.status, 3, german.stderr);
     assert.match(german.stderr, /kein Browser konnte starten: 5 laufen und 3 schließen gerade, 8 sind erlaubt.*Practonaut neu starten\. \[browser_budget_exhausted\]/);
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+// Review of PR #69 (effects-8): the bench's count of runs lost to the budget had no test.
+test('a bench counts the runs it lost to the browser budget after its table, in English and German', { timeout: 180_000 }, async () => {
+  const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-bench-budget-'));
+  try {
+    const bench = (out: string, ...lang: string[]) => spawnSync(process.execPath, ['--import', join(ROOT, 'tests/support/budget-mirror-full-preload.ts'), CLI, ...lang, 'bench', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'required', '--out', join(home, out)], { cwd: home, encoding: 'utf8', timeout: 120_000, env: { ...process.env, PRACTONAUT_HOME: home } });
+    const english = bench('en.json'), german = bench('de.json', '--lang', 'de');
+    assert.equal(english.status, 0, english.stderr);
+    assert.match(english.stdout, /\n1 run could not be judged because no browser slot became free \(browser_budget_exhausted\); see each run's note\.\n/);
+    assert.match(german.stdout, /\n1 Lauf konnte nicht bewertet werden, weil kein Browser-Platz frei wurde \(browser_budget_exhausted\)/);
+    const report = JSON.parse(await readFile(join(home, 'en.json'), 'utf8')) as { sessions?: Array<{ runs: Array<{ status: string; note?: string }> }>; runs?: Array<{ status: string; note?: string }> };
+    const runs = report.runs ?? report.sessions?.flatMap(session => session.runs) ?? [];
+    assert.deepEqual(runs.map(run => [run.status, run.note?.startsWith('browser_budget_exhausted: ')]), [['infra_error', true]], 'the run\'s note names the budget');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+// Review of PR #69 (effects-4): a refused sandbox setting launched nothing, yet held a slot for 35 s
+// and the command promised to wait for a browser.
+test('a refused sandbox setting leaves no ledger line and no wait (doctor --adapter)', { timeout: 120_000 }, async () => {
+  const home = await mkdtemp(join(realpathSync(tmpdir()), 'pn-doctor-policy-'));
+  try {
+    const doctor = spawnSync(process.execPath, [CLI, 'doctor', '--adapter'], { cwd: home, encoding: 'utf8', timeout: 60_000, env: { ...process.env, PRACTONAUT_HOME: home, PRACTONAUT_CHROMIUM_SANDBOX: 'yes' } });
+    assert.equal(doctor.status, 3, doctor.stderr);
+    assert.equal(/launch rejected|Waiting for/.test(doctor.stderr), false, doctor.stderr);
   } finally { await rm(home, { recursive: true, force: true }); }
 });
