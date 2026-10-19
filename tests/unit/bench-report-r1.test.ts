@@ -155,7 +155,7 @@ test('R1 minors: one colon and a capital per caveat line, the task id in mono, "
   assert.equal(caveats[0], 'Paired by task identity: excalidraw-library 1.0.0 on the baseline, drawio-library 1.0.0 on the candidate');
   assert.match(html, /<td data-label="instance" class="text wide"><span class="id"><code class="id">T<\/code> · seed\u00a01<\/span> \(baseline\)\u00a0· <span class="id"><code class="id">T<\/code>/u);
   assert.match(html, /\(baseline\) · no instance \(candidate\)<\/td>/);
-  assert.match(html, /<td data-label="change" class="text prose">no run on the candidate<\/td>/);
+  assert.match(html, /<td data-label="change" class="text wide prose">no run on the candidate<\/td>/);
   assert.equal(visible(html).includes('PADR-'), false, 'no decision-record number on a page');
   // The changed outcomes of the configurations are listed under their own heading (R1-F22's state).
   const config = visible(compared(s.configExcalidraw, s.configDrawio, 'en'));

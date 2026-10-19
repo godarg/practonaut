@@ -50,9 +50,16 @@ const joined = (value: string): string => value.split(QUOTED).map((part, index) 
   .replace(/(\d) %/gu, '$1\u00a0%').replace(/(\d)\u2013(?=\d)/gu, '$1\u2013\u2060').replace(/([<>\u2264\u2265]) (?=\d)/gu, '$1\u00a0')).join('');
 const ENTITIES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ENTITIES[char]!);
-/** Escaped as written, without joining numbers to words: a formal condition's text, which wraps freely
- * (joined, "= 3 und" became one run that a narrow line had to cut inside a word). */
-const escapePlain = (value: string): string => readableText(value).replace(/[&<>"']/g, char => ENTITIES[char]!);
+/** A formal condition's text: numbers are not joined to words (joined, "= 3 und" became one run that a
+ * narrow line had to cut inside a word, design review R3), but an operator is joined to the operand
+ * after it, so a line may break before "=", "≈", "<" or ">", never after one (design review R4). An
+ * operand longer than `FORMAL_JOIN_MAX` characters (a long label) is not joined: with its operator it
+ * may not fit a phone's line, and a break after the operator is better than one inside the label. */
+const FORMAL_JOIN_MAX = 24;
+const escapeFormal = (value: string): string => readableText(value).replace(new RegExp(`([=≈<>≤≥]) (?=\\S{1,${FORMAL_JOIN_MAX}}(?:\\s|$))`, 'gu'), '$1\u00a0').replace(/[&<>"']/g, char => ENTITIES[char]!);
+/** Escaped, with a number kept with the word it counts ("3 runs") but a word free to break before the
+ * number after it ("3 of" / "3 runs"): text in a narrow cell, which must shrink to its cell (R4). */
+export const escapeBreakable = (value: string): string => readableText(value).split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0')).join('').replace(/[&<>"']/g, char => ENTITIES[char]!);
 const esc = escapeHtml;
 /** A command named in prose ("practonaut report", "report --verify") and a command-line flag: code, set
  * in mono like every command; a flag stays on one line, so a reader who copies it gets it whole. */
@@ -126,7 +133,7 @@ export function chips(label: string, facts: readonly string[], ids: readonly str
 export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean; prose?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false, compact = false): string {
   const region = labelledBy ? `aria-labelledby="${labelledBy}"` : `aria-label="${esc(label)}"`;
   const header = head.map(cell => `<th scope="col"${cell.capped ? ' class="text capped"' : cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
-  const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : cell.prose ? ' class="text prose"' : ' class="text"';
+  const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.numeric && !cell.wide ? '' : ` class="${['text', ...(cell.wide ? ['wide'] : []), ...(cell.prose ? ['prose'] : [])].join(' ')}"`;
   const body = rows.map(row => `<tr>${row.map((cell, index) => `<td data-label="${esc(head[index]!.text)}"${kind(head[index]!)}>${cell}</td>`).join('')}</tr>`).join('');
   return `<div class="scroll ${many ? 'stack-many' : 'stack'}${compact ? ' compact' : ''}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -442,7 +449,7 @@ function conditionsHtml(detail: RunDetail, language: Language): string {
   const items = detail.conditions.map((condition, index) => {
     const kind = condition.met === null ? 'unknown' : condition.met ? 'pass' : 'fail';
     const word = condition.met === null ? t.conditionUnknown : condition.met ? t.conditionMet : t.conditionUnmet;
-    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${escapePlain(condition.formal[language])}</span>` : ''}</div></li>`;
+    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${escapeFormal(condition.formal[language])}</span>` : ''}</div></li>`;
   }).join('');
   const note = detail.traceError ? `<p class="note">${esc(t.traceMissing)}</p>` : detail.conditionsMissing ? `<p class="note">${esc(fill(language, t.conditionsMissing, { reason: missing(detail.conditionsMissing) }))}</p>` : '';
   return `<ol class="conditions">${items}</ol>${note}`;
@@ -492,11 +499,12 @@ function trajectoryHtml(detail: RunDetail, language: Language): string {
   if (!detail.trajectory.length) return `<p class="note">${esc(t.trajectoryEmpty)}</p>`;
   const total = detail.conditions?.length ?? 0, byClient = detail.clients.length > 1;
   const row = (entry: TrajectoryRow): string[] => {
-    const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
+    // The words may break before a number, so the outcome shrinks to its cell (R4).
+    const outcome = entry.outcome === 'accepted' ? escapeBreakable(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${escapeBreakable(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
     const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [fill(language, t.gained, { list: entry.gained.join(', ') })] : []), ...(entry.lost.length ? [fill(language, t.lost, { list: entry.lost.join(', ') })] : [])].join(' · ');
     return [String(entry.number), ...(byClient ? [entry.client ? dataWords(entry.client) : esc(t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
   };
-  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult }, { text: t.trajectoryMet }];
+  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult, wide: true }, { text: t.trajectoryMet }];
   return stackedTable(t.trajectory, null, head, detail.trajectory.map(row));
 }
 
