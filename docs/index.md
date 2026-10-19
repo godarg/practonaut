@@ -57,6 +57,7 @@
 · [0046](adr/0046-vendor-neutral-presets.md) Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream (proposed).
 · [0047](adr/0047-bounded-spatial-predicates.md) Bounded spatial predicates: six layout operators over the judged geometry (proposed).
 · [0048](adr/0048-co-actor-scenario.md) Co-actor scenario: a scripted colleague edits the board mid-run (proposed).
+· [0050](adr/0050-browser-close-is-a-bounded-request.md) A browser close is a bounded request on top of Playwright's own forced end (proposed).
 
 [Archive](adr/archive/README.md): [0009](adr/archive/0009-release-and-publication.md) · [0021](adr/archive/0021-supported-unsealed-evaluation.md) · [0027](adr/archive/0027-private-player-bootstrap-handoff.md).
 
