@@ -37,6 +37,7 @@ async function locked<T>(path: string, work: () => Promise<T>): Promise<T> {
   for (;;) {
     try { await (await open(lock, 'wx', 0o600)).close(); break; }
     catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new LedgerError('ledger_missing', `there is no local release ledger at ${path}; create it with: node tools/challenge.ts ledger init`);
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       if (Date.now() > until) throw new LedgerError('ledger_locked', `the release ledger has been locked for ${LOCK_WAIT_MS / 1000} s (${lock}); remove the lock file only when no bench runs`);
       await new Promise(resolve => setTimeout(resolve, 50));

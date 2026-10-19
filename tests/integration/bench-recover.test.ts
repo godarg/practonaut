@@ -14,7 +14,8 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from '../support/fake-claude.ts';
 import { validateBenchReport, type BenchReportV2 } from '../../src/bench/report.ts';
-import { scanSpend } from '../../src/challenge/files.ts';
+import { scanOutside } from '../../src/challenge/files.ts';
+import { headerLine, parseLedger } from '../../src/challenge/ledger.ts';
 import { mergeAgentRuns } from '../../src/challenge/gate.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -47,9 +48,10 @@ test('a bench killed with kill -9 is recovered from its run folders once its age
     assert.ok(existsSync(join(folder, 'connect-s1-r1', 'checker.json')), 'the first run was judged');
     bench.kill('SIGKILL'); await once(bench, 'exit');
     assert.equal(existsSync(join(folder, 'report.json')), false, 'a killed bench writes no report');
-    // Without a report the judged run is listed nowhere: the gate would refuse the round.
-    const scan = async () => (await scanSpend([join(home, 'bench')], { developmentHash: '-', developmentTasks: [], heldOutTasks: TASKS })).heldOut.map(run => `${run.runId}:${run.status}`);
-    assert.deepEqual(await scan(), ['connect-s1-r1:null', 'decision-s1-r1:unjudged']);
+    // Without a report, and outside a release ledger (a plain bench takes no entry), both model-run
+    // folders are found by the gate's scan, which refuses a round with any of them.
+    const scan = async () => (await scanOutside([join(home, 'bench')], { worlds: [], tasks: TASKS }, parseLedger(headerLine()))).map(run => run.run);
+    assert.deepEqual(await scan(), ['connect-s1-r1', 'decision-s1-r1']);
 
     // The killed bench's agent outlives it: no recovery (and no world in the folder) while it runs.
     assert.ok(alive(sleeper));
