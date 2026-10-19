@@ -137,21 +137,27 @@ export const difficultyAt = (difficulty: Difficulty | 'mixed', index: number): D
 
 export interface ChallengeSet { world: World; instances: Instance[]; oracles: TaskOracle[] }
 /** The world holding these instances' tasks (one variant case, as from-scenes made them). */
-export function worldOf(worldId: string, instances: readonly Instance[]): World {
+/** The application a set is written for (PADR-0049 decision 8.5): the same instances, `generatedBy`
+ * unchanged, in a world of that application, so each instance has the same task identity on both. */
+export type ChallengeApp = 'excalidraw' | 'drawio';
+export const CHALLENGE_APPS: readonly ChallengeApp[] = ['excalidraw', 'drawio'];
+const APP_ENTRIES: Readonly<Record<ChallengeApp, { adapterId: ChallengeApp; versionRange: string }>> = Object.freeze({ excalidraw: { adapterId: 'excalidraw', versionRange: '0.18.1' }, drawio: { adapterId: 'drawio', versionRange: '32.4.1' } });
+export function worldOf(worldId: string, instances: readonly Instance[], app: ChallengeApp = 'excalidraw'): World {
   return validateWorld({
-    schema: 'practonaut.world/2', id: worldId, version: '1.0.0', app: { adapterId: 'excalidraw', versionRange: '0.18.1' },
+    schema: 'practonaut.world/2', id: worldId, version: '1.0.0', app: { ...APP_ENTRIES[app] },
     initialState: { objects: {} }, tasks: instances.map(instance => instance.task), variants: { generator: 'finite-seeded-v1', cases: [{ id: 'drawn', labels: {}, params: {}, layoutOffset: { x: 0, y: 0 } }] },
     provenance: { authors: ['Practonaut contributors'] }, rights: { license: 'CC0-1.0' },
   });
 }
 /** A set: one world (`challenge-<family>-<set>`) holding one task per seed, every task re-verified in
  * the merged world exactly as the bench will load it. */
-export function generateSet(family: Family, seeds: readonly number[], difficulty: Difficulty | 'mixed', set: string): ChallengeSet {
+export function generateSet(family: Family, seeds: readonly number[], difficulty: Difficulty | 'mixed', set: string, app: ChallengeApp = 'excalidraw'): ChallengeSet {
   if (!seeds.length || seeds.length > 120) throw new ChallengeError('usage', 'a set holds 1 to 120 instances (a world holds at most 128 tasks)');
   if (new Set(seeds).size !== seeds.length) throw new ChallengeError('usage', 'seeds must be distinct');
-  const worldId = worldIdOf(family, set);
-  const instances = seeds.map((seed, index) => generateInstance(family, seed, difficultyAt(difficulty, index), worldId));
-  const world = worldOf(worldId, instances);
+  // Instances are made exactly as for Excalidraw; another app's world takes them unchanged, under its own id.
+  const sourceId = worldIdOf(family, set), worldId = app === 'excalidraw' ? sourceId : `${sourceId}-${app}`;
+  const instances = seeds.map((seed, index) => generateInstance(family, seed, difficultyAt(difficulty, index), sourceId));
+  const world = worldOf(worldId, instances, app);
   const oracles = instances.map(instance => verifyTask(taskWorld(world, instance.taskId), instance.taskId, instance.oracle.steps, instance.goal));
   return { world, instances, oracles };
 }
