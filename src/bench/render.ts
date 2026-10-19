@@ -51,14 +51,26 @@ const joined = (value: string): string => value.split(QUOTED).map((part, index) 
 const ENTITIES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ENTITIES[char]!);
 /** A formal condition's text: numbers are not joined to words (joined, "= 3 und" became one run that a
- * narrow line had to cut inside a word, design review R3), and each operator travels with the operand
- * after it (design review R4): "= 3" is one box (`.op`, inline-block) that moves to the next line
- * whole, so a line breaks before "=", "≈", "<" or ">", never after one. Only a pair wider than a whole
- * line (a long label on a phone) breaks inside its box, after the operator, never inside the label. */
+ * narrow line had to cut inside a word, design review R3), and each comparison (left operand, operator,
+ * right operand) is one box (`.op`, inline-block, never wider than the line) that moves to the next
+ * line whole (design reviews R4, R5). So a line ends on an operator only inside a comparison wider than
+ * the line: then the operator ends the line with its left operand ("(s.Beschriftung =" / the label),
+ * never alone. A right operand is a word, a quoted string up to its closing quote, or the fixed value
+ * "unattached" / "nicht angebunden"; one that fits a line (`ID_MAX`) never breaks inside. */
+const FORMAL_OPERAND = String.raw`(?:"(?:[^"\\]|\\.)*"|nicht angebunden|unattached)[)\]]*|\S+`;
+const FORMAL_COMPARISON = new RegExp(String.raw`(\S+) ([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
+const FORMAL_PAIR = new RegExp(String.raw`(?<=^|\s)([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
 const escapeFormal = (value: string): string => {
   const text = (part: string): string => part.replace(/[&<>"']/g, char => ENTITIES[char]!);
-  const parts = readableText(value).split(/([=≈<>≤≥]) (\S+)/u);
-  return parts.map((part, index) => index % 3 === 0 ? text(part) : index % 3 === 1 ? `<span class="op">${text(part)} ${text(parts[index + 1]!)}</span>` : '').join('');
+  const operand = (part: string): string => text(part.length <= ID_MAX ? part.replace(/ /gu, '\u00a0') : part);
+  // An operator whose left operand closed the comparison before it ("… = nicht angebunden) = 1") still
+  // travels with its right operand.
+  const pairs = (part: string): string => {
+    const pieces = part.split(FORMAL_PAIR);
+    return pieces.map((piece, index) => index % 3 === 0 ? text(piece) : index % 3 === 1 ? `<span class="op">${text(piece)} ${operand(pieces[index + 1]!)}</span>` : '').join('');
+  };
+  const parts = readableText(value).split(FORMAL_COMPARISON);
+  return parts.map((part, index) => index % 4 === 0 ? pairs(part) : index % 4 === 1 ? `<span class="op">${text(part)} ${text(parts[index + 1]!)} ${operand(parts[index + 2]!)}</span>` : '').join('');
 };
 /** Escaped, with a number kept with the word it counts ("3 runs") but a word free to break before the
  * number after it ("3 of" / "3 runs"): text in a narrow cell, which must shrink to its cell (R4). */
@@ -501,13 +513,15 @@ function trajectoryHtml(detail: RunDetail, language: Language): string {
   }
   if (!detail.trajectory.length) return `<p class="note">${esc(t.trajectoryEmpty)}</p>`;
   const total = detail.conditions?.length ?? 0, byClient = detail.clients.length > 1;
+  // A label and a single item stay on one line ("lost: 3"); a longer list wraps after its commas.
+  const conditionList = (template: string, items: readonly number[]): string => { const text = fill(language, template, { list: items.join(', ') }); return items.length === 1 ? text.replace(': ', ':\u00a0') : text; };
   const row = (entry: TrajectoryRow): string[] => {
-    // The words may break before a number, so the outcome shrinks to its cell (R4).
-    const outcome = entry.outcome === 'accepted' ? escapeBreakable(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${escapeBreakable(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
-    const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [fill(language, t.gained, { list: entry.gained.join(', ') })] : []), ...(entry.lost.length ? [fill(language, t.lost, { list: entry.lost.join(', ') })] : [])].join(' · ');
+    // The result takes a full stacked row (R4), so its counted phrase stays whole ("(revision 1)", R5).
+    const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
+    const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [conditionList(t.gained, entry.gained)] : []), ...(entry.lost.length ? [conditionList(t.lost, entry.lost)] : [])].join(' · ');
     return [String(entry.number), ...(byClient ? [entry.client ? dataWords(entry.client) : esc(t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
   };
-  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult, wide: true }, { text: t.trajectoryMet }];
+  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult, wide: true }, { text: t.trajectoryMet, wide: true }];
   return stackedTable(t.trajectory, null, head, detail.trajectory.map(row));
 }
 
@@ -716,7 +730,7 @@ ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.labe
 ${jump}</header>
 ${banner('warning', t.cardNoSandbox, `<p>${prose(t.noSandbox)}</p>`)}
 <section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n3'}">${cards.join('')}</dl></section>
-<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
+<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task, wide: true }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2><p class="note">${esc(t.artifactBoardNote)}</p>${runCards.join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">

@@ -168,7 +168,7 @@ test('rendering names label, isolation level, world, generated instances and "no
     assert.match(renderTable(other), new RegExp(`^2/4 passed · .* · ${words}${kind === 'builtin' ? '' : ' · model not reported'}$`, 'm'));
   }
   const de = renderTable(value, 'de');
-  assert.match(de, /^2\/4 bestanden · 95-%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
+  assert.match(de, /^2\/4 bestanden · 95\u2011%-Intervall .* · Vorlage: Werkzeuge nicht von Practonaut eingeschränkt · Modell some-model \(Selbstauskunft, aus der Ausgabe des Befehls\)$/m);
   assert.match(de, /keine Referenz/);
   assert.match(renderHtml(value, ':root{}', 'de'), /<li class="chip"><span>Modell <span class="data id">some-model<\/span> \(Selbstauskunft, aus der Ausgabe des Befehls\)<\/span><\/li>/);
   const verified = renderHtml(value, ':root{}', 'en', 're-verified');
