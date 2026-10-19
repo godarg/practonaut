@@ -1,6 +1,6 @@
 {
   "schema": "practonaut.bench/3",
-  "createdAt": "2026-10-19T05:54:42.397Z",
+  "createdAt": "2026-10-19T23:48:37.693Z",
   "label": "Excalidraw library, oracle",
   "verdictLevel": "session",
   "environment": {
@@ -456,7 +456,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 300,
+      "wallMs": 352,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -487,14 +487,14 @@
       },
       "artifacts": {
         "session": "e1b60525ffb2f08051e90ce001ec69c54d17ca78eb56e3901c752f569ff1b9c9",
-        "native": "b63210144bdb0fadd658974689eb7272a5c3f9b7a763a37129c5cf7013e67b13",
+        "native": "fa90d11d31036519529522fb4328f8f334b7bb968ecc6ad5dc6151731598e36b",
         "checker": "ce6785f1450fb60a33523a022e27443a5d3645c2cf4ef4ed3100c418893c4069",
         "trace": "11764b4b10f2da7e1fcf5e65badc20e29b0e0a774cdcdd75e4beda83b3e15143",
         "board": "98b5f4179003dc0f8076945de8904358ab018d4bf68fead8831289feee63948e"
       },
       "logs": {
         "calls": {
-          "sha256": "c3998460445157e77acc07ce557c905d4208c4433a8f4153de49386739f8fb8e",
+          "sha256": "b918d9c5afa86a92d03596456b791d5858c23723d3024f738e6cc2a7320df470",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -517,7 +517,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 335,
+      "wallMs": 402,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -548,14 +548,14 @@
       },
       "artifacts": {
         "session": "6f871693e3b8c90dc5f2f75697d5da0d359935e9a2f8360d25670966b3e77369",
-        "native": "f25512a66e7f50669ae4bdeb81b97d72a3595ba6f7f406030bf8470efbb73d6b",
+        "native": "75ee1f238081e445e0ac9d4601ff3f2db236a7d08c225484aa2c7ed2ee313032",
         "checker": "ce6785f1450fb60a33523a022e27443a5d3645c2cf4ef4ed3100c418893c4069",
         "trace": "6ffc38eec98d391b662a2577afb1fa0a91268518616a28316437d01417a9e488",
         "board": "a67f895a308c73743d0640e8069123f48fb0060e752efc9a1dbc396521264ac1"
       },
       "logs": {
         "calls": {
-          "sha256": "a98c3f61f32772a3b7bf07e770cb8967ee5a539ae2f279d9f7c99d4b210497a5",
+          "sha256": "afc199536743e914dac9e1fdde9ffae63519c0c383d8afa9dea4f5e72c7381a4",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -573,6 +573,1104 @@
       "verdictLevel": "session",
       "id": "add-step-s4-r1",
       "taskId": "add-step",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 376,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "7f40dd7a955a5369c3b877f9e9e1d5ae182305e1119c63cb3a22022abaf560cc",
+        "native": "e3bb83fe66afe7c87c89998f041f8068e9e6fa3db1b7ead6e1aa9f32f323b794",
+        "checker": "ce6785f1450fb60a33523a022e27443a5d3645c2cf4ef4ed3100c418893c4069",
+        "trace": "e099b1e364d435f20171cf3f6ed27b4db6e7311c1ef5ca26a4d9146db2b85c05",
+        "board": "85f761391d889025b78311ec403a00100c4a98b5b66e55c0336ac3a855817a9f"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "b8bad36ff21948ef6c60645139e6561949f251550ec7356a332937f1eb792e89",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "7964621662536781923571ec4d6c663130d5ad22734445fe820e0723e27ee343",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "connect-s0-r1",
+      "taskId": "connect",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 297,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "1919d0c20a36bcf545aaf14afcff7d36de6663c34128ec8efee72a6d07e5f7b3",
+        "native": "13e3e9c4172e2b4eb600da29e6a5c0c9450ae6d9dd02cce5ccc230a3a6b9d4e3",
+        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
+        "trace": "5d2e023c07a9864419a70d6d916f6ed0d9e2274e2a015cdd50b6823bdce57a6a",
+        "board": "abf125a4f899fa6b26a2bc8afd967193c242aff6b1f80cd25f3202e804474181"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "3c00a82c4f5d021427323171d595022293c876e07f3844a62e1940f725a006d9",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "connect-s2-r1",
+      "taskId": "connect",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 319,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "9c701e65e86256008abdf31db51db200c2920e0b014d51baba7ee17c681a961a",
+        "native": "8e27090ead93cfd776c6f87222db4b8f020adce6196fe43b050f840293add3c7",
+        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
+        "trace": "de017f5c3267e37f440fefa0ad5ed1d0873b7412ea3e7041a32b3543aac75228",
+        "board": "a7b808c72de092aa2aa0abd4678c18eba4db5dce392bd5273c75a819cbec2b9d"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "1be86b595ee9ad00cc02feb896956cc2ae81cd977866159c279684a4dc3ad4e4",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "connect-s4-r1",
+      "taskId": "connect",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 333,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "6c0939ada5d9b1095bb1b830422e284203f4f49c51bdab3c7ef8833a91b75fa4",
+        "native": "67b28292d1d7ed61778bcf5818715b3a5a16df6e6483c24955da5a2e6f4edb1a",
+        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
+        "trace": "3c63db84e1d1de9dfbbfa17890d39646b3c52b1f46567d2fe8bb59c341adc553",
+        "board": "15be8fd28728a08ae1b0782079f19dd9cc34f562ae63cf2a58e8bf2961fc3756"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "96c016e099e98e622d8dbcb9ceee460fff6c0aa32a377e5f12cf80fe98501899",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "disconnect-s0-r1",
+      "taskId": "disconnect",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 322,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "79bd303eb2bc06808841b73acc14917edfa785b4488cbb52378ecf555378b8c0",
+        "native": "4df3c70ea3c24531a81b8791e905cc1e6adaec156c4a4c41b4d6a8d3dfe4b8fd",
+        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
+        "trace": "9cbbed971e53e1fb77f14950e3e66cf6f178a287dc45a885a4bf51b32bb1c3ce",
+        "board": "e05e99dc8de77dd6d5b0fa7f96c97d60f927db2bf4fc6043b58b04276e048689"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "67d2c3c8649644da6e94e16fd7235679535acf87092b38af87139a0c3570231e",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "disconnect-s2-r1",
+      "taskId": "disconnect",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 336,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "7901891f612f418da95ca111f37657cdfe25c7d6a56922b3d369ad5718d42fb4",
+        "native": "d6e9b77d016c96d59e94841b006d4c9bd0a71ddfb13e0535be7208080c28972d",
+        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
+        "trace": "47bc57c993c3339a90eebf437947489c19d12e1bbfe1dc1f9928ed290de01b17",
+        "board": "c46b23c5a179bf7b66e32e669602987866aa3902601fda1ac33c919b42b2dfe7"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "af352a785760337e79507603b530203c8a7520a4077f63d8751d6dcba8d71bd2",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "disconnect-s4-r1",
+      "taskId": "disconnect",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 383,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "9413ac8701f1d0cd9ba3b03a566111dbdf30ee977eb730b0be042e28175e346c",
+        "native": "e19d75d64357caafb0d91f243a853f7ddfc8a0e926a7f1dc1b6b46764a724a90",
+        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
+        "trace": "a9c076288480e4688a29982e15b6300a5d5d43fd96da4d3f8ebacbb574f0b215",
+        "board": "d24f75f01ae4bbb97603ec5d8888afb138cc2c7b977380944c0abde47697e3b5"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "76e22935b70f83622a186090a006dd66f7dc2a4caa9de6e00ed66c112e033bd7",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "recolor-s0-r1",
+      "taskId": "recolor",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 392,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "5371caee6b9538da88970df959d12d2dea1638a2e587f5a0edba15f70065ae10",
+        "native": "4c6fb6b084bf5c9ba4cd8d69fe3277bcffda98d8ea7dad1de65916bd431f01fc",
+        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
+        "trace": "4cc292b134b96b31bdf8cfac125bf801fc8cccbb449e33f118380552b3349ea9",
+        "board": "5816d49d395b07cf28a6a679c42210b887e299c4d9f81354099bb5d67639fb3d"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "728693c5dca29f2ac620f610ac27c7a8579639d3b5cead42350a32538fdc10b5",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "recolor-s2-r1",
+      "taskId": "recolor",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 363,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "d19d2a4c89e7f5f4c39cd4d2e64e8eae6014637a10aae8dfbab9a7f381092f38",
+        "native": "ce662e375b46bcef2d6f5e0650334083d6b67abe61e2f726f8fa7d5af549f4e7",
+        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
+        "trace": "fef630bec18d06e080b073463f348163fc8dc9348d8e37ff00ee3a3bfcc7f9ed",
+        "board": "b4b9b78934d04ed6abd5cdb1c3d2931c4493aae9ce6eb5374d83446f9d8ce82f"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "d447b68c8f8e5ec5828663f8aca92b61fecd9be63b28333db0f4bd45e17d7b6d",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "recolor-s4-r1",
+      "taskId": "recolor",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 395,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "2faf780848a7e0616e688d17e8bfc3fe96da7f0163f57ad9fa16d50c14a27c99",
+        "native": "20e76c6ec135d36a311f4d93911f06fe2fd2ee80aafe3afb10260edba41127ae",
+        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
+        "trace": "2a8a07517837aa4ba72b2f9d0739ad4354378d9ea54229eb344eaec30958a039",
+        "board": "b821a303cb7c86f2f1adab93ebb382c20124d7f5c41fe5a5289034676e6c5580"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "8cc36881f40546175427c51d92bb03b1410e27c73134c8f80584a95dbeafbd5b",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "remove-step-s0-r1",
+      "taskId": "remove-step",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 379,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "ef45d6e45da7f8e1f58256a599998e85b2507726959909c019cb6842d4fd02ef",
+        "native": "1d367f90c64c0a857cf1358273ab2eabddfc907fb2b1962eee27441830cd8109",
+        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
+        "trace": "cc2b081168c507a06d29917032038460c38b7f94533d9ca444fbb633f0c1bea0",
+        "board": "cd44ab8f129a6fc8ad61319a5fed5ebb36c04b9319c816e12da78fba371fdbcd"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "c14d2fc0d2964a40d3d22b6e3391368bb4046d454967053b2ab06d350a6c2c15",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "remove-step-s2-r1",
+      "taskId": "remove-step",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 395,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "f5740a5283e5facca9451a48de6a04c12ca22efe42829f1b67902f0c8e77720d",
+        "native": "d8f6daa72c41a3e2cf8b4c650171bafc34078d83d6274a9b7485e9344ffdbb6c",
+        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
+        "trace": "11aca808246d598e73fabd58cb9c59dcbddcb1e324e9681288803aff7fb8bd85",
+        "board": "16b8dce5c896c1304210b64541e62aa24b76c73ba22aac76a4f936f2f1cb2977"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "b99392cfb1b47747c9fb83b4ff6c17afb3a963dc4c3c0d1999c4610f75d37db3",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "remove-step-s4-r1",
+      "taskId": "remove-step",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 399,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "149b11f55dc5e70f236ace05974d1888945882a6610f373447665790977cdc99",
+        "native": "57cda09dac72a932a0341c02a42b8a369eff3e221f5d12b8463da93fe2a38a6f",
+        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
+        "trace": "07d8427e5e9ed7a9b85a30d4172f17d970ff2b945cf1c0d5c1d38004d4f4e50a",
+        "board": "a797ca728817b8b70c8f74bba10f481c47b1de7a87b3e69d337d231ee1f74617"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "88f8eb06fe5b55fe3c35fe7e1cfd55484bb92dc49bbe675c219b2abb33488c07",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-frame-s0-r1",
+      "taskId": "rename-frame",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 416,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "10ff1c498d43ccdb531153da114b8899afe30ae8a14462ee33d82238337ee438",
+        "native": "f5d56749db63b7a1099d0d7328f00a8f945d0945bb3f8da2ac09db0be52158f3",
+        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
+        "trace": "3d3c01af4633b312cf0fd3928972472c5477784b956b15f27833b72abfce2bf7",
+        "board": "cad838c9014f8813843252ae0c4b7f5fdbbfa1e45d16b3f9527f678f8390a095"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "fc54f5e9a8f8fc881365f65ef5976ecb237a261fb7e8da1a14d87d8051c7d287",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "d9855027e8a21b453deb16c4f060283aca20318add87d093281167a7bb6e8ffa",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-frame-s2-r1",
+      "taskId": "rename-frame",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 399,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "0c18dde5066ad3c530715a09ed0ab6ffa03272d4645f8de7e6a139de013c9094",
+        "native": "68b7bb5228ba5293273234be69187f170315299bfbd00181ac89e0044c258edf",
+        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
+        "trace": "ddf56434c1f200719ffe217e84db17650578f257a600564590b9822ba2876f4a",
+        "board": "e6a5bb1602ebfa94defa9369906971743210e290dc77f30292a9bb00bd9df0ef"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "631e37f3378359d8143677c4bb4293a72f3f90edb7381f4848fbd0db96b61cdb",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "77ee521a7bb0ac8fdaaee672a193db09cb0defd09d4d834a79f9535c936bc114",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-frame-s4-r1",
+      "taskId": "rename-frame",
+      "seed": 4,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 439,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "cb837eb0470f3b308729a86f8ee06db80c2543d5446b7f273e4e96f2c0491a91",
+        "native": "66e07908944e3d524a763105d9e3cbb5d76e0868165b430c8823124c595db10f",
+        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
+        "trace": "c8f64710b86fc63dd928df12d9245d44a6de642407dd166799e0900e04e42199",
+        "board": "22b863d1dcc576d5c27ce36ffc761d3b62c09184f4316cf1ff1cd5aaea8943d0"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "a4e53c3ddfe1cb5371edaa7b425ed53c57b3334ffd345f8fd8efeaf10b4ea31b",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "ae5d64fcfa4226bcdbdbc1a81b17417a22c6b3763aaad83f913e813ae1806f5b",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-step-s0-r1",
+      "taskId": "rename-step",
+      "seed": 0,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 408,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "00eae99066d8021ec32a5ce1db8801056b7c16dd875dce41ed8f0212ac797487",
+        "native": "024d053b2acdcfdd3bb279cf9975038478364db2f6f357a2fc05501b3d5e52e7",
+        "checker": "c6f0c41dcbf981a95d5c56cf131a20c5baeeb4233c6305f6756ca1ebc91df502",
+        "trace": "68aaadbbb4cfa1ddc0ff33e79d00b759cbcddf7656afb2b3f359c06a9d59e645",
+        "board": "e3c75cb52de31c7883703793804a30c43e8755e15af4c0ca9675099b78e8bb17"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "a0e8fd699436617df08e84886ecf9a058cbb8b0826b89bb585de18928882574c",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "3dafdc13dd91a9582b8a139381304043c31368295f6402b24d14d3feca2e347a",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-step-s2-r1",
+      "taskId": "rename-step",
+      "seed": 2,
+      "repeat": 1,
+      "status": "completed",
+      "pass": true,
+      "referenceActions": 1,
+      "wallMs": 371,
+      "agentExitCode": 0,
+      "isolation": {
+        "level": "builtin-baseline",
+        "evidence": "by-kind"
+      },
+      "actions": 1,
+      "acceptedActions": 1,
+      "rejectedActions": 0,
+      "undos": 0,
+      "resets": 0,
+      "toolCalls": {
+        "observe": 2,
+        "act": 1,
+        "undo": 0,
+        "reset": 0,
+        "check": 1,
+        "total": 4
+      },
+      "checker": {
+        "session": {
+          "passed": true,
+          "errorClasses": []
+        },
+        "native": {
+          "passed": true,
+          "errorClasses": []
+        }
+      },
+      "artifacts": {
+        "session": "0db3139942ee15d071e5f11a84cab9f98104e2806788f66855da9107392de299",
+        "native": "09b0ec8149b1e0dac2692d66bd5a536d3f6cf1feffab11798bef915228a1171b",
+        "checker": "c6f0c41dcbf981a95d5c56cf131a20c5baeeb4233c6305f6756ca1ebc91df502",
+        "trace": "40c748c020d22207676f9f0a8dd9a680c94acd3fdd4a94abb55a3ecb0eef4c93",
+        "board": "9e66bf733f7e3c5f2e194c03f85e784575794260d598c96caadcb0a506c76432"
+      },
+      "logs": {
+        "calls": {
+          "sha256": "bd02ef53c521bb928d7d20564ae112833bfb909032fd3de5ce60ae74b5a77d8f",
+          "entries": 3,
+          "dropped": 0,
+          "omitted": 0,
+          "clientTiming": true
+        },
+        "mutations": {
+          "sha256": "438ebe5533a5d56a57655b32f2b29490ede2fd9af5399d5b5f292f90727fc3e6",
+          "entries": 2,
+          "omitted": 0
+        }
+      },
+      "agentActions": 1
+    },
+    {
+      "verdictLevel": "session",
+      "id": "rename-step-s4-r1",
+      "taskId": "rename-step",
       "seed": 4,
       "repeat": 1,
       "status": "completed",
@@ -608,1113 +1706,15 @@
         }
       },
       "artifacts": {
-        "session": "7f40dd7a955a5369c3b877f9e9e1d5ae182305e1119c63cb3a22022abaf560cc",
-        "native": "106546335b505cdd8ca72b84ee8d271fc4750a0637ca74ebe5a332719fefa705",
-        "checker": "ce6785f1450fb60a33523a022e27443a5d3645c2cf4ef4ed3100c418893c4069",
-        "trace": "e099b1e364d435f20171cf3f6ed27b4db6e7311c1ef5ca26a4d9146db2b85c05",
-        "board": "85f761391d889025b78311ec403a00100c4a98b5b66e55c0336ac3a855817a9f"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "236ffb295b67fc907e697af16607956049d33d61407ce59ac1d53682dfd689ef",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "7964621662536781923571ec4d6c663130d5ad22734445fe820e0723e27ee343",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "connect-s0-r1",
-      "taskId": "connect",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 383,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "1919d0c20a36bcf545aaf14afcff7d36de6663c34128ec8efee72a6d07e5f7b3",
-        "native": "bddfcde54bd06081815ca886795e0da47cf5747ff922057e908170c48baa208b",
-        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
-        "trace": "5d2e023c07a9864419a70d6d916f6ed0d9e2274e2a015cdd50b6823bdce57a6a",
-        "board": "abf125a4f899fa6b26a2bc8afd967193c242aff6b1f80cd25f3202e804474181"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "67ed996ee8dd93a1dc56e7165fbe4e3698ed44b3a6298b86fb714b783417c427",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "connect-s2-r1",
-      "taskId": "connect",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 349,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "9c701e65e86256008abdf31db51db200c2920e0b014d51baba7ee17c681a961a",
-        "native": "d8a3af541920e3f561992a21fa6b558bdd65491c3c5999abf84d87ba2ff2e84e",
-        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
-        "trace": "de017f5c3267e37f440fefa0ad5ed1d0873b7412ea3e7041a32b3543aac75228",
-        "board": "a7b808c72de092aa2aa0abd4678c18eba4db5dce392bd5273c75a819cbec2b9d"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "d8c566fb5e9953ac48d227999e80c95e1ab6a55b3269bdf412ea57035086cb9e",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "connect-s4-r1",
-      "taskId": "connect",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1383,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "6c0939ada5d9b1095bb1b830422e284203f4f49c51bdab3c7ef8833a91b75fa4",
-        "native": "65c22d5cb57ea57c44b33b047eeac9a63cbc22647054cfa34c675a9f0ba37f5b",
-        "checker": "41cbc256d556ca061b63d337d141ea99c245528cee765e79a4d4cb0f00a36b2b",
-        "trace": "3c63db84e1d1de9dfbbfa17890d39646b3c52b1f46567d2fe8bb59c341adc553",
-        "board": "15be8fd28728a08ae1b0782079f19dd9cc34f562ae63cf2a58e8bf2961fc3756"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "4bb13694607a9a440314bbc0f1a137ffea04a1ef1e449d3710109eb377734ed9",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "62d771b92986acfd10ba8cb6bc6f3ee7469a2c20e307558c1f8003a47b87c21c",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "disconnect-s0-r1",
-      "taskId": "disconnect",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1300,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "79bd303eb2bc06808841b73acc14917edfa785b4488cbb52378ecf555378b8c0",
-        "native": "bffab4b246b62ae14c33d5f2d7814e5218bc771dc1c4e683730af86a75038226",
-        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
-        "trace": "9cbbed971e53e1fb77f14950e3e66cf6f178a287dc45a885a4bf51b32bb1c3ce",
-        "board": "e05e99dc8de77dd6d5b0fa7f96c97d60f927db2bf4fc6043b58b04276e048689"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "630ab0bec225875897dd77b48048001722becbc45f7ab71895e3e35987806d7f",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "disconnect-s2-r1",
-      "taskId": "disconnect",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 880,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "7901891f612f418da95ca111f37657cdfe25c7d6a56922b3d369ad5718d42fb4",
-        "native": "664b3d19a9769cb0a91fcb1359fcee468134ddbee6a9fe87f0d636a1da0573ab",
-        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
-        "trace": "47bc57c993c3339a90eebf437947489c19d12e1bbfe1dc1f9928ed290de01b17",
-        "board": "c46b23c5a179bf7b66e32e669602987866aa3902601fda1ac33c919b42b2dfe7"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "0d7c8e8ea33ffd690aef0b8cebfbabb99ae4a386c0ce63e07666362a7216f845",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "disconnect-s4-r1",
-      "taskId": "disconnect",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1300,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "9413ac8701f1d0cd9ba3b03a566111dbdf30ee977eb730b0be042e28175e346c",
-        "native": "ca93275b7ffc32271ab67cea8c026523f1629154ed3b82413d99fdad31df0458",
-        "checker": "8b5a4e7d0e0588f07e727c7aebb89e18c8012cff523501a91e86cdc1a3afb87f",
-        "trace": "a9c076288480e4688a29982e15b6300a5d5d43fd96da4d3f8ebacbb574f0b215",
-        "board": "d24f75f01ae4bbb97603ec5d8888afb138cc2c7b977380944c0abde47697e3b5"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "733dc6bb680cc5588e842d383cfc6aeab2f1a2e1acfd4f33baf98401c53c5ef6",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "b21b37a259e49ab6ba4da33c6f8653ea320a04e7ba7a01232c06431a72c7a0dd",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "recolor-s0-r1",
-      "taskId": "recolor",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1038,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "5371caee6b9538da88970df959d12d2dea1638a2e587f5a0edba15f70065ae10",
-        "native": "44cb2f6d3b53860f05d29d4c989110598e626d7611dc9dda3838acbf6d96b844",
-        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
-        "trace": "4cc292b134b96b31bdf8cfac125bf801fc8cccbb449e33f118380552b3349ea9",
-        "board": "5816d49d395b07cf28a6a679c42210b887e299c4d9f81354099bb5d67639fb3d"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "7ec5e585131574bee23173bdf38aa43e127656ed74da26faf394f9128a064b4a",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "recolor-s2-r1",
-      "taskId": "recolor",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1924,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "d19d2a4c89e7f5f4c39cd4d2e64e8eae6014637a10aae8dfbab9a7f381092f38",
-        "native": "2d1b6bd9529f3004966e4671448da0e0d930bb1b9a429a2c8c549d159edc26e3",
-        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
-        "trace": "fef630bec18d06e080b073463f348163fc8dc9348d8e37ff00ee3a3bfcc7f9ed",
-        "board": "b4b9b78934d04ed6abd5cdb1c3d2931c4493aae9ce6eb5374d83446f9d8ce82f"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "76f7e15ca33320ce9e3c8e4dc16ce919700a91a4b8a923abab120b0e736406d8",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "recolor-s4-r1",
-      "taskId": "recolor",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1667,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "2faf780848a7e0616e688d17e8bfc3fe96da7f0163f57ad9fa16d50c14a27c99",
-        "native": "ae65f3dbb5c03a5825c00bcdbaaeccc1af8a35f51ff4208626bb643d20e51187",
-        "checker": "34b7a989cef73f8081e618bd12793fae0c5aad8c16b8b2c3ebadefb39a6d1c20",
-        "trace": "2a8a07517837aa4ba72b2f9d0739ad4354378d9ea54229eb344eaec30958a039",
-        "board": "b821a303cb7c86f2f1adab93ebb382c20124d7f5c41fe5a5289034676e6c5580"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "59e789baa106996f97caa082cd5a3d4911c8f1e296415d9beaf3f5ce1e7373ff",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "bb04eb3ca324de58320b15a84e7d375282a1c18a9fc66c9455641f3ea1bd4c16",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "remove-step-s0-r1",
-      "taskId": "remove-step",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1472,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "ef45d6e45da7f8e1f58256a599998e85b2507726959909c019cb6842d4fd02ef",
-        "native": "c2ff32f631574fa2172f61c9771c25629f31e3679d6ad1e52afc9cf2608bb2b3",
-        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
-        "trace": "cc2b081168c507a06d29917032038460c38b7f94533d9ca444fbb633f0c1bea0",
-        "board": "cd44ab8f129a6fc8ad61319a5fed5ebb36c04b9319c816e12da78fba371fdbcd"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "be5e589819d9791c95792464d60b4e2ae9f6cafb9570e1c4b225da99ccff3b42",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "remove-step-s2-r1",
-      "taskId": "remove-step",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 993,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "f5740a5283e5facca9451a48de6a04c12ca22efe42829f1b67902f0c8e77720d",
-        "native": "b017798fb8990584242a05cb96c3c15506699b3086b317aad807f03817585960",
-        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
-        "trace": "11aca808246d598e73fabd58cb9c59dcbddcb1e324e9681288803aff7fb8bd85",
-        "board": "16b8dce5c896c1304210b64541e62aa24b76c73ba22aac76a4f936f2f1cb2977"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "11b6063019509a591645d8c841605c8e44b74ab4fb1922da898d77f75dc17002",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "remove-step-s4-r1",
-      "taskId": "remove-step",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1215,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "149b11f55dc5e70f236ace05974d1888945882a6610f373447665790977cdc99",
-        "native": "8a3256847ff68152c29a3d0b8ca80eb0788706095db7bdb18f1b460ff3b35338",
-        "checker": "6fdac495bd21fb06e94dd850e0c52682f332f7a1eb6fbb4b947d9071b94b5601",
-        "trace": "07d8427e5e9ed7a9b85a30d4172f17d970ff2b945cf1c0d5c1d38004d4f4e50a",
-        "board": "a797ca728817b8b70c8f74bba10f481c47b1de7a87b3e69d337d231ee1f74617"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "aca05795408dbaefdc1cf943c5329c15c54fbe9251959e5b983624cc9be4abf6",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "4019d91064db43329eb1680a89d7cfafa2c74238b41bae03791cb3d918522755",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-frame-s0-r1",
-      "taskId": "rename-frame",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1116,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "10ff1c498d43ccdb531153da114b8899afe30ae8a14462ee33d82238337ee438",
-        "native": "5420c4136cf69365361df9ab05e76f2bc4cc2eae6604fdae9d153d2f69e462fb",
-        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
-        "trace": "3d3c01af4633b312cf0fd3928972472c5477784b956b15f27833b72abfce2bf7",
-        "board": "cad838c9014f8813843252ae0c4b7f5fdbbfa1e45d16b3f9527f678f8390a095"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "a65d3b107e33dc75c394f371eab127f3eb6d9d1d0a0f0c8ebd1f36831f423779",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "d9855027e8a21b453deb16c4f060283aca20318add87d093281167a7bb6e8ffa",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-frame-s2-r1",
-      "taskId": "rename-frame",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1702,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "0c18dde5066ad3c530715a09ed0ab6ffa03272d4645f8de7e6a139de013c9094",
-        "native": "cf71dc1e26ed17ea8adf73946770495a24e1f807d8a982ee6a2b1557f09bfda2",
-        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
-        "trace": "ddf56434c1f200719ffe217e84db17650578f257a600564590b9822ba2876f4a",
-        "board": "e6a5bb1602ebfa94defa9369906971743210e290dc77f30292a9bb00bd9df0ef"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "ff27a3042708c8aee01910345242e8f747718679f294385ad0375430fcc58518",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "77ee521a7bb0ac8fdaaee672a193db09cb0defd09d4d834a79f9535c936bc114",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-frame-s4-r1",
-      "taskId": "rename-frame",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1437,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "cb837eb0470f3b308729a86f8ee06db80c2543d5446b7f273e4e96f2c0491a91",
-        "native": "ea671ad7b596957aa3205b229c0d3b84d4b38b81ee48f0e258dededc8952eafb",
-        "checker": "a32a0309d0540bb856032b0b9d314a429fbdd3950be59ea0cf7d3cd0a5a9c8a7",
-        "trace": "c8f64710b86fc63dd928df12d9245d44a6de642407dd166799e0900e04e42199",
-        "board": "22b863d1dcc576d5c27ce36ffc761d3b62c09184f4316cf1ff1cd5aaea8943d0"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "7d980ee2e681f0822eb52ab0d26ed5834c9530acb07d1b61050fe67174b2ab0d",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "ae5d64fcfa4226bcdbdbc1a81b17417a22c6b3763aaad83f913e813ae1806f5b",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-step-s0-r1",
-      "taskId": "rename-step",
-      "seed": 0,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1195,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "00eae99066d8021ec32a5ce1db8801056b7c16dd875dce41ed8f0212ac797487",
-        "native": "8d9595540784471c5ff805ae01cc08ce40039b6eebb0427772574af355efa400",
-        "checker": "c6f0c41dcbf981a95d5c56cf131a20c5baeeb4233c6305f6756ca1ebc91df502",
-        "trace": "68aaadbbb4cfa1ddc0ff33e79d00b759cbcddf7656afb2b3f359c06a9d59e645",
-        "board": "e3c75cb52de31c7883703793804a30c43e8755e15af4c0ca9675099b78e8bb17"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "cd6eef2edf614568d6b4092f7152e9e6883e7ab6a878d694326dc02d69836f27",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "3dafdc13dd91a9582b8a139381304043c31368295f6402b24d14d3feca2e347a",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-step-s2-r1",
-      "taskId": "rename-step",
-      "seed": 2,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1403,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
-        "session": "0db3139942ee15d071e5f11a84cab9f98104e2806788f66855da9107392de299",
-        "native": "81344995131508ec1f0d3a66e029f2955cb25ea26c516a271896e7ea173a5c33",
-        "checker": "c6f0c41dcbf981a95d5c56cf131a20c5baeeb4233c6305f6756ca1ebc91df502",
-        "trace": "40c748c020d22207676f9f0a8dd9a680c94acd3fdd4a94abb55a3ecb0eef4c93",
-        "board": "9e66bf733f7e3c5f2e194c03f85e784575794260d598c96caadcb0a506c76432"
-      },
-      "logs": {
-        "calls": {
-          "sha256": "6869951710ac4612b106624773b3c9394b435f7ad4410bac404bbf7d81aeb3b1",
-          "entries": 3,
-          "dropped": 0,
-          "omitted": 0,
-          "clientTiming": true
-        },
-        "mutations": {
-          "sha256": "438ebe5533a5d56a57655b32f2b29490ede2fd9af5399d5b5f292f90727fc3e6",
-          "entries": 2,
-          "omitted": 0
-        }
-      },
-      "agentActions": 1
-    },
-    {
-      "verdictLevel": "session",
-      "id": "rename-step-s4-r1",
-      "taskId": "rename-step",
-      "seed": 4,
-      "repeat": 1,
-      "status": "completed",
-      "pass": true,
-      "referenceActions": 1,
-      "wallMs": 1305,
-      "agentExitCode": 0,
-      "isolation": {
-        "level": "builtin-baseline",
-        "evidence": "by-kind"
-      },
-      "actions": 1,
-      "acceptedActions": 1,
-      "rejectedActions": 0,
-      "undos": 0,
-      "resets": 0,
-      "toolCalls": {
-        "observe": 2,
-        "act": 1,
-        "undo": 0,
-        "reset": 0,
-        "check": 1,
-        "total": 4
-      },
-      "checker": {
-        "session": {
-          "passed": true,
-          "errorClasses": []
-        },
-        "native": {
-          "passed": true,
-          "errorClasses": []
-        }
-      },
-      "artifacts": {
         "session": "df4f6ef35de0efd7cbbe37130065ff3498107f7fe70347e2747d0262160e7dcb",
-        "native": "579b43305e9fdff3530d43ad82b1273c39872456b7f4a261eea46861c1dd4b0c",
+        "native": "7f24ee22a2c61b97a20421d1fd3c3800ecfac3454dea7cd684ea6f802be3e3be",
         "checker": "c6f0c41dcbf981a95d5c56cf131a20c5baeeb4233c6305f6756ca1ebc91df502",
         "trace": "54eb4808645db371bb4cc4171c58e13607268eaced3cc040c3766c820e4598d2",
         "board": "c45210610842c9739fe5240bc6dfc65e891147945041fce3bd6a855e2a3ed1d3"
       },
       "logs": {
         "calls": {
-          "sha256": "1046aba685969eb615917faeac4f5563d97e6c2449f468bb8ac551e15278081d",
+          "sha256": "3956cce4b99459ca96a9a160a1775dd389079e05e45f3111a2647f29ca583036",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -1737,7 +1737,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 3,
-      "wallMs": 2566,
+      "wallMs": 425,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -1768,14 +1768,14 @@
       },
       "artifacts": {
         "session": "c1af4fe981939d791fe8d2e57c041a07395542c1baa25e443c10d8a83a2524d1",
-        "native": "2cbd6341905514027ff4e66595c8d741e79606897f7c89710597da93799f6c3d",
+        "native": "eb2517f3f01d2c9f301f760edeb8c62494c2dcdda757e4fa32b7e38fa3b081d1",
         "checker": "a91b8fd220def5ae80ef776442b838d0cbab0529fc209c2ae95876518ebd5ff3",
         "trace": "9bb2148c24516a90d19076dd8b93fd96f8cf0b03ee17d749066bd0ecc23b0468",
         "board": "3692c061255ae609c86ff1814a6983d07c9d21223660446fe20b094296be70fd"
       },
       "logs": {
         "calls": {
-          "sha256": "6c6c010ebb5815fbe7134ef1c4c7dbaed103fdaa4a8e803a07427e5298b07fb2",
+          "sha256": "82f98990e11f5e55d59620b8fed83bf175fc459ba39d94ff47b68eeffd815167",
           "entries": 5,
           "dropped": 0,
           "omitted": 0,
@@ -1798,7 +1798,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 3,
-      "wallMs": 1508,
+      "wallMs": 466,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -1829,14 +1829,14 @@
       },
       "artifacts": {
         "session": "07c0fdcf03d679201369a67e9806d99325643af6917a1ea0866820b25a71b87c",
-        "native": "01b2158e1ae6b49cc7a3d1fb8c5de4841a6eee64aeb9778b178d0557eeb11972",
+        "native": "e1b88bba9d7d1013ed8789fda84a4d8d562999cefd56f7bdd8fbc665cb9411e0",
         "checker": "a91b8fd220def5ae80ef776442b838d0cbab0529fc209c2ae95876518ebd5ff3",
         "trace": "52e10470c06dcc236ed7db3b63d6fc805c33d308dd0c5d766307a5fc4b4b677f",
         "board": "d32c51dc1f43a90e5ba3affdc84e908da20580f40284e88931b790d8dd4ae6de"
       },
       "logs": {
         "calls": {
-          "sha256": "c12ebd3bd83657eab2330d424d40f684c0226a26fc82150de99be04d250dbfb1",
+          "sha256": "6b53fd250ff6518b0aeea4df85041cad0987216b67ffc8cd9f59e990c0fbe4c4",
           "entries": 5,
           "dropped": 0,
           "omitted": 0,
@@ -1859,7 +1859,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 3,
-      "wallMs": 1481,
+      "wallMs": 412,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -1890,14 +1890,14 @@
       },
       "artifacts": {
         "session": "ee4836cca43733827ce15afe89a0dbb292e45af2e5403b49524647f218f9f211",
-        "native": "ae38f65b7ba66d13621d3650033ccaccf16e19274d9140534614b30f6f2bbf6b",
+        "native": "db38c0e41f391d635d051fbcdfa9a88278f7f9177f337f82e714a778ca4eb108",
         "checker": "a91b8fd220def5ae80ef776442b838d0cbab0529fc209c2ae95876518ebd5ff3",
         "trace": "280bb22d53704783bdd459fbe2ecf0bf7409b86ab5b448f6f5ab3b533a849c90",
         "board": "dfb6b4e4623ef4c96436561e152fdb83a351c42b1f304d15195d6cc3b9b5ad92"
       },
       "logs": {
         "calls": {
-          "sha256": "a47eb3d09724ddfc4974880529e6abe055aa0a927ef63a5228b49ee9e632988e",
+          "sha256": "8980742dee492dc20b7764a185a76cad7a343d81dcfc322a219844010250a692",
           "entries": 5,
           "dropped": 0,
           "omitted": 0,
@@ -1920,7 +1920,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 1109,
+      "wallMs": 340,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -1951,14 +1951,14 @@
       },
       "artifacts": {
         "session": "340257c1c7b4dd4b999c4b7dc28fd2aace91a0924d6a344b4b199eb431253d9e",
-        "native": "98c4a44d395de2a39db7ca0507e2f8ad07f7d20c7f9db0022549b26ec1896adb",
+        "native": "e48ca7819bdc380b44a81e4ca81711a7a5b0a56419b469270c9237d3245b543d",
         "checker": "140752d9654e51d311124c86bbc954111f362cfbcd244e24d07d3a5e405af1e1",
         "trace": "ce74cab6bfb629a2aa3c66985840a3a9af9d8627fa82ee3405ba0f5f2247fd46",
         "board": "430f981e6ce8787b3d01e4503241052e2a9f5e84c651c5b6dca4b51b1040bd35"
       },
       "logs": {
         "calls": {
-          "sha256": "ecb50b1da6db49a1b0cd45c54cc5c3d0812ab4da4e2956489c4ad15e6cf35d6c",
+          "sha256": "4247c2047e8231c69c6d01d468ae58ed1f0866109c9fcdaaaf8ee3ad125f759c",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -1981,7 +1981,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 2017,
+      "wallMs": 337,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2012,14 +2012,14 @@
       },
       "artifacts": {
         "session": "ba624e2e0341c473b42857dbffaa3bf5a2315617a7289dc3b00246b3e92c9173",
-        "native": "74495876e509af083b1ddfb312c22c7976a8cd53562bbcc5862f2ea126efb786",
+        "native": "59f657bec09076673fceef5988303c756cb75751b8059548879d64b684ed965a",
         "checker": "140752d9654e51d311124c86bbc954111f362cfbcd244e24d07d3a5e405af1e1",
         "trace": "093c278c99447c78579c0e43065bf50fff8866343bc9dc94f75df6934011ee54",
         "board": "6ac5e90a5d999f074f42edc7dd1b5faff4ef1d0f8b16f21a68e4b9c2cc639a7e"
       },
       "logs": {
         "calls": {
-          "sha256": "bb9e965cffaa0ff17f70961be6d9ba8085de3161759584033468c578a890a996",
+          "sha256": "ea1b351691413a6edd002be0a337e174f79be0dce3c1d1c0bccb78c6976daeff",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -2042,7 +2042,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 2291,
+      "wallMs": 317,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2073,14 +2073,14 @@
       },
       "artifacts": {
         "session": "7e379fa731cb22c6b1ea9d44ab6a4ccb19d0213d2570adcf506f022ee1825f8a",
-        "native": "fabad2a75cf17a6db83e5247d0b23e5d3f0c03ffc47f2fde12f81de81e12603e",
+        "native": "a1557176d5f0862226b6593b041b933da8c847ca9566f336c9da43aa82466942",
         "checker": "140752d9654e51d311124c86bbc954111f362cfbcd244e24d07d3a5e405af1e1",
         "trace": "5bde2400f7134561c7e03c742230db94d0d412172402047299dec5b6a7c05880",
         "board": "1873ad347e1ed78813ca9379f0fe5f2df70287860837ccbf838fadc2dd34a622"
       },
       "logs": {
         "calls": {
-          "sha256": "f35c5fe6a3df080e45382e74a4b863586c0f56ddf9c393288546232db9908fbc",
+          "sha256": "20296f0397fee5627ec570c121913f9d02b5652c6015bf9917b80e04c8222b73",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -2103,7 +2103,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 2,
-      "wallMs": 2641,
+      "wallMs": 382,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2134,14 +2134,14 @@
       },
       "artifacts": {
         "session": "89bdc0d558a9c88200fa09c34fc9c984ed0b34b223d643ecd37a4112e46a839b",
-        "native": "c7dbe524ba650a6446465e7817282c4e321dca3edb87f5b6dc034bdf8a08c493",
+        "native": "cdf5aba1fff0862947b029139937d761404db9b7647568f7f71eaf70666d555f",
         "checker": "dcc1251f8dc613f712afd4f66eca3d081d271b28545f63a8f71184e0f9132b0f",
         "trace": "92062dbc9f2e2ec246dba75867e44db83e1cf8579c4859a9a3390d610591fb51",
         "board": "c6ff720a5405c8f6f44849bfd4781e248136880e7a4e05aa33a936f0c62d24d5"
       },
       "logs": {
         "calls": {
-          "sha256": "7714fa064aa1c460d10768df618ee5f5ae900f85a30eea1ad78bf8c007ce567f",
+          "sha256": "0cc939c13fef7e0794e07c9814922b6294de073593cccc4ffbbb466ebcc204e5",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
@@ -2164,7 +2164,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 2,
-      "wallMs": 1570,
+      "wallMs": 368,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2195,14 +2195,14 @@
       },
       "artifacts": {
         "session": "615d5710e58e08536081fc67b8c35844d5dc5bd38bc33de238e0a38e1f8df40f",
-        "native": "56cb22c198b544e70a9c8b1c0d54d35a8b9b22f72f19e89093b18010954a5132",
+        "native": "40c76b2917cc7261585699dcc0d2c7827aa2ebc86103a77ae82aa3ec4ca4e6a3",
         "checker": "dcc1251f8dc613f712afd4f66eca3d081d271b28545f63a8f71184e0f9132b0f",
         "trace": "977b0b36543e09885b6083a2eeb307b7e2f067f01039dc63aa99a86abf470804",
         "board": "66de0c59a391fd697210758e8e021f8b51a6dab5da5470f24d9f1aa0a037f97c"
       },
       "logs": {
         "calls": {
-          "sha256": "ca9555f65b1976ba8d960fa1a1cf34fea9fc13f9c1c0b6b14043fe95e654ef2f",
+          "sha256": "71fd85ba24664328c3f1fb5de27cc5eb8349e4f2d9feb5a04452a8e7ef64aaac",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
@@ -2225,7 +2225,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 2,
-      "wallMs": 921,
+      "wallMs": 380,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2256,14 +2256,14 @@
       },
       "artifacts": {
         "session": "857770d49cedd75d338114934e1f673d23e7ed0c3a1b0c82a5a574bfc14e33f7",
-        "native": "04de097697683a7a143476b2e95546ffce2f61889e273d68b7a749b0c3e6a663",
+        "native": "193f837d1d322c627ca304133ce3a6ef64f389eb3a91a1344dc7432507356a63",
         "checker": "dcc1251f8dc613f712afd4f66eca3d081d271b28545f63a8f71184e0f9132b0f",
         "trace": "db3c667df3b4bc739252c9598773528a0ad242f6fc454c2398b551def4a79113",
         "board": "512476cf805ce470d96a07936c4942370335f7a728bd21f83c89564b7896e8b1"
       },
       "logs": {
         "calls": {
-          "sha256": "d0909fa1009929e5e9672d353ae095765e7ec96a5ffe62a984f38e497ef6cca5",
+          "sha256": "e5957b20560873542e2217d75ab4ddddd30c2b1f6e19f0292eb1526ba99f39b6",
           "entries": 4,
           "dropped": 0,
           "omitted": 0,
@@ -2286,7 +2286,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1277,
+      "wallMs": 431,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2317,14 +2317,14 @@
       },
       "artifacts": {
         "session": "a91edbba2efc2d4c38fd25bfd254da9393630404109b43e9d295251b18aabcf1",
-        "native": "aa3bdf28a595d6f5d04698bba136d1c947cab0970bf19524724af93b2fb59804",
+        "native": "5ce5b852c840f9812447fda3d46e379cd40d87995c16c3d5ef1951355b1bcb1d",
         "checker": "24486f949f89ec0c0399e98149d3a9184caec44cbfb911e8dea3841aa395987f",
         "trace": "1b21fb4be20d1092bb8b578185bdd71517fb27c33a40a8ebe6a8e9d719a8ed28",
         "board": "e41a77e663c824a0d020804e1a3bc2737308d2910fff8450f8b96151ab83e4e6"
       },
       "logs": {
         "calls": {
-          "sha256": "4c7f0b700db6c56d72942305b2c6b9edc0a93661ade49de464eb427999807507",
+          "sha256": "56563f2120dd40afbe7c58e4d0669bc5d69d32759c0145371d42fe60abf382bb",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2347,7 +2347,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1140,
+      "wallMs": 448,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2378,14 +2378,14 @@
       },
       "artifacts": {
         "session": "374def2a191cc81d61a8f19a924e9c6ffddae0f70f81d841775f414a5caa22dd",
-        "native": "d61b366197bdba94b98cb46b09f0c7232e11de0399e17be2fe15a08f9a8ed449",
+        "native": "96f3fc46215cf4e0659dbd3077a2d4e826d787b18eebf92e98cc3eb10322d22f",
         "checker": "24486f949f89ec0c0399e98149d3a9184caec44cbfb911e8dea3841aa395987f",
         "trace": "2cd6f896bee39d1e19c3d54fb6d5701766688634ba43428dbe3e461c82263808",
         "board": "726d00b2f27795fa52b846ac500506a9dfe104d3ee9c79a2d2ed2554d3418986"
       },
       "logs": {
         "calls": {
-          "sha256": "d00942c756745fd17e8cd172f4a2c71001397daa3c9aa938ecfd7a6c166f11ef",
+          "sha256": "f77c96653b3d6d234361cbdd4412eed4102dc440221b60a7623f852d93066f12",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2408,7 +2408,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1108,
+      "wallMs": 472,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2439,14 +2439,14 @@
       },
       "artifacts": {
         "session": "f4308e0791c81c75a4d5611781e5ea066d583e1725071e952a9314876978b463",
-        "native": "1305386eff46e74ed42d58000076f67656b5f4bc8e703f3e7676243c5cdc260c",
+        "native": "d7bc0ddb9617d1214f89367f0296d90b1931d6ddd595885acbe66b92072f264f",
         "checker": "24486f949f89ec0c0399e98149d3a9184caec44cbfb911e8dea3841aa395987f",
         "trace": "a43aa6117ae3b21edd0437022e242dfc782d6f4d6cd203948d2ecb3eb00801db",
         "board": "c20e0b06d841c09300e9144cdb1858b2253972a0a9a2b6c3371faeb17338cd3c"
       },
       "logs": {
         "calls": {
-          "sha256": "edbe7efe74a3b46465588474a2fb570fe8c014584de72914634e20da77b1b2a1",
+          "sha256": "3fb5460ae1ee436c85bd8b4882e25e9355ce32bd07f0d799ba180d66a682fc7f",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2469,7 +2469,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 1322,
+      "wallMs": 332,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2500,14 +2500,14 @@
       },
       "artifacts": {
         "session": "1fcc4ed6f9f42a5862dab67eddfeb5dc006bffdbfb774e59381f901af5e2be27",
-        "native": "084e8344b3ce2b7d32f898aa2792c6976f8cba535328ce8a241d738313e13b2e",
+        "native": "697267027489ba20ad6bdf4de3068d59229389a06d9442eb8209453471875a2d",
         "checker": "ad3a2f147a559cb90062758bd42c4a093dbb0f9b9cc623b643f2824cb4ecfed9",
         "trace": "a46ee66d6476d1af59550949cc63536f9cbc02ae09b664b1be151ea8f3350a5d",
         "board": "3e162b9911873c7644ec91aecdc0758a9e9d1f9723d63e7895d23bfb726a25d6"
       },
       "logs": {
         "calls": {
-          "sha256": "8a84589d94b1e51c2b74f5a972aeb515fdee27d92c96370b96238991f510df78",
+          "sha256": "07e3bc92d31346e97cf2dbf4fe9e88b6c8961ff019ca48f13b21dcf9545adcf8",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -2530,7 +2530,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 1077,
+      "wallMs": 329,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2561,14 +2561,14 @@
       },
       "artifacts": {
         "session": "327993afae11054bbf772aa5d6547dfddb32af7bcb889251123552320e199753",
-        "native": "9896e5445f88195b4b90ef899eb09449bca022f9f6e18b37df090ad4d2276882",
+        "native": "cdd449849eb497728289e34f5f59dcf9f1ca081b5b173dec7795fd6fd6495193",
         "checker": "ad3a2f147a559cb90062758bd42c4a093dbb0f9b9cc623b643f2824cb4ecfed9",
         "trace": "90af5212f1ca4e1a6651ad713af83dd921270314be79ff804e0e58dec777d9c2",
         "board": "0627443b48116c4b17cfe1a211804aab53e6e073bcf73e9858e10776af9959dc"
       },
       "logs": {
         "calls": {
-          "sha256": "901997aa8eed4412f21985dc5da9a2fd3f7926b7c94b1ec0f407b2243a79a034",
+          "sha256": "5420b8e2aa0645d1d6dfc9a8d4020c61c053c68fa00b212e584d65a107b5b09f",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -2591,7 +2591,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 1,
-      "wallMs": 1118,
+      "wallMs": 346,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2622,14 +2622,14 @@
       },
       "artifacts": {
         "session": "9fc93afc359f1f0bcd7df47548390f53e0935cbc7e755e7b087a4a70b87aef9d",
-        "native": "b62d03d83d023b0b09a607e1528807adcc2591b841e887d973a2232c51d9ad77",
+        "native": "69d10838e6115e1d2950d5f21b777805a25c8de33763a5ef36e5d52907669645",
         "checker": "ad3a2f147a559cb90062758bd42c4a093dbb0f9b9cc623b643f2824cb4ecfed9",
         "trace": "06f249c86467fcc1183a3c201fcea0f25e2579cc8244f6ae32313042a5dd4e79",
         "board": "09fd3484a94b106a363ecfcebf27fb60ff1158db02b343c673e62ef4229b0423"
       },
       "logs": {
         "calls": {
-          "sha256": "9c4c8eeb13e417608cdb45b31e225b9b2a77312760f84592db0a3cb452b75d1a",
+          "sha256": "03c392144e2c63e29ba6359634b3955ba52857df57668bab78df846ebd2945cb",
           "entries": 3,
           "dropped": 0,
           "omitted": 0,
@@ -2652,7 +2652,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1230,
+      "wallMs": 469,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2683,14 +2683,14 @@
       },
       "artifacts": {
         "session": "629cf3e8d937872bcd7e53dee4e1be0629a4d89981bd0a9e706d06ac21903eb8",
-        "native": "147b77543366d9385d4332ff20da04dab2a0c6ff10543e5916646620bfc332c4",
+        "native": "460bcdef25fd94b73e4824be80ea42694d7b978e85da119b872a47e064b092a2",
         "checker": "ae53a555b23481bba2c5118ed5915d09ecdb98513a41643e704722e872db6db7",
         "trace": "8dc6e42e78b1f5bd2346d9fec577fec27d78ef48ced8575b0b3a53315f4a3876",
         "board": "1b21b974061bb5f74df35817bcf63c7aa5ef1afd20cb035828a4ee3fd854fff1"
       },
       "logs": {
         "calls": {
-          "sha256": "1b9f0cc9c04931beb6c05badb11ac78395ac7330eebe2d8a81d0e94559784ac8",
+          "sha256": "68d7cb9cb046a5f0973e71fb15e1df5d6cba48d932677340579ca9e68001ed28",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2713,7 +2713,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1207,
+      "wallMs": 448,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2744,14 +2744,14 @@
       },
       "artifacts": {
         "session": "352a6d5ef3d72e84432823882cdd188bce03daeac446b68d13ff6c48e749e516",
-        "native": "f83ddb4c71b1255289d0019c6eaa0db21d16f692b666fe96eb83b8568280f13d",
+        "native": "f009e322e3b91646989bfc6346831554c44961649746af2d2889dc36aefb370d",
         "checker": "ae53a555b23481bba2c5118ed5915d09ecdb98513a41643e704722e872db6db7",
         "trace": "637366360ca72c09e8a962a0427fc517ae912de4b7227a139bdb4dc11a2409be",
         "board": "4a434b9fc90bde9b74f835e204e567196a744903a7d39a48540fedfff3b0554d"
       },
       "logs": {
         "calls": {
-          "sha256": "d8b193c61224a44f0bd5dd3cccbeb1bac5c885406f95a9614ad15ac944b28d82",
+          "sha256": "ef61a70416cc0ecbb75cae3b9c940cd8f013d620683d7856138d46cb85435fba",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2774,7 +2774,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1189,
+      "wallMs": 430,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2805,14 +2805,14 @@
       },
       "artifacts": {
         "session": "6c3d65f8de9583474f469f559e47679e98369f4a179827086181cade4273f338",
-        "native": "3ae4b8d21cb945f81146b6e873ec79e81a16198e73af94c8648c3f681b48a3bb",
+        "native": "f5c01a5d37dd8e581cb3d2121f6a678d83b20c7bb6d6ff9ad16842f1d9ae0661",
         "checker": "ae53a555b23481bba2c5118ed5915d09ecdb98513a41643e704722e872db6db7",
         "trace": "ca5b934c843b6e73d6b5cdc393847c9bf2ba5ebe1a0b73be0f641b0458460f4b",
         "board": "0ebf22ae1517fbd59cbf29d0fb9a84d784907d1f74bfc2e20dbaf97bf19b47f3"
       },
       "logs": {
         "calls": {
-          "sha256": "3d45cf437bff06b3cc6d2e7925ff99c7c42de4d03d4f053974e23621fd81edfc",
+          "sha256": "e300c3d3e703f094b668bae7d100939915acace68a36daae159bc530a5d01257",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -2835,7 +2835,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1563,
+      "wallMs": 530,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2866,14 +2866,14 @@
       },
       "artifacts": {
         "session": "581dc8ae14755b87a631b813b5241def0ce3432d4f7be7ddc1b2be971b752ba8",
-        "native": "f2c4ed20183f6202efc2e9e6f7f5f2aa6358e20ac929d54ee50995a5a555f7b0",
+        "native": "f60b1c840f81592521ba9cf7923b6c510d7b5851e02c8a1735c96b2b70e22811",
         "checker": "5322a1e66246561c1ac4a89243608527399eb9e0ac791a95086a69dbe84df39d",
         "trace": "1bcc580bc6b07d836a94136cf616dad630d48d58d50c9525a442602339db90fc",
         "board": "cd513270eff7b9220bf92f69f5e792b81d8cafaf6c4f6fc612e6c7770d09f161"
       },
       "logs": {
         "calls": {
-          "sha256": "a93ecf575de67deb47c550ec1daf41f5f979643f952012205012910391808ee6",
+          "sha256": "74c4037a737b7af7228b2609d1a2d983162dd7e60fa0a27e654353fd681ca22c",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -2896,7 +2896,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1315,
+      "wallMs": 536,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2927,14 +2927,14 @@
       },
       "artifacts": {
         "session": "2fc7234ac99fadc9189e9a1ab309c44350295efb6ecb336d986bd05a0e4b8023",
-        "native": "3acd35a34a9791372b960e62c9bdf9572e773883500f9114cb6d76761ebbddc9",
+        "native": "6bdfa57b64b827636f67280f5ea82e6d5806be65d1665c58d9c7ac0328a30c17",
         "checker": "5322a1e66246561c1ac4a89243608527399eb9e0ac791a95086a69dbe84df39d",
         "trace": "f072edf39eef03732ae9ddf332f9410c414a8c40a55cc842da92527e1561c7d3",
         "board": "3ead76b95177792022976a9de09394b852f0c4cc899fe265c039db2973a7c28d"
       },
       "logs": {
         "calls": {
-          "sha256": "1b2fca5c1241e829e31f8dfe5c027f0ae97aa80e7a554af42b8ccd4ffefdf432",
+          "sha256": "9c5731a9f9e26b00e1a121b830aec98836c7e322f8bfd5ac5c0b71e5f03cde78",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -2957,7 +2957,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1315,
+      "wallMs": 519,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -2988,14 +2988,14 @@
       },
       "artifacts": {
         "session": "1e4ebfcc2bee768ab30aeb032c5c1e827b29806d55ab9cc344bd8ea7e7ee0f2a",
-        "native": "71d43e83213418411a686778fcfa2c3ea10b4306d874cb58ee46daa687168262",
+        "native": "2bdeaa069ae86c914001571b2c26fb07ed6fc6160a592c7f2ce63df572120c99",
         "checker": "5322a1e66246561c1ac4a89243608527399eb9e0ac791a95086a69dbe84df39d",
         "trace": "db768ad36f4534222812822d8dff799b58ab2d0e61e0a34d44c349d8b1445dad",
         "board": "bbd44965269763f16b3e46e59868d9c20a0d8b10018a8fba5edd83d4fcb6b81f"
       },
       "logs": {
         "calls": {
-          "sha256": "27e43c1240adda3c7b0f5fb53b5c06e61490ddf71546b7b23e22c643e80df0de",
+          "sha256": "9f4e8c5d4367ce58ec41817a077e7d8598efc4f96eb9fe26b82ce2d982b0372a",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -3018,7 +3018,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1635,
+      "wallMs": 547,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3049,14 +3049,14 @@
       },
       "artifacts": {
         "session": "9125e81183fe771389fb98c1e842cbcfd66e245d5ae1d8c8af81478206a6ed63",
-        "native": "01df0df2963946ed7f37aee9b431f60fa2b49a67a77708379ad1ac109b677753",
+        "native": "213e92671266429b5f305f318ce5e20b90a26cf4846ab95f7754d458988077a0",
         "checker": "78f427ff2fbda2e1dcdf11f99391cfea41c6bf045430c7fd5de251d890aa490c",
         "trace": "1eb3ed3771dfccc627f57b58db3474f1d5c6ad6608b541ece90fcc7666cc96e9",
         "board": "0089a9253ad231514efa44c218366fef6e16f38774a1c065b0908913376eb6f9"
       },
       "logs": {
         "calls": {
-          "sha256": "0caef04f244803d495858216ac3ab8be3a8dc005b8e7548c162e8a2f472a2a9d",
+          "sha256": "41b097b074e43fd00be28c3d4f9b8fc4155a371ea229b84cb9b791eb5853fc53",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -3079,7 +3079,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1605,
+      "wallMs": 501,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3110,14 +3110,14 @@
       },
       "artifacts": {
         "session": "a3a7921fac3d7bc5802a1cd9c05354321a208ca7e591e3be4fd2b221b784e54d",
-        "native": "88ce4cffb89abbe1358a82dff93229ccce160d01195aac5d530a3d473739a366",
+        "native": "bfeeb7d4da1544225f23b1dc1575000df294ad36892328bfd936bf869ece379c",
         "checker": "78f427ff2fbda2e1dcdf11f99391cfea41c6bf045430c7fd5de251d890aa490c",
         "trace": "a4ff128a5f1f7dafe5433e73185e0930a7c75e0a26bde2df0dcf7147853d38dd",
         "board": "4cfa217de28451978150f5ce4dc3f47f1ed415a13fd4a1d764194db7413e4ae6"
       },
       "logs": {
         "calls": {
-          "sha256": "a6649b608600599ce4e7ebf2b518c78260069036b4ce178e48442dd1ba540ddd",
+          "sha256": "3d0db22a8cf6cf90a6da9c7b740477adfd71106ef05c2489eb6bc3fc421f180e",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -3140,7 +3140,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 6,
-      "wallMs": 1489,
+      "wallMs": 500,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3171,14 +3171,14 @@
       },
       "artifacts": {
         "session": "1d587486ca5cba7ed30cfa480efe4b434f55613b8806d3296fe914c87861e825",
-        "native": "766513379fa70184c1dfa8d6264e91cbaf924409fbf80659e87e56e246ba588a",
+        "native": "327cdf42a0afddfe86489f0f073f5e70e8c685becac47f5de1977731d2264caa",
         "checker": "78f427ff2fbda2e1dcdf11f99391cfea41c6bf045430c7fd5de251d890aa490c",
         "trace": "095f53f644d0bf14d7be6b66a82ddc0f9dd5418cc9f31ff190b6355a7f5014b1",
         "board": "945e26bc12d3a517485722817deaa85e98e3501b12b7efe718197b3458834d55"
       },
       "logs": {
         "calls": {
-          "sha256": "161d8407eb9db1125129c75acd4ee0f1c15725fd54b3ceb3296abe96edc1a3da",
+          "sha256": "4e6c798bf9846dab696785e127a1df0850994a25a9e38df289237d4c2d7a6343",
           "entries": 8,
           "dropped": 0,
           "omitted": 0,
@@ -3201,7 +3201,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1532,
+      "wallMs": 508,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3232,14 +3232,14 @@
       },
       "artifacts": {
         "session": "762cc78bcadf59438856ad8f9a7de2ee98cc66d56f59479f72d0276ab32b1133",
-        "native": "047185ea5e20682cc26ac77f93f52cf241b81a0ec81ca243454aa098b9bb9748",
+        "native": "2df8bb31e02580622dae621ca131a032a9482d58a47cbaa9a18503c124eeede0",
         "checker": "bb3146ee5040502226809664828d154f8e60d2faa200422986a0e03e0efa2308",
         "trace": "66e52f1ad9fa410f110709e5ab70440cc4324933dbbd6ace0cc7a14fdb6d06ff",
         "board": "3f17717fd445f89865873d13743942c1129d2f7bba102c47d3280ae679fbc28f"
       },
       "logs": {
         "calls": {
-          "sha256": "c036c9ab3b5fb35cc1101de3db8777291d34c73d5dc5d75414471bccb95626a5",
+          "sha256": "437c804ed1503dff39158b5517fbec528a7dd2cfbcdba4adf22ec14b85d3d2ba",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -3262,7 +3262,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1272,
+      "wallMs": 506,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3293,14 +3293,14 @@
       },
       "artifacts": {
         "session": "a3daf049dfb629ce273b6304e1590ced4e7922c947ead726dc2ba71c783d4146",
-        "native": "d33da7fc270621cf59c902414784befb974ef840b02638c2958093219ccf4bd6",
+        "native": "ff477e6ff38feb380056c91f9e2edf99d84995b373a6cfd05b033c9bc6e0ea02",
         "checker": "bb3146ee5040502226809664828d154f8e60d2faa200422986a0e03e0efa2308",
         "trace": "74ba69f41f7301f96b43c21fb898f506cc814a129560ec00c3f05163689c5c82",
         "board": "26b077930c535f962434ab0be12972abe58acf0238f57826fd284b4b4c9495ee"
       },
       "logs": {
         "calls": {
-          "sha256": "e09cc7d831184ddb50c51609402a25f856d57b0c07c1b96803d9f83cd3e260ff",
+          "sha256": "98a91b2700e7583c306047b3f85af0d6df790214ab393c9ee8a8ccdcc6db94b0",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -3323,7 +3323,7 @@
       "status": "completed",
       "pass": true,
       "referenceActions": 4,
-      "wallMs": 1214,
+      "wallMs": 651,
       "agentExitCode": 0,
       "isolation": {
         "level": "builtin-baseline",
@@ -3354,14 +3354,14 @@
       },
       "artifacts": {
         "session": "a22abe5710fe617c89a2a8bac378e72e360031771d0f81f3593647a1102e91ad",
-        "native": "e9df6e28c34e239303273215f2456e4ff757971bf87f609c4de185ee8515655b",
+        "native": "324cc811171060737fc3297fc7fa3dd63d44d066f23fab4117627e84e3916ed0",
         "checker": "bb3146ee5040502226809664828d154f8e60d2faa200422986a0e03e0efa2308",
         "trace": "4165c5a1086f542ebe261ad2fcd82c8e7fd29481b49cc4662e8bbfab96e3a583",
         "board": "5ac8d1af667ce023b5dd84ad83a8cca6638b4abcd0115ccf3f9c794a8598531e"
       },
       "logs": {
         "calls": {
-          "sha256": "5260e48d3f6a53bea253ca56d5ebd343782dd6548e548e18d02fa61e17279298",
+          "sha256": "b0303d44aad4155ee02383d4f4bb71330ec59be0fc5d5ac559e8a043147bf097",
           "entries": 6,
           "dropped": 0,
           "omitted": 0,
@@ -3391,7 +3391,7 @@
     "meanActions": 2.375,
     "meanActionsPassed": 2.375,
     "efficiencyVsReference": 1,
-    "meanWallMs": 1307.875,
+    "meanWallMs": 411.9792,
     "rejectedActions": 0,
     "undos": 0,
     "resets": 0,

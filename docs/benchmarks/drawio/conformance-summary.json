@@ -1,10 +1,31 @@
 {
- "schema": "practonaut.drawio-conformance/1",
- "commit": "2a705d887c707ff63377368e2c6b0e1c09694c9d",
+ "schema": "practonaut.drawio-conformance/2",
+ "commit": "d0688bc371b71ff15a06b4c6c9b6ed33d4c17027",
+ "dirty": false,
  "platform": "darwin-arm64",
  "node": "v22.22.3",
  "playwright": "1.64.0",
- "sandbox": "required",
+ "chromium": "156.0.8078.4",
+ "sandbox": {
+  "policy": "required",
+  "observed": [
+   {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   },
+   {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   },
+   {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   }
+  ]
+ },
  "pin": {
   "version": "32.4.1",
   "size": 48442174,
@@ -16,12 +37,18 @@
    "seed": 0,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 1112,
+   "startMs": 1353,
    "peakRss": {
-    "node": 514916352,
-    "chromiumTree": 804044800
+    "node": 367476736,
+    "chromiumTree": 804519936
    },
    "refusedRequests": 0,
+   "chromium": "156.0.8078.4",
+   "sandbox": {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   },
    "byTask": {
     "add-step": {
      "referencesPassed": "3/3",
@@ -185,12 +212,18 @@
    "seed": 0,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 2178,
+   "startMs": 1439,
    "peakRss": {
-    "node": 342261760,
-    "chromiumTree": 828014592
+    "node": 391888896,
+    "chromiumTree": 808681472
    },
    "refusedRequests": 0,
+   "chromium": "156.0.8078.4",
+   "sandbox": {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   },
    "byTask": {
     "family/tight-budget/tight-budget-3": {
      "referencesPassed": "1/1",
@@ -351,19 +384,25 @@
   },
   {
    "order": "shuffle",
-   "seed": 1307393010,
+   "seed": 1576489791,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 1326,
+   "startMs": 1416,
    "peakRss": {
-    "node": 385318912,
-    "chromiumTree": 843366400
+    "node": 418955264,
+    "chromiumTree": 875053056
    },
    "refusedRequests": 0,
+   "chromium": "156.0.8078.4",
+   "sandbox": {
+    "samples": 2,
+    "processes": 4,
+    "noSandbox": 0
+   },
    "byTask": {
-    "add-step": {
+    "connect": {
      "referencesPassed": "3/3",
-     "nearMissesFailed": "6/6",
+     "nearMissesFailed": "3/3",
      "startsFailed": "3/3"
     },
     "rename-step": {
@@ -371,20 +410,15 @@
      "nearMissesFailed": "3/3",
      "startsFailed": "3/3"
     },
-    "family/tight-budget/tight-budget-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
+    "recolor": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
     },
-    "group": {
+    "decision": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
-    },
-    "family/injection/injection-2": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
     },
     "disconnect": {
      "referencesPassed": "3/3",
@@ -396,17 +430,12 @@
      "nearMissesFailed": "3/3",
      "startsFailed": "3/3"
     },
-    "two-frames": {
+    "reconnect": {
      "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
+     "nearMissesFailed": "6/6",
      "startsFailed": "3/3"
     },
-    "family/long-horizon/long-horizon-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "decision": {
+    "restyle-flow": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
@@ -416,52 +445,37 @@
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "close-chain": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
-    },
-    "family/repair/repair-2": {
+    "family/injection/injection-3": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "remove-step": {
+    "group": {
      "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
+     "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "connect": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
+    "family/long-horizon/long-horizon-2": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
     },
     "align": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "family/injection/injection-3": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "recolor": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
-    },
-    "restyle-flow": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
-     "startsFailed": "3/3"
-    },
-    "reconnect": {
+    "add-step": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "6/6",
      "startsFailed": "3/3"
     },
-    "family/limited-checks/limited-checks-2": {
+    "reorder": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "12/12",
+     "startsFailed": "3/3"
+    },
+    "family/injection/injection-2": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
@@ -471,12 +485,7 @@
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "family/repair/repair-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/limited-checks/limited-checks-1": {
+    "family/limited-checks/limited-checks-2": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
@@ -486,17 +495,17 @@
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "family/injection/injection-1": {
+    "close-chain": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "family/tight-budget/tight-budget-2": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "reorder": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
-     "startsFailed": "3/3"
-    },
-    "family/repair/repair-3": {
+    "family/repair/repair-2": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
@@ -506,12 +515,42 @@
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "family/tight-budget/tight-budget-2": {
+    "family/injection/injection-1": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "family/long-horizon/long-horizon-2": {
+    "two-frames": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "12/12",
+     "startsFailed": "3/3"
+    },
+    "family/repair/repair-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "remove-step": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "family/long-horizon/long-horizon-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/repair/repair-3": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/tight-budget/tight-budget-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/limited-checks/limited-checks-1": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
