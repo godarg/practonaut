@@ -28,8 +28,8 @@ record stay reachable.
 these five families get no second round there, and until a family passes a gate the bundled tasks
 are a **library, not a challenge tier**. 0.3.0 gates families on toolchains (the same families
 through foreign MCP servers, judged in artifact mode) and new family types, each behind a pre-probe
-([PADR-0042](../../adr/0042-gate-for-families-on-toolchains.md), proposed); its gate reports will go to
-`0.3.0/` next to this page.
+([PADR-0042](../../adr/0042-gate-for-families-on-toolchains.md), accepted with its amendment); its
+round files go to `0.3.0/` next to this page (below).
 
 **What it means.** With these generators and difficulties, the current Claude models solve the
 families completely; they do not yet give a signal between Opus, Sonnet and Haiku. "Does not pass"
@@ -51,3 +51,19 @@ the package reader refused its indented form (same content hash, seeds and oracl
 **Cost.** List-price equivalent as the client reported it, through a Claude subscription: repair
 5.78 USD, injection 8.76 USD, long-horizon 30.03 USD, limited-checks 13.85 USD, tight-budget
 9.22 USD; 67.63 USD for the 435 model runs of round 1 (Opus 42.84, Sonnet 22.50, Haiku 2.30 USD).
+
+## 0.3.0: the layout of `0.3.0/`
+
+0.3.0 gates units (`<family>.<toolchain>`) in shape B and counts its model runs from zero in its own
+release ledger; the five rounds above are never counted
+([procedure](../README.md#the-030-gate)). Its files, each committed and pushed:
+
+| File | What it is |
+|---|---|
+| `<unit>-round-<k>.probe-<p>.plan.json` | the probe plan (`practonaut.challenge-probe-plan/1`), before the first pre-probe run |
+| `release-ledger.jsonl` | the release ledger (`practonaut.release-ledger/1`): a start entry and a run-end record per model run, written from the local ledger, only ever appended to |
+| `<unit>-round-<k>.probe-<p>.json` | the pre-probe record (`practonaut.challenge-probe/1`), admitted or not |
+| `<unit>-round-<k>.declaration.json` | the round declaration (`practonaut.challenge-declaration/2`) |
+| `<unit>-round<k>.md`, `<unit>-round<k>.gate.json` | the gate report and its numbers (`practonaut.challenge-gate/2`) |
+
+No 0.3.0 round has run yet.

@@ -1,217 +1,202 @@
-// A challenge round without a language model (PADR-0040): development benches of the claude-code
-// preset (a stand-in `claude` that observes and stops), a round declaration made from them in a git
-// repository with a local bare remote, the held-out set generated only from the committed and pushed
-// declaration, and the gate's refusals of changed set files. The whole round through the preflight
-// and the gate (oracle, random and three ladder benches on 26 instances, one stopped by a usage limit
-// and resumed, one killed with kill -9, recovered and resumed, every report re-verified, every near
-// miss replayed, a hidden rerun found) takes about
-// twenty minutes on a busy machine, longer than test:integration gives a file; run it on its own,
-// after the engine build:
-//   npm run engine:build
-//   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
+// A 0.3.0 round without a language model (PADR-0042 as amended on acceptance, shape B): a temporary
+// repository with a local bare remote and the committed 0.2.0 round files copied in; a stand-in
+// `claude` (tests/support/fake-claude.ts) that observes, or plays a task's reference where the test
+// lists the task for its model, or hits a usage limit. Every model run goes through the release
+// ledger's start guard (`node tools/challenge.ts bench`). Expected counts are counted by hand from the
+// outcome lists below.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
-import { once } from 'node:events';
-import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from '../support/fake-claude.ts';
-import { declarationHash, heldOutSeeds, validateDeclaration } from '../../src/challenge/declaration.ts';
+import { countLedger, headerLine, nextLine, parseLedger, type LedgerRecord, type StartBody } from '../../src/challenge/ledger.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const TOOL = fileURLToPath(new URL('../../tools/challenge.ts', import.meta.url));
+const ROUNDS_020 = fileURLToPath(new URL('../../docs/benchmarks/challenge/', import.meta.url));
 const OPUS = 'claude-opus-5-5', SONNET = 'claude-sonnet-5-5', HAIKU = 'claude-haiku-5-5';
+const RELEASE_FOLDER = join('docs', 'benchmarks', 'challenge', '0.3.0');
 type Json = Record<string, any>;
 const json = async (path: string): Promise<Json> => JSON.parse(await readFile(path, 'utf8')) as Json;
-const sha256 = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
 
-/** A tight-budget round up to its declaration: a repository with a bare remote, development benches. */
-async function developedRound(dir: string) {
-  const bin = join(dir, 'bin'); await mkdir(bin); await fakeClaude(bin);
+/** A repository with a bare remote and the committed 0.2.0 rounds, a stand-in `claude`, and helpers. */
+async function project(dir: string) {
+  const bin = join(dir, 'bin'), home = join(dir, 'home'), repo = join(dir, 'repo'), remote = join(dir, 'remote.git'), state = join(dir, 'state');
+  await mkdir(bin); await mkdir(state); await fakeClaude(bin);
   const pathKey = Object.keys(process.env).find(name => name.toUpperCase() === 'PATH') ?? 'PATH';
-  // Each round has its own data folder: the gate counts every model run in its bench folders.
-  const home = join(dir, 'home'), benchRoot = (): string => join(home, 'bench');
-  const env = { ...process.env, PRACTONAUT_HOME: home, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
-  const tool = (args: string[]) => spawnSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', env });
+  const env = { ...process.env, PRACTONAUT_HOME: home, PN_FAKE_STATE: state, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
+  delete env.ANTHROPIC_MODEL;
   const git = (...args: string[]) => {
     const result = spawnSync('git', ['-c', 'user.name=Practonaut Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd: repo, encoding: 'utf8' });
     assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
     return result.stdout.trim();
   };
-  const repo = join(dir, 'repo'), remote = join(dir, 'remote.git'), declarations = join(repo, 'docs', 'benchmarks', 'challenge');
   await mkdir(remote); spawnSync('git', ['init', '--bare'], { cwd: remote });
-  await mkdir(declarations, { recursive: true }); git('init'); git('remote', 'add', 'origin', remote);
-  await writeFile(join(repo, 'README.md'), 'test\n'); git('add', '.'); git('commit', '-m', 'start'); git('push', '-u', 'origin', 'main');
-  const bench = async (agent: string, args: string[], extra: Record<string, string> = {}): Promise<{ path: string; status: number | null; stdout: string }> => {
-    const before = new Set(await readdir(benchRoot()).catch(() => [] as string[]));
-    const result = spawnSync(process.execPath, [CLI, 'bench', '--agent', agent, ...args], { encoding: 'utf8', env: { ...env, ...extra } });
-    const created = (await readdir(benchRoot())).filter(name => !before.has(name));
-    assert.equal(created.length, 1, result.stderr);
-    return { path: join(benchRoot(), created[0]!, 'report.json'), status: result.status, stdout: result.stdout };
+  await mkdir(join(repo, 'docs', 'benchmarks'), { recursive: true }); git('init'); git('remote', 'add', 'origin', remote);
+  // The 0.2.0 rounds as committed: five declarations /1 and five ledgers that counted 470 of 500.
+  await cp(ROUNDS_020, join(repo, 'docs', 'benchmarks', 'challenge'), { recursive: true });
+  await writeFile(join(repo, '.gitignore'), '.local/\n');
+  git('add', '.'); git('commit', '-m', 'start'); git('push', '-u', 'origin', 'main');
+  const tool = (args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [TOOL, ...args], { cwd: repo, encoding: 'utf8', env: { ...env, ...extra } });
+  const ok = (args: string[], extra: Record<string, string> = {}) => { const result = tool(args, extra); assert.equal(result.status, 0, `${args.slice(0, 2).join(' ')}: ${result.stderr}`); return result; };
+  const benchRoot = join(home, 'bench');
+  /** A bench (through the tool's guard, or the plain CLI) and the report it wrote. */
+  const bench = async (args: string[], extra: Record<string, string> = {}, plain = false): Promise<{ path: string; status: number | null; stdout: string; stderr: string }> => {
+    const before = new Set(await readdir(benchRoot).catch(() => [] as string[]));
+    const result = plain ? spawnSync(process.execPath, [CLI, 'bench', ...args], { cwd: repo, encoding: 'utf8', env: { ...env, ...extra } }) : tool(['bench', ...args], extra);
+    const created = (await readdir(benchRoot).catch(() => [] as string[])).filter(name => !before.has(name));
+    return { path: created.length === 1 ? join(benchRoot, created[0]!, 'report.json') : '', status: result.status, stdout: result.stdout, stderr: result.stderr };
   };
-  const setArgs = (setDir: string, tasks?: string): string[] => { const result = tool(['args', setDir, ...(tasks ? ['--tasks', tasks] : [])]); assert.equal(result.status, 0, result.stderr); return result.stdout.trim().split(' '); };
-  assert.equal(tool(['generate', 'tight-budget', '--set', 'dev', '--count', '3', '--difficulty', '1', '--out', join(dir, 'dev')]).status, 0);
-  const dev: string[] = [];
-  for (const model of [OPUS, SONNET, HAIKU]) {
-    const run = await bench('claude-code', [...setArgs(join(dir, 'dev')), '--mirror', 'off'], { PN_FAKE_MODEL: model });
-    assert.equal(run.status, 0); dev.push(run.path);
-  }
-  const declarationPath = join(declarations, 'tight-budget-round-1.declaration.json');
-  const declare = (reports: string[]) => tool(['declare', '--family', 'tight-budget', '--round', '1', '--difficulty', '1', '--dev', reports.join(','), '--out', declarationPath]);
-  return { env, tool, git, bench, setArgs, dev, declare, declarationPath, declarations, repo, benchRoot };
+  const setArgs = (set: string, tasks?: string): string[] => ok(['args', set, ...(tasks ? ['--tasks', tasks] : [])]).stdout.trim().split(' ');
+  const started = async (): Promise<string[]> => existsSync(join(state, 'started.log')) ? (await readFile(join(state, 'started.log'), 'utf8')).split('\n').filter(Boolean) : [];
+  const ledgerPath = join(repo, '.local', 'release-ledger-0.3.0.jsonl');
+  const folder = join(repo, RELEASE_FOLDER);
+  const commit = (message: string) => { git('add', '-A'); git('commit', '-m', message); git('push'); };
+  return { env, git, tool, ok, bench, setArgs, started, ledgerPath, folder, commit, repo, benchRoot, state };
 }
 
-test('a round is declared from its development benches and the committed rounds before it; its held-out set needs the declaration committed and pushed; the gate refuses changed set files', { timeout: 600_000 }, async () => {
-  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-round-'));
+test('a start that would pass 800 is refused before the client starts; built-in runs take no entry; a pre-probe start needs its pushed plan', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-guard-'));
   try {
-    const { tool, git, bench, setArgs, dev, declare, declarationPath, declarations } = await developedRound(dir);
-    const [devOpus, devSonnet, devHaiku] = dev as [string, string, string];
-    // The first declaration of a release creates its folder (third review).
-    const fresh = join(dir, 'repo', 'fresh', 'challenge', 'tight-budget-round-1.declaration.json');
-    const first_ = tool(['declare', '--family', 'tight-budget', '--round', '1', '--difficulty', '1', '--dev', dev.join(','), '--out', fresh]);
-    assert.equal(first_.status, 0, first_.stderr); assert.equal(validateDeclaration(await json(fresh)).round, 1);
-    // A development bench that left its mirror to `auto` is refused: a round names its mirror.
-    const auto = await bench('claude-code', setArgs(join(dir, 'dev')), { PN_FAKE_MODEL: SONNET });
-    let refused = declare([devOpus, auto.path, devHaiku]);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /--mirror auto; a round names its mirror/);
-    // A report relabelled to another model without the agent's output is refused by verification.
-    const relabelled = join(dir, 'relabelled'); await cp(join(devSonnet, '..'), relabelled, { recursive: true });
-    const value = await json(join(relabelled, 'report.json')); value.runs[1].client.model = OPUS; await writeFile(join(relabelled, 'report.json'), JSON.stringify(value));
-    refused = declare([devOpus, join(relabelled, 'report.json'), devHaiku]);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /run tight-budget-2-s1-r1: the report names model claude-opus-5-5, but the agent's own output names claude-sonnet-5-5/);
-    // Committed earlier rounds count before this one: a declared round 87, a gated one its ledger.
-    await writeFile(join(declarations, 'repair-round-1.declaration.json'), '{}\n');
-    await writeFile(join(declarations, 'injection-round-1.declaration.json'), '{}\n');
-    await writeFile(join(declarations, 'injection-round1.ledger.json'), JSON.stringify({ schema: 'practonaut.challenge-ledger/1', spent: { total: 90 } }));
-    git('add', '.'); git('commit', '-m', 'earlier rounds'); git('push');
-    // The reports in any order: the tiers are ordered by capability.
-    const declared = declare([devHaiku, devOpus, devSonnet]);
-    assert.equal(declared.status, 0, declared.stderr);
-    assert.match(declared.stdout, /gate pair claude-opus-5-5 \(strongest\) vs claude-haiku-5-5 \(weakest\), fixed by the capability order/);
-    assert.match(declared.stdout, /release runs before this round: 212 \(35 \+ 90 injection-round-1\.declaration\.json \+ 87 repair-round-1\.declaration\.json\)/);
-    const declaration = validateDeclaration(await json(declarationPath));
-    assert.deepEqual([declaration.ladder, declaration.pair, declaration.development.seeds, declaration.development.spent, declaration.development.order], [[OPUS, SONNET, HAIKU], { strongest: OPUS, weakest: HAIKU }, [1, 2, 3], 12, 'consistent']);
-    assert.deepEqual(declaration.bench, { mirror: 'off', timeoutSeconds: 600, maxActions: 50, checks: null });
-    // The held-out set: only from the committed and pushed declaration.
-    refused = tool(['generate', 'tight-budget', '--set', 'heldout', '--round', '1', '--seed', '1000000', '--out', join(dir, 'x')]);
-    assert.equal(refused.status, 1); assert.match(refused.stderr, /a held-out set is generated from its round declaration/);
-    const generate = () => tool(['generate', 'tight-budget', '--set', 'heldout', '--declaration', declarationPath, '--out', join(dir, 'heldout'), '--force']);
-    refused = generate(); assert.equal(refused.status, 2); assert.match(refused.stderr, /tight-budget-round-1\.declaration\.json is not committed; commit and push it first/);
-    git('add', '.'); git('commit', '-m', 'declare tight-budget round 1');
-    refused = generate(); assert.equal(refused.status, 2); assert.match(refused.stderr, /which no remote-tracking branch contains; push it first/);
-    git('push');
-    const made = generate();
-    assert.equal(made.status, 0, made.stderr);
-    const seeds = heldOutSeeds(declaration), manifest = await json(join(dir, 'heldout', 'instances.json'));
-    assert.deepEqual(manifest.seeds, seeds);
-    assert.deepEqual(manifest.declaration, { sha256: declarationHash(declaration), commit: git('rev-parse', 'HEAD') });
-    for (const entry of manifest.instances) assert.equal(entry.oracle.sha256, sha256(await readFile(join(dir, 'heldout', 'oracles', `${entry.taskId}.json`))));
-    // The held-out arguments carry the declared settings and --stop-on-infra; the printed commands the
-    // environment and each ladder model (second review S-1).
-    assert.ok(manifest.bench.args.join(' ').endsWith('--seed-list 1 --repeats 1 --mirror off --max-actions 50 --timeout 600 --stop-on-infra'));
-    assert.match(made.stdout, /DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=claude-opus-5-5 node src\/cli\/main\.ts bench --agent claude-code --world /);
-    const first = manifest.instances[0].taskId as string, second = manifest.instances[1].taskId as string;
-    assert.deepEqual(setArgs(join(dir, 'heldout'), `${first},${second}`).slice(0, 6), ['--world', join(dir, 'heldout', 'world'), '--tasks', `${first},${second}`, '--oracle', `${join(dir, 'heldout', 'oracles', `${first}.json`)},${join(dir, 'heldout', 'oracles', `${second}.json`)}`]);
-
-    // Changed set files are refused before any report is read (the report paths do not exist).
-    let gates = 0;
-    const changedSet = async (change: (setDir: string) => Promise<void>): Promise<ReturnType<typeof tool>> => {
-      const copy = join(dir, `set-${++gates}`); await cp(join(dir, 'heldout'), copy, { recursive: true }); await change(copy);
-      return tool(['gate', '--preflight', '--declaration', declarationPath, '--set', copy, '--dev', dev.join(','), '--oracle', 'o', '--random', 'r']);
-    };
-    refused = await changedSet(async copy => { const path = join(copy, 'oracles', `${first}.json`), oracle = await json(path); oracle.nearMisses = []; await writeFile(path, JSON.stringify(oracle, null, 2) + '\n'); });
-    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`oracles/${first}\\.json does not match the SHA-256 instances\\.json records`));
-    refused = await changedSet(async copy => {
-      const path = join(copy, 'oracles', `${first}.json`), oracle = await json(path); oracle.nearMisses = []; const text = JSON.stringify(oracle, null, 2) + '\n'; await writeFile(path, text);
-      const changed = await json(join(copy, 'instances.json')); changed.instances[0].oracle = { sha256: sha256(text), nearMisses: 0 }; await writeFile(join(copy, 'instances.json'), JSON.stringify(changed));
-    });
-    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`oracles/${first}\\.json is not the regenerated reference and near misses`));
-    refused = await changedSet(async copy => { const path = join(copy, 'world', 'world.json'), world = await json(path); world.tasks[0].limits = { actions: 40 }; await writeFile(path, JSON.stringify(world)); });
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /world\/world\.json is not the world the generator makes from the declaration/);
-    // Later versions of the file are allowed while the gated declaration is the one the set came
-    // from (third review): a re-spaced second version passes the declaration check (and then stops
-    // at the report paths that do not exist); changed content is refused, committed or not.
-    const original = await readFile(declarationPath, 'utf8');
-    await writeFile(declarationPath, original.replace('"round": 1', '"round":  1'));
-    git('add', '.'); git('commit', '-m', 'respace'); git('push');
-    const preflight = () => tool(['gate', '--preflight', '--declaration', declarationPath, '--set', join(dir, 'heldout'), '--dev', dev.join(','), '--oracle', 'o', '--random', 'r']);
-    refused = preflight();
-    assert.equal(refused.status, 2); assert.doesNotMatch(refused.stderr, /declaration/); assert.match(refused.stderr, /ENOENT|no such file/);
-    await writeFile(declarationPath, original.replace('"difficulty": "1"', '"difficulty": "2"'));
-    refused = preflight();
-    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`the gated declaration differs from the one in commit ${manifest.declaration.commit.slice(0, 12)}, from which the held-out set was generated`));
+    const p = await project(dir);
+    assert.match(p.ok(['ledger', 'init']).stdout, /a new release ledger for 0\.3\.0/);
+    // 799 model runs counted (built line by line, each chained to the one before).
+    const state = { text: headerLine(), records: [parseLedger(headerLine()).header] as LedgerRecord[] };
+    for (let index = 0; index < 799; index++) {
+      const body: StartBody = { kind: 'start', purpose: 'development', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: OPUS, agent: 'claude-code', bench: '20261101T100000Z-0001', run: `connect-s${index + 1}-r1` };
+      const { record, line } = nextLine(state, body); state.text += line; state.records.push(record);
+    }
+    await writeFile(p.ledgerPath, state.text);
+    assert.match(p.ok(['ledger', 'show']).stdout, /799 of 800 model runs counted/);
+    const model = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS };
+    // Two runs planned: the 800th starts, the 801st is refused before its client starts.
+    const two = await p.bench(['--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect,decision', '--mirror', 'off', '--timeout', '60'], model);
+    assert.equal(two.status, 2, two.stderr);
+    assert.match(two.stderr, /release_budget_exhausted: release 0\.3\.0 has 800 of its 800 model runs counted; this start would pass 800 and is refused before the client starts/);
+    assert.deepEqual(await p.started(), [OPUS], 'the stand-in started once');
+    const partial = await json(two.path);
+    assert.deepEqual([partial.runs.length, partial.interrupted], [1, { plannedRuns: 2 }]);
+    assert.equal(existsSync(join(two.path, '..', 'decision-s1-r1')), false, 'no run folder for the refused start');
+    const ledger = parseLedger(await readFile(p.ledgerPath, 'utf8'));
+    assert.deepEqual([countLedger(ledger).counted, ledger.records.length], [800, 802]);
+    assert.deepEqual(ledger.records.slice(-2).map(record => record.kind), ['start', 'run-end']);
+    // At the cap: refused at once, no client, no bench folder, nothing appended.
+    const none = await p.bench(['--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], model);
+    assert.equal(none.status, 2); assert.match(none.stderr, /release_budget_exhausted/);
+    assert.deepEqual([await p.started(), none.path], [[OPUS], '']);
+    assert.equal((await readFile(p.ledgerPath, 'utf8')), ledger.text);
+    // A built-in agent starts no client and takes no entry, also at the cap.
+    const oracle = await p.bench(['--purpose', 'example', '--', '--agent', 'oracle', '--tasks', 'connect', '--mirror', 'off']);
+    assert.equal(oracle.status, 0, oracle.stderr);
+    assert.equal((await readFile(p.ledgerPath, 'utf8')), ledger.text);
+    // A pre-probe start serves a committed and pushed plan; the 0.2.0 files are not counted anywhere.
+    await writeFile(p.ledgerPath, headerLine());
+    const plan = join(RELEASE_FOLDER, 'repair.practonaut-round-1.probe-1.plan.json');
+    p.ok(['plan', '--unit', 'repair.practonaut', '--maintainer-approved-unit', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', plan]);
+    const unpushed = await p.bench(['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off'], model);
+    assert.equal(unpushed.status, 2); assert.match(unpushed.stderr, /not_committed: repair\.practonaut-round-1\.probe-1\.plan\.json is not committed; commit and push it first/);
+    assert.deepEqual(await p.started(), [OPUS]);
+    // Shape A and a unit outside the preregistration are refused by name.
+    let refused = p.tool(['plan', '--unit', 'repair.practonaut', '--maintainer-approved-unit', '--shape', 'A', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', plan, '--force']);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /shape_a_refused/);
+    refused = p.tool(['plan', '--unit', 'injection.practonaut', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', join(RELEASE_FOLDER, 'injection.practonaut-round-1.probe-1.plan.json')]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /unit_not_preregistered/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('the whole round: preflight, ladder benches (one stopped by a usage limit and resumed, one killed with kill -9, recovered and resumed), the gate and its ledger; a hidden rerun refuses the round', { timeout: 3_000_000, skip: process.env.PN_CHALLENGE_ROUND === '1' ? false : 'about twenty minutes; run with PN_CHALLENGE_ROUND=1' }, async () => {
-  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-gate-'));
+test('a whole 0.3.0 round without a language model: pre-probe, declaration, held-out set, preflight, gate and ledger; the count starts at zero although the 0.2.0 rounds are committed', { timeout: 1_800_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-round-030-'));
   try {
-    const { env, tool, git, bench, setArgs, dev, declare, declarationPath, declarations, benchRoot } = await developedRound(dir);
-    assert.equal(declare(dev).status, 0);
-    git('add', '.'); git('commit', '-m', 'declare'); git('push');
-    const declaration = validateDeclaration(await json(declarationPath)), seeds = heldOutSeeds(declaration);
-    assert.equal(tool(['generate', 'tight-budget', '--set', 'heldout', '--declaration', declarationPath, '--out', join(dir, 'heldout')]).status, 0);
-    const heldArgs = setArgs(join(dir, 'heldout'));
-    const oracle = await bench('oracle', heldArgs), random = await bench('random', heldArgs);
+    const p = await project(dir), folder = p.folder;
+    const file = (name: string) => join(RELEASE_FOLDER, name);
+    const plan = file('repair.practonaut-round-1.probe-1.plan.json'), record = file('repair.practonaut-round-1.probe-1.json'), declaration = file('repair.practonaut-round-1.declaration.json');
+    p.ok(['ledger', 'init']);
+    // 1. The probe plan, committed and pushed before the first pre-probe run.
+    p.ok(['plan', '--unit', 'repair.practonaut', '--maintainer-approved-unit', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', plan]);
+    p.commit('plan repair.practonaut round 1');
+    const probeSet = join(dir, 'probe');
+    p.ok(['generate', 'repair.practonaut', '--set', 'probe', '--plan', plan, '--out', probeSet]);
+    // 2. The pre-probe: Opus solves 3 of 7 (the stand-in plays the references of the listed tasks).
+    const solve = join(dir, 'solve.json');
+    await writeFile(solve, JSON.stringify({ oracles: join(probeSet, 'oracles'), tasks: { [OPUS]: ['repair-1', 'repair-2', 'repair-3'] } }));
+    const opus = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS, PN_FAKE_SOLVE: solve };
+    const pre = await p.bench(['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...p.setArgs(probeSet)], opus);
+    assert.equal(pre.status, 0, pre.stderr);
+    // The record reads the pushed ledger only.
+    let refused = p.tool(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_not_committed: there is no committed release ledger/);
+    assert.match(p.ok(['ledger', 'write']).stdout, /15 records \(15 new\)/);
+    p.commit('ledger: pre-probe');
+    assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]).stdout, /Opus passed 3 of 7; admitted \(1–5 of 7\)/);
+    p.commit('pre-probe record');
+    // 3. The declaration: the count before it is the pre-probe's 7, not 0.2.0's 470.
+    const declared = p.ok(['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', [OPUS, SONNET, HAIKU].join(','), '--out', declaration]);
+    assert.match(declared.stdout, /release runs counted before this round: 7 of 800 \(0\.3\.0 counts from zero\); the round plans 85 \(formula 99 ≤ 100\); 198 kept for other units; funded/);
+    const value = await json(join(p.repo, declaration));
+    assert.deepEqual([value.schema, value.shape, value.alpha, value.pair, value.budget.before, value.probe.passed], ['practonaut.challenge-declaration/2', 'B', 0.05, { strongest: OPUS, weakest: HAIKU }, 7, 3]);
+    p.commit('declare repair.practonaut round 1');
+    // 4. The held-out set and the baselines (no ledger entry), then the preflight.
+    const held = join(dir, 'heldout');
+    const made = p.ok(['generate', 'repair.practonaut', '--set', 'heldout', '--declaration', declaration, '--out', held]);
+    assert.match(made.stdout, /ANTHROPIC_MODEL=claude-opus-5-5 node tools\/challenge\.ts bench --purpose held-out --declaration /);
+    const tasks = ((await json(join(held, 'instances.json'))).instances as Json[]).map(entry => entry.taskId as string);
+    assert.equal(tasks.length, 26);
+    const args = p.setArgs(held);
+    const oracle = await p.bench(['--agent', 'oracle', ...args], {}, true), random = await p.bench(['--agent', 'random', ...args], {}, true);
     assert.deepEqual([oracle.status, random.status], [0, 0]);
-    const base = ['--declaration', declarationPath, '--set', join(dir, 'heldout'), '--dev', dev.join(','), '--oracle', oracle.path, '--random', random.path];
-    const preflight = tool(['gate', '--preflight', ...base]);
-    assert.equal(preflight.status, 0, preflight.stderr);
-    assert.match(preflight.stdout, /preflight passed — the ladder may start/);
-    assert.match(preflight.stdout, /oracle 26\/26, random 0\/26/);
-    // Opus: the stand-in hits the usage limit after 10 starts; the bench stops and names the rest.
-    const state = join(dir, 'state'); await mkdir(state);
-    const stopped = await bench('claude-code', heldArgs, { PN_FAKE_MODEL: OPUS, PN_FAKE_LIMIT_AFTER: '10', PN_FAKE_STATE: state });
-    assert.equal(stopped.status, 75);
+    const base = ['--declaration', declaration, '--set', held, '--dev', pre.path, '--oracle', oracle.path, '--random', random.path];
+    assert.match(p.ok(['gate', '--preflight', ...base]).stdout, /preflight passed — the ladder may start[\s\S]*oracle 26\/26, random 0\/26/);
+    // 5. The ladder through the guard: Opus solves the first 15, Sonnet 10, Haiku 4. Opus is stopped by
+    // a usage limit at its eleventh run and resumed.
+    await writeFile(solve, JSON.stringify({ oracles: join(held, 'oracles'), tasks: { [OPUS]: tasks.slice(0, 15), [SONNET]: tasks.slice(0, 10), [HAIKU]: tasks.slice(0, 4) } }));
+    const ladder = (model: string, extra: Record<string, string> = {}, only?: string) => p.bench(['--purpose', 'held-out', '--declaration', declaration, '--', '--agent', 'claude-code', ...(only ? p.setArgs(held, only) : args)], { ANTHROPIC_MODEL: model, PN_FAKE_MODEL: model, PN_FAKE_SOLVE: solve, ...extra });
+    const stopped = await ladder(OPUS, { PN_FAKE_LIMIT_AFTER: '17' });   // 7 pre-probe starts + 10 held-out
+    assert.equal(stopped.status, 75, stopped.stderr);
     const rest = /--tasks (\S+)/.exec(stopped.stdout)![1]!;
     assert.equal(rest.split(',').length, 16);
-    const resumed = await bench('claude-code', setArgs(join(dir, 'heldout'), rest), { PN_FAKE_MODEL: OPUS });
-    assert.equal(resumed.status, 0);
-    const ladder = [stopped.path, resumed.path];
-    // Sonnet: the bench is killed with kill -9 in its sixth run (the stand-in observes and sleeps);
-    // its agent is ended, the report recovered from the run folders, the named tasks resumed, and
-    // the preflight still passes (PADR-0040).
-    const sleepState = join(dir, 'sleep'); await mkdir(sleepState);
-    const before = new Set(await readdir(benchRoot()));
-    const killed = spawn(process.execPath, [CLI, 'bench', '--agent', 'claude-code', ...heldArgs], { env: { ...env, PN_FAKE_MODEL: SONNET, PN_FAKE_SLEEP_AFTER: '5', PN_FAKE_STATE: sleepState }, stdio: 'ignore' });
-    for (let waited = 0; !existsSync(join(sleepState, 'sleeper.pid')); waited += 200) { assert.ok(waited < 600_000, 'the sixth run did not start'); await new Promise(resolve => setTimeout(resolve, 200)); }
-    killed.kill('SIGKILL'); await once(killed, 'exit');
-    const sleeper = Number(await readFile(join(sleepState, 'sleeper.pid'), 'utf8'));
-    try { process.kill(-sleeper, 'SIGKILL'); } catch { /* gone */ }
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const killedFolder = join(benchRoot(), (await readdir(benchRoot())).find(name => !before.has(name))!);
-    const recovered = spawnSync(process.execPath, [CLI, 'bench', '--agent', 'claude-code', ...heldArgs, '--recover', killedFolder], { encoding: 'utf8', env });
-    assert.equal(recovered.status, 0, recovered.stderr);
-    const named = /--tasks (\S+)/.exec(recovered.stdout)![1]!;
-    assert.equal(named.split(',').length, 21);
-    const sonnetRest = await bench('claude-code', setArgs(join(dir, 'heldout'), named), { PN_FAKE_MODEL: SONNET });
-    assert.equal(sonnetRest.status, 0);
-    ladder.push(join(killedFolder, 'report.json'), sonnetRest.path);
-    const again = tool(['gate', '--preflight', ...base]);
-    assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /preflight passed — the ladder may start/);
-    const haiku = await bench('claude-code', heldArgs, { PN_FAKE_MODEL: HAIKU }); assert.equal(haiku.status, 0); ladder.push(haiku.path);
-    const out = join(declarations, 'tight-budget-round1.md');
-    const gated = tool(['gate', ...base, '--ladder', ladder.join(','), '--out', out]);
-    assert.equal(gated.status, 0, gated.stderr);
-    assert.match(gated.stdout, /tight-budget round 1: does not pass; 88 model runs spent/);
-    const markdown = await readFile(out, 'utf8');
-    assert.match(markdown, /\| oracle \| 26\/26 \| oracle passes 100 % \| yes \|/);
-    assert.match(markdown, /\| near-misses \| (\d+)\/\1 fail \| every near miss fails \| yes \|/);
-    assert.match(markdown, new RegExp(`\\| Held-out instances \\| 26 \\(generator seeds ${seeds[0]}–${seeds.at(-1)}, derived from the development runs`));
-    // 79 counted held-out runs (the killed run is spent) + 9 development runs; the run the usage
-    // limit rejected before any model work is listed, not counted (third review).
-    assert.match(markdown, /\| budget \| 88 model runs spent \(79 held-out \+ 9 development\), 1 rejected by the client not counted; release 123 of 500 \|/);
-    assert.match(markdown, /\| ladder \(claude-code\) \| `claude-opus-5-5` \| 0\/26 \|.*\| 0 \| 0 \| 0 \| 2 \|/);
-    const ledger = await json(join(declarations, 'tight-budget-round1.ledger.json'));
-    assert.deepEqual([ledger.schema, ledger.spent, ledger.releaseRuns, ledger.heldOutRuns.length], ['practonaut.challenge-ledger/1', { development: 9, heldOut: 79, total: 88, rejected: 1 }, 123, 80]);
-    // A later run of one task for Haiku in the same bench folder (best-of-N): the gate finds it.
-    const first = (await json(join(dir, 'heldout', 'instances.json'))).instances[0].taskId as string;
-    await bench('claude-code', setArgs(join(dir, 'heldout'), first), { PN_FAKE_MODEL: HAIKU });
-    const refused = tool(['gate', ...base, '--ladder', ladder.join(','), '--out', join(dir, 'again.md')]);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`task ${first} was run more than once for claude-haiku-5-5`));
+    await rm(join(p.state, 'starts'));
+    const resumed = await ladder(OPUS, {}, rest);
+    const sonnet = await ladder(SONNET), haiku = await ladder(HAIKU);
+    assert.deepEqual([resumed.status, sonnet.status, haiku.status], [0, 0, 0]);
+    // A model the declaration does not name is refused before its client starts.
+    const before = (await p.started()).length;
+    const other = await ladder('claude-opus-4-1');
+    assert.equal(other.status, 2); assert.match(other.stderr, /ledger_model_refused/);
+    assert.equal((await p.started()).length, before);
+    const reports = [stopped.path, resumed.path, sonnet.path, haiku.path];
+    // 6. The gate reads only pushed records.
+    refused = p.tool(['gate', ...base, '--ladder', reports.join(','), '--out', file('repair.practonaut-round1.md')]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_not_committed: the local release ledger holds 160 records the committed one lacks/);
+    p.ok(['ledger', 'write']); p.commit('ledger: held-out');
+    const gated = p.ok(['gate', ...base, '--ladder', reports.join(','), '--out', file('repair.practonaut-round1.md')]);
+    assert.match(gated.stdout, /repair\.practonaut round 1: passes; 85 model runs counted in the round \(1 exempt\); release 85 of 800/);
+    const markdown = await readFile(join(p.repo, file('repair.practonaut-round1.md')), 'utf8');
+    assert.match(markdown, /\*\*Verdict: the unit passes round 1\.\*\* ladder: Claude models only\./);
+    assert.match(markdown, /\| budget \| 85 model runs counted \(78 held-out \+ 7 pre-probe\), 1 refused by the client before model work not counted; release 85 of 800 \|/);
+    assert.match(markdown, /\| ladder \(claude-code\) \| `claude-opus-5-5` \| 15\/26 \|.*\| 0 \| 0 \| 0 \| 0 \| 2 \|/);
+    assert.match(markdown, /\| ladder \(claude-code\) \| `claude-haiku-5-5` \| 4\/26 \|/);
+    assert.match(markdown, /\| mcnemar \| b = 11, c = 0, p = 0\.0010 \|/);
+    assert.match(markdown, /Built-in runs, listed and not counted: oracle 26, random 26\./);
+    const result = await json(join(p.repo, file('repair.practonaut-round1.gate.json')));
+    assert.deepEqual([result.schema, result.verdict, result.spend, result.ledger.counted, result.ledger.versions.length], ['practonaut.challenge-gate/2', 'passes', { preProbe: 7, heldOut: 78, total: 85, exempt: 1, planned: 85 }, 85, 2]);
+    // The 0.2.0 files are unchanged in the repository and appear in no 0.3.0 figure.
+    assert.equal(p.git('status', '--porcelain', '--', 'docs/benchmarks/challenge/*.json'), '');
+    // 7. A run made outside the ledger (a plain bench of one held-out task) refuses the round.
+    const plainRun = await p.bench(['--agent', 'claude-code', ...p.setArgs(held, tasks[20]!)], { ANTHROPIC_MODEL: HAIKU, PN_FAKE_MODEL: HAIKU }, true);
+    assert.equal(plainRun.status, 0, plainRun.stderr);
+    refused = p.tool(['gate', ...base, '--ladder', reports.join(','), '--out', join(dir, 'again.md')]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, new RegExp(`run_outside_ledger: 1 model run folder of this round's tasks holds no start entry in the release ledger \\(first: ${tasks[20]}-s1-r1`));
+    // 8. A rewritten committed ledger is refused: every committed version is a prefix of the current one.
+    const text = await readFile(p.ledgerPath, 'utf8'), lines = text.split('\n');
+    await writeFile(join(folder, 'release-ledger.jsonl'), lines.slice(0, 3).join('\n') + '\n');
+    await writeFile(p.ledgerPath, lines.slice(0, 3).join('\n') + '\n');
+    p.commit('rewrite the ledger');
+    await rm(join(p.benchRoot, (plainRun.path.split(/[\\/]/).at(-2))!), { recursive: true });
+    refused = p.tool(['gate', ...base, '--ladder', reports.join(','), '--out', join(dir, 'again.md')]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_rewritten: the release ledger of commit [0-9a-f]{12} is not a prefix of the current one/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

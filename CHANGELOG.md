@@ -55,9 +55,32 @@ All notable changes are recorded here. The format follows
   too (a rollback that fails closes the shell, and the host's mirror starts a new one); PNG
   capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity and
   SVG.
+- **The 0.3.0 gate tool** ([PADR-0042](docs/adr/0042-gate-for-families-on-toolchains.md), accepted
+  with an amendment; roadmap 0.3.0 P1, issue #44): `node tools/challenge.ts` gates units
+  (`<family>.<toolchain>`) in shape B — a probe plan committed and pushed before the first pre-probe
+  run, Opus's 7-instance pre-probe (1–5 passes admit) and its committed record, the round declaration
+  `practonaut.challenge-declaration/2` (ladder with preset, requested model, attestation and billing;
+  funding that keeps 40 runs; held-out seeds from the unit and the pre-probe digest `/2`), the held-out
+  set, the preflight, and the gate report `/2` in Markdown and JSON, with a second round at α = 0.025
+  on new instances. It reads `practonaut.bench/3` session-level reports only; a run counts as attested
+  only from values a shipped parser re-derived from its bound stdout, and a run is exempt from a budget
+  only by its re-derived structure. Shape A, any preset but `claude-code` as a ladder agent, a local
+  agent, too small or too large rounds and units outside the preregistration are refused by name.
+- **The release ledger and its start guard**: every model run the project makes takes a start entry in
+  a local append-only, hash-chained ledger (`.local/release-ledger-0.3.0.jsonl`) before its client
+  starts, and a run-end record with its hashes when it ends; a start that would pass 800 model runs is
+  refused before the client starts (`release_budget_exhausted`). Benches reach it through `node
+  tools/challenge.ts bench --purpose … -- <bench arguments>`; the committed copy
+  (`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl`) is written from it, every committed version
+  must be a prefix of the current one, and `declare` and `gate` read a run only once both its records
+  are pushed. 0.3.0 counts from zero: the 0.2.0 rounds stay readable and are never counted.
 
 ### Changed
 
+- The 0.2.0 challenge gate's `declare` and `gate` are replaced by the 0.3.0 ones; the 0.2.0
+  declarations (`/1`) and round ledgers are only read. The bench runner takes an optional start guard
+  (`practonaut bench` itself is unchanged), and `report --verify` of a /3 report also names the runs
+  whose client values it re-derived.
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
   Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
   tier); headroom is sought per family and toolchain and in new family types, each behind a

@@ -748,7 +748,7 @@ hardest tasks passed); until a family passes a gate it is a **library, not a cha
 of the five candidate families below found no headroom on Practonaut's own actions; they get no
 second round there ([PADR-0041](../adr/0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md)),
 and 0.3.0 gates families on toolchains under
-[PADR-0042](../adr/0042-gate-for-families-on-toolchains.md) (proposed). The challenge tier adds
+[PADR-0042](../adr/0042-gate-for-families-on-toolchains.md) (below). The challenge tier adds
 harder task families, made by a seeded generator and published only after a preregistered ladder gate
 ([PADR-0040](../adr/0040-challenge-tier-generated-families-and-gate.md), roadmap 0.2.0 item 4). Until
 a family passes, it is a **candidate**: it lives in `src/challenge/` and is generated from a checkout
@@ -781,6 +781,8 @@ generator version (1.0.0; `injection` 1.1.0), and a golden test pins one instanc
 node tools/challenge.ts generate repair --set dev --out .local/challenge/dev/repair        # seeds 1…8
 node tools/challenge.ts verify .local/challenge/dev/repair                                 # checker only, no agent
 node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args .local/challenge/dev/repair)
+# a model agent for the project goes through the release ledger's guard:
+ANTHROPIC_MODEL=claude-opus-5-5 node tools/challenge.ts bench --purpose development -- --agent claude-code $(node tools/challenge.ts args .local/challenge/dev/repair)
 ```
 
 `generate` writes `world/world.json`, one oracle sidecar per instance in `oracles/` (outside the world
@@ -823,112 +825,138 @@ process took 2–3 s on a machine with a load average around 26, and exceeded it
 (`checker_timeout`, an `infra_error` in a bench run) at a load average around 50. Run gate rounds,
 especially long-horizon ones, on a machine that is not otherwise busy.
 
-**A round** (preregistered in PADR-0040) has 3 development instances × 3 agents (9 model runs) and
-26 held-out instances × 3 agents (78 runs), 87 runs per family; the tools refuse other sizes. At 26
-instances the exact McNemar test is not strong: if two agents disagree on 20 % of the instances, all
-in one agent's favour, it reaches p < 0.05 with probability 0.42 (0.34 at 24, 0.57 at 30; 39 are
-needed for 0.8). A family that fails discrimination may still separate agents. The ladder is
-`claude-code` with Opus, Sonnet and Haiku (chosen with `ANTHROPIC_MODEL`, identified by the model id
-the client reports in every run); any other model needs `--maintainer-approved <model>`. The gate
-pair is fixed before any run: **Opus is the strongest, Haiku the weakest**; development outcomes are
-reported as a sanity check and never change it.
+### The 0.3.0 gate
 
-**Operator procedure.** Run one family at a time on an otherwise idle machine on mains power that
-does not sleep (run the benches under `caffeinate -i` on macOS), with Claude Code logged in, on a
-branch of its own for the round (`git switch -c challenge/<family>-round-<k>` from the commit to be
-gated, also from a detached checkout, then `git push -u origin HEAD`). The declaration is committed
-and pushed on that branch, and the gate runs there before any squash or rebase. **Keep the
-branch** (never delete it): the held-out set records the declaration's commit, which must stay
-reachable. After the round's branch is squash-merged into main, `gate` is not expected to run again
-on main. The commands below are for a POSIX shell (bash or zsh; on Windows Git Bash or WSL):
-`$(node tools/challenge.ts args …)` relies on the shell splitting the printed arguments, which
-PowerShell and cmd do not do, and `args` refuses a set whose paths contain white space.
-Claude Code is also updated in the background by other processes on the machine (a running Claude
-app or session), which `DISABLE_AUTOUPDATER=1` does not stop: to keep one version for a whole round,
-put a copy of one version's executable first in `PATH`; a patch update during a round is listed in the
-gate report, another minor or major version refuses the round.
-Every bench of a round uses `DISABLE_AUTOUPDATER=1` and the set's arguments, which carry the round's
-settings and `--stop-on-infra`: when Claude Code reports a usage or rate limit, a login or billing
-error or a server error, the bench stops (exit 75) and names the remaining tasks, and `|| break`
-keeps the loop from starting the next model; wait until the limit window is over, then bench those
-tasks with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` and continue the loop
-from that model. To stop a bench, press Ctrl+C **once** and wait for its partial report (exit 130):
-it lists the run in progress as not judged and names the tasks to resume the same way. A second
-Ctrl+C, kill -9, power loss or the machine running out of memory leave no report; then end the
-bench's agent if it still runs (`kill -9 -$(cat <run folder>/agent.pid)`) and recover the report
-before anything else, with the bench's own arguments (a development bench's with its `--mirror`):
-`node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args <set> [--tasks …]) --recover <bench folder>`;
-it names the tasks to resume. Pass every report, recovered ones included, to the tool. Do not rerun
-a task that was judged: the gate finds every run folder under the bench roots, refuses best-of-N
-and refuses a judged run folder that no report lists.
+0.3.0 gates **units**: a family on a toolchain, written `<family>.<toolchain>` (`layout.practonaut`,
+`repair.excalidraw-mcp-0.3.2`), under [PADR-0042](../adr/0042-gate-for-families-on-toolchains.md) as
+amended on its acceptance. The unit is part of every file name, world id and held-out seed
+derivation. The preregistered units are `layout.practonaut`, `human-edit.practonaut` and `repair`,
+`injection`, `long-horizon` and `layout` on `excalidraw-mcp-0.3.2` (the draw.io units are named when
+its server is pinned); another unit needs `--maintainer-approved-unit <unit>`, recorded in the plan and
+the declaration. `limited-checks`, `tight-budget` and `human-edit` are refused on a foreign toolchain
+(`unit_family_toolchain`). This Practonaut gates session-level units only: a unit on a foreign
+toolchain is refused until artifact mode ships its toolchain definitions (`toolchain_unavailable`),
+and `layout` and `human-edit` until their generators exist (`family_unavailable`).
+
+**Shape B only.** No agent but Claude through `claude-code` is gate-eligible in 0.3.0
+([PADR-0046](../adr/0046-vendor-neutral-presets.md) decision 7), so every round is shape B: **Opus
+pre-probes 7 development instances** (1–5 passes admit, 0 or 6–7 refuse, no extension), and **Opus,
+Sonnet and Haiku run 26 held-out instances**: (26 + 7) × 3 = 99 ≤ 100 runs, 7 + 78 = 85 planned. The
+gate pair is Opus (strongest) and Haiku (weakest), each run's model attested by Claude Code's own
+`system/init`. A declaration in shape A, one naming another preset (`codex`, `codex-oss`,
+`opencode-local`) or a local agent, more than three subscription agents, fewer than three agents,
+fewer than 24 held-out instances or a round whose formula exceeds 100 is refused, each by its code.
+A unit has at most two rounds; a second one runs on new held-out instances and decides at α = 0.025.
+A refused unit may be retuned once: probe 2 of the same round, with a newer generator version and new
+seeds.
+
+**The release ledger.** 0.3.0 counts every model run made for the project from zero, at most 800
+(the 0.2.0 rounds are never counted). Every client start takes a **start entry** in a local,
+append-only ledger before the client starts, and the runner that took it appends one **run-end
+record** when the run ends, with the SHA-256 of the judged `session.json`, of `agent.stdout` and of
+`checker.json`, the status, the failure and the observed billing class
+(`.local/release-ledger-0.3.0.jsonl`: one canonical JSON record per line, each chained to the line
+before by its SHA-256). A start that would pass 800 is refused before the client starts
+(`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
+local model attested `local`, or a run the client refused before any model work (a usage limit or a
+login error, classified by a shipped parser from the run's own output, with no host call and no
+tokens); none of the latter is decided from a note's words. Built-in agents start no client and take
+no entry. The guard runs for benches started through `node tools/challenge.ts bench`; `practonaut
+bench` itself takes no ledger. A project run started another way is outside the ledger, and `declare`
+and `gate` refuse a round when a model-run folder of its tasks has no start entry. `ledger init`
+creates the local ledger (a copy of the committed one); `ledger write` writes the committed copy
+`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger show` prints the count.
+`declare` and `gate` read a run only when its two records are in the committed ledger, committed and
+pushed, and the local ledger has nothing the committed one lacks; every committed version of the file
+must be a prefix of the current one.
+
+**A round, step by step.** Run the commands from the checkout's top level on a branch of the round's
+own that stays pushed (`git switch -c challenge/<unit>-round-<k>`, `git push -u origin HEAD`), on an
+otherwise idle machine, with one Claude Code version first in `PATH` for the whole round (a patch
+update during the round is listed, another minor or major version refuses it), with the project's API
+key kept by name (`--keep-env ANTHROPIC_API_KEY` in every model bench) and `DISABLE_AUTOUPDATER=1`.
+Each command below prints the next.
 
 ```bash
-F=repair; D=.local/challenge/$F; DECL=docs/benchmarks/challenge/$F-round-1.declaration.json
-# 0. The round's branch, pushed.
-git switch -c challenge/$F-round-1 && git push -u origin HEAD
-# 1. Development: 3 instances, each ladder model once per instance, mirror named explicitly.
-node tools/challenge.ts generate $F --set dev --seed 101 --count 3 --difficulty mixed --out $D/dev
-for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
-  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/dev) --mirror required || break
-done
-# 2. Declaration: freezes the round; commit and push it before step 3.
-node tools/challenge.ts declare --family $F --round 1 --difficulty mixed --dev <opus>/report.json,<sonnet>/report.json,<haiku>/report.json --out $DECL
-git add $DECL && git commit -s -m "challenge: declare $F round 1" && git push   # declare creates the folder
-# 3. The held-out set: its 26 seeds follow from the development runs; it prints the round's commands.
-node tools/challenge.ts generate $F --set heldout --declaration $DECL --out $D/heldout
-# 4. The baselines, then the preflight, before any ladder run.
+U=layout.practonaut; F=docs/benchmarks/challenge/0.3.0; D=.local/challenge/$U
+node tools/challenge.ts ledger init                                   # once per machine
+# 1. The probe plan: committed and pushed before the first pre-probe run.
+node tools/challenge.ts plan --unit $U --round 1 --difficulty 2 --seed 101 --model claude-opus-5-5 \
+  --mirror required --timeout 600 --max-actions 60 --out $F/$U-round-1.probe-1.plan.json
+git add $F && git commit -s -m "challenge: plan $U round 1" && git push
+# 2. The pre-probe: Opus on the plan's 7 instances, through the guard.
+node tools/challenge.ts generate $U --set probe --plan $F/$U-round-1.probe-1.plan.json --out $D/probe
+DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=claude-opus-5-5 node tools/challenge.ts bench --purpose pre-probe \
+  --plan $F/$U-round-1.probe-1.plan.json -- --agent claude-code --keep-env ANTHROPIC_API_KEY $(node tools/challenge.ts args $D/probe)
+node tools/challenge.ts ledger write && git add $F && git commit -s -m "ledger: $U pre-probe" && git push
+node tools/challenge.ts probe --plan $F/$U-round-1.probe-1.plan.json --set $D/probe --dev <report.json> --out $F/$U-round-1.probe-1.json
+git add $F && git commit -s -m "challenge: pre-probe $U round 1" && git push   # admitted or not
+# 3. The declaration (an admitted, funded unit), then the held-out set.
+node tools/challenge.ts declare --plan $F/$U-round-1.probe-1.plan.json --probe $F/$U-round-1.probe-1.json --dev <report.json> \
+  --ladder claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5 --out $F/$U-round-1.declaration.json
+git add $F && git commit -s -m "challenge: declare $U round 1" && git push
+node tools/challenge.ts generate $U --set heldout --declaration $F/$U-round-1.declaration.json --out $D/heldout
+# 4. Oracle and random (no ledger entry), the preflight, then the ladder through the guard.
 DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args $D/heldout)
 DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent random $(node tools/challenge.ts args $D/heldout)
-node tools/challenge.ts gate --preflight --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json
-# 5. The ladder (resume a stopped bench with --tasks), then the gate and its ledger.
+node tools/challenge.ts gate --preflight --declaration $F/$U-round-1.declaration.json --set $D/heldout --dev <pre-probe report> --oracle <oracle> --random <random>
 for M in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5; do
-  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node src/cli/main.ts bench --agent claude-code $(node tools/challenge.ts args $D/heldout) || break
+  DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=$M node tools/challenge.ts bench --purpose held-out --declaration $F/$U-round-1.declaration.json \
+    -- --agent claude-code --keep-env ANTHROPIC_API_KEY $(node tools/challenge.ts args $D/heldout) || break
 done
-node tools/challenge.ts gate --declaration $DECL --set $D/heldout --dev <3 development reports> --oracle <oracle>/report.json --random <random>/report.json \
-  --ladder <every held-out ladder report> --out docs/benchmarks/challenge/$F-round1.md
+# 5. The ledger pushed, then the gate report /2 (Markdown and JSON).
+node tools/challenge.ts ledger write && git add $F && git commit -s -m "ledger: $U held-out" && git push
+node tools/challenge.ts gate --declaration $F/$U-round-1.declaration.json --set $D/heldout --dev <pre-probe report> --oracle <oracle> --random <random> \
+  --ladder <every held-out ladder report> --out $F/$U-round1.md
 ```
 
-`declare` re-verifies the development reports (resumed benches merged), checks that they ran on
-exactly the development set the generator makes for their seeds and difficulty, each instance once
-per model and judged (`--seed-list 1 --repeats 1`), every run on the model its report names, with an
-explicit `--mirror` and at most the family's `--max-actions`. The declaration records the pair, the
-development outcomes and whether they follow the capability order, the digest of the development
-runs' canonical content (model, task, seed, the checker's verdict, the judged session's state hash
-and action log), the development runs found (reruns included), the bench settings, the sizes
-and the release runs before the round — derived: 35 plus, for every earlier round committed in the
-same folder, its gate ledger's spend or its declared 87; more than 500 with the round is refused
-("budget exhausted — a maintainer decides on a second round"). The held-out seeds are 26
-consecutive seeds from 1 000 000 + (the first 12 hex digits of the SHA-256 of the canonical JSON of
-family, round, generator version and the development digest, modulo 900 000 000): only new paid
-development runs can move them. `generate --set heldout` refuses a declaration that is not committed,
-changed or not pushed (in no remote-tracking branch) and records its commit in `instances.json`.
+A bench stopped by a usage limit (`--stop-on-infra`, exit 75) names the remaining tasks; bench them
+with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` through the guard again. A
+killed bench is recovered with `node src/cli/main.ts bench <its arguments> --recover <bench folder>`
+(recovery starts no client and writes no run-end record: such a run counts, is never scored, and its
+task is benched again). Do not rerun a judged task: the ledger shows every start, and the gate refuses
+best-of-N and a judged run it was not given.
 
-`gate` checks that the gated declaration is the one in the commit the held-out set records (a later
-version of the file is allowed; the gate report lists every version with its date) and that this
-commit is still on a remote-tracking branch, regenerates the held-out
-set from it and refuses a set folder whose world, manifest or oracle files differ (the manifest
-records each oracle file's SHA-256 and near-miss count), re-verifies every report against its bench
-folder, merges each agent's reports (a task benched again counts only after an `infra_error`),
-refuses benches of another world, with another seed list than `1`, with repeats or other settings
-than declared, development runs other than the digested ones, ladder runs on another model, an
-oracle or random baseline with an `infra_error` or a missing run (rerun it), and any best-of-N
-found in the bench folders; it replays every regenerated near miss in a checker process, writes the
-gate report and the ledger of the round's spend (`<family>-round<k>.ledger.json`). `gate
---preflight` runs everything but the ladder and refuses a round that cannot pass (an oracle miss,
-random above 5 %, a passing near miss). A round 2 needs `--previous <round-1 oracle report.json>`
-and new seeds. The verdict rules are PADR-0040's: headroom (strongest 10–80 %), discrimination
-(≥ 20 points and exact McNemar p < 0.05 on the discordant instances), oracle 100 %, random ≤ 5 %,
-every near miss fails, every run counts, more than 5 % `infra_error`, missing or unattested runs
-voids the round, at most 100 model runs per family and round. A gate report is committed with a link from [the documentation index](../index.md) (`npm run check`
-requires one for every page under `docs/`). Bench reports carry no cost yet; the round's list-price
-total is added to the gate report by hand until the bench records it.
+**What the files fix.** The probe plan pins the unit, the toolchain (at session level the Practonaut
+version; every report of the round and the gate itself use it), generator and difficulty, Opus's
+seven seeds and the bench settings. The pre-probe record holds Opus's outcomes, the digest of the
+pre-probe runs' canonical content (`practonaut.challenge-development/2`: model, task, seed, verdict,
+the judged session's state hash and action log, in UTF-16 code-unit order — no byte hash, no status),
+whether the unit is admitted, and the ledger position that orders admissions. The declaration
+(`practonaut.challenge-declaration/2`) names release, unit, round, α, the ladder (preset, client,
+requested model, attestation, billing class), the gate pair, the sizes, the ledger count before the
+round and the runs kept for other units. A unit is **funded** when that count, the round's 78
+held-out runs, the held-out runs of units admitted earlier and not yet declared, 40 runs to leave and
+— for a unit on Practonaut's own actions, until artifact mode is accepted — two rounds for foreign
+toolchains (198 runs) fit into 800; otherwise `declare` refuses it as "admitted, not gated for
+budget". The 26 held-out seeds follow from the release, the unit, the round, the generator version
+and the pre-probe digest: only new paid runs move them.
 
-A whole round without a language model — stand-in `claude` scripts, a usage-limit stop and resume,
-the preflight, the gate and its ledger — is an opt-in integration test that takes about twenty
-minutes, longer than `test:integration` gives a file. Run it on its own, after the engine build:
+**What the gate checks.** Everything the preflight checks — the declaration is the one in the commit
+the held-out set records and that commit is pushed; plan and record are committed and the declaration
+follows from them; the held-out set, its world and oracle files are the regenerated ones; every report
+is a re-verified `practonaut.bench/3` session-level report of the pinned Practonaut, the plan's
+settings and seed list `1`; the pre-probe runs give the declared digest and outcomes; oracle 100 %,
+random ≤ 5 %, every near miss fails in a checker process; the ledger rules above — and then the
+ladder: every run bound to its two ledger records (other hashes, status, failure, toolchain or rules
+refuse), the declared preset and model requested, the billing class, isolation shown by the runs
+whose offered tools a shipped parser read again, one prompt, one API key source and one release line
+per client. A run counts as attested only when a shipped parser re-derived its client values from its
+bound stdout and they name the declared model; a run on another model refuses the round. The verdict
+rules are PADR-0040's: headroom (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar on
+the discordant instances below α), every run counts, more than 5 % `infra_error`, missing,
+unattested or unrecorded runs of the pair and the ladder voids the round, more than 100 model runs in
+the round voids it for budget. The gate report (`<unit>-round<k>.md`) and its JSON
+(`<unit>-round<k>.gate.json`, `practonaut.challenge-gate/2`) hold every number; the round's spend and
+the release count come from the ledger. Every page under `docs/` needs a link from
+[the documentation index](../index.md) (`npm run check`).
 
-```bash
-npm run engine:build
-PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3000000 tests/integration/challenge-round.test.ts
-```
+A whole round without a language model — stand-in `claude` scripts that observe or play a listed
+task's reference, a usage-limit stop and resume, the ledger written and pushed between the steps, the
+committed 0.2.0 files present and not counted — and a start at 801 refused before the stand-in starts
+are integration tests (`tests/integration/challenge-round.test.ts`).
 
+**The 0.2.0 rounds** ([gate reports](challenge/README.md)) used PADR-0040's tool: 3 development
+instances × 3 agents and 26 held-out instances × 3 agents per family, a 500-run release budget, a
+ledger per round. Their declarations (`practonaut.challenge-declaration/1`) and ledgers stay readable
+and are validated by their own rules; 0.3.0 counts none of them.
