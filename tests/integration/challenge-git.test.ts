@@ -1,5 +1,7 @@
-// A round declaration counts only as git holds it (PADR-0040, second review B-B): committed, unchanged
-// in the working tree, contained in a remote-tracking branch; at the gate in exactly one version.
+// A round file counts only as git holds it (PADR-0040, second review B-B): committed, unchanged in the
+// working tree, contained in a remote-tracking branch. The release ledger as declare and gate read it
+// (PADR-0044 decision 8): the committed copy pushed, the local ledger holding nothing more, every
+// committed version a prefix of the current one; and the scan for model runs outside the ledger.
 // A temporary repository with a local bare remote stands in for the project's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,6 +11,8 @@ import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from '../../src/challenge/git.ts';
+import { pushedLedger, scanOutside } from '../../src/challenge/files.ts';
+import { headerLine, nextLine, parseLedger, type StartBody } from '../../src/challenge/ledger.ts';
 
 test('a declaration is used only committed, unchanged and pushed; its versions are counted', { timeout: 120_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-declaration-git-'));
@@ -61,5 +65,57 @@ test('a declaration is used only committed, unchanged and pushed; its versions a
     // Outside any repository.
     const loose = join(dir, 'loose'); await mkdir(loose); await writeFile(join(loose, 'repair-round-1.declaration.json'), '{}');
     assert.throws(() => declarationCommit(join(loose, 'repair-round-1.declaration.json')), /is not in a git repository; commit and push it first/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('the release ledger as declare and gate read it: committed and pushed, nothing more in the local one, every committed version a prefix; runs outside it are found', { timeout: 120_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ledger-git-'));
+  try {
+    const git = (cwd: string, ...args: string[]) => {
+      const result = spawnSync('git', ['-c', 'user.name=Practonaut Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' });
+      assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+      return result.stdout.trim();
+    };
+    const remote = join(dir, 'remote.git'), work = join(dir, 'work'), folder = join(work, 'docs', 'benchmarks', 'challenge', '0.3.0');
+    await mkdir(remote); git(remote, 'init', '--bare');
+    await mkdir(folder, { recursive: true }); git(work, 'init'); git(work, 'remote', 'add', 'origin', remote);
+    const start = (index: number, bench = '20261102T100000Z-0001'): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench, run: `connect-s${index}-r1` });
+    let ledger = parseLedger(headerLine());
+    const append = (body: StartBody): string => { ledger = parseLedger(ledger.text + nextLine(ledger, body).line); return ledger.text; };
+    const paths = { local: join(dir, 'local.jsonl'), committed: join(folder, 'release-ledger.jsonl') };
+    const code = async (expected: string, message?: RegExp): Promise<void> => { await assert.rejects(pushedLedger(paths), (error: Error & { code?: string }) => error.code === expected && (!message || message.test(error.message)), expected); };
+    await writeFile(paths.local, append(start(1)));
+    await code('ledger_not_committed', /there is no committed release ledger/);
+    await writeFile(paths.committed, ledger.text);
+    await code('not_committed', /is not committed/);
+    git(work, 'add', '.'); git(work, 'commit', '-m', 'ledger 1');
+    await code('not_committed', /which no remote-tracking branch contains/);
+    git(work, 'push', '-u', 'origin', 'main');
+    assert.deepEqual((await pushedLedger(paths)).versions.map(version => version.records), [2]);
+    // The local ledger moves on: refused until the committed copy has it too.
+    await writeFile(paths.local, append(start(2)));
+    await code('ledger_not_committed', /holds 1 records the committed one lacks/);
+    await writeFile(paths.committed, ledger.text); git(work, 'add', '.'); git(work, 'commit', '-m', 'ledger 2'); git(work, 'push');
+    const read = await pushedLedger(paths);
+    assert.deepEqual([read.ledger.records.length, read.versions.map(version => version.records)], [3, [3, 2]]);
+    // A committed copy that is not the local one's prefix, and a history whose older version is not a prefix.
+    await writeFile(paths.local, headerLine());
+    await code('ledger_diverged');
+    let other = parseLedger(headerLine());
+    other = parseLedger(other.text + nextLine(other, start(9)).line);
+    await writeFile(paths.local, other.text); await writeFile(paths.committed, other.text);
+    git(work, 'add', '.'); git(work, 'commit', '-m', 'rewrite'); git(work, 'push');
+    await code('ledger_rewritten', /is not a prefix of the current one/);
+
+    // Model-run folders of the round's tasks without a start entry (built-in runs have no agent.stdout).
+    const root = join(dir, 'bench'), bench = (name: string) => join(root, name);
+    for (const [name, run, stdout, world] of [['20261102T100000Z-0001', 'connect-s1-r1', true, 'a'], ['20261102T100000Z-0002', 'connect-s1-r1', true, 'a'], ['20261102T100000Z-0003', 'connect-s1-r1', false, 'a'], ['20261102T100000Z-0004', 'connect-s1-r1', true, 'b'], ['20261102T100000Z-0005', 'decision-s1-r1', true, null]] as const) {
+      await mkdir(join(bench(name), run), { recursive: true });
+      if (stdout) await writeFile(join(bench(name), run, 'agent.stdout'), '{}\n');
+      if (world) await writeFile(join(bench(name), 'report.json'), JSON.stringify({ environment: { world: { contentHash: world.repeat(64) } } }));
+    }
+    const listed = parseLedger(headerLine() + nextLine(parseLedger(headerLine()), start(1)).line);
+    // 0001 is in the ledger; 0003 has no agent output; 0004 is another world; 0005 has no report and counts.
+    assert.deepEqual(await scanOutside([root], { worlds: ['a'.repeat(64)], tasks: ['connect', 'decision'] }, listed), [{ bench: '20261102T100000Z-0002', run: 'connect-s1-r1' }, { bench: '20261102T100000Z-0005', run: 'decision-s1-r1' }]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
