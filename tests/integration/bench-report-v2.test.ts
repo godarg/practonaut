@@ -35,8 +35,9 @@ function runText(html: string, runId: string): string {
 const normalPath = (html: string): string => html.replace(/<details class="tech">[\s\S]*?<\/details>/g, '');
 /** The first sentence of a library explanation (the factual part; the rest coaches a learner). */
 const firstOf = (text: string): string => text.split(/(?<=[.!?])\s+(?=\p{Lu})/u)[0]!;
-// Data (an id, a command, a flag) is set apart only by its markup: in plain text it is the words around it.
-const plain = (html: string): string => html.replace(/<\/?code[^>]*>/g, '').replace(/<span class="(?:data(?: id| quoted)?|name)">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+// Data (an id, a command, a flag) is set apart only by its markup: in plain text it is the words around
+// it. A range's word joiner ("0–40") is invisible.
+const plain = (html: string): string => html.replace(/\u2060/g, '').replace(/<\/?code[^>]*>/g, '').replace(/<span class="(?:data(?: id| quoted)?|name)">([^<]*)<\/span>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fixtures: Fixtures, dir: string;
 test.before(async () => {
