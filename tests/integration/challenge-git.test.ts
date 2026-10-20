@@ -119,3 +119,44 @@ test('the release ledger as declare and gate read it: committed and pushed, noth
     assert.deepEqual(await scanOutside([root], { worlds: ['a'.repeat(64)], tasks: ['connect', 'decision'] }, listed), [{ bench: '20261102T100000Z-0002', run: 'connect-s1-r1' }, { bench: '20261102T100000Z-0005', run: 'decision-s1-r1' }]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('a committed ledger version on a merged side branch or a pushed unmerged branch is checked too (review: budget-ledger-history-simplified)', { timeout: 120_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ledger-history-'));
+  try {
+    const git = (cwd: string, ...args: string[]) => {
+      const result = spawnSync('git', ['-c', 'user.name=Practonaut Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' });
+      assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+      return result.stdout.trim();
+    };
+    const remote = join(dir, 'remote.git'), work = join(dir, 'work'), folder = join(work, 'docs', 'benchmarks', 'challenge', '0.3.0');
+    await mkdir(remote); git(remote, 'init', '--bare');
+    await mkdir(folder, { recursive: true }); git(work, 'init'); git(work, 'remote', 'add', 'origin', remote);
+    const start = (index: number): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index}-r1`, world: 'f'.repeat(64) });
+    const append = (text: string, index: number): string => text + nextLine(parseLedger(text), start(index)).line;
+    const paths = { local: join(dir, 'local.jsonl'), committed: join(folder, 'release-ledger.jsonl') };
+    const commitLedger = async (text: string, message: string): Promise<void> => { await writeFile(paths.committed, text); git(work, 'add', '.'); git(work, 'commit', '-m', message); };
+    const one = append(headerLine(), 1);
+    await commitLedger(one, 'ledger 1'); git(work, 'push', '-u', 'origin', 'main');
+    // A side branch appends its own record and is pushed; main appends another and merges the side
+    // branch, resolving the ledger to its own side. The side's pushed record is gone from main.
+    git(work, 'switch', '-c', 'side'); await commitLedger(append(one, 2), 'side record'); git(work, 'push', '-u', 'origin', 'side');
+    git(work, 'switch', 'main'); const mine = append(one, 3); await commitLedger(mine, 'main record');
+    git(work, 'merge', '-s', 'ours', '--no-edit', 'side'); git(work, 'push');
+    await writeFile(paths.local, mine);
+    await assert.rejects(pushedLedger(paths), (error: Error & { code?: string }) => error.code === 'ledger_rewritten');
+    // Without the merge: a pushed branch that is not merged holds a diverged version as well.
+    const fresh = join(dir, 'fresh'), freshFolder = join(fresh, 'docs', 'benchmarks', 'challenge', '0.3.0'), freshRemote = join(dir, 'fresh.git');
+    await mkdir(freshRemote); git(freshRemote, 'init', '--bare');
+    await mkdir(freshFolder, { recursive: true }); git(fresh, 'init'); git(fresh, 'remote', 'add', 'origin', freshRemote);
+    const freshPaths = { local: join(dir, 'fresh.jsonl'), committed: join(freshFolder, 'release-ledger.jsonl') };
+    const commitFresh = async (text: string, message: string): Promise<void> => { await writeFile(freshPaths.committed, text); git(fresh, 'add', '.'); git(fresh, 'commit', '-m', message); };
+    await commitFresh(one, 'ledger 1'); git(fresh, 'push', '-u', 'origin', 'main');
+    git(fresh, 'switch', '-c', 'unmerged'); await commitFresh(append(one, 2), 'side record'); git(fresh, 'push', '-u', 'origin', 'unmerged');
+    git(fresh, 'switch', 'main'); await commitFresh(mine, 'main record'); git(fresh, 'push');
+    await writeFile(freshPaths.local, mine);
+    await assert.rejects(pushedLedger(freshPaths), (error: Error & { code?: string }) => error.code === 'ledger_rewritten');
+    // Once the pushed versions agree (the side branch deleted from the remote), the ledger reads.
+    git(fresh, 'push', 'origin', '--delete', 'unmerged'); git(fresh, 'fetch', '--prune');
+    assert.equal((await pushedLedger(freshPaths)).ledger.records.length, 3);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
