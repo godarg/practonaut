@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { runOracle } from '../../src/authoring/from-scenes.ts';
 import { checkState } from '../../src/checker/index.ts';
-import { generateInstance, stressBoards, verdictFuel, worldIdOf, worldOf, FAMILY_BENCH, type Instance } from '../../src/challenge/build.ts';
+import { buildDraft, ChallengeError, draftFor, generateInstance, stressBoards, verdictFuel, worldIdOf, worldOf, FAMILY_BENCH, type Instance } from '../../src/challenge/build.ts';
 import { LAYOUT, adversarialStates, layoutStressState } from '../../src/challenge/layout.ts';
 import { layoutSelfCheck } from '../../src/challenge/self-check.ts';
 import { GENERATED_BY_LIMITS } from '../../src/world/schema.ts';
@@ -63,6 +63,14 @@ describe('challenge-layout 1.0.0', () => {
       }
       for (const miss of value.oracle.nearMisses.filter(entry => entry.kind.startsWith('layout-'))) assert.equal(checkState(world, finalState(value, miss.steps), { seed: 1, taskId: value.taskId }).passed, false, `${seed}: ${miss.kind}`);
     }
+  });
+
+  it('the build refuses a layout instance whose stated clause has no single-fault near miss of its kind', () => {
+    const draft = draftFor('layout', 1, 1, 0);
+    assert.ok(draft.nearMissCandidates?.length);
+    const without = structuredClone(draft); delete without.nearMissCandidates;
+    assert.throws(() => buildDraft(without, worldIdOf('layout', 'test')), (error: unknown) => error instanceof ChallengeError && error.code === 'layout_near_miss' && /no single-fault near miss for goal clause \d+ \(noOverlap\)/.test(error.message));
+    assert.doesNotThrow(() => buildDraft(draft, worldIdOf('layout', 'test')));
   });
 
   it('pins every step\'s size: shrinking or growing one step fails the reference', () => {
