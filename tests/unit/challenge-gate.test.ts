@@ -12,7 +12,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { validateBenchReportV3, type SessionRunV3 } from '../../src/bench/report.ts';
-import { checkRetune, developmentDigest, fileHash, funded, fundingAt, heldOutSeeds, validateDeclaration, RoundError, type Declaration } from '../../src/challenge/declaration.ts';
+import { checkRetune, developmentDigest, fileHash, funded, fundingAt, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, validateDeclaration, RoundError, type Declaration } from '../../src/challenge/declaration.ts';
 import { attests, computeGate, exemptRun, mergeAgentRuns, preflightGate, probeRuns, renderGate, GateInputError, type GateReport } from '../../src/challenge/gate.ts';
 import { checkUnit, PREREGISTERED_UNITS, UnitError } from '../../src/challenge/units.ts';
 import { heldOutSeedsV1, validateDeclarationV1, validateLedgerV1 } from '../../src/challenge/round-020.ts';
@@ -238,6 +238,9 @@ test('every model run is bound to its two pushed ledger records (PADR-0044 decis
   refused(() => computeGate({ ...input, ledger: { ...input.ledger, ledger: tooled } }), 'toolchain_mismatch');
   // The admission and the declaration must be registered in the ledger.
   refused(() => computeGate({ ...input, ledger: { ...input.ledger, ledger: ledgerOf([...round.groups.slice(0, -1), { reports, purpose: 'held-out', basis: fileHash(round.declaration) }]) } }), 'declaration_unrecorded');
+  const unadmitted = validateDeclaration(declarationOf(round.plan, round.record, {}, {}, ledgerOf(round.groups.slice(0, 1))));
+  const withoutAdmission = ledgerOf([round.groups[0]!, { round: declaredOf({ ...round, declaration: unadmitted }, HELD_WORLD) }, { reports, purpose: 'held-out', basis: fileHash(unadmitted) }]);
+  refused(() => computeGate({ ...input, declaration: unadmitted, ledger: { ...input.ledger, ledger: withoutAdmission } }), 'probe_unrecorded');
   // The pre-probe record and the pre-probe world are the plan's.
   refused(() => computeGate({ ...input, probeWorld: hash('a') }), 'round_files_mismatch');
 });
@@ -252,6 +255,13 @@ test('a re-declaration after held-out runs started is refused, and every run on 
   const ladder2 = ladder(first(round, 15), first(round, 10), first(round, 4));
   const ledger = ledgerOf([...round.groups.slice(0, -1), { round: again }, { reports: ladder1, purpose: 'held-out', basis: hash('e') }, round.groups.at(-1)!, { reports: ladder2, purpose: 'held-out', basis: fileHash(round.declaration) }]);
   refused(() => computeGate({ ...inputOf(round, ladder2), ledger: { ledger, versions: [] } }), 'round_redeclared', /has a held-out run under another declaration/);
+  // declare refuses before it: a registered declaration whose held-out world has runs, under any purpose.
+  assert.doesNotThrow(() => refuseRedeclaration(ledgerOf(round.groups), UNIT, 1));
+  refused(() => refuseRedeclaration(roundLedger(round, ladder1.slice(0, 1)), UNIT, 1), 'round_redeclared', /was declared before and its held-out runs started/);
+  refused(() => refuseRedeclaration(ledgerOf([...round.groups, { reports: ladder1.slice(0, 1), purpose: 'development', basis: null, unit: null, round: null }]), UNIT, 1), 'round_redeclared');
+  // And a pre-probe record is made once.
+  assert.doesNotThrow(() => refuseRecordedProbe(ledgerOf(round.groups.slice(0, 1)), round.plan));
+  refused(() => refuseRecordedProbe(ledgerOf(round.groups), round.plan), 'probe_recorded');
 });
 
 test('runs on a held-out instance under any purpose are in the repeat check and count for the round (Codex counterexample; review: budget-outside-scan-any-purpose)', () => {

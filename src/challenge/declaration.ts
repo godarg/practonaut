@@ -294,6 +294,22 @@ export function fundingAt(ledger: Ledger, unit: string, round: number, admission
   return { before: countLedger(ledger).counted, reserved };
 }
 
+/** A pre-probe is recorded once (`probe_recorded`): no admission or refusal of this unit, round and
+ * probe is registered in the ledger yet. */
+export function refuseRecordedProbe(ledger: Ledger, plan: Pick<Plan, 'unit' | 'round' | 'probe'>): void {
+  if (roundEvents(ledger, plan.unit, plan.round).some(event => event.event !== 'declared' && event.probe === plan.probe))
+    refuse('probe_recorded', `${plan.unit} round ${plan.round}, probe ${plan.probe} is recorded in the release ledger already; a pre-probe record is made once`);
+}
+/** A round is declared again only while none of its held-out runs has started (`round_redeclared`):
+ * no start of the round benches a held-out world an earlier declaration registered, or serves it. */
+export function refuseRedeclaration(ledger: Ledger, unit: string, round: number): void {
+  const members = roundStarts(ledger, unit, round);
+  for (const earlier of roundEvents(ledger, unit, round).filter(event => event.event === 'declared')) {
+    const started = members.find(start => start.world === earlier.world || (start.purpose === 'held-out' && start.basis === earlier.declaration));
+    if (started) refuse('round_redeclared', `${unit} round ${round} was declared before and its held-out runs started (start entry ${started.seq}); a round is not declared again once they did`);
+  }
+}
+
 /** The family a validated unit names (for the generator). */
 export const familyOf = (unit: string, approved: string | null): Family => unitOf(unit, approved).family;
 /** The generator version this checkout has for a unit's family. */

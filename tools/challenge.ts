@@ -25,7 +25,7 @@ import { declarationHash, fileHash, GATE_PRESET, heldOutSeeds } from '../src/cha
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
 import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
 import { appendRound, initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
-import { countLedger, headerLine, parseLedger, PURPOSES, RELEASE, roundEvents, type Purpose } from '../src/challenge/ledger.ts';
+import { countLedger, headerLine, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
 import { resolvedDataPaths } from '../src/platform/paths.ts';
 import { parseUnit, PRACTONAUT_TOOLCHAIN } from '../src/challenge/units.ts';
 import { commandBench } from '../src/cli/bench.ts';
@@ -194,9 +194,6 @@ async function bench(args: string[]): Promise<void> {
     if (value.toolchain.practonaut !== PACKAGE_VERSION) fail(`the round's plan pins Practonaut ${value.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
     const models = purpose === 'pre-probe' ? [(value as Awaited<ReturnType<typeof readPlan>>).agent.model] : (value as Awaited<ReturnType<typeof readDeclaration>>).ladder.map(agent => agent.model);
     const basis = purpose === 'pre-probe' ? fileHash(value) : declarationHash(value as Awaited<ReturnType<typeof readDeclaration>>);
-    // A held-out run serves a declaration `declare` registered in the ledger (with its held-out world).
-    if (purpose === 'held-out' && !roundEvents((await readLedger(local)) ?? parseLedger(headerLine()), value.unit, value.round).some(event => event.event === 'declared' && event.declaration === basis))
-      throw Object.assign(new Error(`${value.unit} round ${value.round}: the release ledger holds no registration of this declaration (declare registers it)`), { code: 'declaration_unrecorded' });
     guard = { paths: ledgerPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models };
   } else {
     if (values['--plan'] !== undefined || values['--declaration'] !== undefined) fail(`a ${purpose} run serves no plan or declaration`);

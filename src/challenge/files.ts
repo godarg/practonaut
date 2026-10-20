@@ -26,7 +26,7 @@ import { safeText } from '../cli/output.ts';
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, generateSet, taskIdOf, type ChallengeSet } from './build.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
-import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, fundingAt, heldOutRuns, heldOutSeeds, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
+import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, fundingAt, heldOutRuns, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
 import { checkOutside, computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type Folders, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
 import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
 import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, type Ledger, type RoundBody } from './ledger.ts';
@@ -395,7 +395,7 @@ export async function probeFromFiles(files: ProbeFiles): Promise<{ record: Probe
   const folder = dirname(resolve(files.plan));
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
   // A pre-probe is recorded once; runs of its instances outside the ledger refuse it.
-  if (roundEvents(ledger.ledger, plan.unit, plan.round).some(event => event.event !== 'declared' && event.probe === plan.probe)) refuse('probe_recorded', `${plan.unit} round ${plan.round}, probe ${plan.probe} is recorded in the release ledger already; a pre-probe record is made once`);
+  asGate(() => refuseRecordedProbe(ledger.ledger, plan));
   const roots = rootsOf(files.reports, files.benchRoots);
   checkOutside(await scanOutside(roots, { worlds: [world], tasks }, ledger.ledger));
   const reports: GateReport[] = [];
@@ -433,11 +433,7 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
   const admission = events.find(event => event.event === 'admitted' && event.record === fileHash(probe) && event.plan === planHash);
   if (!admission) refuse('probe_unrecorded', 'the release ledger holds no admission of this pre-probe record; `probe` registers it (write and push the ledger after it)');
   // A round is declared again only while none of its held-out runs has started.
-  const members = roundStarts(ledger.ledger, plan.unit, plan.round);
-  for (const earlier of events.filter(event => event.event === 'declared')) {
-    const started = members.find(start => start.world === earlier.world || (start.purpose === 'held-out' && start.basis === earlier.declaration));
-    if (started) refuse('round_redeclared', `${plan.unit} round ${plan.round} was declared before and its held-out runs started (start entry ${started.seq}); a round is not declared again once they did`);
-  }
+  asGate(() => refuseRedeclaration(ledger.ledger, plan.unit, plan.round));
   const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world));
   const roots = rootsOf(files.reports, files.benchRoots);
   checkOutside(await scanOutside(roots, { worlds: [world], tasks: plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed)) }, ledger.ledger));
