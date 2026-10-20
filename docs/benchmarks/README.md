@@ -858,39 +858,42 @@ starts, naming the world it benches and the task identity of the instance; the r
 appends one **run-end record** when the run ends, with the SHA-256 of the judged `session.json`, of
 `agent.stdout` and of `checker.json`, the status, the failure and the observed billing class. There
 is **one local ledger per user and repository**, under `PRACTONAUT_HOME`
-(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the root commit alone — the same
-from every directory, clone and remote; a fork shares it, and with it the budget), shared with one
-lock by every clone and worktree of the repository on the machine: one canonical JSON record per
-line, each chained to the line before by its SHA-256. A second machine, or a second user with
-another `PRACTONAUT_HOME`, counts on a ledger of its own until it pushes; the committed copy's
-history catches the overlap only then. A relative `PRACTONAUT_HOME`, another folder from each
-directory, is refused. A start that would pass 800 is refused before the client starts
-(`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
-local model attested `local`, or a run the client refused before any model work (a usage limit or a
-login error, classified by a shipped parser from the run's own output, with no host call and no
-tokens); none of the latter is decided from a note's words. Built-in agents start no client and take
-no entry. `probe` and `declare` register what they decided (an admission or refusal, a declaration
-with its held-out world, each with the task identities of its instances) in the ledger, so funding
-and earlier declarations are read from the one shared ledger, not from a branch's files.
+(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the repository's one root commit —
+the same from every directory, clone, branch and remote; a fork shares it, and with it the budget; a
+history with more than one root is refused by name, `repository_roots`), shared with one lock by
+every clone and worktree of the repository on the machine: one canonical JSON record per line, each
+chained to the line before by its SHA-256. A second machine, or a second user with another
+`PRACTONAUT_HOME`, counts on a ledger of its own until it pushes; the committed copy's history
+catches the overlap only then. A `PRACTONAUT_HOME` that is not named fully (a relative path, or
+`\pn` on Windows), another folder from each directory or drive, is refused. A start that would pass
+800 is refused before the client starts (`release_budget_exhausted`). Every start counts until its
+run-end record releases it — a run of a local model attested `local`, or a run the client refused
+before any model work (a usage limit or a login error, classified by a shipped parser from the run's
+own output, with no host call and no tokens); none of the latter is decided from a note's words.
+Built-in agents start no client and take no entry. `probe` and `declare` register what they decided
+(an admission or refusal, a declaration with its held-out world, each with the task identities of
+its instances) in the ledger, so funding and earlier declarations are read from the one shared
+ledger, not from a branch's files.
 
 The guard sees every client start of a bench run through `node tools/challenge.ts bench`;
-`practonaut bench` itself takes no ledger. It cannot see `practonaut bench` run directly, or a client
-started by hand or by another program. A round's instances are protected anyway: `probe`, `declare`
-and `gate` refuse a round when a model-run folder of one of its instances under the bench roots has no
-start entry — matched by task identity from the world the bench stored, so on any world, or by task
-id for a folder without one — and `ledger init` refuses while any model-run folder without a start
-entry exists. Every project run — a fixture, example, acceptance or red-team run included — is a
-bench run through the guard; a client started otherwise is not counted, and is not made for the
-project. `ledger init` creates the local ledger: it refuses first when the repository's ledger exists
-(or lies where an earlier Practonaut kept it), and in a shallow clone, and copies the longest pushed
-version of the committed ledger (every pushed version must be one history). `ledger write` writes the
-committed copy `docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger show` prints
-the count and the file. `probe`, `declare` and `gate` read a run only when its two records are in the
-committed ledger, committed and pushed, and the local ledger has nothing the committed one lacks;
-every committed version of the file on HEAD and on every remote-tracking branch, merged or not, must
-be a prefix of the current one, and a shallow clone is refused. A version only a deleted or
-force-pushed branch held is not seen: delete a round's branch only once its ledger records reached a
-kept one.
+`practonaut bench` itself takes no ledger. It cannot see `practonaut bench` run directly, or a
+client started by hand or by another program. A round's instances are protected anyway: `probe`,
+`declare` and `gate` refuse a round when a model-run folder of one of its instances under the bench
+roots has no start entry — matched by task identity from the world the bench stored, so on any
+world, or by task id for a folder without one — and `ledger init` refuses while any model-run folder
+without a start entry exists. Every project run — a fixture, example, acceptance or red-team run
+included — is a bench run through the guard; a client started otherwise is not counted, and is not
+made for the project. `ledger init` creates the local ledger: it refuses first when the repository's
+ledger exists (or lies where an earlier Practonaut kept it), in a shallow clone, and when `--folder`
+names a committed ledger outside the repository (both spelled canonically), and copies the longest
+pushed version of the committed ledger (every pushed version must be one history). `ledger write`
+writes the committed copy `docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger
+show` prints the count and the file. `probe`, `declare` and `gate` read a run only when its two
+records are in the committed ledger, committed and pushed, and the local ledger has nothing the
+committed one lacks; every committed version of the file on HEAD and on every remote-tracking
+branch, merged or not, must be a prefix of the current one, and a shallow clone is refused. A
+version only a deleted or force-pushed branch held is not seen: delete a round's branch only once
+its ledger records reached a kept one.
 
 **Every run on a round's instances belongs to the round.** A start belongs to a unit's round when it
 names the unit and round, or when it runs one of the round's instances — by task identity, so on any
