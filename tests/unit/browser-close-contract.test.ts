@@ -6,7 +6,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { open } from 'node:fs/promises';
+import fsp, { open } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +21,7 @@ import { renderCardPngs } from '../../src/bench/card-png.ts';
 import { chromiumStarts } from '../../src/cli/browser-start.ts';
 import { createProductionMirror, type PracticeMirror } from '../../src/host/mirror.ts';
 import { createPracticeController, type BrowserCloseDiagnostic } from '../../src/host/session.ts';
-import { ChildHosts, childStartOutcome, httpFailure, startHost, status } from '../../src/host/server.ts';
+import { ChildHosts, StartCleanupFailed, childStartOutcome, httpFailure, startHost, status } from '../../src/host/server.ts';
 import { HOST_ERROR_CODES } from '../../src/host/protocol.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import type { State, World } from '../../src/world/types.ts';
@@ -416,6 +417,62 @@ test('a parent\'s shutdown that stops a child whose credential cannot be removed
   for (let turn = 0; turn < 200 && !waiting; turn++) await sleep(5);
   assert.ok(waiting, 'the child is starting');
   await assert.rejects(host.close(performance.now() + 300), /could not be fully confirmed/, 'the failed cleanup of the stopped child is a failed step');
+  chmodSync(childTokens, 0o700);
+  assert.equal(readdirSync(childTokens).some(name => name.endsWith('.token')), true, 'the child\'s credential is still there: the failure is real');
+});
+
+// --- PR #69 at 6b83a89 (Codex major, partly resolved before): a cleanup that threw in an early child
+// start was thrown in place of the start's error, so the parent's shutdown counted it as cancelled ---
+
+const POSIX_ONLY = { skip: process.platform === 'win32' ? 'POSIX: the test makes the child\'s token directory read-only' : false };
+/** A parent host, a child token directory and the child start under way when the parent closes. */
+async function stoppedChildStart(t: TestContext, start: (signal: AbortSignal, childTokens: string, assets: string) => ReturnType<typeof startHost>, waiting: () => boolean): Promise<{ closing: Promise<void>; launched: Promise<unknown>; childTokens: string }> {
+  const children = new ChildHosts(), assets = stubAssets();
+  const parentTokens = mkdtempSync(join(realpathSync(tmpdir()), 'pn-close-parent-')), childTokens = mkdtempSync(join(realpathSync(tmpdir()), 'pn-close-child-'));
+  t.after(() => { chmodSync(childTokens, 0o700); for (const directory of [childTokens, parentTokens, assets]) rmSync(directory, { recursive: true, force: true }); });
+  const host = await startHost(world(), { seed: 1, mirror: 'off', assetDirectory: assets, tokenDirectory: parentTokens, childHosts: children });
+  const launched = children.launch(signal => start(signal, childTokens, assets), async () => 'started');
+  launched.catch(() => undefined);
+  for (let turn = 0; turn < 400 && !waiting(); turn++) await sleep(5);
+  assert.ok(waiting(), 'the child is starting');
+  const closing = host.close(performance.now() + 300);
+  closing.catch(() => undefined);
+  return { closing, launched, childTokens };
+}
+
+test('a stopped child start whose diagnostics and then its credential removal fail is a failed step of the parent\'s shutdown', POSIX_ONLY, async t => {
+  // A stand-in for the open of the child's diagnostics file only: it waits for the parent's shutdown,
+  // then the child's token directory becomes read-only and the real open runs (EACCES); the start's
+  // cleanup then cannot remove the credential either (EACCES).
+  const realOpen = fsp.open.bind(fsp);
+  let waiting = false, signal: AbortSignal | undefined;
+  const standIn = test.mock.method(fsp, 'open', async (...args: Parameters<typeof fsp.open>) => {
+    const path = String(args[0]);
+    if (path.endsWith('.mirror.jsonl') && path.includes('pn-close-child-')) {
+      waiting = true;
+      if (!signal!.aborted) await new Promise(resolve => signal!.addEventListener('abort', resolve, { once: true }));
+      chmodSync(path.slice(0, path.lastIndexOf('/')), 0o500);
+    }
+    return realOpen(...args);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { standIn.mock.restore(); syncBuiltinESMExports(); });
+  const { closing, launched, childTokens } = await stoppedChildStart(t, (stop, tokens, assets) => { signal = stop; return startHost(world(), { seed: 1, mirror: 'off', assetDirectory: assets, tokenDirectory: tokens, signal: stop }); }, () => waiting);
+  await assert.rejects(closing, /could not be fully confirmed/, 'the credential the stopped start could not remove is a failed step, not a cancellation');
+  await assert.rejects(launched, (error: unknown) => error instanceof Error && error.message === 'Private mirror diagnostic cannot be persisted' && /EACCES/.test(String((error as { closeError?: unknown }).closeError)), 'the start\'s own failure stays its error, with the removal\'s failure next to it');
+  chmodSync(childTokens, 0o700);
+  assert.deepEqual(readdirSync(childTokens).map(name => name.replace(/^session-\d+-[0-9a-f]+/, 'session')), ['session.token'], 'the credential is still there and no diagnostics file was made: the failure is real');
+});
+
+test('a stopped child start whose error cannot carry its cleanup\'s failure is still a failed step of the parent\'s shutdown', POSIX_ONLY, async t => {
+  let waiting = false;
+  const frozen = Object.freeze(new AdapterError('cancelled', 'Engine initialization cancelled'));
+  const { closing, launched, childTokens } = await stoppedChildStart(t, (signal, tokens, assets) => startHost(world(), { seed: 1, assetDirectory: assets, tokenDirectory: tokens, signal, controllerFactory: async (_value, options) => {
+    waiting = true;
+    return new Promise<never>((_, reject) => { (options as { signal: AbortSignal }).signal.addEventListener('abort', () => { chmodSync(tokens, 0o500); reject(frozen); }, { once: true }); });
+  } }), () => waiting);
+  await assert.rejects(closing, /could not be fully confirmed/, 'the cleanup failure is not lost with a frozen error');
+  await assert.rejects(launched, (error: unknown) => error instanceof StartCleanupFailed && error.failure === frozen && error.cause === frozen && JSON.stringify(((error as { closeError?: unknown }).closeError as AggregateError).errors.map((step: unknown) => (step as { code?: string }).code)) === '["EACCES","EACCES"]', 'the frozen error is the cause of the error that carries the cleanup\'s failures (diagnostics and credential, EACCES)');
   chmodSync(childTokens, 0o700);
   assert.equal(readdirSync(childTokens).some(name => name.endsWith('.token')), true, 'the child\'s credential is still there: the failure is real');
 });

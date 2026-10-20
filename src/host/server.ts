@@ -150,12 +150,22 @@ function requireReplyBudget(value: unknown): void {
 /** A cleanup step's own outcome when it is a close under the contract (the controller's); any other
  * value counts as done. */
 const closingOf = (value: unknown): Closing => Promise.resolve(value).then(settled => typeof settled === 'object' && settled !== null && 'outcome' in settled ? settled as { outcome: 'closed' } : undefined);
+/** A start's failure that cannot carry what its cleanup left (a primitive, a frozen error) is the
+ * cause of this one, which carries it: a cleanup that did not close is never lost with the error
+ * object it would have been kept on (PR #69 re-review). */
+export class StartCleanupFailed extends Error {
+  readonly failure: unknown;
+  constructor(failure: unknown) { super('Start failed and its cleanup did not close', { cause: failure }); this.name = 'StartCleanupFailed'; this.failure = failure; }
+}
+const canCarry = (failure: unknown): boolean => ((typeof failure === 'object' && failure !== null) || typeof failure === 'function') && Object.isExtensible(failure);
 /** After a failed start, every cleanup step is tried on its own under the close contract (PADR-0050),
  * each with its own deadline, and none of them replaces the start's failure; a step that did not close
- * is kept next to it (issue #64). */
+ * — one that threw included — is kept next to it as its `closeError` (issue #64), on a
+ * `StartCleanupFailed` when the failure itself cannot carry it. Never throws. */
 async function cleanUpAfterStart(failure: unknown, ...steps: Array<(deadline: number) => unknown>): Promise<unknown> {
-  for (const step of steps) await closeAfterFailure(failure, deadline => closingOf(step(deadline)));
-  return failure;
+  const carrier = canCarry(failure) ? failure : new StartCleanupFailed(failure);
+  for (const step of steps) await closeAfterFailure(carrier, deadline => closingOf(step(deadline)));
+  return carrier === failure || Object.hasOwn(carrier as object, 'closeError') ? carrier : failure;
 }
 /** A practice host started for the author is answered only when its reply fits the budget; one that
  * does not is closed again under the close contract, and the budget's refusal stays the error (issue #64). */
@@ -179,7 +189,8 @@ export async function admitChildHost(child: Pick<RunningHost, 'close'>, value: u
  * expected end of an aborted start is *cancelled*, or the outcome of its browser's close under the
  * deadline handed down (*abandoned* included). A cleanup step of the start that did not close (its
  * credential's removal, its diagnostics, a failed browser close) is *failed*, so the parent's
- * shutdown is not reported clean.
+ * shutdown is not reported clean: every cleanup step of a start keeps its failure as the start
+ * error's `closeError` (`cleanUpAfterStart`), whatever the start's own error was.
  */
 export function childStartOutcome(error: unknown): CloseResult {
   const cleanup = typeof error === 'object' && error !== null && Object.hasOwn(error, 'closeError') ? (error as { closeError: unknown }).closeError : undefined;
@@ -285,7 +296,9 @@ export async function startHost(world: World, options: HostOptions = {}): Promis
   const credential = await createTokenFile(options.tokenDirectory ?? dataPaths().host, token);
   let diagnostics: Awaited<ReturnType<typeof privateDiagnostics>>;
   try { diagnostics = await privateDiagnostics(credential.path, token, () => issued, authorToken); }
-  catch { await credential.remove(); throw new DiagnosticError('diagnostic_unavailable'); }
+  // The credential's removal is a cleanup step like the others: when it fails too, the failure is kept
+  // on the start's error, never thrown in its place (PR #69 re-review, Codex major).
+  catch { throw await cleanUpAfterStart(new DiagnosticError('diagnostic_unavailable'), () => credential.remove()); }
   let controller: PracticeController;
   const sessionOptions: PracticeSessionOptions = { ...options, onMirrorDiagnostic: record => diagnostics.write(record), onBrowserClose: record => diagnostics.write(record), admitView: view => requireReplyBudget({ ok: true, value: { view } }) };
   try { controller = await (options.controllerFactory ?? createPracticeSession)(world, sessionOptions); }
