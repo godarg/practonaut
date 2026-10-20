@@ -3,7 +3,8 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixture, assertOracle, type Fixture } from "../tests/e2e/harness.ts";
 import { TOKEN_HEADER, type HostReply, type MutationReply } from "../src/host/protocol.ts";
-import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, limitsWorld, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, LAYOUT_STATES, limitsWorld, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { layoutWorld } from "../tests/support/layout-world.ts";
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -163,6 +164,13 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     for (const st of LIMIT_STATES) { await st.enter(limited); await state(limited, st.id, stem); }
     assert.deepEqual(limited.external, []);
   } finally { await limited.close(); }
+  // A layout task (PADR-0047): the judged geometry on the board, after a check, and the editor's note.
+  const layout = await startPlayer({ theme, width, height: 900, world: layoutWorld(), taskId: "tidy" });
+  try {
+    await setLanguage(layout.page, language);
+    for (const st of LAYOUT_STATES) { await st.enter(layout); await state(layout, st.id, stem); }
+    assert.deepEqual(layout.external, []);
+  } finally { await layout.close(); }
   const modelExport = await startPlayer({ theme, width, height: 900, phase3: false, mirror: "off" });
   try {
     await setLanguage(modelExport.page, language);

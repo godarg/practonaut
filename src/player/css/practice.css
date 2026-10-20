@@ -104,6 +104,17 @@
 .board-svg--compact .edge-loose-label { font-size: var(--pn-text-title3); }
 .arrowhead { fill: var(--pn-color-line); }
 .arrowhead--selected, .arrowhead--pending { fill: var(--pn-color-accent); }
+/* What a layout task judges (PADR-0047): thin neutral dashes, never the accent (that is a pending
+   preview) and never a verdict; the condition sentences say the same in words. */
+.judged { pointer-events: none; }
+.judged-segment { stroke: var(--pn-color-text-secondary); stroke-width: 1.5; stroke-dasharray: 6 5; stroke-linecap: round; fill: none; }
+.judged-point { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.75; pointer-events: none; }
+.judged-box { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.25; stroke-dasharray: 4 4; pointer-events: none; }
+.judged-canvas { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.5; stroke-dasharray: 10 6; }
+.judged-canvas-label { fill: var(--pn-color-text-secondary); font: var(--pn-weight-medium) var(--pn-text-footnote) var(--pn-font-sans); }
+.board-svg--compact .judged-segment, .board-svg--compact .judged-canvas { stroke-width: 3; }
+.board-svg--compact .judged-point, .board-svg--compact .judged-box { stroke-width: 2.5; }
+.board-svg--compact .judged-canvas-label { font-size: var(--pn-text-title3); }
 
 /* ---------- Object tray: always-available text route to every object ---------- */
 .practice-tray { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-4); }
