@@ -61,9 +61,12 @@ export const escapeHtml = (value: string): string => joined(readableText(value))
 const FORMAL_OPERAND = String.raw`(?:"(?:[^"\\]|\\.)*"|nicht angebunden|unattached)[)\]]*|\S+`;
 const FORMAL_COMPARISON = new RegExp(String.raw`(\S+) ([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
 const FORMAL_PAIR = new RegExp(String.raw`(?<=^|\s)([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
-const escapeFormal = (value: string): string => {
-  // A canvas's corners "(40, 40)–(760, 440)" break at their spaces, never at the dash (PADR-0047 formal text).
-  const text = (part: string): string => part.replace(/\u2013(?=\()/gu, '\u2013\u2060').replace(/[&<>"']/g, char => ENTITIES[char]!);
+export const escapeFormal = (value: string): string => {
+  // A layout area's corners "(40, 40)–(760, 440)" break at their spaces, never at the dash, and a quoted
+  // string that fits a line (a frame's name in a selection: in frame "Lane A") never breaks inside,
+  // like a comparison's right operand (PADR-0047 formal text).
+  const whole = (part: string): string => part.replace(/"(?:[^"\\]|\\.)*"/gu, quoted => quoted.length <= ID_MAX ? quoted.replace(/ /gu, '\u00a0') : quoted);
+  const text = (part: string): string => whole(part).replace(/\u2013(?=\()/gu, '\u2013\u2060').replace(/[&<>"']/g, char => ENTITIES[char]!);
   const operand = (part: string): string => text(part.length <= ID_MAX ? part.replace(/ /gu, '\u00a0') : part);
   // An operator whose left operand closed the comparison before it ("… = nicht angebunden) = 1") still
   // travels with its right operand.

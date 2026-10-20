@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { layoutMarks, openingSide, PHONE_WINDOW } from '../../src/bench/details.ts';
-import { layoutMarkText } from '../../src/bench/render.ts';
+import { escapeFormal, layoutMarkText } from '../../src/bench/render.ts';
 import { judgedOverlay, pictureSizeClass, schematicHalo, schematicText, textFloorScale, type Box, type OverlayContext } from '../../src/bench/schematic.ts';
 import { engineSvgMarkup, exportHalo, readEngineSvg } from '../../src/bench/svg.ts';
 import { publicConditions } from '../../src/host/session.ts';
@@ -92,6 +92,17 @@ describe('report: unmet layout clauses', () => {
     assert.equal(layoutMarks(pile, [conditions[0]!]).length, 5);
   });
 
+  it('keep a frame name in a layout clause\'s formal text whole, as a comparison\'s quoted operand is (CI at 320 px, Ubuntu fonts)', () => {
+    // The formal text of condition 5, as every surface shows it.
+    const formal = conditions[4]!.formalText!.en;
+    assert.equal(formal, 'aligned on y, centre: 3 × step [s]: (in frame "Lane A"); ± 4 px');
+    const html = escapeFormal(formal);
+    assert.ok(html.includes('&quot;Lane A&quot;'), html);
+    // The words outside the quotes still break, and a quoted string longer than a line may break too.
+    assert.ok(html.includes('aligned on y,'), html);
+    assert.ok(escapeFormal(`(in frame "${'word '.repeat(10).trim()}")`).includes('word word'));
+  });
+
   it('size a pair of pictures so that an export\'s smallest text (a frame\'s name at 14 units) stays at 12 px', () => {
     // Hand-written export: a frame name at 14 px, a label at 20 px.
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400"><text x="0" y="12" font-size="14px">Lane A</text><text x="10" y="40" font-size="20px">Pack</text></svg>';
@@ -161,7 +172,15 @@ describe('report: unmet layout clauses', () => {
       + '<g transform="translate(376.5 228) rotate(0 23.5 12)"><text x="23.5" y="18.9" font-size="20px" fill="#1e1e1e" text-anchor="middle">Ship</text></g>'
       + '</svg>';
     const read = readEngineSvg(exported, 'e');
-    assert.deepEqual(read.texts.map(text => text.box), [{ x: 60, y: 30, width: 44, height: 17.5 }, { x: 376.5, y: 228, width: 47, height: 24 }]);
+    // Each text's box covers the box Excalidraw gave it (its translate and twice its rotation centre) and
+    // stays near it: the report draws the text in its own font, which may run a little wider.
+    const own = [{ x: 60, y: 30, width: 44, height: 17.5 }, { x: 376.5, y: 228, width: 47, height: 24 }];
+    assert.equal(read.texts.length, 2);
+    read.texts.forEach((text, i) => {
+      const b = text.box, o = own[i]!;
+      assert.ok(b.x <= o.x && b.y <= o.y && b.x + b.width >= o.x + o.width && b.y + b.height >= o.y + o.height, JSON.stringify(b));
+      assert.ok(b.width <= o.width * 1.25 && b.height <= o.height * 1.25, JSON.stringify(b));
+    });
     assert.deepEqual(read.outlines, [{ x: 20, y: 240.5, width: 920, height: 230 }]);
     const context: OverlayContext = { texts: read.texts.map(text => text.box), outlines: read.outlines, halo: exportHalo(read, [0, 0]) };
     const svg = judgedOverlay(LAYOUT_START_STATE, overlays, [], { canvas: 'Layout area' }, 'eng', context);

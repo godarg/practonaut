@@ -174,9 +174,10 @@ function exportGeometry(root: Element, prefix: string): Pick<EngineSvg, 'texts' 
     const elements = node.children.filter((child): child is Element => typeof child !== 'string');
     const lines = elements.filter(child => child.name === 'text');
     if (node.name === 'g' && lines.length) {
-      // Excalidraw's text group: its rotation centre is the middle of the text's box.
-      const boxes = lines.map(line => estimate(line, x, y)).filter((box): box is Box => box !== null);
-      const box = own && own.width > 0 ? own : boxes.length ? boxes.reduce((a, b) => { const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y); return { x: left, y: top, width: Math.max(a.x + a.width, b.x + b.width) - left, height: Math.max(a.y + a.height, b.y + b.height) - top }; }) : null;
+      // Excalidraw's text group: its rotation centre is the middle of the text's box as Excalidraw set it.
+      // The report draws the text in its own font, so the box also covers that font's estimate.
+      const boxes = [...(own && own.width > 0 ? [own] : []), ...lines.map(line => estimate(line, x, y)).filter((box): box is Box => box !== null)];
+      const box = boxes.length ? boxes.reduce((a, b) => { const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y); return { x: left, y: top, width: Math.max(a.x + a.width, b.x + b.width) - left, height: Math.max(a.y + a.height, b.y + b.height) - top }; }) : null;
       if (box) texts.push({ box, markup: `<g transform="translate(${numeral(dx)} ${numeral(dy)})">${serialise(node, prefix, false, false)}</g>` });
       return;
     }
