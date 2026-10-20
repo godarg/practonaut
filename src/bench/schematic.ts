@@ -91,12 +91,21 @@ export const PICTURE_FLOOR = 0.6;
  * smallest width of PICTURE_FLOOR px per unit (rounded up to the next 100 units), so a picture is never
  * drawn below the floor (its frame scrolls instead), and a largest of one px per unit. Both pictures of a
  * pair share one viewBox, so they share the class and the scale. */
-export function pictureSizeClass(width: number): string { return `pw-${Math.min(60, Math.max(3, Math.ceil(width / 100)))}`; }
+export function pictureSizeClass(width: number): string { return pictureClassAt(width, PICTURE_FLOOR); }
+/** draw.io draws its labels at 12 units (its default font size), so a pair with draw.io's own picture
+ * is never drawn below one px per unit: its text stays at 12 px or more. */
+export const PICTURE_FLOOR_DRAWIO = 1;
+/** The size class at a floor: `pw-k` at PICTURE_FLOOR (0.6 to 1 px per unit), `pu-k` at one px per unit
+ * (exactly k × 100 px wide, so never below one px per unit); report.css gives both. */
+export function pictureClassAt(width: number, floor: number): string {
+  const k = Math.min(60, Math.max(3, Math.ceil(width / 100)));
+  return floor >= PICTURE_FLOOR_DRAWIO ? `pu-${k}` : `pw-${k}`;
+}
 /** How far a picture overflows a column: 'narrow' when its floor is wider than a phone column (20rem),
  * 'wide' when it is wider than a desktop column (64rem). */
-export function pictureOverflow(width: number): 'none' | 'narrow' | 'wide' {
-  const floor = Math.min(60, Math.max(3, Math.ceil(width / 100))) * 100 * PICTURE_FLOOR;
-  return floor > 1024 ? 'wide' : floor > 320 ? 'narrow' : 'none';
+export function pictureOverflow(width: number, floor: number = PICTURE_FLOOR): 'none' | 'narrow' | 'wide' {
+  const least = Math.min(60, Math.max(3, Math.ceil(width / 100))) * 100 * Math.min(floor, PICTURE_FLOOR_DRAWIO);
+  return least > 1024 ? 'wide' : least > 320 ? 'narrow' : 'none';
 }
 /** Union of boxes: one viewBox for a pair of pictures, so both are drawn at the same scale. */
 export function unionBox(...boxes: Box[]): Box {
@@ -137,7 +146,7 @@ export function groupOutlines(state: State, words: { group: string }): string {
  * accessible name; `words` names groups and loose ends in the report's language; `viewBox` (the union
  * with the picture it is shown beside) keeps a pair at one scale.
  */
-export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean }): string {
+export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean; floor?: number }): string {
   const { steps, frames, arrows } = live(state);
   const byId = new Map(steps.map(step => [step.id, step]));
   const parts: string[] = [];
@@ -230,5 +239,5 @@ export function schematicSvg(state: State, options: { prefix: string; label: str
     const first = y + h / 2 - ((rows.length - 1) * leading) / 2 + LABEL * 0.35;
     parts.push(`<text x="${n(x + w / 2)}" y="${n(first)}" text-anchor="middle" class="${filled ? 'sch-label sch-label--on-fill' : 'sch-label'}">${rows.map((row, index) => `<tspan x="${n(x + w / 2)}" dy="${index ? n(leading) : '0'}">${xml(row)}</tspan>`).join('')}</text>`);
   }
-  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureSizeClass(view.width)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}</svg>`;
+  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureClassAt(view.width, options.floor ?? PICTURE_FLOOR)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}</svg>`;
 }

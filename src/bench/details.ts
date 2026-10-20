@@ -27,7 +27,7 @@ import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './repo
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { drawioPlacement, engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, PICTURE_FLOOR, PICTURE_FLOOR_DRAWIO, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -370,14 +370,16 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     // outline is laid over it when the two share coordinates; when they cannot, neither picture draws
     // groups (the legend under each still names them).
     const placed = !engine || engine.box !== null;
+    // draw.io's own picture draws its text at 12 units: the pair is never drawn below one px per unit.
+    const floor = engine && drawio ? PICTURE_FLOOR_DRAWIO : PICTURE_FLOOR;
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
       const overlay = engine.box ? groupOutlines(state, words) : '';
       detail.groupOverlay = overlay !== '';
-      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', floor, ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
     } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed }); detail.targetObjects = boardObjects(target); }
-    detail.overflow = pictureOverflow(finalView.width);
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, floor }); detail.targetObjects = boardObjects(target); }
+    detail.overflow = pictureOverflow(finalView.width, floor);
     // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
     const difference = target && placed ? firstDifference(state, target) : null;
     detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;

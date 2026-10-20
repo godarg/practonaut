@@ -610,7 +610,8 @@ shows its states by name (one item, one colon), the goal conditions with status 
 board above an example target, the trajectory and call log; identifiers, codes and hashes fold under
 "Technical details". The board is the real engine's export or a schematic in the content tokens, always
 captioned with which one it is; the pair shares one viewBox (one scale), its text is never drawn below
-12 px (a wider board scrolls in its frame, with a faded edge and a line that says so), and in dark mode
+12 px (a wider board scrolls in its frame, with a faded edge and a line that says so; a pair with
+draw.io's own export, whose text is 12 units, is drawn at one px per unit or more), and in dark mode
 the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
 Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.

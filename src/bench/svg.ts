@@ -10,7 +10,7 @@
  * the reader cannot parse is refused (the report then draws its schematic instead).
  */
 import { readableText } from '../cli/output.ts';
-import { pictureSizeClass, type Box } from './schematic.ts';
+import { PICTURE_FLOOR, pictureClassAt, type Box } from './schematic.ts';
 
 /** The largest SVG read (Excalidraw's export of a three-step board is about 8 KB). */
 export const MAX_SVG_BYTES = 4 * 1024 * 1024;
@@ -202,11 +202,11 @@ export function drawioPlacement(text: string, steps: ReadonlyArray<{ id: string;
  * the picture beside it), so a pair shares one coordinate system and one scale; `overlay` (trusted
  * markup the report draws, never from the file) is laid over it in those units.
  */
-export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string }): string {
+export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string; floor?: number }): string {
   const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
   // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
   const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
-  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(view.width)}" role="img" aria-label="${label}">${content}</svg>`;
+  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureClassAt(view.width, options.floor ?? PICTURE_FLOOR)}" role="img" aria-label="${label}">${content}</svg>`;
 }

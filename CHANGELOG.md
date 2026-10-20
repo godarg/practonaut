@@ -106,7 +106,9 @@ All notable changes are recorded here. The format follows
     outcome, and a mirror close stops a recovery's replacement start through its abort.
   - Bench report: a draw.io run's final-board picture is placed in board coordinates by its judged
     steps (draw.io exports from its drawing's top-left corner), so it shares one viewBox with the
-    target schematic as an Excalidraw run's does, and group outlines are drawn over it.
+    target schematic as an Excalidraw run's does, and group outlines are drawn over it. Such a pair is
+    drawn at one px per board unit or more, so draw.io's 12-unit text is never below 12 px (it was
+    11.8 px at 1280 px and 7.8 px at 320 px wide).
   - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
     the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
     difference); `tools/drawio-evidence.ts` rebuilds it on a clean release commit and refuses a summary

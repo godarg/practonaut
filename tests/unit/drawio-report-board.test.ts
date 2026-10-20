@@ -33,6 +33,24 @@ test('every draw.io final-board picture shares one viewBox with its target, and 
   assert.equal(details.runs.get('group-s0-r1')!.groupOverlay, true);
 });
 
+test('a draw.io pair is never drawn below one px per board unit, so draw.io\'s 12-unit text stays at 12 px (design-language §10.5)', async () => {
+  const report = validateBenchReportV3(JSON.parse(readFileSync(join(folder, 'report.json'), 'utf8')));
+  const details = await loadReportDetails(report, folder, detailWords('en'));
+  const sizeClass = (markup: string | null | undefined): string | undefined => /class="[^"]*\b(p[uw]-\d+)\b/.exec(markup ?? '')?.[1];
+  for (const [id, detail] of details.runs) {
+    const width = Number(viewBox(detail.picture!.markup)!.split(' ')[2]), k = Math.min(60, Math.max(3, Math.ceil(width / 100)));
+    assert.equal(sizeClass(detail.picture!.markup), `pu-${k}`, id);
+    assert.equal(sizeClass(detail.target), `pu-${k}`, `${id}: the target shares the scale`);
+  }
+  // report.css: pu-k is exactly k × 100 px wide (k × 6.25 rem), for every k the class can take.
+  const css = readFileSync('src/bench/report.css', 'utf8');
+  for (let k = 3; k <= 60; k++) {
+    const rule = new RegExp(`\\.pu-${k}\\{min-width:([0-9.]+)rem;max-width:([0-9.]+)rem\\}`).exec(css);
+    assert.ok(rule, `pu-${k}`);
+    assert.deepEqual([Number(rule[1]) * 16, Number(rule[2]) * 16], [k * 100, k * 100], `pu-${k}`);
+  }
+});
+
 test('placement reads only numbers: no step found, an id outside the pattern or an unbounded shift give no placement', () => {
   const svg = '<svg viewBox="0 0 200 100"><g data-cell-id="a"><rect x="10" y="20" width="50" height="40"/></g><g data-cell-id="b"><ellipse cx="130" cy="50" rx="30" ry="20"/></g><g data-cell-id="c"><path d="M 170 50 L 185 35 L 200 50 L 185 65 Z"/></g></svg>';
   assert.deepEqual(drawioPlacement(svg, [{ id: 'a', x: 110, y: 220 }]), { x: 100, y: 200, width: 200, height: 100 });
