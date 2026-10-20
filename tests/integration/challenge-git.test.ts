@@ -16,7 +16,11 @@ import { generateSet } from '../../src/challenge/build.ts';
 import { packWorld } from '../../src/package/index.ts';
 import { canonicalJson, sha256Hex } from '../../src/canonical/index.ts';
 import { pathToFileURL } from 'node:url';
+import { isolateGit } from '../support/git-config.ts';
 import { headerLine, nextLine, parseLedger, type StartBody } from '../../src/challenge/ledger.ts';
+
+// Git with this file's configuration only, never the developer's or the CI runner's.
+isolateGit();
 
 test('a declaration is used only committed, unchanged and pushed; its versions are counted', { timeout: 120_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-declaration-git-'));

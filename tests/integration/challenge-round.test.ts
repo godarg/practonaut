@@ -17,11 +17,13 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { fakeClaude } from '../support/fake-claude.ts';
+import { isolateGit } from '../support/git-config.ts';
 import { countLedger, headerLine, nextLine, parseLedger, type LedgerRecord, type StartBody } from '../../src/challenge/ledger.ts';
 import { releaseLedgerPath, repositoryIdentity } from '../../src/challenge/repository.ts';
 import { readGateReport } from '../../src/challenge/files.ts';
 import { attests, exemptRun } from '../../src/challenge/gate.ts';
 
+isolateGit();
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const TOOL = fileURLToPath(new URL('../../tools/challenge.ts', import.meta.url));
 const ROUNDS_020 = fileURLToPath(new URL('../../docs/benchmarks/challenge/', import.meta.url));
@@ -35,14 +37,18 @@ async function project(dir: string) {
   const bin = join(dir, 'bin'), home = join(dir, 'home'), repo = join(dir, 'repo'), remote = join(dir, 'remote.git'), state = join(dir, 'state');
   await mkdir(bin); await mkdir(state); await fakeClaude(bin);
   const pathKey = Object.keys(process.env).find(name => name.toUpperCase() === 'PATH') ?? 'PATH';
-  const env = { ...process.env, PRACTONAUT_HOME: home, PN_FAKE_STATE: state, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
+  // Git with this file's configuration only (isolateGit above): a bare remote whose HEAD named a branch
+  // that was never pushed would give every clone of it an unborn HEAD.
+  const env: NodeJS.ProcessEnv = { ...process.env, PRACTONAUT_HOME: home, PN_FAKE_STATE: state, [pathKey]: bin + delimiter + (process.env[pathKey] ?? '') };
   delete env.ANTHROPIC_MODEL;
-  const git = (...args: string[]) => {
-    const result = spawnSync('git', ['-c', 'user.name=Practonaut Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args], { cwd: repo, encoding: 'utf8' });
+  /** git in `cwd`, with this file's configuration only. */
+  const gitIn = (cwd: string, ...args: string[]) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', env });
     assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
     return result.stdout.trim();
   };
-  await mkdir(remote); spawnSync('git', ['init', '--bare'], { cwd: remote });
+  const git = (...args: string[]) => gitIn(repo, ...args);
+  await mkdir(remote); gitIn(remote, 'init', '--bare', '--quiet');
   await mkdir(join(repo, 'docs', 'benchmarks'), { recursive: true }); git('init'); git('remote', 'add', 'origin', remote);
   // The 0.2.0 rounds as committed: five declarations /1 and five ledgers that counted 470 of 500.
   await cp(ROUNDS_020, join(repo, 'docs', 'benchmarks', 'challenge'), { recursive: true });
@@ -71,7 +77,7 @@ async function project(dir: string) {
     const exited = once(child, 'exit').then(([code]) => ({ status: code as number | null, stdout, stderr }));
     return { child, exited };
   };
-  return { env, git, tool, ok, bench, background, setArgs, started, ledgerPath, folder, commit, repo, remote, home, benchRoot, state };
+  return { env, git, gitIn, tool, ok, bench, background, setArgs, started, ledgerPath, folder, commit, repo, remote, home, benchRoot, state };
 }
 
 /** Waits until `condition` holds (polling), at most `ms`. */
@@ -98,7 +104,7 @@ test('one release ledger for every clone and worktree of a repository on this ma
     // The committed ledger holds 799 counted starts, pushed.
     await mkdir(p.folder, { recursive: true }); await writeFile(join(p.folder, 'release-ledger.jsonl'), counted(799)); p.commit('ledger at 799');
     p.git('worktree', 'add', wt, '-b', 'second');
-    assert.equal(spawnSync('git', ['clone', '--quiet', p.remote, clone], { encoding: 'utf8' }).status, 0);
+    p.gitIn(dir, 'clone', '--quiet', p.remote, clone);
     const inside = (cwd: string, args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [TOOL, ...args], { cwd, encoding: 'utf8', env: { ...p.env, ...extra } });
     assert.match(p.ok(['ledger', 'init']).stdout, /a copy of the longest pushed ledger \(800 records\); every clone and worktree of this repository on this machine uses it/);
     // The worktree and the second clone find the same ledger: no second count is started there.
@@ -136,8 +142,8 @@ test('one release ledger whatever directory a command runs in and however the or
     assert.match(inside(docs, ['ledger', 'show']).stdout, new RegExp(`0 of 800 model runs counted.*\\(${p.ledgerPath.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\)`));
     // A clone whose origin is another repository with the same root (a fork) shares it: one budget.
     const fork = join(dir, 'fork');
-    assert.equal(spawnSync('git', ['clone', '--quiet', p.remote, fork], { encoding: 'utf8' }).status, 0);
-    assert.equal(spawnSync('git', ['remote', 'set-url', 'origin', 'https://example.invalid/someone/practonaut-fork.git'], { cwd: fork, encoding: 'utf8' }).status, 0);
+    p.gitIn(dir, 'clone', '--quiet', p.remote, fork);
+    p.gitIn(fork, 'remote', 'set-url', 'origin', 'https://example.invalid/someone/practonaut-fork.git');
     const forked = inside(fork, ['ledger', 'init']);
     assert.equal(forked.status, 2); assert.match(forked.stderr, /ledger_exists: /);
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -155,7 +161,7 @@ test('ledger init refuses where an earlier Practonaut kept this repository\'s le
     await rm(earlier);
     await writeFile(join(p.repo, 'second.txt'), 'a second commit, so that a clone of depth 1 cuts history off\n'); p.commit('second');
     const shallow = join(dir, 'shallow');
-    assert.equal(spawnSync('git', ['clone', '--quiet', '--depth', '1', pathToFileURL(p.remote).href, shallow], { encoding: 'utf8' }).status, 0);
+    p.gitIn(dir, 'clone', '--quiet', '--depth', '1', pathToFileURL(p.remote).href, shallow);
     refused = spawnSync(process.execPath, [TOOL, 'ledger', 'init'], { cwd: shallow, encoding: 'utf8', env: p.env });
     assert.equal(refused.status, 2); assert.match(refused.stderr, /shallow_clone: this repository is a shallow clone/);
   } finally { await rm(dir, { recursive: true, force: true }); }
