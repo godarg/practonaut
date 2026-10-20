@@ -10,15 +10,20 @@ import { parseExcalidraw } from "./excalidraw.ts";
 import { parseScene } from "./scene.ts";
 import { parseDrawio } from "./drawio.ts";
 
+/** What a native file is (PADR-0049 decision 6.8): the app's export from Practonaut's own host in a
+ * session, which must equal the session state, or any other file (the default). Only the draw.io reader
+ * reads them differently; Excalidraw's reader models no painting in either. */
+export type NativeReading = "own-export" | "submission";
+
 export interface NativeFormat {
   /** The adapter id of the worlds whose exports this format reads. */
   readonly id: string;
   /** File name extension of a native export, with its dot. */
   readonly extension: string;
   /** Reads a native export of a world of `schema` into the state the goal is judged on. */
-  parse(schema: WorldSchemaId, input: string | Uint8Array): State;
+  parse(schema: WorldSchemaId, input: string | Uint8Array, reading?: NativeReading): State;
   /** Whether a native export carries exactly this session state, on what the format can hold. */
-  matches(schema: WorldSchemaId, input: string | Uint8Array, state: State): boolean;
+  matches(schema: WorldSchemaId, input: string | Uint8Array, state: State, reading?: NativeReading): boolean;
 }
 
 const live = (state: State): State => ({ objects: Object.fromEntries(Object.entries(state.objects).filter(([, object]) => !object.deleted)) });
@@ -36,8 +41,8 @@ export const NATIVE_FORMATS = Object.freeze({
   /** draw.io's `.drawio` file, read by the checker's own reader (PADR-0049 decision 6). */
   drawio: Object.freeze({
     id: "drawio", extension: ".drawio",
-    parse: (schema: WorldSchemaId, input: string | Uint8Array): State => { if (schema !== "practonaut.world/2") throw new CheckerError("artifact_invalid", "draw.io files belong to world/2"); return parseDrawio(input).state; },
-    matches: (schema: WorldSchemaId, input: string | Uint8Array, state: State): boolean => schema === "practonaut.world/2" && canonicalJson(live(parseDrawio(input).state)) === canonicalJson(live(state)),
+    parse: (schema: WorldSchemaId, input: string | Uint8Array, reading: NativeReading = "submission"): State => { if (schema !== "practonaut.world/2") throw new CheckerError("artifact_invalid", "draw.io files belong to world/2"); return parseDrawio(input, reading).state; },
+    matches: (schema: WorldSchemaId, input: string | Uint8Array, state: State, reading: NativeReading = "submission"): boolean => schema === "practonaut.world/2" && canonicalJson(live(parseDrawio(input, reading).state)) === canonicalJson(live(state)),
   }),
 } satisfies Record<string, NativeFormat>);
 export type NativeFormatId = keyof typeof NATIVE_FORMATS;

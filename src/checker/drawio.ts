@@ -7,8 +7,17 @@
  * It reads exactly the vocabulary the adapter writes — elements, attributes, style names, style keys and
  * their values from the tables below — and refuses everything else. Chasing each way draw.io can hide,
  * move or relabel a cell does not converge; an allowlist does. So a file passes only when it holds
- * nothing the reader does not model, and the reader never reads something the app does not show.
- * `check` on hand-drawn files is therefore strict until artifact mode (Must 3) decides otherwise.
+ * nothing the reader does not model. `check` on hand-drawn files is therefore strict until artifact
+ * mode (Must 3) decides otherwise.
+ *
+ * The caller says what the file is (review m3, PADR-0049 decision 6.8):
+ * - `own-export`: the real app's export made by Practonaut's own host in a session (the export pair, a
+ *   bench run's native verdict, `run --export`, `report --verify`, conformance). The session state is
+ *   the ground truth and the export must equal it; like Excalidraw's reader, this mode models no
+ *   painting, so every legal state the adapter writes reads.
+ * - `submission` (the default): any other file, `practonaut check` on a `.drawio` file. No model of
+ *   draw.io's painting either: whatever read could be hidden or misread is refused by name
+ *   (`boxes_overlap`, `arrow_hidden`, `text_extent`, `geometry_invalid`; see `submissionCheck`).
  *
  * Refusals are `artifact_invalid` with `details.reason` from a closed list.
  */
@@ -19,8 +28,11 @@ import { CheckerError } from "./errors.ts";
 import { validateSubmissionState } from "./state.ts";
 
 export const DRAWIO_READER_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, inflated: 10 * 1024 * 1024, elements: 50_000, depth: 64, attributes: 128, attributeChars: 65_536, styleChars: 4_096, styleKeys: 128, cells: 5_000, coordinate: 1_000_000, labelChars: 4_096, nameChars: 256 });
-export type DrawioRefusal = "too_large" | "xml_invalid" | "xml_doctype" | "pages_unsupported" | "diagram_invalid" | "cell_invalid" | "duplicate_id" | "structure_invalid" | "geometry_invalid" | "markup_label" | "text_invalid" | "unmodeled_value";
-export const DRAWIO_REFUSALS: readonly DrawioRefusal[] = Object.freeze(["too_large", "xml_invalid", "xml_doctype", "pages_unsupported", "diagram_invalid", "cell_invalid", "duplicate_id", "structure_invalid", "geometry_invalid", "markup_label", "text_invalid", "unmodeled_value"]);
+export type DrawioRefusal = "too_large" | "xml_invalid" | "xml_doctype" | "pages_unsupported" | "diagram_invalid" | "cell_invalid" | "duplicate_id" | "structure_invalid" | "geometry_invalid" | "markup_label" | "text_invalid" | "unmodeled_value" | "boxes_overlap" | "arrow_hidden" | "text_extent";
+export const DRAWIO_REFUSALS: readonly DrawioRefusal[] = Object.freeze(["too_large", "xml_invalid", "xml_doctype", "pages_unsupported", "diagram_invalid", "cell_invalid", "duplicate_id", "structure_invalid", "geometry_invalid", "markup_label", "text_invalid", "unmodeled_value", "boxes_overlap", "arrow_hidden", "text_extent"]);
+/** What the file is: the app's export from Practonaut's own host in a session, or anything else. */
+export type DrawioReadMode = "own-export" | "submission";
+export const DRAWIO_READ_MODES: readonly DrawioReadMode[] = Object.freeze(["own-export", "submission"]);
 const refuse = (reason: DrawioRefusal, message: string): never => { throw new CheckerError("artifact_invalid", `.drawio: ${message}`, { reason }); };
 const shown = (value: string): string => value.slice(0, 64);
 
@@ -345,8 +357,9 @@ function label(cell: Cell, html: string | undefined, limit: number): string {
 
 export interface DrawioReport { state: State }
 
-/** Reads a `.drawio` file (one page, plain or compressed, or a bare `mxGraphModel`). */
-export function parseDrawio(input: string | Uint8Array): DrawioReport {
+/** Reads a `.drawio` file (one page, plain or compressed, or a bare `mxGraphModel`); `mode` says what it is. */
+export function parseDrawio(input: string | Uint8Array, mode: DrawioReadMode = "submission"): DrawioReport {
+  if (!DRAWIO_READ_MODES.includes(mode)) throw new CheckerError("checker_invalid", "unknown .drawio read mode");
   const bytes = typeof input === "string" ? Buffer.from(input) : Buffer.from(input);
   if (bytes.length > DRAWIO_READER_LIMITS.bytes) refuse("too_large", "the file is over 10 MiB");
   // One UTF-8 byte-order mark before the document is allowed, as by every XML parser (review m2d).
@@ -437,6 +450,7 @@ export function parseDrawio(input: string | Uint8Array): DrawioReport {
   const frameOf = (cell: Cell): string | null => { const f = chains.get(cell.id)!.find(id => kinds.get(id) === "frame"); return f === undefined ? null : f; };
   for (const cell of cells) {
     if (kinds.get(cell.id) !== "frame") continue;
+    if (cell.geometry!.width <= 0 || cell.geometry!.height <= 0) refuse("geometry_invalid", `a frame without a positive size: ${shown(cell.id)}`);
     const id = assign(cell, "f");
     objects[id] = { id, type: "frame", deleted: false, name: label(cell, styles.get(cell.id)!.html, DRAWIO_READER_LIMITS.nameChars) };
   }
@@ -481,85 +495,91 @@ export function parseDrawio(input: string | Uint8Array): DrawioReport {
     const frameId = ends.length ? (ends.every(f => f === ends[0]) ? ends[0]! : null) : (frameOf(cell) === null ? null : ids.get(frameOf(cell)!) ?? null);
     objects[id] = { id, type: "arrow", deleted: false, frameId, from, to };
   }
-  occlusionCheck(cells, root, kinds, chains, byId, styles);
+  if (mode === "submission") submissionCheck(cells, kinds, chains, byId, styles);
   return { state: validateSubmissionState({ objects }, undefined, 2) };
 }
 
+/** The estimate of a plain label's extent (`text_extent`): one line, centred on its box, 16 px tall and
+ * 12 px per UTF-16 code unit wide; draw.io draws an `html=0` label at 12 px, unwrapped and unclipped. A
+ * frame's name is drawn the same way in its title band, the top 30 px. */
+export const DRAWIO_TEXT_ESTIMATE = Object.freeze({ lineHeight: 16, unitWidth: 12, band: 30 });
 /**
- * What draw.io paints over what (review m2d), all `structure_invalid`.
- * - draw.io paints the cells depth first in document order, each after its parent. A frame's band is
- *   not filled (the style table requires `fillColor=none`), so the only opaque area is a filled step.
- *   Nothing the reader reads that draw.io painted before a filled step may lie under it: a step's box,
- *   an arrow's line between its ends (arrows ending at that step excepted), or a frame's title band
- *   with its name. Anything painted later lies on top and stays visible.
- * - A frame's name is drawn in its title band (the top 30 px) whatever the order. It must not be drawn
- *   over a step's label: the band must not overlap the label's line, taken as 16 px tall at the box's
- *   centre and as wide as the box or 12 px per character, whichever is wider (draw.io draws a plain
- *   label on one line, centred, at 12 px).
+ * Submission mode: no model of draw.io's painting; anything read that could be hidden or misread is
+ * refused by name (review m3).
+ * - `boxes_overlap`: two read boxes intersect for a positive area. The read boxes are the steps' boxes
+ *   and the frames' title bands (the top 30 px, the whole frame when it is lower); a frame's whole box
+ *   counts only towards a step outside it.
+ * - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point, or no length outside
+ *   its end steps' boxes), or its drawn part meets a filled step's box. The drawn part is the line
+ *   between its ends (an end step's box centre, a loose end's point) less what lies inside its end
+ *   steps' boxes, so it starts and ends on or outside them; a filled end step counts as any other.
+ * - `text_extent`: a step label or a frame name holds a control character (a line feed among them), or
+ *   its estimated extent (`DRAWIO_TEXT_ESTIMATE`) leaves its box or its band.
+ * Sizes that are not positive are `geometry_invalid` in both modes.
  */
-function occlusionCheck(cells: readonly Cell[], root: Cell, kinds: ReadonlyMap<string, string>, chains: ReadonlyMap<string, string[]>, byId: ReadonlyMap<string, Cell>, styles: ReadonlyMap<string, Record<string, string>>): void {
+function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, string>, chains: ReadonlyMap<string, string[]>, byId: ReadonlyMap<string, Cell>, styles: ReadonlyMap<string, Record<string, string>>): void {
   interface Box { left: number; top: number; right: number; bottom: number }
   const origin = (id: string): Point => {
     let x = 0, y = 0;
     for (const a of [...chains.get(id)!].reverse()) { const g = byId.get(a)!.geometry; if (g) { x += g.x; y += g.y; } }
     return { x, y };
   };
-  const boxOf = (cell: Cell): Box => { const o = origin(cell.id), g = cell.geometry!; return { left: Math.round(o.x + g.x), top: Math.round(o.y + g.y), right: Math.round(o.x + g.x + g.width), bottom: Math.round(o.y + g.y + g.height) }; };
+  const boxOf = (cell: Cell): Box => { const o = origin(cell.id), g = cell.geometry!; return { left: o.x + g.x, top: o.y + g.y, right: o.x + g.x + g.width, bottom: o.y + g.y + g.height }; };
   const overlaps = (a: Box, b: Box): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  /** Whether a segment runs through a box for a positive length (Liang–Barsky). */
-  const crosses = (p: Point, q: Point, b: Box): boolean => {
+  /** The parameter range of the line through p and q inside box b (Liang–Barsky), or null when it misses. */
+  const inside = (p: Point, q: Point, b: Box): [number, number] | null => {
     const dx = q.x - p.x, dy = q.y - p.y;
-    let t0 = 0, t1 = 1;
+    let t0 = -Infinity, t1 = Infinity;
     for (const [pk, qk] of [[-dx, p.x - b.left], [dx, b.right - p.x], [-dy, p.y - b.top], [dy, b.bottom - p.y]] as const) {
-      if (pk === 0) { if (qk < 0) return false; continue; }
+      if (pk === 0) { if (qk < 0) return null; continue; }
       const r = qk / pk;
       if (pk < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
-      if (t0 > t1) return false;
     }
-    return t1 > t0;
+    return t0 <= t1 ? [t0, t1] : null;
   };
-  interface Painted { what: string; box?: Box; line?: [Point, Point]; ends?: readonly string[] }
-  const painted: Painted[] = [];
-  const opaque = (area: Box, by: string, endOf?: string): void => {
-    for (const p of painted) {
-      const hidden = p.box ? overlaps(p.box, area) : p.line !== undefined && !(endOf !== undefined && p.ends!.includes(endOf)) && crosses(p.line[0], p.line[1], area);
-      if (hidden) refuse("structure_invalid", `${p.what} lies under ${by}, which draw.io paints after it`);
-    }
+  const steps = cells.filter(cell => kinds.get(cell.id) === "step"), frames = cells.filter(cell => kinds.get(cell.id) === "frame");
+  const box = new Map<string, Box>(steps.map(step => [step.id, boxOf(step)]));
+  const bands = frames.map(frame => { const whole = boxOf(frame); return { frame, whole, band: { ...whole, bottom: Math.min(whole.top + DRAWIO_TEXT_ESTIMATE.band, whole.bottom) } }; });
+  // Text: one line of plain characters inside its box or band.
+  const text = (cell: Cell, area: Box, what: string, within: string): void => {
+    if (cell.value === "") return;
+    if (/\p{Cc}/u.test(cell.value)) refuse("text_extent", `a control character (a line break) in ${what}`);
+    const width = DRAWIO_TEXT_ESTIMATE.unitWidth * cell.value.length;
+    if (width > area.right - area.left || DRAWIO_TEXT_ESTIMATE.lineHeight > area.bottom - area.top) refuse("text_extent", `${what} would reach outside its ${within} (estimated ${width} × ${DRAWIO_TEXT_ESTIMATE.lineHeight} px)`);
   };
-  const bandOf = (cell: Cell): Box => { const box = boxOf(cell); return { ...box, bottom: Math.min(box.top + 30, box.bottom) }; };
-  const labelLineOf = (cell: Cell): Box => {
-    const box = boxOf(cell), cx = (box.left + box.right) / 2, cy = (box.top + box.bottom) / 2;
-    const half = Math.max(box.right - box.left, 12 * [...cell.value].length) / 2;
-    return { left: cx - half, right: cx + half, top: cy - 8, bottom: cy + 8 };
-  };
-  const named = cells.filter(cell => kinds.get(cell.id) === "frame" && cell.value.trim() !== "");
-  for (const step of cells) {
-    if (kinds.get(step.id) !== "step" || step.value.trim() === "") continue;
-    const line = labelLineOf(step);
-    for (const frame of named) if (overlaps(bandOf(frame), line)) refuse("structure_invalid", `the name of frame ${shown(frame.id)} would be drawn over the label of step ${shown(step.id)}`);
+  for (const step of steps) text(step, box.get(step.id)!, `the label of step ${shown(step.id)}`, "box");
+  for (const { frame, band } of bands) text(frame, band, `the name of frame ${shown(frame.id)}`, "title band");
+  // Boxes: steps against steps, bands against steps and bands, a frame's whole box against steps outside it.
+  for (let i = 0; i < steps.length; i++) for (let j = i + 1; j < steps.length; j++) {
+    if (overlaps(box.get(steps[i]!.id)!, box.get(steps[j]!.id)!)) refuse("boxes_overlap", `steps ${shown(steps[i]!.id)} and ${shown(steps[j]!.id)} overlap`);
   }
-  const children = new Map<string, Cell[]>();
-  for (const cell of cells) if (cell.parent !== null) { const list = children.get(cell.parent); if (list) list.push(cell); else children.set(cell.parent, [cell]); }
-  const stack: Cell[] = [root];
-  while (stack.length) {
-    const cell = stack.pop()!, kind = kinds.get(cell.id);
-    stack.push(...[...(children.get(cell.id) ?? [])].reverse());
-    if (kind === "frame") {
-      const band = bandOf(cell);
-      if (cell.value.trim() !== "" && band.bottom > band.top && band.right > band.left) painted.push({ what: `the name of frame ${shown(cell.id)}`, box: band });
-    } else if (kind === "step") {
-      const box = boxOf(cell);
-      if (styles.get(cell.id)!.fillColor?.toLowerCase() !== "none") opaque(box, `filled step ${shown(cell.id)}`, cell.id);
-      painted.push({ what: `step ${shown(cell.id)}`, box });
-    } else if (kind === "edge") {
-      const o = origin(cell.id), points = cell.geometry!.points ?? {};
-      const end = (ref: string | null, point: Point | undefined): Point | null => {
-        if (ref !== null) { const b = boxOf(byId.get(ref)!); return { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }; }
-        return point ? { x: o.x + point.x, y: o.y + point.y } : null;
-      };
-      const p = end(cell.source, points.sourcePoint), q = end(cell.target, points.targetPoint);
-      // An end with neither a step nor a point is not drawn; nothing of it can be hidden.
-      if (p && q) painted.push({ what: `arrow ${shown(cell.id)}`, line: [p, q], ends: [cell.source, cell.target].filter((e): e is string => e !== null) });
+  for (let i = 0; i < bands.length; i++) {
+    const { frame, whole, band } = bands[i]!;
+    for (const step of steps) {
+      if (overlaps(band, box.get(step.id)!)) refuse("boxes_overlap", `step ${shown(step.id)} overlaps the title band of frame ${shown(frame.id)}`);
+      if (!chains.get(step.id)!.includes(frame.id) && overlaps(whole, box.get(step.id)!)) refuse("boxes_overlap", `step ${shown(step.id)} lies in frame ${shown(frame.id)} without belonging to it`);
+    }
+    for (let j = i + 1; j < bands.length; j++) if (overlaps(band, bands[j]!.band)) refuse("boxes_overlap", `the title bands of frames ${shown(frame.id)} and ${shown(bands[j]!.frame.id)} overlap`);
+  }
+  // Arrows: a drawn part outside the end steps' boxes, meeting no filled step's box.
+  const filled = steps.filter(step => styles.get(step.id)!.fillColor?.toLowerCase() !== "none");
+  for (const edge of cells) {
+    if (kinds.get(edge.id) !== "edge") continue;
+    const o = origin(edge.id), points = edge.geometry!.points ?? {};
+    const end = (ref: string | null, point: Point | undefined): Point | null => {
+      if (ref !== null) { const b = box.get(ref)!; return { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }; }
+      return point ? { x: o.x + point.x, y: o.y + point.y } : null;
+    };
+    const p = end(edge.source, points.sourcePoint), q = end(edge.target, points.targetPoint);
+    if (!p || !q) return refuse("arrow_hidden", `arrow ${shown(edge.id)} has an end with neither a step nor a point, so draw.io does not draw it`);
+    let from = 0, to = 1;
+    if (edge.source !== null) { const range = inside(p, q, box.get(edge.source)!); if (range) from = Math.max(from, range[1]); }
+    if (edge.target !== null) { const range = inside(p, q, box.get(edge.target)!); if (range) to = Math.min(to, range[0]); }
+    if (!(Math.hypot(q.x - p.x, q.y - p.y) * (to - from) > 0)) refuse("arrow_hidden", `arrow ${shown(edge.id)} has no length outside its end steps`);
+    const a = { x: p.x + (q.x - p.x) * from, y: p.y + (q.y - p.y) * from }, b = { x: p.x + (q.x - p.x) * to, y: p.y + (q.y - p.y) * to };
+    for (const step of filled) {
+      const range = inside(a, b, box.get(step.id)!);
+      if (range && Math.min(1, range[1]) > Math.max(0, range[0])) refuse("arrow_hidden", `arrow ${shown(edge.id)} meets filled step ${shown(step.id)}`);
     }
   }
 }

@@ -1,12 +1,16 @@
-// Review m2c of PR #70: each way a hand-made .drawio file could pass a library goal while draw.io shows
-// something else, reproduced on the draw.io library's own tasks, now refused by name. Every file starts
-// from the cells the adapter writes for a real state (the start or the reference's end), so the honest
-// goal still passes and the unchanged start still fails; only the attack is added.
+// Reviews m2c, m2d and m3 of PR #70: each way a hand-made .drawio file could pass a library goal while
+// draw.io shows something else, reproduced on the draw.io library's own tasks, now refused by name. Every
+// file starts from the cells the adapter writes for a real state (the start or the reference's end), so
+// the honest goal still passes and the unchanged start still fails; only the attack is added. `check`
+// reads such files in submission mode (the default); the host's own exports are read in own-export mode,
+// where every legal state reads (PADR-0049 decision 6.8; tests/unit/drawio-own-export.test.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { runOracle } from '../../src/authoring/from-scenes.ts';
 import { checkSubmission, CheckerError } from '../../src/checker/index.ts';
+import { nativeMatchesState } from '../../src/host/export-pair.ts';
+import type { Action } from '../../src/world/types.ts';
 import { freshMemory, modelXml, writeCells, type XmlNode } from '../../src/adapters/drawio/writer.ts';
 import { loadLibraryOf, taskWorld } from '../../src/library/index.ts';
 import { Session } from '../../src/core/index.ts';
@@ -22,8 +26,8 @@ const cells = (state: State): XmlNode[] => writeCells(state, freshMemory());
 const file = (content: XmlNode[] | string): string => `<mxfile host="test"><diagram id="p" name="Page-1">${typeof content === 'string' ? content : modelXml(content)}</diagram></mxfile>`;
 const byLabel = (list: XmlNode[], label: string): XmlNode => list.find(cell => cell.attrs.value === label)!;
 const steps = (list: XmlNode[]): XmlNode[] => list.filter(cell => cell.attrs.vertex === '1' && !cell.attrs.id!.startsWith('pn:') && !(cell.attrs.style ?? '').startsWith('swimlane'));
-const outcome = (taskId: string, xml: string): string => {
-  try { return checkSubmission(slice(taskId), xml, { seed: seed(taskId), taskId, format: 'drawio' }).passed ? 'passed' : 'failed'; }
+const outcome = (taskId: string, xml: string, reading: 'own-export' | 'submission' = 'submission'): string => {
+  try { return checkSubmission(slice(taskId), xml, { seed: seed(taskId), taskId, format: 'drawio', reading }).passed ? 'passed' : 'failed'; }
   catch (error) { assert.ok(error instanceof CheckerError, String(error)); return String(error.details.reason); }
 };
 const restyled = (list: XmlNode[], label: string, change: (style: string) => string): XmlNode[] => { const copy = structuredClone(list); const cell = byLabel(copy, label); cell.attrs.style = change(cell.attrs.style!); return copy; };
@@ -99,8 +103,9 @@ test('an arrow draw.io does not show, or shows the other way, is refused', () =>
 });
 
 // Review m2d: a frame's title band was filled in draw.io, and a cell later in the file is painted over
-// earlier ones. The adapter now leaves the band unfilled and the reader reads only such frames; a filled
-// step must not cover what was painted before it; a frame's name must not be drawn over a label.
+// earlier ones. The adapter leaves the band unfilled and the reader reads only such frames. Review m3:
+// modelling the painting did not converge, so submission mode models none: overlapping boxes, an arrow
+// meeting a filled step and text that may leave its box are refused whatever the order.
 const box = (cell: XmlNode): { x: number; y: number; width: number; height: number } => { const g = cell.children[0]!.attrs; return { x: Number(g.x ?? 0), y: Number(g.y ?? 0), width: Number(g.width), height: Number(g.height) }; };
 const vertexCell = (id: string, value: string, style: string, b: { x: number; y: number; width: number; height: number }): XmlNode => ({ name: 'mxCell', attrs: { id, value, style, vertex: '1', parent: 'pn:layer' }, children: [{ name: 'mxGeometry', attrs: { x: String(b.x), y: String(b.y), width: String(b.width), height: String(b.height), as: 'geometry' }, children: [] }] });
 const FILLED_BAND = 'swimlane;container=1;collapsible=0;startSize=30;html=0;';
@@ -115,11 +120,10 @@ test('r2-reader-frame-band-occlusion (connect): a frame over the goal arrow', ()
   assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', FILLED_BAND, band)])), 'unmodeled_value', 'a filled band');
   // The same frame in the adapter's style hides nothing: draw.io draws the arrow through the unfilled band.
   assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', OPEN_BAND, band)])), 'passed');
-  // A filled step over the arrow, painted after it, hides it; painted before it, the arrow lies on top.
+  // A filled step over the arrow: refused whether draw.io paints it after the arrow or before.
   const filled = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;', middle = { x: band.x + 20, y: band.y - 10, width: 40, height: 50 };
-  assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', filled, middle)])), 'structure_invalid');
-  // Painted before the arrow, the step is read (and the extra step fails the goal's count).
-  assert.equal(outcome('connect', file([connect[0]!, connect[1]!, vertexCell('cover', '', filled, middle), ...connect.slice(2)])), 'failed', 'the arrow painted after the step');
+  assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', filled, middle)])), 'arrow_hidden');
+  assert.equal(outcome('connect', file([connect[0]!, connect[1]!, vertexCell('cover', '', filled, middle), ...connect.slice(2)])), 'arrow_hidden', 'the arrow painted after the step');
 });
 
 test('r2-reader-frame-band-occlusion (rename-step): a frame named like the start\'s misspelling over the new label', () => {
@@ -129,8 +133,91 @@ test('r2-reader-frame-band-occlusion (rename-step): a frame named like the start
   const step = box(renamed.find(c => c.attrs.id === id)!), band = { x: step.x, y: step.y + step.height / 2 - 15, width: step.width, height: 30 };
   assert.equal(outcome('rename-step', file(renamed)), 'passed', 'the honest rename');
   assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, FILLED_BAND, band)])), 'unmodeled_value', 'the review\'s file: a filled band');
-  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, band)])), 'structure_invalid', 'an unfilled band whose name is drawn over the label');
-  assert.equal(outcome('rename-step', file([vertexCell('cover', wrong, OPEN_BAND, band), ...renamed])), 'structure_invalid', 'the same frame first in the file');
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, band)])), 'boxes_overlap', 'an unfilled band whose name is drawn over the label');
+  assert.equal(outcome('rename-step', file([vertexCell('cover', wrong, OPEN_BAND, band), ...renamed])), 'boxes_overlap', 'the same frame first in the file');
+});
+
+// Review m3 (r3-paint-honest-states-refused): the paint rules refused the adapter's own export of legal
+// states, so a solved bench run became infra_error. The review's states, from the core: read in
+// own-export mode as the session state, judged as the session is; refused by name in submission mode.
+const played = (taskId: string, actions: Action[]): Session => {
+  const run = runOracle(slice(taskId), seed(taskId), taskId, entry(taskId).oracle.steps); assert.ok(run.ok);
+  for (const action of actions) assert.ok(run.session.act(action).ok, JSON.stringify(action));
+  return run.session;
+};
+test('r3-paint-honest-states-refused: legal states the review found refused read as their session in own-export mode', () => {
+  const renameFrame = (() => {
+    const session = new Session(slice('rename-frame'), seed('rename-frame'), 'rename-frame');
+    for (const action of [{ name: 'delete_step', params: { id: 'a' } }, { name: 'delete_step', params: { id: 'b' } }] as Action[]) assert.ok(session.act(action).ok);
+    // A new filled step across the line the loose arrow keeps between the old centres (190, 245) and (490, 245).
+    assert.ok(session.act({ name: 'add_step', params: { frameId: 'f', label: 'New', x: 300, y: 220, width: 100, height: 50, shape: 'rectangle' } }).ok);
+    const added = Object.values(session.state.objects).find(o => o.type === 'step' && !o.deleted)!.id;
+    assert.ok(session.act({ name: 'set_style', params: { id: added, shape: 'rectangle', stroke: 'black', fill: 'yellow' } }).ok);
+    return { taskId: 'rename-frame', session, passes: false, refused: 'arrow_hidden' };
+  })();
+  const cases = [
+    { taskId: 'recolor', session: played('recolor', [{ name: 'move_step', params: { id: 'b', x: 200, y: 200 } }]), passes: true, refused: 'boxes_overlap' },
+    { taskId: 'recolor', session: played('recolor', [{ name: 'move_step', params: { id: 'a', x: 350, y: 220 } }]), passes: true, refused: 'boxes_overlap' },
+    { taskId: 'two-frames', session: played('two-frames', [{ name: 'move_step', params: { id: 'c', x: 500, y: 380 } }]), passes: true, refused: 'boxes_overlap' },
+    renameFrame,
+  ];
+  for (const { taskId, session, passes, refused } of cases) {
+    const memory = freshMemory(), xml = file(writeCells(session.state, memory));
+    assert.equal(nativeMatchesState(slice(taskId), xml, session.state, 'own-export'), true, `${taskId}: the own export equals the session state`);
+    const verdict = checkSubmission(slice(taskId), JSON.stringify(session.serialize()), { seed: seed(taskId), taskId }).passed;
+    assert.equal(verdict, passes, `${taskId}: the session's verdict`);
+    assert.equal(outcome(taskId, xml, 'own-export'), passes ? 'passed' : 'failed', `${taskId}: the own export is judged as the session is`);
+    assert.equal(outcome(taskId, xml), refused, `${taskId}: a file from outside a session with the same content is refused by name`);
+  }
+});
+
+// r3-paint-end-step-hides-arrow: an end step inside its filled partner, the arrow before the partner in
+// the file: draw.io paints the partner over the whole arrow, which lies inside it.
+test('r3-paint-end-step-hides-arrow: an arrow inside its own filled end step is refused', () => {
+  const recolor = cells(goal('recolor'));
+  const byId = (list: XmlNode[], id: string): XmlNode => list.find(c => c.attrs.id === id)!;
+  const inside = structuredClone(recolor);
+  Object.assign(byId(inside, 'a').children[0]!.attrs, { x: '410', y: '210', width: '40', height: '20' });
+  // The review's order: ab, b, a, c, bc. Its a (40 x 20) is too small for 'Checkout' as well; one wide
+  // enough for its label still lies inside b.
+  const order = (list: XmlNode[]): XmlNode[] => ['pn:root', 'pn:layer', 'ab', 'b', 'a', 'c', 'bc'].map(id => byId(list, id));
+  assert.equal(order(inside).length, inside.length);
+  assert.equal(outcome('recolor', file(order(inside))), 'text_extent');
+  Object.assign(byId(inside, 'a').children[0]!.attrs, { width: '100' });
+  assert.equal(outcome('recolor', file(order(inside))), 'boxes_overlap');
+  // restyle-flow: l2 inside the large green ellipse l3, the arrow l2 -> l3 before l3.
+  const flow = goal('restyle-flow'), [, b, c] = ['a', 'b', 'c'].map(id => flow.objects[id] as StepV2);
+  const big = structuredClone(cells(flow));
+  Object.assign(byId(big, 'c').children[0]!.attrs, { x: String(b!.x - 40), y: String(b!.y - 40), width: String(b!.width + 80 + 400), height: String(b!.height + 80) });
+  assert.equal(outcome('restyle-flow', file(big)), 'boxes_overlap', `${c!.label} grown around ${b!.label}`);
+  // Without overlapping boxes the drawn part is what lies outside both end boxes: none between touching
+  // boxes, and a loose end inside a filled step, the arrow's own or another, meets it.
+  const touching = structuredClone(recolor);
+  Object.assign(byId(touching, 'a').children[0]!.attrs, { x: '220', y: '200' });
+  assert.equal(outcome('recolor', file(touching)), 'arrow_hidden', 'a touching its partner b: nothing of ab is drawn');
+  const loose = structuredClone(recolor), edge = byId(loose, 'bc');
+  delete edge.attrs.target;
+  edge.children[0]!.children = [{ name: 'mxPoint', attrs: { x: '450', y: '240', as: 'targetPoint' }, children: [] }];
+  assert.equal(outcome('recolor', file(loose)), 'arrow_hidden', 'bc ending loose inside filled b');
+});
+
+// r3-paint-frame-name-extent: a name with line feeds is drawn below its band, an inverted frame's band is
+// never matched; r3-paint-label-overflow: a label wider than its box reaches under a filled neighbour.
+test('r3-paint-frame-name-extent and r3-paint-label-overflow: text must stay on one line inside its box or band', () => {
+  const renamed = cells(goal('rename-step')), old = start('rename-step');
+  const wrong = labelOf(old, step => !Object.values(goal('rename-step').objects).some(o => o.type === 'step' && (o as StepV2).label === step.label));
+  // The review's file: a frame named with three line feeds and the misspelling, its band just above the label line.
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', `\n\n\n${wrong}`, OPEN_BAND, { x: 100, y: 207, width: 180, height: 30 })])), 'text_extent');
+  // Far from every step: still refused, as is a name wider than its band.
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', `\n${wrong}`, OPEN_BAND, { x: 100, y: 600, width: 400, height: 100 })])), 'text_extent');
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, { x: 100, y: 600, width: 12 * wrong.length - 1, height: 100 })])), 'text_extent');
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, { x: 100, y: 600, width: 12 * wrong.length, height: 100 })])), 'passed', 'the estimate fits exactly');
+  // A frame of negative size at the label's centre.
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, { x: 190, y: 245, width: -200, height: -60 })])), 'geometry_invalid');
+  // recolor with a shrunk to 2 x 2 beside red b: 'Checkout' would be drawn half under b's fill.
+  const recolor = structuredClone(cells(goal('recolor')));
+  Object.assign(recolor.find(c => c.attrs.id === 'a')!.children[0]!.attrs, { x: '398', y: '244', width: '2', height: '2' });
+  assert.equal(outcome('recolor', file(recolor)), 'text_extent');
 });
 
 test('the compressed page reads as draw.io reads it', () => {

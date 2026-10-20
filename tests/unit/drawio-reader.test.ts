@@ -23,6 +23,8 @@ const group = (id: string, parent = '1', g = geo(0, 0, 500, 200)): string => `<m
 const edge = (id: string, source: string | null, target: string | null, style = 'endArrow=classic;html=0;', parent = '1', value = '', points = ''): string => `<mxCell id="${id}" value="${value}" style="${style}" edge="1" parent="${parent}"${source ? ` source="${source}"` : ''}${target ? ` target="${target}"` : ''}><mxGeometry relative="1" as="geometry">${points}</mxGeometry></mxCell>`;
 const reason = (expected: string) => (error: unknown): boolean => error instanceof CheckerError && error.code === 'artifact_invalid' && error.details.reason === expected;
 const read = (cells: string) => parseDrawio(file(cells));
+/** The host's own export (PADR-0049 decision 6.8): read as written, with no submission refusals. */
+const own = (cells: string) => parseDrawio(file(cells), 'own-export');
 const two = vertex('a', 'A') + vertex('b', 'B', STEP, '1', geo(400, 0));
 
 test('steps, frames, groups and arrows are read by the record\'s rules, plain, compressed and bare', () => {
@@ -53,7 +55,8 @@ test('steps, frames, groups and arrows are read by the record\'s rules, plain, c
 test('XML is read as XML: well-formed, no namespaces, no DOCTYPE', () => {
   // A literal CRLF inside an attribute is one line feed, then one space (end-of-line handling first).
   assert.equal((read(vertex('a', 'x\r\ny')).state.objects.a as { label: string }).label, 'x y');
-  assert.equal((read(vertex('a', 'x&#xa;y')).state.objects.a as { label: string }).label, 'x\ny', 'a referenced line feed stays');
+  assert.equal((own(vertex('a', 'x&#xa;y')).state.objects.a as { label: string }).label, 'x\ny', 'a referenced line feed stays');
+  assert.throws(() => read(vertex('a', 'x&#xa;y')), reason('text_extent'), 'and is refused in a file from outside a session');
   assert.throws(() => parseDrawio(file('<mxCell id="a"vertex="1"/>')), reason('xml_invalid'), 'no white space between attributes');
   assert.throws(() => read(vertex('a', 'x&#1;y')), reason('xml_invalid'), '&#1; is no XML character');
   assert.throws(() => read(vertex('a', 'x\u0001y')), reason('xml_invalid'), 'a raw C0 control');
@@ -170,11 +173,12 @@ test('labels, colours and geometry: plain text, no snapped colours, bounded valu
   assert.equal((read(vertex('a', 'Café')).state.objects.a as { label: string }).label, 'Café', 'compared after NFC');
   assert.equal((read(vertex('a', 'A', 'rounded=0;html=0;strokeColor=#6C8EBF;fillColor=#DAE8FC;')).state.objects.a as { stroke: string }).stroke, 'blue', 'colour case does not matter');
   assert.throws(() => read(vertex('a', 'a'.repeat(4_097))), reason('text_invalid'));
-  assert.equal(Object.keys(read(vertex('f', 'n'.repeat(256), FRAME, '1', geo(0, 0, 400, 200))).state.objects).length, 1);
+  assert.equal(Object.keys(own(vertex('f', 'n'.repeat(256), FRAME, '1', geo(0, 0, 400, 200))).state.objects).length, 1);
+  assert.equal(Object.keys(read(vertex('f', 'n'.repeat(256), FRAME, '1', geo(0, 0, 3072, 200))).state.objects).length, 1, 'in a band wide enough for the estimate');
   assert.throws(() => read(vertex('f', 'n'.repeat(257), FRAME, '1', geo(0, 0, 400, 200))), reason('text_invalid'), 'a frame name over 256 characters');
   assert.throws(() => read(vertex('a', 'A', STEP, '1', geo(0, 0, 0, 80))), reason('geometry_invalid'));
   // Rounded by edges: 0.5..11.0 and 11..21 touch (PADR-0047 decision 10's fixture).
-  const touching = read(vertex('a', 'A', STEP, '1', geo(0.5, 0, 10.5, 10)) + vertex('b', 'B', STEP, '1', geo(11, 0, 10, 10))).state.objects as Record<string, { x: number; width: number }>;
+  const touching = own(vertex('a', 'A', STEP, '1', geo(0.5, 0, 10.5, 10)) + vertex('b', 'B', STEP, '1', geo(11, 0, 10, 10))).state.objects as Record<string, { x: number; width: number }>;
   assert.deepEqual([touching.a!.x, touching.a!.x + touching.a!.width, touching.b!.x, touching.b!.x + touching.b!.width], [1, 11, 11, 21]);
   // Each value is bounded on its own, so cancelling ancestors cannot move a box; sums stay within too.
   assert.throws(() => read(vertex('a', 'A', STEP, '1', geo(999_999, 0, 160, 80))), reason('geometry_invalid'), 'an edge past ±1,000,000');
@@ -183,31 +187,49 @@ test('labels, colours and geometry: plain text, no snapped colours, bounded valu
   assert.equal((read(vertex('f', 'F', FRAME, '1', geo(600_000, 0, 400, 200)) + group('g', 'f', geo(300_000, 0)) + vertex('a', 'A', STEP, 'g', geo(50_000, 0))).state.objects.a as { x: number }).x, 950_000);
 });
 
-test('what draw.io paints over what: nothing read lies under a filled step painted later, and no frame name is drawn over a label (review m2d)', () => {
-  // a at 0..160 x 0..80 (centre 80, 40), b at 400..560 x 0..80 (centre 480, 40): the arrow runs along y = 40.
+test('submission mode models no painting: overlapping boxes, an arrow meeting a filled step and text that may leave its box are refused by name, in any order (review m3)', () => {
+  // a at 0..160 x 0..80 (centre 80, 40), b at 400..560 x 0..80 (centre 480, 40): the arrow runs along
+  // y = 40 and its drawn part, outside both end boxes, from x = 160 to x = 400.
   const ab = vertex('a', 'A', STEP, '1', geo(0, 0)) + vertex('b', 'B', STEP, '1', geo(400, 0)) + edge('e', 'a', 'b');
   const FILLED = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;';
-  const cover = (style: string, value = '') => vertex('c', value, style, '1', geo(250, 20, 60, 40));
-  // A filled step over the arrow's middle: hidden when painted after it, on top of it when painted before.
-  assert.throws(() => read(ab + cover(FILLED)), reason('structure_invalid'), 'a filled step painted after the arrow');
-  assert.ok(read(cover(FILLED) + ab).state.objects.e, 'the arrow painted after the filled step');
-  assert.ok(read(ab + cover(STEP)).state.objects.c, 'an unfilled step hides nothing');
-  // A filled step over an earlier step's box; a filled end step over its own arrow (whose line ends inside it).
-  assert.throws(() => read(vertex('a', 'A') + vertex('d', 'D', FILLED, '1', geo(100, 50))), reason('structure_invalid'), 'a filled step over an earlier step');
-  assert.ok(read(vertex('a', 'A', STEP, '1', geo(0, 0)) + edge('e', 'a', 'b') + vertex('b', 'B', FILLED, '1', geo(400, 0))).state.objects.e, 'the end step itself');
-  // The adapter's frame band is not filled: a frame over the arrow hides nothing.
-  assert.ok(read(ab + vertex('f', '', FRAME, '1', geo(250, 25, 100, 30))).state.objects.e, 'an unfilled band over the arrow');
-  // A frame's name is drawn in its band whatever the order: never over a step's label line.
-  assert.throws(() => read(ab + vertex('f', 'Other', FRAME, '1', geo(0, 25, 160, 30))), reason('structure_invalid'), 'a frame name over a label');
-  assert.throws(() => read(vertex('f', 'Other', FRAME, '1', geo(0, 25, 160, 30)) + ab), reason('structure_invalid'), 'the same, painted first');
-  assert.ok(read(ab + vertex('f', '', FRAME, '1', geo(0, 25, 160, 30))).state.objects.f, 'an empty name draws nothing');
-  assert.ok(read(vertex('f', 'Lane', FRAME, '1', geo(-20, -50, 200, 150)) + ab.replace(`parent="1">${geo(0, 0)}`, `parent="f">${geo(20, 50)}`)).state.objects.a, 'the frame\'s own step below its band');
-  // A long label reaches past its box: 12 px a character is the bound used (40 characters: 480 px,
-  // centred on x = 80, so -160..320); a band at 250..310 is over it, one at 330..430 is not.
-  assert.throws(() => read(vertex('a', 'x'.repeat(40), STEP, '1', geo(0, 0)) + vertex('f', 'F', FRAME, '1', geo(250, 25, 60, 30))), reason('structure_invalid'), 'a label wider than its box');
-  assert.ok(read(vertex('a', 'x'.repeat(40), STEP, '1', geo(0, 0)) + vertex('f', 'F', FRAME, '1', geo(330, 25, 100, 30))).state.objects.f);
-  // A filled step over a frame's name, painted later.
-  assert.throws(() => read(vertex('f', 'Lane', FRAME, '1', geo(0, 0, 300, 200)) + vertex('d', 'D', FILLED, '1', geo(100, 5, 60, 40))), reason('structure_invalid'), 'a filled step over a frame name');
+  const cover = (style: string, g = geo(250, 20, 60, 40)) => vertex('c', '', style, '1', g);
+  // A filled step over the drawn part: refused whatever the order; an unfilled one, or one beside the line, is read.
+  assert.throws(() => read(ab + cover(FILLED)), reason('arrow_hidden'), 'a filled step after the arrow');
+  assert.throws(() => read(cover(FILLED) + ab), reason('arrow_hidden'), 'a filled step before the arrow');
+  assert.ok(read(ab + cover(STEP)).state.objects.c, 'an unfilled step');
+  assert.ok(read(ab + cover(FILLED, geo(250, 41, 60, 40))).state.objects.c, 'a filled step 1 px below the line');
+  // The drawn part starts and ends on the end steps' boxes: filled end steps cover none of it. Touching end
+  // boxes leave nothing to draw; a loose end inside a filled step, or an arrow of no length, draws nothing seen.
+  assert.ok(read(vertex('a', 'A', FILLED, '1', geo(0, 0)) + edge('e', 'a', 'b') + vertex('b', 'B', FILLED, '1', geo(400, 0))).state.objects.e, 'filled end steps');
+  assert.throws(() => read(vertex('a', 'A', STEP, '1', geo(0, 0)) + vertex('b', 'B', STEP, '1', geo(160, 0)) + edge('e', 'a', 'b')), reason('arrow_hidden'), 'touching end steps');
+  assert.throws(() => read(vertex('a', 'A', FILLED, '1', geo(0, 0)) + edge('e', null, 'a', 'endArrow=classic;html=0;', '1', '', '<mxPoint x="20" y="20" as="sourcePoint"/>')), reason('arrow_hidden'), 'from a point inside the filled step it ends at');
+  assert.throws(() => read(ab + vertex('d', 'D', FILLED, '1', geo(700, 0)) + edge('l', 'b', null, 'endArrow=classic;html=0;', '1', '', '<mxPoint x="760" y="40" as="targetPoint"/>')), reason('arrow_hidden'), 'to a point inside another filled step');
+  assert.throws(() => read(edge('e', null, null, 'endArrow=classic;html=0;', '1', '', '<mxPoint x="5" y="5" as="sourcePoint"/><mxPoint x="5" y="5" as="targetPoint"/>')), reason('arrow_hidden'), 'a loose arrow of no length');
+  assert.throws(() => read(vertex('a', 'A') + edge('e', 'a', null)), reason('arrow_hidden'), 'an end with neither a step nor a point: not drawn');
+  // Boxes: two steps; a frame's band and a step, named or not; two bands; a frame and a step that is not its own.
+  assert.throws(() => read(vertex('a', 'A') + vertex('d', 'D', STEP, '1', geo(100, 50))), reason('boxes_overlap'), 'two steps');
+  assert.ok(read(two).state.objects.b, 'two steps apart');
+  assert.throws(() => read(ab + vertex('f', '', FRAME, '1', geo(0, 25, 160, 30))), reason('boxes_overlap'), 'an unnamed band over a step');
+  assert.ok(read(ab + vertex('f', '', FRAME, '1', geo(250, 25, 100, 30))).state.objects.e, 'an unfilled band over the arrow hides nothing');
+  assert.throws(() => read(vertex('f', 'F', FRAME, '1', geo(0, 0, 300, 200)) + vertex('g', 'G', FRAME, '1', geo(100, 10, 300, 200))), reason('boxes_overlap'), 'two bands');
+  assert.ok(read(vertex('f', 'F', FRAME, '1', geo(0, 0, 300, 200)) + vertex('g', 'G', FRAME, '1', geo(100, 100, 300, 200))).state.objects.g, 'frames overlapping below their bands');
+  assert.throws(() => read(vertex('f', 'Lane', FRAME, '1', geo(-20, -50, 300, 200)) + vertex('a', 'A', STEP, '1', geo(100, 50))), reason('boxes_overlap'), 'a step in a frame it does not belong to');
+  assert.ok(read(vertex('f', 'Lane', FRAME, '1', geo(-20, -50, 300, 200)) + vertex('a', 'A', STEP, 'f', geo(120, 100))).state.objects.a, 'the frame\'s own step below its band');
+  // Text: one line, estimated 16 px tall and 12 px per UTF-16 code unit, inside its box or band.
+  assert.ok(read(vertex('a', 'x'.repeat(13), STEP, '1', geo(0, 0, 156, 16))).state.objects.a, 'the estimate fits exactly');
+  assert.throws(() => read(vertex('a', 'x'.repeat(14), STEP, '1', geo(0, 0, 167, 80))), reason('text_extent'), '168 px in 167');
+  assert.throws(() => read(vertex('a', 'x', STEP, '1', geo(0, 0, 160, 15))), reason('text_extent'), 'a box lower than one line');
+  assert.throws(() => read(vertex('a', 'x&#9;y', STEP, '1', geo(0, 0))), reason('text_extent'), 'a tab');
+  assert.throws(() => read(vertex('f', 'x'.repeat(30), FRAME, '1', geo(0, 0, 359, 200))), reason('text_extent'), '360 px in a 359 px band');
+  assert.throws(() => read(vertex('f', 'F', FRAME, '1', geo(0, 0, 300, 15))), reason('text_extent'), 'a frame lower than one line');
+  assert.ok(read(vertex('f', 'x'.repeat(30), FRAME, '1', geo(0, 0, 360, 16))).state.objects.f, 'a name that fits its band');
+  // Sizes that are not positive, in both modes.
+  for (const g of [geo(0, 0, -300, 200), geo(0, 0, 300, 0)]) for (const mode of ['submission', 'own-export'] as const) assert.throws(() => parseDrawio(file(vertex('f', 'F', FRAME, '1', g)), mode), reason('geometry_invalid'), mode);
+  // The host's own export is read as written: none of the above applies to it.
+  assert.ok(own(ab + cover(FILLED)).state.objects.c);
+  assert.ok(own(vertex('a', 'A') + vertex('d', 'D', STEP, '1', geo(100, 50))).state.objects.d);
+  assert.ok(own(ab + vertex('f', 'Other', FRAME, '1', geo(0, 25, 160, 30))).state.objects.f);
+  assert.throws(() => parseDrawio(file(ab), 'checked' as never), (error: unknown) => error instanceof CheckerError && error.code === 'checker_invalid', 'an unknown mode');
 });
 
 test('the XML prolog and the file\'s own attributes: only what an XML parser and draw.io\'s export allow (review m2d)', () => {

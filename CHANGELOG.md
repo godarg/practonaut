@@ -74,13 +74,19 @@ All notable changes are recorded here. The format follows
     and child element, and integrity; every read, `snapshot()` included, also runs integrity over
     every attribute and compares the app with the last confirmed write. Chromium always runs with its
     sandbox for draw.io, and every conformance run records that none of its processes ran with
-    `--no-sandbox`. Frames have unfilled title bands and arrows with a live end are drawn above every
-    frame and step, so the adapter's own picture hides nothing.
+    `--no-sandbox`. Frames have unfilled title bands, arrows with a live end are drawn above every
+    frame and step, and empty frames get their own places, so draw.io's picture keeps connected arrows
+    and frame names visible.
   - The checker has its own allowlist-based `.drawio` reader: it reads only the cells, attributes,
-    style names, keys and values the adapter writes, nothing that draw.io paints over (a filled step
-    over earlier content, a frame name over a label), and only well-formed XML with draw.io's own file
-    attributes; it refuses everything else by a reason from a closed list, so a file drawn by hand is strict until artifact mode (Must 3) decides otherwise;
-    `check` reads a `.drawio` export with `--pair` or with `--seed` and `--task`.
+    style names, keys and values the adapter writes, and only well-formed XML with draw.io's own file
+    attributes; it refuses everything else by a reason from a closed list. The caller says what the file
+    is. The host's own export (the export pair, a bench run, `run --export`, `report --verify`,
+    conformance) must equal the session state and is read as written: every legal state the adapter
+    writes reads (a property test reads 5,151 random legal states). Any other file, `practonaut check`
+    among them, is refused by name where something read could be hidden or misread (`boxes_overlap`,
+    `arrow_hidden`, `text_extent`), so a file drawn by hand is strict until artifact mode (Must 3)
+    decides otherwise; `check` reads a `.drawio` export with `--pair` or with `--seed` and `--task`,
+    and a refusal names its reason (`artifact_invalid: boxes_overlap`).
   - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.
   - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
@@ -166,6 +172,12 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- `setup --app drawio` on a home without hard links: any `link()` failure other than an existing lock
+  takes the exclusive-create path, so a Windows FAT or exFAT volume (EISDIR) installs too.
+- The start check (`doctor --adapter`, `setup --app drawio`, `run --mirror required`) is tested to
+  start Chromium under the adapter's sandbox policy.
+- `tools/drawio-evidence.ts` checks after its benches and the compare that HEAD and every file outside
+  its output are as before, and refuses to report otherwise.
 - `setup --app drawio`: a wait cut short by the download's absolute deadline is reported as the
   deadline, not as a stall or a connect timeout (a timer can fire a fraction of a millisecond early).
 - `setup --app drawio`: a retry wait keeps the process alive, so a failed first request is retried

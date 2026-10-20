@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {canonicalJson,sha256Hex} from '../canonical/index.ts';
 import {parseJsonEntry} from '../package/json.ts';
 import {parseSession} from '../checker/state.ts';
-import {nativeFormat} from '../checker/formats.ts';
+import {nativeFormat,type NativeReading} from '../checker/formats.ts';
 import type {SessionData,State,World} from '../world/types.ts';
 import {HOST_LIMITS} from './limits.ts';
 
@@ -54,6 +54,6 @@ export function parseExportPair(input:string|Uint8Array,world:World,native:strin
  * strict native format (tombstones included); world/2 reads any drawing with the tolerant scene
  * parser, which keeps live objects only, so both sides are compared without tombstones. Parse
  * failures and an adapter without a format are a mismatch. */
-export function nativeMatchesState(world:Pick<World,'schema'|'app'>,native:string|Uint8Array,state:State):boolean {
- try {return nativeFormat(world.app).matches(world.schema,native,state);}catch{return false;}
+export function nativeMatchesState(world:Pick<World,'schema'|'app'>,native:string|Uint8Array,state:State,reading:NativeReading='submission'):boolean {
+ try {return nativeFormat(world.app).matches(world.schema,native,state,reading);}catch{return false;}
 }

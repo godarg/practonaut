@@ -94,8 +94,10 @@ async function rejudge(run: BenchRun | SessionRunV3, world: World, directory: st
   try { sessionRaw = await checkInProcess(world, sessionText, settings); }
   catch { throw new BenchReportError(cliText('verifyCheckerSession', { run: run.id })); }
   if (nativeText !== null) {
-    if (!nativeMatchesState(world, nativeText, session.state)) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
-    try { nativeRaw = await checkInProcess(world, nativeText, settings); }
+    // A bench's native file is its host's own export: re-judged as the run judged it, once it equals the
+    // session state the checker has just replayed (PADR-0049 6.8).
+    if (!nativeMatchesState(world, nativeText, session.state, 'own-export')) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
+    try { nativeRaw = await checkInProcess(world, nativeText, { ...settings, reading: 'own-export' }); }
     catch { throw new BenchReportError(cliText('verifyCheckerNative', { run: run.id })); }
   }
   const stored = (() => { try { return parseJsonEntry(Buffer.from(checkerText), RUN_ARTIFACTS.checker, 64); } catch { return undefined; } })();

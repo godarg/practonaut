@@ -651,20 +651,15 @@ through a test seam, so the product reads no new variable.
      cells (`duplicate_id`; a file with group cells `g1` and `pn:group:g1` is a fixture).
    - Labels and frame names are plain text, compared after NFC. Invisible format characters are
      refused (`text_invalid`). The limits are 4,096 characters for a label and 256 for a frame name.
-   - **What draw.io paints over what** (review m2d), all `structure_invalid`. draw.io paints the
-     cells depth first in document order, each after its parent; a later cell lies on top. A frame's
-     band is not filled (above), so the only opaque area is a filled step. Nothing the reader reads
-     that draw.io painted before a filled step may lie under it: a step's box, an arrow's line
-     between its ends (arrows ending at that step excepted), or a frame's title band with its name.
-     A frame's name is drawn in its title band (its top 30 px) whatever the order, so the band must
-     not overlap a step's label line, taken as 16 px tall at the box's centre and as wide as the box
-     or 12 px per character, whichever is wider (draw.io draws a plain label on one line, centred,
-     at 12 px). The reader does not measure text otherwise: two labels drawn over each other, or two
-     frame names, are both read; goals that count steps or frames bound what that can add.
+   - A frame whose width or height is not positive is `geometry_invalid`, as a step is.
+   - What may be hidden or misread when draw.io paints the file depends on what the file is: decision
+     6.8. (Review m2d modelled draw.io's paint order here; review m3 showed that model refusing legal
+     states and still missing hidden ones, so it was replaced.)
 6. **Refusals** are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
    `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
    `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
-   `unmodeled_value` and `constraint` (decision 5.2). The checker refuses every file it does not read,
+   `unmodeled_value`, `boxes_overlap`, `arrow_hidden`, `text_extent` (decision 6.8) and `constraint`
+   (decision 5.2). The checker refuses every file it does not read,
    and every refusal carries one of these reasons; nothing is listed as unmodeled and skipped. A
    `.drawio` file for an Excalidraw world, or the reverse, is refused by the format table as today.
    The request format `drawio` joins the checker request's enum.
@@ -684,22 +679,65 @@ through a test seam, so the product reads no new variable.
      match what draw.io draws in its SVG export, measured against a reference step on the layer.
      - Read: CRLF in an attribute, an upper-case colour, the three shapes, a start head, a step without
        an `html` key, an `object` and a `UserObject` label, steps in groups in frames with integer
-       and fractional offsets (PADR-0047 decision 10), an unfilled band over an arrow, and a filled
-       step painted before the arrow that crosses it.
+       and fractional offsets (PADR-0047 decision 10), and an unfilled band over an arrow.
      - Refused by the reason named: adjacent attributes, `&#1;`, `--` in a comment, compressed text with
        a model child, two geometries, `x="0x1F4"`, cancelling offsets, `vertex="true"`, `visible="0"`,
        `collapsed="1"`, `noLabel=1`, `opacity=0`, `container=1` on a step, unknown names and shapes,
        stacked shape tokens, a leading `;`, `relative` on a vertex or an ancestor, an object's inner
        value, a value child, an edge label vertex, a plain cell as an ancestor, a vertex under the
        root, the marker cases, `g1` beside `pn:group:g1`, a `" A "` label with `html=1`, a
-       non-positive size, a filled band, a frame name over a label, a filled step painted after the
-       arrow it crosses, a page `background`, a no-break space after the root and a namespace
-       declaration.
+       non-positive size, a filled band, a page `background`, a no-break space after the root and a
+       namespace declaration. In submission mode also a frame band over a label (`boxes_overlap`) and
+       a filled step painted after or before the arrow it crosses (`arrow_hidden`); own-export mode
+       reads those three and refuses every other fixture by the same reason.
    - `startArrow`, the one edge key beyond what the adapter writes, has its own case: for every listed
      marker draw.io draws one head, at the source.
    - The facts behind the m2d rules have their own case against the real app: draw.io's default
      frame style fills the band and `fillColor=none` does not; a later filled step is drawn after the
      arrow it crosses, with its fill; `background` is kept in the export and paints the SVG's page.
+   - A property test of own-export mode (decision 6.8): random legal play from every library start
+     (each task, each of its three variant seeds; moves, resizes, restyles, frame changes, renames,
+     additions, deletions, connections, rewiring, grouping, with labels holding markup characters,
+     line feeds, tabs and non-Latin letters), each state written by the writer with its carried
+     memory and read back as exactly the live state. With the fixed PRNG seed it reads 5,151 states
+     and refuses none; submission mode refuses 2,493 of them.
+8. **Two reading modes** (review m3). Modelling how draw.io paints a file did not converge: the m2d
+   rules refused the adapter's own export of legal states (69 of 3,840 random legal states), so a
+   solved bench run became `infra_error`, and they still read an arrow hidden inside its own filled end
+   step and a frame name drawn below its band. The caller now says what the file is.
+   - **`own-export`**: the real app's export made by Practonaut's own host in a session: the host's
+     export pair, a bench run's native verdict, `run --export`, `report --verify` (after the native
+     file is found equal to the session state the checker has just replayed) and the conformance
+     layer, which reads the export after every step. The session state is the ground truth, and the
+     export must equal it (`nativeMatchesState`); like Excalidraw's reader, this mode models no
+     painting. Every legal state the adapter writes reads (the property test in 6.7). draw.io's
+     picture of such a state shows what draw.io shows, a filled step over another step included; the
+     verdict follows the session.
+   - **`submission`** (the default): any other file, `practonaut check` on a `.drawio` file with or
+     without `--pair`, and any later artifact use until Must 3 decides more. No paint model either:
+     whatever read could be hidden or misread is refused by name, in any document order.
+     - `boxes_overlap`: two read boxes intersect for a positive area. The read boxes are the steps'
+       boxes and the frames' title bands (the top 30 px, the whole frame when it is lower); a frame's
+       whole box counts only towards a step outside it.
+     - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point, or no length
+       outside its end steps' boxes), or its drawn part meets a filled step's box. The drawn part is
+       the line between its ends (an end step's box centre, a loose end's point) less what lies inside
+       its end steps' boxes, so it starts and ends on or outside them; its own filled end steps count
+       as any other.
+     - `text_extent`: a step label or a frame name holds a control character (a line feed among
+       them), or its estimated extent leaves its box or band. The estimate: one line, centred, 16 px
+       tall and 12 px per UTF-16 code unit wide (draw.io draws a plain label at 12 px, unwrapped and
+       unclipped). It is an estimate, not a measurement: glyphs wider than 12 px exist.
+     - A non-positive size is `geometry_invalid` in both modes.
+
+     Honest files drawn by hand with overlapping boxes are refused; the record accepts that ("strict
+     until artifact mode"). The refusal reaches the CLI with its name (`artifact_invalid: <reason>`).
+   - The writer keeps its m2d changes. Unfilled title bands stay required by the style table, so no
+     band can cover an arrow, which submission mode does not test. Arrows with a live end stay on the
+     layer after every frame and step, so draw.io's picture of a legal state paints every connected
+     arrow over the steps it crosses. Empty frames keep their own places, so their names never share
+     one. None of them is needed for own-export mode to read; each keeps the app's picture closer to
+     the state.
 
 ### 7. Linux: draw.io never starts without the Chromium sandbox
 
@@ -910,11 +948,14 @@ through a test seam, so the product reads no new variable.
   reads only the adapter's own vocabulary, plus the forms the real app is shown to draw as read. A
   file drawn by hand in draw.io is therefore usually refused by name, for example for a default style
   key, a colour outside the table, markup in a label, a hidden or transparent cell, a container, a
-  filled frame band, a filled step over an arrow or a frame name over a label. This stays so until
-  artifact mode's reading rules (Must 3) decide otherwise. Every export the adapter writes is read.
-- The adapter's frames have unfilled title bands and its arrows with a live end sit on the layer, so
-  the adapter's own picture never hides a name, a step or an arrow, even where two frames' envelopes
-  overlap.
+  filled frame band, two overlapping boxes, an arrow meeting a filled step, or a label that may leave
+  its box (submission mode, decision 6.8). This stays so until artifact mode's reading rules (Must 3)
+  decide otherwise. Every legal state the adapter writes reads in own-export mode, which the host,
+  the bench, `run --export`, `report --verify` and the conformance layer use.
+- The adapter's frames have unfilled title bands, its arrows with a live end sit on the layer, and
+  empty frames get their own places, so draw.io's picture keeps connected arrows and frame names
+  visible. A legal state can still put a filled step over another step; the picture then shows what
+  draw.io shows, and the verdict follows the session state.
 - Each running draw.io adapter holds the 48.4 MB archive in Node memory.
 - On Linux with the default AppArmor restriction draw.io is model-only; CI covers draw.io in a Linux
   step after the one that lifts the restriction; macOS and Windows are covered by the manual
@@ -1101,3 +1142,22 @@ before it was fixed. Every finding and its disposition:
 | r2-runtime-2 (minor): without hard links (FAT, exFAT, CIFS), setup fails with an unnamed error | Adopted | 2.3: an exclusive create and write instead; any other lock failure is `app_download_failed`, reason `lock`; tests with a link seam for EPERM, ENOTSUP, EOPNOTSUPP, ENOSYS and EIO |
 | r2-runtime-3 (minor): the comparison with the last confirmed write and the saved scene were tested only with the real app | Adopted | 4.2: both in `scene.ts`; `drawio-scene.test.ts` with a fake app fails when the comparison or the restore is dropped |
 | r2-runtime-4 (minor): the summary's commit and dirty flag were sampled after the runs only | Adopted | 8.6: sampled before and after, a difference is a problem that fails the layer; `checkoutOf` unit-tested with a commit and a stash during the runs |
+
+## Third review of the implementation (2026-10-20)
+
+A third round reviewed a383d2d (round m3): Claude Opus with a skeptic. It confirmed r2-runtime-1 and
+r2-runtime-3 resolved, r2-runtime-2 and r2-runtime-4 partly, and the m2d reader findings partly. Three
+majors on the m2d paint rules were confirmed. The maintainer's coordinator decided against modelling
+draw.io's painting further and for two reading modes the caller chooses (decision 6.8). Every finding
+and its disposition:
+
+| Finding (severity after verification) | Disposition | Where, and the test that fails without it |
+|---|---|---|
+| r3-paint-honest-states-refused (major, skeptic confirmed): the paint rules refuse the adapter's own export of legal states (69 of 3,840 random legal states); a solved bench run becomes `infra_error` | Adopted | 6.8: own-export mode for the host's export pair, the bench's native verdict, `run --export`, `report --verify` and conformance, with no paint rules. Tests: the property test (`drawio-own-export.test.ts`, 5,151 states, none refused), the review's four states (`drawio-reader-attacks.test.ts`), the host's export and the checker in both modes (`drawio-read-modes.test.ts`), a draw.io bench run solved in an overlapping state, completed and re-verified (`drawio-bench-own-export.test.ts`, with the bench's mirror seam); each fails on the previous reader or with the mode dropped at its caller |
+| r3-paint-end-step-hides-arrow (major, skeptic confirmed): an arrow inside its own filled end step is hidden in draw.io but read | Adopted | 6.8 submission mode: boxes must not overlap, and an arrow's drawn part lies outside its end boxes and meets no filled step; the review's recolor and restyle-flow files, touching end steps and a loose end inside a filled step are refused (`drawio-reader-attacks.test.ts`) |
+| r3-paint-frame-name-extent (major, skeptic confirmed): a name with line feeds is drawn below its band; a frame of negative size is never matched | Adopted | 6.5 and 6.8: control characters in names and labels, and a name wider than its band, are `text_extent`; a non-positive frame size is `geometry_invalid`; the review's rename-step file and the negative frame are refused (`drawio-reader-attacks.test.ts`) |
+| r3-paint-label-overflow (minor): a label wider than its box reaches under a filled neighbour | Adopted | 6.8: a label's estimated extent must stay inside its box (`text_extent`); the review's recolor file is refused |
+| r3-contract-1 (minor): no test pins that the start check applies the adapter's sandbox policy | Adopted | 3.7: `StartCheckSeams` takes a launch context with the policy applied on top; unit tests on simulated Linux with a Chromium that refuses sandboxed launches (`browser-start-policy.test.ts`) fail with the policy dropped |
+| r3-contract-2 (minor, = r2-runtime-2 partly): on Windows FAT and exFAT, `link()` fails with EISDIR, not in the fallback set | Adopted | 2.3: every `link()` failure other than EEXIST takes the exclusive-create path; a real I/O fault then fails in `open()` and is still named `lock`; the link-seam test feeds EISDIR and an unknown code |
+| r3-contract-3 (minor, = r2-runtime-4 partly): the evidence tool's own benches were bound to the commit by one sample before they started | Adopted | 8.6: `tools/drawio-evidence.ts` samples HEAD and the checkout again after the compare, excluding its output folder, and refuses a difference before it reports; `checkoutOf` gained the exclusion, unit-tested |
+| r3-contract-4 (minor): the testing docs and the threat model do not list the draw.io close-contract cases | Adopted | `docs/testing.md` (the draw.io layer row) and threat model §4 (the close-contract tests) |

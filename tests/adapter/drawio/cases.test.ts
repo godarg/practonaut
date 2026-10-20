@@ -97,7 +97,7 @@ test('counter-probes written through draw.io: an empty diagram and another task\
         for (const [name, state] of [['empty', { objects: {} }], ['wrong artifact', wrong.session.state]] as const) {
           assert.equal((await adapter.restoreState(state)).ok, true, `${task.id}/${variantCase} ${name}`);
           const native = (await adapter.exportArtifact()).native;
-          assert.equal(checkSubmission(slice, native, { seed, taskId: task.id, format: 'drawio' }).passed, false, `${task.id}/${variantCase} ${name} passed`);
+          assert.equal(checkSubmission(slice, native, { seed, taskId: task.id, format: 'drawio', reading: 'own-export' }).passed, false, `${task.id}/${variantCase} ${name} passed`);
           probes++;
         }
       }
@@ -230,21 +230,28 @@ test('the reader against draw.io: for every differential fixture it agrees with 
     { id: 'html-label', xml: model(REF + vertex('a', ' A ', 'rounded=0;html=1;strokeColor=#000000;fillColor=none;')), refused: 'markup_label' },
     { id: 'zero-width', xml: model(REF + vertex('a', 'A', S, '1', geo(300, 300, 0, 50))), refused: 'geometry_invalid' },
     { id: 'relative-ancestor', xml: model(REF + group('g', '1', geo(0.1, 0.1, 300, 100, ' relative="1"')) + vertex('a', 'A', S, 'g', geo(10, 10))), refused: 'unmodeled_value' },
-    // Review m2d: what draw.io paints over what, the XML prolog, the model's own attributes.
+    // Reviews m2d and m3: the band fill, the XML prolog, the model's own attributes; what may be hidden or
+    // misread is refused in submission mode whatever the order (PADR-0049 decision 6.8).
     { id: 'unfilled-band-over-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('f', '', FRAME, '1', geo(150, 10, 200, 30))) },
     { id: 'filled-band-over-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('f', '', 'swimlane;container=1;collapsible=0;startSize=30;html=0;', '1', geo(150, 10, 200, 30))), refused: 'unmodeled_value' },
-    { id: 'frame-name-over-label', xml: model(REF + T + vertex('f', 'Other', FRAME, '1', geo(400, 10, 100, 30))), refused: 'structure_invalid' },
-    { id: 'filled-step-after-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30))), refused: 'structure_invalid' },
-    { id: 'filled-step-before-arrow', xml: model(REF + T + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30)) + arrow('endArrow=classic;html=0;')) },
+    { id: 'frame-name-over-label', xml: model(REF + T + vertex('f', 'Other', FRAME, '1', geo(400, 10, 100, 30))), refused: 'boxes_overlap' },
+    { id: 'filled-step-after-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30))), refused: 'arrow_hidden' },
+    { id: 'filled-step-before-arrow', xml: model(REF + T + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30)) + arrow('endArrow=classic;html=0;')), refused: 'arrow_hidden' },
     { id: 'model-background', xml: model(REF).replace('<mxGraphModel>', '<mxGraphModel background="#000000">'), refused: 'unmodeled_value' },
     { id: 'no-break-space-after-root', xml: `${model(REF)} `, refused: 'xml_invalid' },
     { id: 'namespace-declaration', xml: model(REF).replace('<mxGraphModel>', '<mxGraphModel xmlns="http://www.w3.org/2000/xmlns/">'), refused: 'xml_invalid' },
   ];
+  const SUBMISSION_ONLY = new Set(['boxes_overlap', 'arrow_hidden', 'text_extent']);
   const adapter = await start();
   try {
     for (const fixture of fixtures) {
       const reason = refusal(() => parseDrawio(fixture.xml));
-      if (fixture.refused !== undefined) { assert.equal(reason, fixture.refused, fixture.id); continue; }
+      if (fixture.refused !== undefined) {
+        assert.equal(reason, fixture.refused, fixture.id);
+        // Own-export mode refuses the same, except what only submission mode refuses.
+        assert.equal(refusal(() => parseDrawio(fixture.xml, 'own-export')), SUBMISSION_ONLY.has(fixture.refused) ? undefined : fixture.refused, `${fixture.id} in own-export mode`);
+        continue;
+      }
       assert.equal(reason, undefined, `${fixture.id}: the reader refused (${reason})`);
       const read = parseDrawio(fixture.xml);
       const { exported } = await adapter.conformanceWrite(fixture.xml, []);

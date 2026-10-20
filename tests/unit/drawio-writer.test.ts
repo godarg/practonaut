@@ -44,7 +44,7 @@ test('the writer follows the decided mapping: ids, parents, styles, relative int
   assert.throws(() => writeCells({ objects: { a: stepV2('a', 'A', 0, 0, { groupId: 'g' }), b: stepV2('b', 'B', 0, 0, { groupId: 'g', frameId: 'f' }), f: { id: 'f', type: 'frame', deleted: false, name: 'F' } } }, freshMemory()), /spans frames/);
 });
 
-test('nothing the adapter writes hides anything in draw.io: empty frames get their own places, a both-loose arrow stays in its frame (review m2d)', () => {
+test('the writer keeps names apart: empty frames get their own places, a both-loose arrow stays in its frame, and every write reads as an own export (reviews m2d, m3)', () => {
   const frames: State = { objects: {
     e1: { id: 'e1', type: 'frame', deleted: false, name: 'First' },
     e2: { id: 'e2', type: 'frame', deleted: false, name: 'Second' },
@@ -56,8 +56,8 @@ test('nothing the adapter writes hides anything in draw.io: empty frames get the
   // An arrow with both ends loose keeps its frame as its parent, the only place it is recorded.
   assert.equal(cell(cells, 'free').attrs.parent, 'e2');
   assert.deepEqual(readBack(cells).state.objects, live(frames));
-  // Every export the writer makes for the state above and the module's own state reads in the checker's reader.
-  for (const written of [cells, writeCells(state, freshMemory())]) assert.doesNotThrow(() => parseDrawio(`<mxfile><diagram id="p">${modelXml(written)}</diagram></mxfile>`));
+  // Every export the writer makes for the state above and the module's own state reads as the host's own export.
+  for (const written of [cells, writeCells(state, freshMemory())]) assert.doesNotThrow(() => parseDrawio(`<mxfile><diagram id="p">${modelXml(written)}</diagram></mxfile>`, 'own-export'));
 });
 
 test('the derived memory is reset per start: the same state writes the same cells whatever was written before', () => {

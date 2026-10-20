@@ -6,7 +6,8 @@
  * For every task × case × sequence (the unchanged start, the reference, every near miss): a new core
  * session, `restoreState` of its start, every step through `adapter.apply` (all checks of decision
  * 4), the app's export after every step, `exportArtifact`, the PNG, and the checker's verdict on that
- * native file with format `drawio`. Recorded per sequence: the canonical hash of each export (the
+ * native file with format `drawio`. Every export is the host's own, so it is read in own-export mode
+ * and must equal the session state at its step (PADR-0049 decision 6.8). Recorded per sequence: the canonical hash of each export (the
  * random diagram id normalised), of the native file, of the PNG, and the full verdict. Also recorded:
  * the peak RSS of this Node process and of its Chromium process tree, any request the shell refused,
  * the browser's own version, and what the Chromium processes were started with: how many there were
@@ -19,7 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDrawioAdapter } from '../../src/adapters/drawio/index.ts';
 import { runOracle } from '../../src/authoring/from-scenes.ts';
-import { checkSubmission } from '../../src/checker/index.ts';
+import { checkSubmission, CheckerError, NATIVE_FORMATS } from '../../src/checker/index.ts';
 import { sha256Hex } from '../../src/canonical/index.ts';
 import { Session } from '../../src/core/index.ts';
 import { LIBRARY_CASES } from '../../src/library/index.ts';
@@ -137,6 +138,11 @@ export function plannedSequences(): Planned[] {
   return [...library.tasks.flatMap(task => sequencesOf('', world, task.oracle, LIBRARY_CASES)), ...families];
 }
 
+/** Why an export of the adapter does not read as the session state in own-export mode (PADR-0049 6.8), or null. */
+export function ownExportProblem(native: string, state: State): string | null {
+  try { return NATIVE_FORMATS.drawio.matches('practonaut.world/2', native, state, 'own-export') ? null : 'reads as another state'; }
+  catch (error) { return error instanceof CheckerError ? `refused ${String(error.details.reason)}: ${error.message.slice(0, 160)}` : String(error).slice(0, 160); }
+}
 export async function runProtocol(order: Order, seed: number): Promise<RunRecord> {
   const runtime = drawioTestRuntime();
   const plan = ordered(plannedSequences(), order, seed);
@@ -165,14 +171,19 @@ export async function runProtocol(order: Order, seed: number): Promise<RunRecord
         const mirrored = await adapter.apply({ before, after: result.state, action: entry.action as Action });
         if (!mirrored.ok) { record.applied = false; record.failure = `apply: ${mirrored.error.code} ${mirrored.error.message.slice(0, 200)}`; break; }
         record.steps++;
-        record.exports.push(sha256Hex(normaliseExport((await adapter.exportArtifact()).native)));
+        // Every export is read in own-export mode and must be the session state, not only the last one.
+        const exported = (await adapter.exportArtifact()).native, problem = ownExportProblem(exported, session.state);
+        record.exports.push(sha256Hex(normaliseExport(exported)));
+        if (problem) { record.applied = false; record.failure = `own export after step ${record.steps}: ${problem}`; break; }
       }
       if (!record.applied) continue;
       const artifact = await adapter.exportArtifact();
       record.native = sha256Hex(normaliseExport(artifact.native));
       record.png = sha256Hex(Buffer.from(await adapter.renderPng()).toString('base64'));
+      const problem = ownExportProblem(artifact.native, session.state);
+      if (problem) { record.verdict = { refused: `own export: ${problem}` }; continue; }
       try {
-        const verdict = checkSubmission(slice, artifact.native, { seed: planned.seed, taskId: planned.taskId, format: 'drawio' });
+        const verdict = checkSubmission(slice, artifact.native, { seed: planned.seed, taskId: planned.taskId, format: 'drawio', reading: 'own-export' });
         record.verdict = { passed: verdict.passed, errors: verdict.tasks.flatMap(task => task.errors.map(error => error.id)).sort() };
       } catch (error) { record.verdict = { refused: `${(error as { code?: string }).code ?? 'error'}: ${String((error as Error).message).slice(0, 200)}` }; }
     }

@@ -115,11 +115,27 @@ adapter refuses before writing. See [world format §2a](../world-format.md#2a-wo
 parser and tables, and is independent of the adapter. It is **allowlist-based**: it reads exactly the
 cells, attributes, style names, keys and values the adapter writes (and a few forms the real app is
 shown to draw as read), and refuses everything else with a named `reason`. Nothing is skipped as
-unmodeled. So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example
-for a default style key, a hidden or transparent cell, a container, a colour outside the table, a
-filled frame band, a filled step over an arrow, a frame name over a label or a page background.
-This stays so until artifact mode (Must 3) decides otherwise. Every export the adapter writes is read.
-The rules and limits are in
+unmodeled.
+
+The caller says what the file is (review m3):
+
+- **The host's own export** (`own-export`): the export pair, a bench run's native verdict, `run
+  --export`, `report --verify` and the conformance layer. The session state is the ground truth, and
+  the export must equal it; like Excalidraw's reader, this mode models no painting. Every legal state
+  the adapter writes reads: a property test plays random legal actions from every library start and
+  reads 5,151 states with none refused.
+- **Any other file** (`submission`, the default; `practonaut check`): no model of draw.io's painting
+  either, but whatever read could be hidden or misread is refused by name, in any document order:
+  overlapping boxes (`boxes_overlap`: steps, frames' title bands, a frame over a step that is not its
+  own), an arrow not drawn or meeting a filled step (`arrow_hidden`), a label or frame name with a
+  line break or wider or taller than its box or band (`text_extent`, estimated as one 16 px line at
+  12 px per UTF-16 code unit).
+
+So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example for a
+default style key, a hidden or transparent cell, a container, a colour outside the table, a filled
+frame band, overlapping boxes, a filled step over an arrow or a page background; `check` names the
+reason (`artifact_invalid: boxes_overlap`). This stays so until artifact mode (Must 3) decides
+otherwise. The rules and limits are in
 [PADR-0049 decision 6](../adr/0049-drawio-adapter.md#6-the-checkers-independent-drawio-reader),
 [world format §2a](../world-format.md#2a-world-content-v2-normative-additive) and the
 [threat model](../security/threat-model.md#4-limits). Each form the reader reads, and each refusal
