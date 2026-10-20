@@ -5,9 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
@@ -21,7 +21,11 @@ test('bench --tasks drawio/…: the draw.io library, its pinned version and refe
     const report = JSON.parse(readFileSync(out, 'utf8')) as { schema: string; environment: { app: unknown; world: { source: string; worldId: string } }; runs: Array<{ pass: boolean }> };
     assert.deepEqual([report.schema, report.environment.app, report.environment.world.source, report.environment.world.worldId], ['practonaut.bench/3', { adapterId: 'drawio', version: '32.4.1' }, 'library', 'drawio-library']);
     assert.deepEqual(report.runs.map(entry => entry.pass), [true, true, true, true]);
-    const folder = /^Run logs and artifacts: (.+)$/m.exec(run.stdout)![1]!;
+    // The bench's folder under PRACTONAUT_HOME. The printed line is for people: it shows the folder in
+    // display form, `~/…` when it lies under the home folder (as the temp folder does on Windows).
+    const benches = readdirSync(join(dir, 'home', 'bench')), folder = join(dir, 'home', 'bench', benches[0]!);
+    assert.equal(benches.length, 1);
+    assert.ok(/^Run logs and artifacts: (.+)$/m.exec(run.stdout)![1]!.endsWith(basename(folder)), 'the printed line names the folder');
     const references = JSON.parse(readFileSync(join(folder, 'references.json'), 'utf8')) as { references: Array<{ taskId: string; worldId: string; source: string }> };
     assert.deepEqual(references.references.map(entry => [entry.taskId, entry.worldId, entry.source]), [['connect', 'drawio-library', 'library'], ['group', 'drawio-library', 'library']]);
     const verified = spawnSync(process.execPath, [CLI, 'report', out, '--verify', '--runs', folder, '--json'], { encoding: 'utf8', env });
