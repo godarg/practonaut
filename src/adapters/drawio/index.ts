@@ -21,6 +21,7 @@ import { constraintViolation } from '../../world/constraints.ts';
 import { structuralConstraintsOf } from '../../world/apps.ts';
 import type { AdapterOptions, AdapterResult, Artifact, MirrorAdapter } from '../types.ts';
 import type { LaunchContext } from '../browser/chromium.ts';
+import type { BrowserLedger } from '../browser/ledger.ts';
 import { AdapterError, AppRuntimeFault, MAX_ADAPTER_MS, artifactOf, operationMs, serialQueue, startShell, type BrowserShell, type ChromiumLike, type EngineLifecycleProbe, type Fulfilment, type OperationLimits, type SceneIO } from '../browser/shell.ts';
 import { actionPrediction } from '../prediction.ts';
 import { openDrawioArchive } from './archive.ts';
@@ -49,7 +50,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = Object.freeze({ '.html':
 /** Test and conformance seams; the product passes none. `pin` and `allowlist` let a unit test start the
  * adapter on a small fixture archive, so its own wiring (such as the sandbox policy) is tested up to
  * the browser launch (review m2c, runtime-1). */
-export interface DrawioSeams { runtimePath?: string; pin?: DrawioPin; allowlist?: readonly string[]; chromium?: ChromiumLike; launchContext?: LaunchContext; launchMs?: number; initializeMs?: number }
+export interface DrawioSeams { runtimePath?: string; pin?: DrawioPin; allowlist?: readonly string[]; chromium?: ChromiumLike; launchContext?: LaunchContext; launchMs?: number; initializeMs?: number; ledger?: BrowserLedger }
 export interface DrawioAdapter extends MirrorAdapter {
   /** Conformance only: loads hand-written XML through the protocol and runs the same checks against
    * `expected` cells (default: the cells in that XML). Never reachable from the host or a world. */
@@ -127,7 +128,7 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
   /** The app's current state, from its export: integrity, and every difference from the last confirmed write. */
   const readCurrent = (): Promise<{ state: State; issues: string[]; exported: string }> => readScene(io, remembered);
   const scene: SceneIO<DrawioScene> = sceneOf(io, remembered);
-  const ready = await startShell({ signal: options.signal, origins: { [HOST_ORIGIN]: serveHost, [APP_ORIGIN]: serveApp }, sandbox: 'required', ...(seams.chromium ? { chromium: seams.chromium } : {}), ...(seams.launchContext ? { launchContext: seams.launchContext } : {}), ...(seams.launchMs ? { launchMs: seams.launchMs } : {}), ...(seams.initializeMs ? { initializeMs: seams.initializeMs } : {}) }, async started => {
+  const ready = await startShell({ signal: options.signal, origins: { [HOST_ORIGIN]: serveHost, [APP_ORIGIN]: serveApp }, sandbox: 'required', ...(seams.chromium ? { chromium: seams.chromium } : {}), ...(seams.launchContext ? { launchContext: seams.launchContext } : {}), ...(seams.launchMs ? { launchMs: seams.launchMs } : {}), ...(seams.initializeMs ? { initializeMs: seams.initializeMs } : {}), ...(seams.ledger ? { ledger: seams.ledger } : {}) }, async started => {
     shell = started;
     await startPage();
     remembered.memory = freshMemory();
@@ -159,7 +160,8 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
       return result.state;
     }),
     networkAttempts: () => ready.networkAttempts(),
-    terminate: () => ready.close(),
+    // The close contract (PADR-0050): the caller's deadline goes down, the outcome comes back up.
+    terminate: deadline => ready.close(deadline),
     restoreState: (state, opts) => serial(() => transaction(async () => {
       checkState(state);
       const refused = refusedByConstraint(state);
@@ -198,7 +200,7 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
     // Loading a foreign file into the app is artifact mode's decision (PADR-0049 decision 4.5).
     importArtifact: async () => failure('unmodeled', 'The draw.io adapter does not import files'),
     conformanceWrite: (xml, expected) => serial(() => writeAndCheck(expected, xml)),
-    close: () => ready.close(),
+    close: deadline => ready.close(deadline),
   };
 }
 
