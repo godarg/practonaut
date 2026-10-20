@@ -5,7 +5,7 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import type { AdapterSandboxPolicy } from '../adapters/browser/chromium.ts';
+import type { AdapterSandboxPolicy, LaunchContext } from '../adapters/browser/chromium.ts';
 import { BrowserBudgetError, startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
@@ -29,8 +29,10 @@ export function launchFailureDetail(error: unknown): string {
   return safeText(telling).slice(0, 240);
 }
 
-/** Test seams: a fake Playwright `chromium`, a ledger of the test's own (default: the process's). */
-export interface StartCheckSeams { chromium?: ChromiumLauncher; ledger?: BrowserLedger }
+/** Test seams: a fake Playwright `chromium`, a ledger of the test's own (default: the process's), and
+ * the launch context (environment, platform, sandbox memo; default: the process's). The adapter's
+ * sandbox policy is always applied on top of the context, never taken from it. */
+export interface StartCheckSeams { chromium?: ChromiumLauncher; ledger?: BrowserLedger; launchContext?: Omit<LaunchContext, 'sandbox'> }
 /** Started exactly as the adapter's mirror will start: under its sandbox policy (PADR-0049 decision 7),
  * on a slot of the browser budget. The answer does not wait for a slow close: the close runs under the
  * close contract (PADR-0050), and an abandoned or failed close leaves the answer as it is; the browser
@@ -38,7 +40,7 @@ export interface StartCheckSeams { chromium?: ChromiumLauncher; ledger?: Browser
 export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS, policy: AdapterSandboxPolicy = 'linux-fallback', seams: StartCheckSeams = {}): Promise<StartResult> {
   try {
     const chromium = seams.chromium ?? (await import('playwright-core')).chromium;
-    const { lease, sandbox } = await startBrowser('start-check', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: seams.ledger, context: { sandbox: policy } });
+    const { lease, sandbox } = await startBrowser('start-check', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: seams.ledger, context: { ...seams.launchContext, sandbox: policy } });
     await lease.close();
     return { ok: true, sandbox };
   } catch (error) { return error instanceof BrowserBudgetError ? { ok: false, detail: budgetDetail(error), budget: error } : { ok: false, detail: launchFailureDetail(error) }; }
