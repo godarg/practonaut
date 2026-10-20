@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createPracticeController, publicConditions } from '../../src/host/session.ts';
+import { ARROW_RULE } from '../../src/host/layout-text.ts';
 import { checkResult, compactView } from '../../src/mcp/replies.ts';
 import { layoutOverlaySchema, publicViewSchema } from '../../src/mcp/bridge.ts';
 import { validateWorld } from '../../src/world/schema.ts';
@@ -37,20 +38,25 @@ describe('layout clauses for the Player and agents', () => {
     ]);
     assert.deepEqual(conditions.map(c => c.text.en).slice(0, 6), [
       'No two of the 6 steps come closer than 20 px: their boxes are at least 20 px apart horizontally or vertically.',
-      'Every box of the 6 steps lies entirely inside the canvas from (40, 40) to (760, 440).',
-      'No two of the 6 arrows cross or touch. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn; arrows that share a step may meet at its centre, and arrows between the same two steps are not compared. Every arrow must be attached at both ends.',
-      'None of the 6 arrows touches the box of any of the 6 steps other than the two it joins. An arrow counts as the straight line between the centres of its two steps, however it is drawn. Every arrow must be attached at both ends.',
+      'Every box of the 6 steps lies entirely inside the layout area from (40, 40) to (760, 440).',
+      'No two of the 6 arrows cross or touch; arrows that share a step may meet at its centre, and arrows between the same two steps are not compared. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn. Every arrow must be attached at both ends.',
+      'None of the 6 arrows touches the box of any of the 6 steps other than the two it joins. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn. Every arrow must be attached at both ends.',
       'The 3 steps in “Lane A” sit in one row: the y-coordinates of their centres differ by at most 4 px.',
       'The 3 steps in “Lane A” stand side by side without overlapping horizontally, and the horizontal gaps between neighbouring boxes differ by at most 4 px.',
     ]);
     assert.deepEqual(conditions.map(c => c.text.de).slice(0, 6), [
       'Von den 6 Schritten kommen sich keine zwei näher als 20 px: zwischen ihren Boxen liegen waagerecht oder senkrecht mindestens 20 px.',
-      'Alle Boxen von den 6 Schritten liegen ganz innerhalb der Arbeitsfläche von (40, 40) bis (760, 440).',
-      'Von den 6 Pfeilen kreuzen oder berühren sich keine zwei. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist; Pfeile mit einem gemeinsamen Schritt dürfen sich in dessen Mittelpunkt treffen, Pfeile zwischen denselben zwei Schritten werden nicht verglichen. Jeder Pfeil muss an beiden Enden angebunden sein.',
-      'Keiner von den 6 Pfeilen berührt die Box eines von den 6 Schritten außer den beiden, die er verbindet. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten seiner beiden Schritte, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein.',
+      'Alle Boxen von den 6 Schritten liegen ganz innerhalb des Layoutbereichs von (40, 40) bis (760, 440).',
+      'Von den 6 Pfeilen kreuzen oder berühren sich keine zwei; Pfeile mit einem gemeinsamen Schritt dürfen sich in dessen Mittelpunkt treffen, Pfeile zwischen denselben zwei Schritten werden nicht verglichen. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein.',
+      'Keiner von den 6 Pfeilen berührt die Box eines von den 6 Schritten außer den beiden, die er verbindet. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein.',
       'Bei den 3 Schritten in „Lane A“ weichen die y-Koordinaten der Mittelpunkte höchstens 4 px voneinander ab: sie stehen in einer Zeile.',
       'Bei den 3 Schritten in „Lane A“ überlappen sich die Boxen waagerecht nicht, und die waagerechten Lücken zwischen benachbarten Boxen weichen höchstens 4 px voneinander ab.',
     ]);
+    // One term for the area within judges, the layout area (design review L1-F1): never the board's own
+    // word ("Arbeitsfläche") nor Excalidraw's ("canvas"). The two arrow clauses end in the same two
+    // sentences, word for word, so a list can show them once (L1-F14).
+    for (const condition of conditions) assert.equal(/canvas|Arbeitsfläche/i.test(`${condition.text.en} ${condition.text.de}`), false, condition.text.en);
+    for (const language of ['en', 'de'] as const) assert.equal(conditions[2]!.text[language].slice(-ARROW_RULE[language].length), conditions[3]!.text[language].slice(-ARROW_RULE[language].length));
     // The other forms of decision 6: gap 0, outside every frame, a column, edges, vertical spacing.
     const task: Task = { ...layoutWorld().tasks[0]!, goal: { op: 'all', args: [noOverlap(everything('step', 16)), aligned(outside('step', 2), 'x', 'start'), evenlySpaced(everything('step', 3), 'y', 2), aligned(everything('step', 2), 'y', 'end', 1)] } };
     const more = publicConditions(task);
