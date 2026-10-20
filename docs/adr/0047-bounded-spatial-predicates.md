@@ -1,6 +1,7 @@
 # PADR-0047 — Bounded spatial predicates: six layout operators over the judged geometry
 
-Status: proposed · Date: 2026-10-18 · Roadmap 0.3.0, strand P5 (issue #48) · Amends
+Status: accepted (2026-10-20, with its implementation P5b; see Implementation) · Date: 2026-10-18 ·
+Roadmap 0.3.0, strand P5 (issue #48) · Amends
 [PADR-0013](0013-bounded-predicates.md) (vocabulary and fuel accounting; its exhaustion rule is
 unchanged) · Records the maintainer decision on founder question F6 of 2026-10-18 (delegated) ·
 Uses [PADR-0040](0040-challenge-tier-generated-families-and-gate.md) (stress boards, half the
@@ -163,7 +164,7 @@ condition (chosen).
 **K. Step sizes.** (1) Free: shrinking every box to 10 × 10 replaces the layout. (2) Pinned within a
 tolerance by a public clause, as from-scenes pins resized steps (chosen for the family).
 
-## Decision (proposed)
+## Decision
 
 ### 1. Scope
 
@@ -627,6 +628,62 @@ not world content.
   overlaps another box, a sub-pixel overlap rounded away) and the reverse. The sentences and the
   prompt say so and the pictures show it; whether agents then fail on reading the condition rather
   than on the layout is a question the pre-probe's runs must answer before a gate round.
+
+## Implementation (P5b, 2026-10-20)
+
+**Where.** Vocabulary and validation: `src/world/types.ts`, `schema.ts`, `limits.ts`
+(`LAYOUT_LIMITS`) and `src/world/layout.ts` (the position rule and the three selection shapes, shared by
+world validation and the evaluator). Geometry and charges: `src/predicate/layout.ts` (`layoutCharge`,
+`layoutReasons`, the doubled-coordinate analysis); the evaluator's meter (`createMeter`) refuses a
+charge that is not a non-negative safe integer. Narration and overlay: `src/host/layout-text.ts`,
+`PublicCondition.layout` (`src/host/protocol.ts`), carried by `publicConditions` into the Player view,
+the check result and MCP (`CompactCondition`, the bridge's strict schema). Player:
+`src/player/ui/board-art.ts` (`JudgedLayer`) and `main.ts`. Report: `src/bench/details.ts`
+(`layoutMarks`), `schematic.ts` (`judgedOverlay`), `render.ts` and `report-text.ts`. Reader:
+`src/checker/scene.ts` (`roundedSpan`, the report's `geometry`). Authoring: `fromStates`'
+`extraClauses` and `nearMissCandidates`, `verifyTask`'s supplied candidates. Family:
+`src/challenge/layout.ts` (generator, stress and adversarial boards), `self-check.ts`,
+`tools/challenge-self-check.ts`; `FAMILIES`, `GENERATOR_VERSIONS`, `FAMILY_BENCH` (cap 60) and `MAKERS`
+gain `layout`, the shape the gate tool (PR #71) reads.
+
+**Measured** (no language model; arm64 macOS, Node 22). A second implementation in
+`tests/support/layout-oracle.ts` (BigInt rationals, parametric intersection, Liang–Barsky clipping,
+pixel enumeration) agrees with the product on 12,000 random small boards, also with ids permuted, and
+every charge equals the formula. The self-check over development seeds 1–100 (mixed, built and checked):
+100 instances, no rejection; parts chain 100, branch 35, fork 33, loop 22; stated kinds noOverlap 100,
+evenlySpaced 100, aligned 92, within 74, arrowsNoCrossing 40, arrowsClearOfSteps 20. Development set of
+26 (seeds 1–26): references 26/26 and near misses 241/241 failing in separate checker processes;
+with the real Excalidraw mirror `oracle` 26/26, `random` 0/26, both reports re-verified. The costliest
+verdict on a stress or adversarial board: 268,721 steps (26.9 % of 10⁶) in the set; 316,801 (31.7 %)
+over the 100 self-check instances. World validation became about 10 % slower on the library world
+(30 validations: 566 ms against 511 ms without the six schema branches).
+
+**Deviations from the text, decided while building.**
+- The evaluator also refuses a layout clause in a place decision 1.2 forbids, or with another
+  selection shape, with `checker_invalid` (a predicate can be evaluated outside a world), besides world
+  validation's `E_WORLD_INVALID`.
+- Decision 5.4's "most expensive pair of goal steps" and look-alike source are the pair and the step
+  whose ids sort last (where every `exists` over steps scans longest); each adversarial board comes
+  twice, with extra ids sorting before and after the goal's.
+- Near-miss candidates beyond decision 9.5's examples: the columns compressed below the gap
+  (noOverlap), the whole drawing past the canvas (within), a lane mirrored, a lane moved by whole
+  columns and a mirrored lane moved closer (the arrow clauses).
+- The prompt names the canvas only when `within` is stated (it states nothing the goal does not hold);
+  difficulty 3's aspect change lays both lanes out as one long row.
+- The self-check counts topology parts (chain, branch, fork, loop) and clause kinds, each against the
+  10 % floor; it lives in its own tool so that PR #71's rewrite of `tools/challenge.ts` does not
+  conflict.
+- The Player draws the judged segments over the cards, clipped around each label (a line through a
+  label would read as struck through); a self-loop's ring sits under its label. The report puts the
+  canvas's corners under its outline (a frame's name sits at its top-left). `ChallengeError` moved to
+  `src/challenge/errors.ts` (re-exported from `build.ts`).
+
+**What remains.** The draw.io reader of PR #70 already rounds by edges in absolute page coordinates
+and refuses a collapsed step outright; once #70 lands it can use `roundedSpan` and report collapsed
+and rotated cells like the Excalidraw reader. The artifact-mode reading rules (named refusal codes for
+a rotated or collapsed step, a box edge outside ±1,000,000 and the object allowance of decision 5.3)
+and the artifact-level schematic that draws every judged box come with artifact mode; the reader's
+`geometry` list is their seam. The pre-probe of `layout.practonaut` is a later step with a model agent.
 
 ## Re-assessment triggers
 

@@ -431,7 +431,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Stepper | `stepper()`, `step()` (`ui/stepper.ts`) | Vertical, numbered list of steps for a guided flow. Each step is a native `<details>` card with a marker (number, check when done, ring when current), a one-line summary when collapsed and a connecting line. Only the current step is open; the others stay editable. At most one filled button per open step. |
 | Step list | `stepList()` (`ui/stepper.ts`) | Static, numbered list of the parts of something that runs by itself (the demonstration): the stepper's marker grammar (number, ring when current, check when done) with a noun title and one line that says the state in words, so the marker never carries it alone. Not interactive; nothing opens. Shown in the gallery running and ended. |
 | Miniature diagram | `miniature()` (`ui/miniature.ts`) | Small read-only SVG of a process (steps with wrapped labels, arrows, loose ends as rings), used for before/after, the prepared case and examples. Always paired with a text alternative; never interactive. |
-| Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens. Player and gallery draw the same scene; behaviour is attached through `decorate`. |
+| Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens, and for a layout task the judged geometry (`JudgedLayer`, §10.2). Player and gallery draw the same scene; behaviour is attached through `decorate`. |
 
 Rule of thumb: if two surfaces show the same kind of thing, they show it with the same component.
 
@@ -533,7 +533,7 @@ connection in accent; **picked up** = card lifts 4 units with a deep shadow and 
 **pending connection** = dashed accent line with flowing dashes; **bound start** = a small anchor
 dot on the card edge and an arrowhead that touches the target; **loose end** = hollow ring in
 danger (the negative counterpart of the anchor); **focus** = a wider ring in the focus colour.
-Selection is never a colour change alone.
+Selection is never a colour change alone. **Judged geometry** (a task with layout conditions, PADR-0047): what the checker judges, in thin neutral dashes (`text-secondary`, never the accent, which is a pending preview): each judged arrow as a straight segment between the centres of its steps, drawn over the cards but clipped around each label (a line through a label would read as struck through); a self-loop as a small ring at its step's centre, under the label; the box of every ellipse or diamond; each canvas as an outline with its corners as a quiet label. It shows no verdict and no offending object, and one line under the board says what the dashes are. The Excalidraw workspace is never drawn over: the Goal card names the canvas and offers "Show on the Practice board".
 
 ### 10.3 Excalidraw workspace
 
@@ -603,6 +603,10 @@ captioned with which one it is; the pair shares one viewBox (one scale), its tex
 12 px (a wider board scrolls in its frame, with a faded edge and a line that says so), and in dark mode
 the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
+A layout task's judged geometry is drawn on both pictures in neutral dashes like the Player's, and each
+reason an unmet layout clause names is a numbered mark (a filled `danger-solid` disc with its number in
+`text-on-accent`) explained by one legend line in words; the caption says the checker judges straight
+lines between step centres, not the arrows as drawn.
 Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.
 Below 40 rem tables stack into one block per row; the page never scrolls sideways.
 

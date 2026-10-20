@@ -84,7 +84,7 @@ its native export. The agent runs as the same OS user, so a bench score is not a
 (see [benchmarks](benchmarks/README.md) §4).
 
 Engine bundling and fonts: [PADR-0012](adr/0012-excalidraw-bundling.md),
-[asset and license inventory](adapters/excalidraw-assets.md). Predicate language: [PADR-0013](adr/0013-bounded-predicates.md).
+[asset and license inventory](adapters/excalidraw-assets.md). Predicate language: [PADR-0013](adr/0013-bounded-predicates.md), with the layout operators of [PADR-0047](adr/0047-bounded-spatial-predicates.md).
 
 ## 4. Data and trust boundaries
 
