@@ -46,7 +46,7 @@ user-given command template.
 | **Agent → MCP bridge → host** | stronger-than-human oracle, hidden-data leaks, action floods, stale writes | seven fixed tools with strict input schemas; output field allowlist; the same host operations and views as the Player (goal conditions included, as text and formal form, exactly as the Player shows them); no route exposes reference solutions, near misses or checker bundles; rate and size limits; revision checks (`src/mcp/`). Tool descriptions are fixed project text, never world text. |
 | **Agent shell → filesystem** | reading the task library, reference solutions or the token file | not controlled by Practonaut (see §3); the `claude-code` bench preset allows only Practonaut tools. |
 | **Host → checker** | crafted exports, reward hacking (writing the result file directly, editing the log, weak predicates) | separate process with deadline and heap cap; own export parser and history interpreter, no import of core or adapter; counter-probes (empty, unchanged start, wrong artifact) before any verdict; bounded predicate language with fuel (`src/checker/`, `src/predicate/`). |
-| **Adapter ↔ real app** | the app silently changes or rejects a write | official interface only; read-back and integrity check after every write; mirror deadline; engine bundled offline with no CDN URLs (`src/adapters/excalidraw/`); the shared browser shell lets the app page reach only its named local origins: HTTP routed and refused requests recorded, every WebSocket closed, a content security policy on every served response for frames and workers, no WebRTC UDP, a sink proxy on 127.0.0.1 that refuses every connection the browser opens itself (TURN over TCP, preconnects) and reads and records nothing, so another OS user connecting to it can neither reach the browser nor disable the mirror, no host resolution (`src/adapters/browser/`, PADR-0045). |
+| **Adapter ↔ real app** | the app silently changes or rejects a write | official interface only; read-back and integrity check after every write; mirror deadline; engine bundled offline with no CDN URLs (`src/adapters/excalidraw/`); the shared browser shell lets the app page reach only its named local origins: HTTP routed and refused requests recorded, every WebSocket closed, a content security policy on every served response for frames and workers, no WebRTC UDP, a sink proxy on 127.0.0.1 that refuses every connection the browser opens itself (TURN over TCP, preconnects) and reads and records nothing, so another OS user connecting to it can neither reach the browser nor disable the mirror, no host resolution (`src/adapters/browser/`, PADR-0045); the sink keeps its port for as long as its browser's slot is held — a slow or unproven close, a launch that was rejected — so no other local process can take the port and receive that browser's connections (PADR-0050). |
 | **Recorder → disk** | personal data at rest | explicit start; files in a private 0700 directory; review and delete before compile. |
 | **Bench → agent process** | command injection through the template, runaway agents, an agent blocking its own judging | template split into words and started without a shell; per-run host and data folder, the agent's `PRACTONAUT_HOME` apart from the judged artifacts, which are written after it ends by temp file + rename (an unjudged run counts as not passed); wall-time limit stops the process group, a second Ctrl+C kills it at once; host-enforced action budget (`src/bench/`). An own task's reference solution (`--oracle`) is never given to the host or the agent's folder; the world package stays in memory during the runs, and the bench folder receives it and the references only after the last agent has ended; a bench host lists only its run's task and refuses a change to another ([PADR-0036](../adr/0036-bench-report-v2-any-world-stored-world.md)). Not prevented: an agent with file tools reading the user's own `--world` folder, or one that escapes its process group and outlives its run (a bench is not sealed). |
 | **Bench folder → `report --verify`** | a changed or swapped stored world, artifact or reference behind an unchanged report; a forged reference length | the stored world is re-read through the package reader and must match the bound SHA-256, id, version and content hash, and a library bench of this Practonaut's library version must have that library's content; every artifact and `references.json` is bound by SHA-256 and read with its size limit enforced during the read; every stored reference is re-checked by the checker on the stored world; the output shows the content hash for a receiver to compare; named codes `bench_world_changed`, `bench_artifact_changed`, `bench_reference_invalid` (`src/bench/verify.ts`). Not signed: whoever can write the folder can replace report and files together. |
@@ -76,6 +76,15 @@ user-given command template.
 8. **Windows** has no POSIX owner/mode bits; private files rely on the user-profile location of
    `~/.practonaut`. A `PRACTONAUT_HOME` outside the profile is the user's responsibility.
 9. **`--require-offline` is a startup probe, not a sandbox.**
+10. **A browser that does not close is ended by Playwright, not by Practonaut.** Practonaut signals
+    no process and reads no process table ([PADR-0050](../adr/0050-browser-close-is-a-bounded-request.md));
+    Playwright ends a close that has not finished after 30 s through the child it spawned and holds.
+    Its forced end carries Playwright's own risks, accepted rather than hidden: on Windows
+    `taskkill /T /F` walks the tree by parent process ids, which Windows may have reused, and holds
+    the host's event loop until it returns; on POSIX it may signal the group of a leader that was
+    just reaped. A browser whose end cannot be proven (its connection dropped before its close) keeps
+    its slot until the process exits; a command then exits 35 s after its last close request so that
+    Playwright's exit handler ends it.
 
 ## 4. Limits
 
@@ -100,6 +109,7 @@ change with a test and an update of this table. No environment variable disables
 | Event streams | 8 clients, 4 MiB queued each, heartbeat 15 s | stream closed | same |
 | Link code | one use, 5 min, one outstanding, 1,000 per session | `bootstrap_used` / `bootstrap_expired` | same |
 | Mirror operation | 5 s | `mirror_timeout` | `src/host/mirror.ts` |
+| Browsers per process (PADR-0050) | 8 running and closing together, every host included; a start waits for a slot within its 15 s launch bound (a mirror start only while 5 s of it remain for the launch); a close's default deadline 8 s | `browser_budget_exhausted` | `src/host/limits.ts` (`HOST_LIMITS.browsers`), `src/adapters/browser/ledger.ts` |
 | MCP inbound message | 1 MiB | `invalid_request` | `src/mcp/server.ts` |
 | Recordings | 30 min, 1,000 gestures, 3 MiB each; 100 recordings / 64 MiB in total | `recording_limit` | `src/host/author-controller.ts` |
 | Bench run | `--timeout` (default 300 s), `--max-actions` (default 50) | `action_budget_exhausted` | `src/bench/` |
@@ -119,3 +129,6 @@ change with a test and an update of this table. No environment variable disables
 - MCP surface (allowlist, limits, hidden-data canaries, errors): `tests/mcp/`.
 - Checker counter-probes and forged bench reports: `tests/unit/`, `tests/integration/`.
 - Engine bundle without CDN URLs: `tests/unit/engine-build.test.ts`.
+- Browser budget, close contract, sink lifetime and the 35 s exit: `tests/unit/browser-ledger.test.ts`,
+  `tests/unit/browser-close-contract.test.ts`, `tests/unit/browser-exit.test.ts`,
+  `tests/integration/browser-close-contract.test.ts`.

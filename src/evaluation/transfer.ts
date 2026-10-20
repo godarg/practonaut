@@ -9,7 +9,8 @@ import type { Page } from 'playwright-core';
 import type { Action, State } from '../world/types.ts';
 import type { ExcalidrawAdapter } from '../adapters/excalidraw/index.ts';
 import { createExcalidrawAdapter, AdapterInitializationError } from '../adapters/excalidraw/index.ts';
-import { bounded, BROWSER_BOUNDS, withClose } from '../adapters/browser/bounded.ts';
+import { bounded, BROWSER_BOUNDS, CLOSE_BOUND_MS } from '../adapters/browser/bounded.ts';
+import { closeBy, closeErrorOf, withClose } from '../adapters/browser/close.ts';
 import { parseExcalidraw } from '../checker/excalidraw.ts';
 import { RuntimeError } from '../cli/runtime.ts';
 import { openNativeFileChooser } from './native-trigger.ts';
@@ -36,7 +37,7 @@ export async function exportAgentSolution(initial: State, input: unknown): Promi
       next.objects[id] = { id, type: 'arrow', frameId: frame.id, from, to, deleted: false }; await commit({ name: 'connect', params: { frameId: frame.id, from, to } }, next);
     }
     const artifact = await adapter.exportArtifact(); return { native: artifact.native, svg: artifact.svg, state: parseExcalidraw(artifact.native), networkAttempts: adapter.networkAttempts() };
-  }, () => adapter.close());
+  }, deadline => adapter.close(deadline));
 }
 async function drawStep(page: Page, x: number, y: number, label: string): Promise<void> {
   await page.keyboard.press('Escape'); await page.keyboard.press('r'); await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 180, y + 100, { steps: 8 }); await page.mouse.up();
@@ -54,7 +55,7 @@ export async function exportScriptedHuman(initial: State): Promise<TransferExpor
     await page.keyboard.press('a'); await page.mouse.move(480, 350); await page.mouse.down(); await page.mouse.move(750, 350, { steps: 12 }); await page.mouse.up(); await page.keyboard.press('Escape');
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const artifact = await adapter.exportArtifact(); return { native: artifact.native, svg: artifact.svg, state: parseExcalidraw(artifact.native), networkAttempts: adapter.networkAttempts() };
-  }, () => adapter.close());
+  }, deadline => adapter.close(deadline));
 }
 
 export const NATIVE_TRANSFER_WALL_MS = 60_000;
@@ -191,7 +192,7 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
   const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => {
     expired = true; controller.abort();
     // Factory signal owns initialization; the returned adapter owns later UI work.
-    if (adapter) { cleanupAttempted = true; void adapter.terminate().catch(rememberCleanupError); }
+    if (adapter) { cleanupAttempted = true; const closing = adapter; void closeBy(deadline => closing.terminate(deadline)).then(result => { const error = closeErrorOf(result, CLOSE_BOUND_MS); if (error !== undefined) rememberCleanupError(error); }); }
     reject(new RuntimeError('transfer_invalid', 'Native transfer exhausted its one attempt deadline'));
   }, NATIVE_TRANSFER_WALL_MS); });
   const run = async (): Promise<NativeFileTransfer> => {
@@ -278,7 +279,7 @@ export async function nativeFileTransfer(input: { inputPath: string; expectedInp
       // A late factory success must still dispose its own adapter before this run settles.
       if (adapter) {
         cleanupAttempted = true;
-        try { await adapter.close(); } catch (error) { rememberCleanupError(error); }
+        const closing = adapter, result = await closeBy(deadline => closing.close(deadline)), error = closeErrorOf(result, CLOSE_BOUND_MS); if (error !== undefined) rememberCleanupError(error);
       }
     }
   };

@@ -92,6 +92,12 @@ start that still fails are:
 
 Elsewhere, run `npx practonaut setup` again to repair a damaged download.
 
+A start can also be refused because eight browsers of this Practonaut process are already running
+or still closing ([PADR-0050](adr/0050-browser-close-is-a-bounded-request.md)): after waiting up to
+15 s for one to close, it stops with `browser_budget_exhausted`, the counts and the remedy (wait, or
+restart Practonaut); `--mirror auto` goes on model-only. When a command ends while a browser is
+still closing, it says "Waiting for N browsers to close"; Playwright ends them within 30 s.
+
 ## 3. Let an agent practise
 
 Any MCP client can connect. With Claude Code:

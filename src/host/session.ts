@@ -17,7 +17,7 @@ import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAIN
 import type { MirrorFactory, PracticeMirror } from './mirror.ts';
 import {buildExportEnvelope,nativeMatchesState,type CurrentSessionExport} from './export-pair.ts';
 import {HOST_LIMITS} from './limits.ts';
-import { closeAfterFailure } from '../adapters/browser/bounded.ts';
+import { CLOSED, closeAfterFailure, closeBy, closeDeadline, type CloseResult } from '../adapters/browser/close.ts';
 import { libraryTaskInfo } from '../library/index.ts';
 
 export interface MirrorDiagnostic {
@@ -28,11 +28,23 @@ export interface MirrorDiagnostic {
   predicted: { state: State; hash: string };
   readback: { state: State; hash: string } | null;
 }
+/** A close of the session's mirror browser that did not close by its deadline (PADR-0050): written to
+ * the host's private diagnostics while the host lives; never shown in the Player or over MCP. */
+export interface BrowserCloseDiagnostic {
+  code: 'browser_close_abandoned' | 'browser_close_failed';
+  /** A recovery replaced the browser, or the session closed. */
+  phase: 'recovery' | 'close';
+  revision: number;
+}
 export interface PracticeSessionOptions extends ServeOptions {
   /** Host-only private diagnostics; world data, never credentials. No Player route. */
   /** Admission runs on the complete tentative public view before any mirror write. */
   admitView?: (view: HostView) => void;
   onMirrorDiagnostic?: (record: MirrorDiagnostic) => void | Promise<void>;
+  /** Host-only: a browser close of this session's mirror that was abandoned or failed (PADR-0050). */
+  onBrowserClose?: (record: BrowserCloseDiagnostic) => void | Promise<void>;
+  /** Stops the mirror's start (a closing author host stopping a practice host it was starting). */
+  signal?: AbortSignal;
 }
 function actionDescription(action: Action, before: State, after: State): Localized {
   const p = action.params;
@@ -217,7 +229,7 @@ export async function createPracticeController(input: World, options: PracticeSe
   let session = new Session(original, options.seed ?? 0, options.taskId ?? original.tasks[0]!.id);
   const mode = options.mirror ?? 'required';
   const listInfo = options.taskInfo ?? libraryTaskInfo(original);
-  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state, original) : undefined;
+  let mirror: PracticeMirror | undefined = mode === 'required' ? await factory(session.state, original, options.signal ? { signal: options.signal } : {}) : undefined;
   const sessionId = randomUUID();
   let revision = 0, attempt = 1, hintsOpened = 0;
   let history: HistoryItem[] = [], result: PublicCheck | null = null;
@@ -264,8 +276,15 @@ export async function createPracticeController(input: World, options: PracticeSe
     options.admitView?.(value);
   };
   const view = (): HostView => makeView();
-  // A mirror close that fails or outlives its bound must not replace the admission failure (issue #64).
-  try { admit(view()); } catch (error) { throw await closeAfterFailure(error, () => mirror?.close()); }
+  // A mirror close that fails or is abandoned must not replace the admission failure (issue #64).
+  try { admit(view()); } catch (error) { throw await closeAfterFailure(error, deadline => mirror?.close(deadline)); }
+  /** Records a mirror browser close that did not close by its deadline in the host's private
+   * diagnostics (PADR-0050); the Player and MCP never see it. */
+  const reportClose = async (phase: BrowserCloseDiagnostic['phase'], closeResult: CloseResult): Promise<void> => {
+    if (closeResult.outcome !== 'abandoned' && closeResult.outcome !== 'failed') return;
+    try { await options.onBrowserClose?.({ code: closeResult.outcome === 'abandoned' ? 'browser_close_abandoned' : 'browser_close_failed', phase, revision }); }
+    catch { /* Diagnostics never fail the session. */ }
+  };
   const emit = (event: HostEvent): void => { for (const listener of listeners) { try { listener(structuredClone(event)); } catch { /* Detached consumer cannot break the writer. */ } } };
   const contextFor=(context?:TransactionContext):TransactionContext=>context??{deadline:performance.now()+HOST_TRANSACTION_MS};
   const continues=(context:TransactionContext):boolean=>Number.isFinite(context.deadline)&&performance.now()<context.deadline;
@@ -304,9 +323,10 @@ export async function createPracticeController(input: World, options: PracticeSe
   const recoverMirror = async (preserveResult=false): Promise<void> => {
     if (!mirror || closed) return;
     const current = mirror;
-    try { await current.recover(session.state); if (closed) throw new MirrorFault('mirror_unavailable', 'Session closed'); recoveries++; }
-    // Bounded, and never a throw: the transaction's own refusal stays what its caller gets (issue #64).
-    catch (failure) { await closeAfterFailure(failure, () => current.close()); if (mirror === current) mirror = undefined; if(!preserveResult)result = null; }
+    try { await current.recover(session.state, old => reportClose('recovery', old)); if (closed) throw new MirrorFault('mirror_unavailable', 'Session closed'); recoveries++; }
+    // Under the close contract, and never a throw: the transaction's own refusal stays what its caller
+    // gets (issue #64).
+    catch { await reportClose('recovery', await closeBy(deadline => current.close(deadline))); if (mirror === current) mirror = undefined; if(!preserveResult)result = null; }
     if (!closed) emit({ type: 'changed', view: view() });
   };
   /** The mirror's read-back against a session state, compared as its adapter declares (PADR-0045):
@@ -491,6 +511,15 @@ export async function createPracticeController(input: World, options: PracticeSe
       }finally{busy=false;}
     },
     subscribe: listener => { listeners.add(listener); listener({ type: 'ready', view: view() }); return () => { listeners.delete(listener); }; },
-    close: async () => { closed = true; listeners.clear(); await mirror?.close(); },
+    // The mirror's close under the host's deadline (PADR-0050); its outcome goes up to the host.
+    close: async (deadline = closeDeadline()) => {
+      closed = true; listeners.clear();
+      const current = mirror;
+      const closeResult = current ? await closeBy(by => current.close(by), deadline) : CLOSED;
+      // Handed to the host's writer, never awaited: a slow write cannot delay the outcome past the
+      // deadline; the host's diagnostics close waits for it (review of PR #69, effects-1).
+      void reportClose('close', closeResult);
+      return closeResult;
+    },
   };
 }

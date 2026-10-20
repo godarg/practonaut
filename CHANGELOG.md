@@ -89,21 +89,48 @@ All notable changes are recorded here. The format follows
 - A browser that runs out of time says which operation and which bound: "Browser close exceeded its
   deadline of 8000 ms" instead of "Browser operation exceeded its deadline" (launch, setup, start,
   rollback, close, settlement; issue #64, where the Windows failures were the 8 s close of the real
-  browser in the host deadline tests' cleanup). Bounds and behaviour are unchanged. For developers:
+  browser in the host deadline tests' cleanup). A close no longer fails this way: it is abandoned at its deadline (Fixed, below). For developers:
   `npm run amplify:host-deadline` repeats those two tests under load and times every browser close,
   and the manual `host-deadline-repeat` workflow runs it on each CI platform
   ([testing](docs/testing.md#host-deadline-tests)).
 
 ### Fixed
 
+- A browser that closes slowly no longer fails work that succeeded (issue #64,
+  [PADR-0050](docs/adr/0050-browser-close-is-a-bounded-request.md)). Every browser Practonaut starts
+  — the mirror's, the start check's, the render check's, the report card's — closes through one
+  contract: the caller's deadline (8 s by default) goes down, the outcome comes up as closed, failed
+  or abandoned, and an abandoned close no longer fails the call (a test's cleanup, a host's close,
+  `run`, a render check, a report card); Playwright itself ends a browser that has not closed 30 s
+  after the request. A mirror recovery whose old browser closes slowly goes on to its replacement,
+  and a session closed during a recovery stops the replacement's start instead of waiting for it;
+  an author host's close also stops a practice host it is still starting, and reports a failure
+  when that start's cleanup did not close (a credential it could not remove).
+  Measured with the amplifier on macOS (60 attempts of the two host deadline tests per row, main
+  with the previous fix against this change): with every close held 8.5 s, 60 of 60 failed before
+  and 0 of 60 after, every close abandoned at its deadline and its end proven 0.5 s later; under
+  load (`--cpu 20 --block 20`, 6 and 16 load workers) 0 of 60 failed before and after in each, and
+  no close reached the deadline in either, so those runs do not test the cause. On CI before this
+  change, 300 attempts per platform: 0 failed on Ubuntu and macOS, 3 on Windows, all at the close
+  (slowest close 12.3 s); the CI after-run is still to come. Browsers launched and not yet proven
+  closed are bounded per process (8; the budget's scenario peaked at 2.1–2.4 GiB of resident size
+  summed over 8 browser trees on macOS); a start that finds no slot waits within its 15 s launch
+  bound and is then refused as `browser_budget_exhausted` (exit 3 under `--mirror required` and
+  `run`, model-only with a notice under `--mirror auto`, HTTP 503 for a practice host started from
+  the author page, counted after a bench's table). A browser's sink proxy keeps its port until that
+  browser's end is proven. A command reports later close outcomes on stderr (English or German),
+  says when it waits for a browser to close, and exits 35 s after the latest close request if a
+  browser's end is still not proven; Ctrl+C during that wait still lets Playwright end the browser
+  and remove its directories. For developers: `npm run measure:browser-budget`, and the amplifier
+  counts each close's outcome ([testing](docs/testing.md#browser-close-contract)).
 - A browser close after a failure no longer replaces that failure (issue #64). When a session or
   host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
   an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
-  or a render check or report card fails, the close that follows runs within the close bound
-  (graceful 3 s + forced 5 s) and the caller gets the original failure, with the close's failure kept
+  or a render check or report card fails, the close that follows runs under the close contract
+  (deadline 8 s, below) and the caller gets the original failure, with a close that did not close kept
   next to it as `closeError`. A failed host start tries every cleanup step on its own (the listener,
   ending its connections and event streams first; the author store; the session; the diagnostics;
-  the credential), and a mirror waits no longer than the close bound for an old adapter, in a
+  the credential), and a mirror waits no longer than the close's deadline for an old adapter, in a
   recovery too. Before, a close or cleanup step that failed replaced the failure (a native transfer
   export reported "Browser close exceeded its deadline" instead of its own error; a diagnostics file
   already gone made a failed start report `ENOENT` and keep its credential), and a close that never

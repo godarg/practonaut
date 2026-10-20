@@ -66,6 +66,11 @@ const target = chromium as unknown as { launch: typeof chromium.launch };
 const launch = target.launch.bind(chromium);
 target.launch = (async (...args: Parameters<typeof chromium.launch>) => observe(await launch(...args))) as typeof chromium.launch;
 
+// The browser ledger's three statements per browser (PADR-0050), written when the test process exits:
+// how each caller's close settled, whether the end was proven, and whether the slot was released.
+const ledger = await import('../../src/adapters/browser/ledger.ts').then(module => module.processLedger, () => undefined);
+if (ledger) process.on('exit', () => { for (const { at, ...entry } of ledger.records()) write({ event: 'ledger', ...entry, times: at }); });
+
 if (blockMs > 0) {
   const block = (): void => { const end = performance.now() + blockMs; while (performance.now() < end) { /* busy */ } setTimeout(block, 1).unref(); };
   setTimeout(block, 1).unref();

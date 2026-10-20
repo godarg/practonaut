@@ -11,9 +11,10 @@ import { loadWorldPackage } from '../world/index.ts';
 import { RuntimeError } from './runtime.ts';
 import { chromiumCheck } from './doctor.ts';
 import { headlessShellDownload } from './chromium-download.ts';
-import { browserAdvice, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
+import { browserAdvice, budgetDetail, chromiumStarts, launchFailureDetail, type StartResult } from './browser-start.ts';
 import { chromiumSandboxFallbackActive } from '../adapters/browser/chromium.ts';
 import { AdapterError, AdapterInitializationError } from '../adapters/browser/shell.ts';
+import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
 import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from '../adapters/registry.ts';
 import { openInBrowser, writePreferredLauncher } from './open-browser.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
@@ -72,7 +73,8 @@ const defaultProbes: MirrorProbes = { installed: async () => (await chromiumChec
 /**
  * `auto` mirrors when the Playwright Chromium is installed and actually starts, and otherwise runs
  * model-only with a message saying why. `required` refuses with a named error instead:
- * `browser_runtime_missing` (not installed) or `browser_start_failed` (installed, does not start).
+ * `browser_runtime_missing` (not installed), `browser_start_failed` (installed, does not start) or
+ * `browser_budget_exhausted` (no browser slot became free, PADR-0050).
  */
 export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes = defaultProbes): Promise<MirrorResolution> {
   if (choice === 'off') return { mode: 'off', fallback: false };
@@ -82,6 +84,8 @@ export async function resolveMirror(choice: MirrorChoice, probes: MirrorProbes =
   }
   const started = await probes.starts();
   if (!started.ok) {
+    // A full browser budget (PADR-0050) stops a required mirror by its own name.
+    if (choice === 'required' && started.budget) throw started.budget;
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail: started.detail, advice: browserAdvice() }));
     return { mode: 'off', fallback: true, reason: 'start', detail: started.detail };
   }
@@ -104,6 +108,13 @@ export async function startHostWithMirror(choice: MirrorChoice, resolved: Mirror
   // The mirror's own start may be the first one that needed the Linux sandbox fallback.
   try { const host = await start('required', undefined); return { host, mirror: chromiumSandboxFallbackActive() ? { ...resolved, sandbox: false } : resolved }; }
   catch (error) {
+    // A full browser budget (PADR-0050) is refused as a start that fails: named under `required`,
+    // model-only with the notice under `auto`.
+    if (error instanceof BrowserBudgetError) {
+      if (choice === 'required') throw error;
+      const mirror: MirrorResolution = { mode: 'off', fallback: true, reason: 'start', detail: budgetDetail(error) };
+      return { host: await start('off', modelOnlyNotice(choice, mirror)), mirror };
+    }
     if (!(error instanceof AdapterError)) throw error;
     const detail = launchFailureDetail(error instanceof AdapterInitializationError ? error.primaryError : error);
     if (choice === 'required') throw new RuntimeError('browser_start_failed', cliText('browserStartFailed', { detail, advice: browserAdvice() }));

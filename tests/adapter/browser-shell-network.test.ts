@@ -60,9 +60,18 @@ test('no channel of a shell page reaches a host that is not named; what the shel
     '/shared.js': { body: inWorker('shared'), contentType: 'text/javascript' },
   };
   const launcher = { launch: (options: LaunchOptions = {}) => chromium.launch({ ...options, args: [...(options.args ?? []), LOCAL_NETWORK_CHECKS_OFF, `--log-net-log=${netLog}`, '--net-log-capture-mode=Everything'] }) };
-  const shell = await startShell({ chromium: launcher, origins: { 'http://app.invalid': async path => served[path] } }, async started => { await started.page.goto('http://app.invalid/'); });
-  let closed = false;
+  // A start that fails must still release the listener and the UDP socket below (two CI runs of main
+  // hung here until the file's 180 s limit), and say which of the page's frames never finished
+  // loading: in both, the data: frame had not run its script when the page's load event timed out.
+  let shell: Awaited<ReturnType<typeof startShell>> | undefined, closed = false;
   try {
+    const live = shell = await startShell({ chromium: launcher, origins: { 'http://app.invalid': async path => served[path] } }, async started => {
+      try { await started.page.goto('http://app.invalid/'); }
+      catch (error) {
+        const frames = await Promise.all(started.page.frames().map(async frame => `${frame.url().slice(0, 40)} ${await Promise.race([frame.evaluate('document.readyState').catch(() => 'unreadable'), new Promise(resolve => setTimeout(() => resolve('no answer'), 1_000))])}`));
+        throw new Error(`${(error as Error).message}\nFrames when the start failed: ${JSON.stringify(frames)}`, { cause: error });
+      }
+    });
     // Recorded by the shell: the WebSocket route, the HTTP route and the policy's reports. TURN over
     // TCP and a shared worker's reports reach the sink proxy, which refuses them and records nothing.
     const expected = [`ws://${target}/page-ws`, `ws://${target}/frame-ws`, `ws://${target}/data-frame-ws`, `http://${target}/popup`,
@@ -72,14 +81,14 @@ test('no channel of a shell page reaches a host that is not named; what the shel
       ...['worker-font', 'blob-worker-font'].map(name => `policy:font-src:http://${target}/${name}`),
       `policy:img-src:http://${target}/img`];
     const deadline = Date.now() + 20_000;
-    while (expected.some(entry => !shell.networkAttempts().includes(entry)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+    while (expected.some(entry => !live.networkAttempts().includes(entry)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
     await new Promise(resolve => setTimeout(resolve, 2_000)); // late shared-worker and WebRTC attempts
     assert.deepEqual(arrived, [], 'nothing reached the host that is not named');
-    const recorded = shell.networkAttempts();
+    const recorded = live.networkAttempts();
     for (const entry of expected) assert.ok(recorded.includes(entry), `${entry} recorded in ${JSON.stringify(recorded)}`);
     // The net log is complete once the browser has closed: no hinted name was looked up.
-    await shell.close(); closed = true;
+    await live.close(); closed = true;
     const log = await readFile(netLog, 'utf8');
     for (const name of ['preconnect-hint.example', 'dns-hint.example', 'anchor-hint.example']) assert.equal(log.includes(name), false, `${name} resolved`);
-  } finally { if (!closed) await shell.close(); server.close(); udp.close(); await rm(scratch, { recursive: true, force: true }); }
+  } finally { if (shell && !closed) await shell.close(); server.close(); udp.close(); await rm(scratch, { recursive: true, force: true }); }
 });

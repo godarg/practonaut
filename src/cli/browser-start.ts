@@ -5,12 +5,17 @@
  * launches the browser exactly as the mirror does (headless, sandbox first, on Linux the PADR-0032
  * fallback without it) and closes it again. A start without the sandbox is reported, never hidden.
  */
-import { launchChromium } from '../adapters/browser/chromium.ts';
+import { BrowserBudgetError, startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
 import { cliText } from './messages.ts';
 import { safeText } from './output.ts';
 
 export const BROWSER_START_MS = 30_000;
-export type StartResult = { ok: true; sandbox: boolean } | { ok: false; detail: string };
+/** `budget`: the start was refused because no browser slot became free (PADR-0050); a command that
+ * needs the mirror stops with that named error, not as a start that failed. */
+export type StartResult = { ok: true; sandbox: boolean } | { ok: false; detail: string; budget?: BrowserBudgetError };
+
+/** The budget refusal as one line, by its code, with the counts and the remedy in the CLI's language. */
+export const budgetDetail = (error: BrowserBudgetError): string => `${error.code}: ${cliText('browserBudgetExhausted', { running: error.running, closing: error.closing, budget: error.budget })}`;
 
 /** First meaningful line of a launch error, terminal-safe and short; no stack, no paths beyond it. */
 export function launchFailureDetail(error: unknown): string {
@@ -23,13 +28,18 @@ export function launchFailureDetail(error: unknown): string {
   return safeText(telling).slice(0, 240);
 }
 
-export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS): Promise<StartResult> {
+/** Test seams: a fake Playwright `chromium`, a ledger of the test's own (default: the process's). */
+export interface StartCheckSeams { chromium?: ChromiumLauncher; ledger?: BrowserLedger }
+/** The answer does not wait for a slow close: the close runs under the close contract (PADR-0050),
+ * and an abandoned or failed close leaves the answer as it is; the browser keeps its slot until its
+ * end is proven. */
+export async function chromiumStarts(timeoutMs: number = BROWSER_START_MS, seams: StartCheckSeams = {}): Promise<StartResult> {
   try {
-    const { chromium } = await import('playwright-core');
-    const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-    await browser.close().catch(() => {});
+    const chromium = seams.chromium ?? (await import('playwright-core')).chromium;
+    const { lease, sandbox } = await startBrowser('start-check', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: seams.ledger });
+    await lease.close();
     return { ok: true, sandbox };
-  } catch (error) { return { ok: false, detail: launchFailureDetail(error) }; }
+  } catch (error) { return error instanceof BrowserBudgetError ? { ok: false, detail: budgetDetail(error), budget: error } : { ok: false, detail: launchFailureDetail(error) }; }
 }
 
 /** Advice for a browser that is installed but does not start, for the platform. */
