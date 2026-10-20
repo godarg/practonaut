@@ -145,8 +145,9 @@ mirrors, and their comparison — is in [docs/benchmarks/drawio](../benchmarks/d
 ## In the Player and the CLI
 
 - Texts name draw.io wherever they name the running app (MCP instructions, Player, CLI).
-- A draw.io world gets the board workspace only: the editor and author workspaces embed Excalidraw
-  and say they are not available.
+- A draw.io world gets the board workspace only: the editor and author workspaces embed Excalidraw.
+  The workspace control reads Practice · draw.io · Create, with draw.io and Create disabled and
+  saying why; there is no invitation to create an exercise.
 - The native export is `practonaut.drawio` (Player download, `run --export`); `practonaut check
   result.drawio --world <world> --pair result.session.json` checks it like an Excalidraw export.
 

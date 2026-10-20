@@ -1,7 +1,7 @@
 import type { Action, Arrow, Frame, Localized, Step, StepV2, WorldObject } from '../world/types.ts';
 import type { DemonstrationStatus, HostEvent, HostReply, HostView, ModelOnlyNotice, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
 import { createPhase3 } from './phase3.ts';
-import { appName, catalogs } from './messages.ts';
+import { appName, catalogs, workspaceApps } from './messages.ts';
 import type { Language, Message } from './messages.ts';
 import { clearTabSession, readTabSession, writeTabSession } from './tab-session.ts';
 import { banner, button, card, chip, disclosure, evidence, h, icon, listPicker, openSheet, segmented, selectField, statusIcon, textField } from './ui/components.ts';
@@ -771,7 +771,8 @@ function inspector(): HTMLElement {
   const points = c.errors.map(error => text(error.explanation));
   const consequence = last ? banner({ tone: 'accent', title: msg('consequence'), text: text(last.description), class: 'notice consequence', testid: 'consequence' },
     ...(points.length ? [h('p', { class: 'consequence-open', text: msg('stillToFix') }), h('ul', { class: 'consequence-list' }, ...points.map(point => h('li', { text: point })))] : [])) : undefined;
-  side.append(notices, ...(demoAttempt() ? [demonstrationCard()] : []), goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(),inviteCard());
+  // Create records in the app's own editor: a session of an app without one (draw.io) is not invited to it.
+  side.append(notices, ...(demoAttempt() ? [demonstrationCard()] : []), goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(), ...(workspaceApps.includes(c.world.adapterId) ? [inviteCard()] : []));
   freshVerdict = false;
   const edges = (): void => { side.classList.toggle('is-clipped-top', side.scrollTop > 2); side.classList.toggle('is-clipped-bottom', side.scrollHeight - side.clientHeight - side.scrollTop > 2); };
   side.addEventListener('scroll', edges, { passive: true });
@@ -790,15 +791,17 @@ function renderBar(): void {
   controls.append(themeSelect);
   const nodes: Node[] = [brand];
   // The same three workspaces on every route; one that this window cannot open says why (tooltip and accessible name).
+  // The middle one is the session's app; an app Practonaut does not open as a workspace (draw.io) offers
+  // neither it nor Create, and says so (design-language §10.1).
   if (current) {
-    const mode = phase3?.mode() ?? 'board';
+    const mode = phase3?.mode() ?? 'board', ownWorkspace = workspaceApps.includes(current.world.adapterId);
     const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
       const unavailable = id !== 'board' && (!phase3 || (id === 'author' && !authorAvailable));
       const disabled = id !== mode && (unavailable || !phase3!.canSelect(id));
       // A segment that waits for the drawing surface says so, never just greys out.
-      const ariaLabel = unavailable ? msg(id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
+      const ariaLabel = unavailable ? msg(!ownWorkspace ? (id === 'editor' ? 'modeNoWorkspace' : 'modeNoCreate') : id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
       return { id, label, testid: `mode-${id}`, disabled, ...(ariaLabel ? { ariaLabel } : {}) };
     }) });
     // While another workspace is being prepared the current one stays pressed (it is where you are);
@@ -816,7 +819,10 @@ function modelOnlyBanner(): HTMLElement {
   const key: Message = !notice ? 'modelOnlyUnknown' : notice.reason === 'missing' ? 'modelOnlyMissing' : notice.reason === 'start' ? 'modelOnlyStart' : 'modelOnlyOff';
   const sentence = msg(key).replace('{name}', notice?.download?.name ?? '').replace('{size}', String(notice?.download?.megabytes ?? ''));
   const [before, after] = sentence.split('{command}');
-  const body = after !== undefined && notice?.command ? h('p', {}, before, h('code', { class: 'model-only-banner__command', text: notice.command }), after) : h('p', { text: sentence });
+  // The command wraps only at its spaces: each word stays whole (a longer one, such as
+  // `setup --app drawio`, would otherwise run past the banner at 320 px).
+  const command = (text: string): HTMLElement => h('code', { class: 'model-only-banner__command' }, ...text.split(' ').flatMap((word, index) => [...(index ? [' '] : []), h('span', { class: 'model-only-banner__word', text: word })]));
+  const body = after !== undefined && notice?.command ? h('p', {}, before, command(notice.command), after) : h('p', { text: sentence });
   return banner({ tone: 'warning', title: msg('modelOnlyTitle'), class: 'notice model-only-banner', testid: 'model-only-banner' }, body);
 }
 function centered(glyph: IconName, title: string, body: string, danger = false): HTMLElement {

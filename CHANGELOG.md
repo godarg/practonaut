@@ -115,9 +115,12 @@ All notable changes are recorded here. The format follows
 
 - Texts that name the running app take its fixed display name from the world's adapter id: the MCP
   instructions (built per session from the host's view, which now carries `world.adapterId`), the
-  Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. Texts about
-  the editor and author workspaces keep naming Excalidraw; an Excalidraw session's texts are
-  unchanged.
+  Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. The
+  Player's workspace control names the session's app in its middle segment (Practice · draw.io ·
+  Create): in a draw.io session that segment and Create are disabled and say why, and the
+  invitation to create an exercise is not shown; texts about the embedded Excalidraw editor keep
+  naming it and appear in an Excalidraw session only, whose texts are unchanged. A model-only
+  banner's command wraps at its spaces, so `setup --app drawio` stays within the page at 320 px.
 - Bench report texts about the mirror, the engine picture and the mirror's failures name the
   report's application (`environment.app.adapterId`); `environment.app.version` is the version the
   world pins (a draw.io bench said 0.18.1).

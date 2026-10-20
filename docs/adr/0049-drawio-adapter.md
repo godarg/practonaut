@@ -218,11 +218,12 @@ through a test seam, so the product reads no new variable.
    never as a literal: the MCP instructions (built per session by the bridge from the host's reply),
    the Player's board, model-only, missing-runtime, evidence and picture texts (the host sends the
    adapter id; the Player's catalog fills the name), the bench report texts, and the CLI's setup,
-   mirror and doctor messages. Texts about the Player's editor and author workspaces, which embed
-   Excalidraw, keep naming it. A test runs a draw.io session and asserts that its MCP instructions, its
+   mirror and doctor messages. Texts about the Player's editor workspace, which embeds Excalidraw,
+   keep naming it and are shown in an Excalidraw session only; the workspace control's middle segment
+   names the session's app, and in a draw.io session it and Create are disabled and say why
+   (design-language §10.1). A test runs a draw.io session and asserts that its MCP instructions, its
    Player states mirrored and model-only (EN and DE) and a draw.io bench report contain no
-   "Excalidraw" outside the editor and author workspace texts, and that an Excalidraw session's texts
-   are unchanged.
+   "Excalidraw", and that an Excalidraw session's texts are unchanged.
 
 ### 2. Setup: opt-in download, verification, atomic keep
 

@@ -185,7 +185,8 @@
 
 /* Model-only session: one banner above the head and the inspector, in the stage's status row. */
 .model-only-banner { grid-area: status; margin-bottom: var(--pn-space-6); }
-.model-only-banner__command { font-family: var(--pn-font-mono); letter-spacing: 0; white-space: nowrap; }
+.model-only-banner__command { font-family: var(--pn-font-mono); letter-spacing: 0; }
+.model-only-banner__word { white-space: nowrap; }
 body[data-workspace="author"] .model-only-banner { display: none; }
 
 /* Demonstration: a state line inside the kit's step list (status mark and its words). */

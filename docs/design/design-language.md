@@ -445,6 +445,14 @@ Erstellen**), language (EN/DE) and appearance (System/Light/Dark) on the right. 
 becomes two rows: brand and settings, then the workspace control full width. While a picked
 workspace is being prepared, the current one stays pressed (it is where you are) and a click on it is
 kept, never dropped: once the preparation has ended, the person is back where they clicked.
+The middle segment names the session's app. A session of an app that Practonaut does not open as
+a workspace (draw.io; the editor and Create embed Excalidraw) keeps all three segments, so the bar
+does not change shape between apps: **Practice · draw.io · Create**, with draw.io and Create
+disabled, each saying why in its tooltip and accessible name, which contain the visible label ("draw.io
+does not open as a workspace in Practonaut. Practice on the board." / "Create is not available for
+draw.io."; DE "draw.io öffnet sich in Practonaut nicht als Arbeitsbereich. Übe auf der Arbeitsfläche."
+/ "Erstellen gibt es für draw.io nicht."). Such a session never names Excalidraw, and its
+inspector has no invitation to create an exercise.
 
 Below the bar is the **stage**: one CSS grid with named areas. Nodes that must never move in the DOM
 (the real editor iframe) and nodes that are re-rendered share the stage as siblings and are placed by
@@ -481,7 +489,8 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   and Reset in the header, Reset disabled until there is something to reset; numbered entries, the
   consequence in context, an evidence mark per action), **How this is checked** (evidence mark and
   statement, "Show in the real tool", rules behind a disclosure) and a quiet invitation card to
-  create an exercise (secondary button, never filled).
+  create an exercise (secondary button, never filled; not in a session of an app without Create,
+  §10.1).
 - **Goal**: the world states a goal as one verdict; its sentences are shown as separate short lines
   under one status icon (the first in primary text, the rest secondary). Before a check the ring
   is empty and there is no verdict; after a check one short verdict banner ("All conditions met." /
@@ -495,9 +504,10 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   is reserved for "not met", a rejected action and loose ends; "not yet modelled" is the hatched
   unknown banner with a short title and one explanatory sentence.
 - **Model only.** A session without the real tool says so once, above the head and the inspector
-  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" with
-  one sentence on what gets the real engine (the command in the mono voice, the one download named
-  with its size; or why Chromium did not start; or that `--mirror off` was chosen). It stays for the
+  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" (the
+  session's app) with one sentence on what gets the real engine (the command in the mono voice,
+  wrapping only at its spaces, the one download named with its size; or why Chromium did not start;
+  or that `--mirror off` was chosen). It stays for the
   whole session. One wording family everywhere: the banner, the line under the board ("This is a
   practice model. In this session the real Excalidraw does not check it.") and "How this is checked"
   say the same thing in plain words, never "mirrored" or "evidence".

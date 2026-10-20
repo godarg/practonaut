@@ -1,7 +1,8 @@
 // PADR-0049 decision 1.5: every text that names the running app takes its fixed display name from the
 // world's adapter id, never a literal and never world text. A draw.io session's MCP instructions, CLI
 // mirror messages and Player texts name draw.io; an Excalidraw session's are unchanged; only the texts
-// about the Player's editor and author workspaces (which embed Excalidraw) keep naming Excalidraw.
+// shown inside an Excalidraw session's editor workspace (which embeds Excalidraw) keep naming it. The
+// workspace control's middle segment names the session's app (design-language §10.1).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { KNOWN_APPS, appDisplayName } from '../../src/world/apps.ts';
 import { mcpInstructions, MCP_INSTRUCTIONS } from '../../src/mcp/contracts.ts';
-import { appName, appNames, catalogs } from '../../src/player/messages.ts';
+import { appName, appNames, catalogs, workspaceApps } from '../../src/player/messages.ts';
+import { ADAPTER_REGISTRY } from '../../src/adapters/registry.ts';
 import { fallbackNotice, resolveMirror, type MirrorProbes } from '../../src/cli/serve.ts';
 import { RuntimeError } from '../../src/cli/runtime.ts';
 import { setCliLanguage } from '../../src/cli/messages.ts';
@@ -18,8 +20,8 @@ import { validateWorld } from '../../src/world/schema.ts';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const library = JSON.parse(readFileSync(join(root, 'tasks/excalidraw/world/world.json'), 'utf8')) as Record<string, unknown>;
 const drawioRaw = { ...library, id: 'drawio-names-test', app: { adapterId: 'drawio', versionRange: '32.4.1' }, provenance: { ...(library.provenance as object), appVersion: '32.4.1' } };
-/** The Player's editor and author workspace texts: they are about the embedded Excalidraw. */
-const EDITOR_TEXTS = new Set(['modeEditor', 'modeEditorTitle', 'modeUnavailableEditor']);
+/** Texts an Excalidraw session shows about its embedded editor (a draw.io session gets the board only). */
+const EDITOR_TEXTS = new Set(['modeEditorTitle', 'modeUnavailableEditor']);
 
 test('the display names are the world table\'s, in both languages, and the Player keeps an equal copy', () => {
   assert.deepEqual(Object.fromEntries(Object.keys(KNOWN_APPS).map(id => [id, { en: appDisplayName(id, 'en'), de: appDisplayName(id, 'de') }])), { excalidraw: { en: 'Excalidraw', de: 'Excalidraw' }, drawio: { en: 'draw.io', de: 'draw.io' } });
@@ -48,6 +50,18 @@ test('Player texts filled for a draw.io session name no Excalidraw outside the e
   assert.equal(catalogs.de.demoRowMirror.replaceAll('{app}', appName('excalidraw', 'de')), 'Prüfung im echten Excalidraw');
   assert.equal(catalogs.en.boardModel.replaceAll('{app}', appName('drawio', 'en')), 'This is a practice model. The real draw.io double-checks every change.');
   assert.equal(appName('bpmnjs', 'en'), 'bpmnjs', 'an unknown id is shown as it is');
+});
+
+test('the workspace control names the session\'s app; an app without a workspace says why in words that contain each label', () => {
+  // The Player's copy of the registry's editor flags.
+  assert.deepEqual(workspaceApps, Object.entries(ADAPTER_REGISTRY).filter(([, registration]) => registration.editor).map(([id]) => id));
+  const fill = (language: 'en' | 'de', key: keyof typeof catalogs.en, id: string): string => catalogs[language][key].replaceAll('{app}', appName(id, language));
+  assert.deepEqual([fill('en', 'modeEditor', 'excalidraw'), fill('de', 'modeEditor', 'excalidraw')], ['Excalidraw', 'Excalidraw'], 'an Excalidraw session keeps its label');
+  assert.deepEqual([fill('en', 'modeEditor', 'drawio'), fill('de', 'modeEditor', 'drawio')], ['draw.io', 'draw.io']);
+  assert.equal(fill('en', 'modeNoWorkspace', 'drawio'), 'draw.io does not open as a workspace in Practonaut. Practice on the board.');
+  assert.equal(fill('de', 'modeNoWorkspace', 'drawio'), 'draw.io öffnet sich in Practonaut nicht als Arbeitsbereich. Übe auf der Arbeitsfläche.');
+  assert.equal(fill('en', 'modeNoCreate', 'drawio'), 'Create is not available for draw.io.');
+  assert.equal(fill('de', 'modeNoCreate', 'drawio'), 'Erstellen gibt es für draw.io nicht.');
 });
 
 test('CLI mirror messages name the world\'s app in both languages', async () => {
