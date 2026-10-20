@@ -98,6 +98,41 @@ test('an arrow draw.io does not show, or shows the other way, is refused', () =>
   }
 });
 
+// Review m2d: a frame's title band was filled in draw.io, and a cell later in the file is painted over
+// earlier ones. The adapter now leaves the band unfilled and the reader reads only such frames; a filled
+// step must not cover what was painted before it; a frame's name must not be drawn over a label.
+const box = (cell: XmlNode): { x: number; y: number; width: number; height: number } => { const g = cell.children[0]!.attrs; return { x: Number(g.x ?? 0), y: Number(g.y ?? 0), width: Number(g.width), height: Number(g.height) }; };
+const vertexCell = (id: string, value: string, style: string, b: { x: number; y: number; width: number; height: number }): XmlNode => ({ name: 'mxCell', attrs: { id, value, style, vertex: '1', parent: 'pn:layer' }, children: [{ name: 'mxGeometry', attrs: { x: String(b.x), y: String(b.y), width: String(b.width), height: String(b.height), as: 'geometry' }, children: [] }] });
+const FILLED_BAND = 'swimlane;container=1;collapsible=0;startSize=30;html=0;';
+const OPEN_BAND = 'swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;';
+
+test('r2-reader-frame-band-occlusion (connect): a frame over the goal arrow', () => {
+  const connect = cells(goal('connect')), arrow = connect.find(c => c.attrs.edge === '1')!;
+  const [from, to] = [arrow.attrs.source!, arrow.attrs.target!].map(id => box(connect.find(c => c.attrs.id === id)!));
+  assert.ok(connect.filter(c => c.attrs.vertex === '1').every(c => c.attrs.parent === 'pn:layer'), 'the goal\'s steps sit on the layer');
+  // The review's file: a band over the line between the two steps, appended after the arrow.
+  const y = from!.y + from!.height / 2 - 15, band = { x: from!.x + from!.width + 1, y, width: to!.x - from!.x - from!.width - 2, height: 30 };
+  assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', FILLED_BAND, band)])), 'unmodeled_value', 'a filled band');
+  // The same frame in the adapter's style hides nothing: draw.io draws the arrow through the unfilled band.
+  assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', OPEN_BAND, band)])), 'passed');
+  // A filled step over the arrow, painted after it, hides it; painted before it, the arrow lies on top.
+  const filled = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;', middle = { x: band.x + 20, y: band.y - 10, width: 40, height: 50 };
+  assert.equal(outcome('connect', file([...connect, vertexCell('cover', '', filled, middle)])), 'structure_invalid');
+  // Painted before the arrow, the step is read (and the extra step fails the goal's count).
+  assert.equal(outcome('connect', file([connect[0]!, connect[1]!, vertexCell('cover', '', filled, middle), ...connect.slice(2)])), 'failed', 'the arrow painted after the step');
+});
+
+test('r2-reader-frame-band-occlusion (rename-step): a frame named like the start\'s misspelling over the new label', () => {
+  const renamed = cells(goal('rename-step')), old = start('rename-step');
+  const wrong = labelOf(old, step => !Object.values(goal('rename-step').objects).some(o => o.type === 'step' && (o as StepV2).label === step.label));
+  const id = (Object.values(old.objects).find(o => o.type === 'step' && (o as StepV2).label === wrong) as StepV2).id;
+  const step = box(renamed.find(c => c.attrs.id === id)!), band = { x: step.x, y: step.y + step.height / 2 - 15, width: step.width, height: 30 };
+  assert.equal(outcome('rename-step', file(renamed)), 'passed', 'the honest rename');
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, FILLED_BAND, band)])), 'unmodeled_value', 'the review\'s file: a filled band');
+  assert.equal(outcome('rename-step', file([...renamed, vertexCell('cover', wrong, OPEN_BAND, band)])), 'structure_invalid', 'an unfilled band whose name is drawn over the label');
+  assert.equal(outcome('rename-step', file([vertexCell('cover', wrong, OPEN_BAND, band), ...renamed])), 'structure_invalid', 'the same frame first in the file');
+});
+
 test('the compressed page reads as draw.io reads it', () => {
   const plain = modelXml(cells(goal('connect'))), packed = deflateRawSync(Buffer.from(encodeURIComponent(plain), 'utf8')).toString('base64');
   assert.equal(outcome('connect', `<mxfile><diagram id="p">${packed}</diagram></mxfile>`), 'passed');

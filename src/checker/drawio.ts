@@ -40,6 +40,11 @@ function decode(text: string): string {
     return Object.hasOwn(PREDEFINED, body) ? PREDEFINED[body]! : refuse("xml_invalid", `an unknown entity ${whole}`);
   });
 }
+/** XML white space after end-of-line handling. */
+const XML_SPACE = /^[ \t\n]*$/;
+/** The XML declaration by its grammar: version 1.0, an optional encoding UTF-8 (any case), an optional
+ * standalone yes or no, each after white space. */
+const XML_DECLARATION = /<\?xml[ \t\n]+version[ \t\n]*=[ \t\n]*(?:"1\.0"|'1\.0')(?:[ \t\n]+encoding[ \t\n]*=[ \t\n]*(?:"[Uu][Tt][Ff]-8"|'[Uu][Tt][Ff]-8'))?(?:[ \t\n]+standalone[ \t\n]*=[ \t\n]*(?:"(?:yes|no)"|'(?:yes|no)'))?[ \t\n]*\?>/y;
 /** One XML document: end-of-line handling first, then a strict, bounded reading. Not well-formed or
  * not namespace-well-formed input is refused (a draw.io file holds neither namespaces nor DOCTYPE). */
 export function parseXml(raw: string): El {
@@ -64,16 +69,17 @@ export function parseXml(raw: string): El {
     if (end > i) {
       const text = input.slice(i, end);
       if (text.includes("]]>")) refuse("xml_invalid", "]]> in character data");
-      if (stack.length === 1) { if (text.trim()) refuse("xml_invalid", "text outside the root element"); }
+      // Outside the root only XML white space: space, tab and line feed (CR is gone by now). A no-break
+      // space, U+2028, U+3000 or U+FEFF there is not well-formed (review m2d).
+      if (stack.length === 1) { if (!XML_SPACE.test(text)) refuse("xml_invalid", "text outside the root element"); }
       else stack.at(-1)!.children.push(decode(text));
       i = end; continue;
     }
     if (input.startsWith("<?", i)) {
-      const close = input.indexOf("?>", i);
-      if (close < 0 || stack.length > 1 || top.children.length) refuse("xml_invalid", "a misplaced processing instruction");
-      // The XML declaration only at the very start, once; no other processing instruction.
-      if (i !== 0 || !/^<\?xml[ \t\n]/.test(input.slice(i, close + 2))) refuse("xml_invalid", "a processing instruction other than one XML declaration at the start");
-      i = close + 2; continue;
+      // The XML declaration only at the very start, once, by its grammar; no other processing instruction.
+      XML_DECLARATION.lastIndex = 0;
+      if (i !== 0 || !XML_DECLARATION.test(input)) refuse("xml_invalid", "a processing instruction other than one well-formed XML declaration at the start");
+      i = XML_DECLARATION.lastIndex; continue;
     }
     if (input.startsWith("<!--", i)) {
       const close = input.indexOf("-->", i + 4);
@@ -103,6 +109,8 @@ export function parseXml(raw: string): El {
       // XML requires white space between attributes.
       if (!first && gap === 0) refuse("xml_invalid", "attributes without white space between them");
       const key = name(); space();
+      // No namespace declaration: no draw.io file has one, and a reserved URI is not well-formed.
+      if (key === "xmlns") refuse("xml_invalid", "a namespace declaration (namespaces are not read)");
       if (input[i] !== "=") refuse("xml_invalid", "an attribute without a value");
       i++; space();
       const quote = input[i];
@@ -142,17 +150,35 @@ function inflatePage(text: string): string {
   try { utf8 = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return refuse("diagram_invalid", "a compressed page that is not UTF-8"); }
   try { return decodeURIComponent(utf8); } catch { return refuse("diagram_invalid", "a compressed page that is not URI-encoded"); }
 }
-/** The one page's `mxGraphModel` root. File metadata (attributes of `mxfile`, `diagram`, `mxGraphModel`)
- * is not read. */
+/** The attributes draw.io's own export carries on `mxfile`, `diagram` and `mxGraphModel` (measured on
+ * the committed exports), with the values pinned for those that change the picture. Any other, such as
+ * the page `background` or a `backgroundImage`, is refused (review m2d). `null`: any value. */
+const FILE_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, readonly string[] | null>>>> = Object.freeze({
+  mxfile: { host: null },
+  diagram: { id: null, name: null },
+  mxGraphModel: { dx: null, dy: null, grid: null, gridSize: null, guides: null, tooltips: null, connect: null, arrows: null, fold: null, page: null, pageScale: null, pageWidth: null, pageHeight: null, math: ["0"], shadow: ["0"] },
+  root: {},
+});
+function fileAttributes(element: El): void {
+  const table = FILE_ATTRIBUTES[element.name]!;
+  for (const [key, value] of Object.entries(element.attrs)) {
+    if (!Object.hasOwn(table, key)) refuse("unmodeled_value", `${key.slice(0, 32)} on ${element.name}`);
+    const values = table[key];
+    if (values && !values.includes(value)) refuse("unmodeled_value", `${key}=${value.slice(0, 16)} on ${element.name}`);
+  }
+}
+/** The one page's `mxGraphModel` root; the file's own attributes only from the table above. */
 function modelOf(top: El): El {
   let model = top;
   if (top.name === "mxfile") {
+    fileAttributes(top);
     const children = elements(top);
     if (children.some(c => c.name !== "diagram")) refuse("diagram_invalid", "an mxfile holds something other than diagrams");
     if (children.length !== 1) refuse("pages_unsupported", `${children.length} pages; one is read`);
     const diagram = children[0]!;
-    // Compressed if and only if its text, descendants included, is not blank, as draw.io decides.
-    if (textOf(diagram).trim() !== "") {
+    fileAttributes(diagram);
+    // Compressed if and only if its text, descendants included, is not XML white space.
+    if (!XML_SPACE.test(textOf(diagram))) {
       if (elements(diagram).length) refuse("diagram_invalid", "a page with both compressed text and elements");
       model = parseXml(inflatePage(textOf(diagram)));
     } else {
@@ -162,9 +188,12 @@ function modelOf(top: El): El {
     }
   }
   if (model.name !== "mxGraphModel") refuse("diagram_invalid", `expected mxGraphModel, found ${model.name.slice(0, 32)}`);
+  fileAttributes(model);
   const roots = elements(model);
   if (roots.length !== 1 || roots[0]!.name !== "root") refuse("diagram_invalid", "the model needs exactly one root");
-  if (textOf(roots[0]!).trim() !== "") refuse("diagram_invalid", "text inside the model's root");
+  fileAttributes(roots[0]!);
+  const ownText = (e: El): string => e.children.filter((c): c is string => typeof c === "string").join("");
+  if (!XML_SPACE.test(ownText(model) + ownText(roots[0]!))) refuse("diagram_invalid", "text inside the model or its root");
   return roots[0]!;
 }
 
@@ -181,8 +210,10 @@ const POINT_ATTRIBUTES: ReadonlySet<string> = new Set(["x", "y", "as"]);
 const STEP_NAMES: Readonly<Record<string, Shape>> = Object.freeze(Object.assign(Object.create(null) as Record<string, Shape>, { ellipse: "ellipse", rhombus: "diamond" }));
 // `html=1` makes a label markup: it passes the style table and is refused by the label rule (markup_label).
 const STEP_KEYS: Readonly<Record<string, readonly string[] | null>> = Object.freeze({ rounded: ["0"], html: ["0", "1"], strokeColor: null, fillColor: null });
-const FRAME_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({ container: ["1"], collapsible: ["0"], startSize: ["30"], html: ["0", "1"] });
-const FRAME_REQUIRED = ["container", "collapsible", "startSize"] as const;
+// A frame's title band is filled unless `fillColor=none` (measured): only an unfilled band is read, so no
+// frame can hide what lies under it (review m2d).
+const FRAME_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({ container: ["1"], collapsible: ["0"], startSize: ["30"], fillColor: ["none"], html: ["0", "1"] });
+const FRAME_REQUIRED = ["container", "collapsible", "startSize", "fillColor"] as const;
 const EDGE_KEYS: Readonly<Record<string, readonly string[] | null>> = Object.freeze({ startArrow: null, endArrow: null, html: ["0"] });
 // The reader's own colour tables (lower case), as null-prototype lookups.
 const STROKES: Readonly<Record<string, StrokeColor>> = Object.freeze(Object.assign(Object.create(null) as Record<string, StrokeColor>, { "#000000": "black", "#b85450": "red", "#82b366": "green", "#6c8ebf": "blue", "#d79b00": "orange" }));
@@ -193,7 +224,7 @@ const NO_MARKER = new Set(["none", ""]);
 
 // ---------- cells ----------
 interface Point { x: number; y: number }
-interface Geometry { x: number; y: number; width: number; height: number }
+interface Geometry { x: number; y: number; width: number; height: number; points?: { sourcePoint?: Point; targetPoint?: Point } }
 interface Cell { id: string; parent: string | null; value: string; style: string; vertex: boolean; edge: boolean; source: string | null; target: string | null; connectable: string | undefined; geometry: Geometry | null; attrs: Record<string, string> }
 const NUMBER = /^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/;
 /** A coordinate or size: the number grammar, finite, within ±1,000,000 on its own, so no sum of
@@ -228,15 +259,15 @@ function geometryOf(cell: El, id: string, vertex: boolean): Geometry | null {
   // An edge's geometry: relative="1" exactly, and at most a source and a target point.
   only(g.attrs, EDGE_GEOMETRY, "the geometry of", id);
   if (g.attrs.relative !== "1") refuse("geometry_invalid", `an edge geometry that is not relative="1" on ${shown(id)}`);
-  const seen = new Set<string>();
+  const points: { sourcePoint?: Point; targetPoint?: Point } = {};
   for (const point of elements(g)) {
-    if (point.name !== "mxPoint" || !["sourcePoint", "targetPoint"].includes(point.attrs.as ?? "") || seen.has(point.attrs.as!)) refuse("cell_invalid", `an edge point other than one source and one target point on ${shown(id)}`);
-    seen.add(point.attrs.as!);
+    const as = point.attrs.as;
+    if (point.name !== "mxPoint" || (as !== "sourcePoint" && as !== "targetPoint") || points[as] !== undefined) refuse("cell_invalid", `an edge point other than one source and one target point on ${shown(id)}`);
     only(point.attrs, POINT_ATTRIBUTES, "a point of", id);
-    coordinate(point.attrs.x, "x", id); coordinate(point.attrs.y, "y", id);
+    points[as as "sourcePoint" | "targetPoint"] = { x: coordinate(point.attrs.x, "x", id), y: coordinate(point.attrs.y, "y", id) };
     if (elements(point).length) refuse("cell_invalid", `a point with children on ${shown(id)}`);
   }
-  return { x: 0, y: 0, width: 0, height: 0 };
+  return { x: 0, y: 0, width: 0, height: 0, points };
 }
 function cellsOf(root: El): Cell[] {
   const out: Cell[] = [];
@@ -256,7 +287,7 @@ function cellsOf(root: El): Cell[] {
       only(element.attrs, INNER_CELL_ATTRIBUTES, "the inner cell of", id ?? "?");
     } else return refuse("cell_invalid", `an unexpected element ${entry.name.slice(0, 32)} in the root`);
     if (id === undefined) refuse("cell_invalid", "a cell without an id");
-    if (textOf(element).trim() !== "") refuse("cell_invalid", `text inside cell ${shown(id!)}`);
+    if (!XML_SPACE.test(textOf(element))) refuse("cell_invalid", `text inside cell ${shown(id!)}`);
     const a = element.attrs;
     const vertex = flag(a.vertex, "vertex", id!), edge = flag(a.edge, "edge", id!);
     if (vertex && edge) refuse("cell_invalid", `${shown(id!)} is both a vertex and an edge`);
@@ -318,7 +349,9 @@ export interface DrawioReport { state: State }
 export function parseDrawio(input: string | Uint8Array): DrawioReport {
   const bytes = typeof input === "string" ? Buffer.from(input) : Buffer.from(input);
   if (bytes.length > DRAWIO_READER_LIMITS.bytes) refuse("too_large", "the file is over 10 MiB");
-  const cells = cellsOf(modelOf(parseXml(bytes.toString("utf8"))));
+  // One UTF-8 byte-order mark before the document is allowed, as by every XML parser (review m2d).
+  const document = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? bytes.subarray(3) : bytes;
+  const cells = cellsOf(modelOf(parseXml(document.toString("utf8"))));
   const byId = new Map<string, Cell>();
   for (const cell of cells) { if (byId.has(cell.id)) refuse("duplicate_id", `two cells share the id ${shown(cell.id)}`); byId.set(cell.id, cell); }
   const roots = cells.filter(cell => cell.parent === null);
@@ -448,5 +481,85 @@ export function parseDrawio(input: string | Uint8Array): DrawioReport {
     const frameId = ends.length ? (ends.every(f => f === ends[0]) ? ends[0]! : null) : (frameOf(cell) === null ? null : ids.get(frameOf(cell)!) ?? null);
     objects[id] = { id, type: "arrow", deleted: false, frameId, from, to };
   }
+  occlusionCheck(cells, root, kinds, chains, byId, styles);
   return { state: validateSubmissionState({ objects }, undefined, 2) };
+}
+
+/**
+ * What draw.io paints over what (review m2d), all `structure_invalid`.
+ * - draw.io paints the cells depth first in document order, each after its parent. A frame's band is
+ *   not filled (the style table requires `fillColor=none`), so the only opaque area is a filled step.
+ *   Nothing the reader reads that draw.io painted before a filled step may lie under it: a step's box,
+ *   an arrow's line between its ends (arrows ending at that step excepted), or a frame's title band
+ *   with its name. Anything painted later lies on top and stays visible.
+ * - A frame's name is drawn in its title band (the top 30 px) whatever the order. It must not be drawn
+ *   over a step's label: the band must not overlap the label's line, taken as 16 px tall at the box's
+ *   centre and as wide as the box or 12 px per character, whichever is wider (draw.io draws a plain
+ *   label on one line, centred, at 12 px).
+ */
+function occlusionCheck(cells: readonly Cell[], root: Cell, kinds: ReadonlyMap<string, string>, chains: ReadonlyMap<string, string[]>, byId: ReadonlyMap<string, Cell>, styles: ReadonlyMap<string, Record<string, string>>): void {
+  interface Box { left: number; top: number; right: number; bottom: number }
+  const origin = (id: string): Point => {
+    let x = 0, y = 0;
+    for (const a of [...chains.get(id)!].reverse()) { const g = byId.get(a)!.geometry; if (g) { x += g.x; y += g.y; } }
+    return { x, y };
+  };
+  const boxOf = (cell: Cell): Box => { const o = origin(cell.id), g = cell.geometry!; return { left: Math.round(o.x + g.x), top: Math.round(o.y + g.y), right: Math.round(o.x + g.x + g.width), bottom: Math.round(o.y + g.y + g.height) }; };
+  const overlaps = (a: Box, b: Box): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  /** Whether a segment runs through a box for a positive length (Liang–Barsky). */
+  const crosses = (p: Point, q: Point, b: Box): boolean => {
+    const dx = q.x - p.x, dy = q.y - p.y;
+    let t0 = 0, t1 = 1;
+    for (const [pk, qk] of [[-dx, p.x - b.left], [dx, b.right - p.x], [-dy, p.y - b.top], [dy, b.bottom - p.y]] as const) {
+      if (pk === 0) { if (qk < 0) return false; continue; }
+      const r = qk / pk;
+      if (pk < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+      if (t0 > t1) return false;
+    }
+    return t1 > t0;
+  };
+  interface Painted { what: string; box?: Box; line?: [Point, Point]; ends?: readonly string[] }
+  const painted: Painted[] = [];
+  const opaque = (area: Box, by: string, endOf?: string): void => {
+    for (const p of painted) {
+      const hidden = p.box ? overlaps(p.box, area) : p.line !== undefined && !(endOf !== undefined && p.ends!.includes(endOf)) && crosses(p.line[0], p.line[1], area);
+      if (hidden) refuse("structure_invalid", `${p.what} lies under ${by}, which draw.io paints after it`);
+    }
+  };
+  const bandOf = (cell: Cell): Box => { const box = boxOf(cell); return { ...box, bottom: Math.min(box.top + 30, box.bottom) }; };
+  const labelLineOf = (cell: Cell): Box => {
+    const box = boxOf(cell), cx = (box.left + box.right) / 2, cy = (box.top + box.bottom) / 2;
+    const half = Math.max(box.right - box.left, 12 * [...cell.value].length) / 2;
+    return { left: cx - half, right: cx + half, top: cy - 8, bottom: cy + 8 };
+  };
+  const named = cells.filter(cell => kinds.get(cell.id) === "frame" && cell.value.trim() !== "");
+  for (const step of cells) {
+    if (kinds.get(step.id) !== "step" || step.value.trim() === "") continue;
+    const line = labelLineOf(step);
+    for (const frame of named) if (overlaps(bandOf(frame), line)) refuse("structure_invalid", `the name of frame ${shown(frame.id)} would be drawn over the label of step ${shown(step.id)}`);
+  }
+  const children = new Map<string, Cell[]>();
+  for (const cell of cells) if (cell.parent !== null) { const list = children.get(cell.parent); if (list) list.push(cell); else children.set(cell.parent, [cell]); }
+  const stack: Cell[] = [root];
+  while (stack.length) {
+    const cell = stack.pop()!, kind = kinds.get(cell.id);
+    stack.push(...[...(children.get(cell.id) ?? [])].reverse());
+    if (kind === "frame") {
+      const band = bandOf(cell);
+      if (cell.value.trim() !== "" && band.bottom > band.top && band.right > band.left) painted.push({ what: `the name of frame ${shown(cell.id)}`, box: band });
+    } else if (kind === "step") {
+      const box = boxOf(cell);
+      if (styles.get(cell.id)!.fillColor?.toLowerCase() !== "none") opaque(box, `filled step ${shown(cell.id)}`, cell.id);
+      painted.push({ what: `step ${shown(cell.id)}`, box });
+    } else if (kind === "edge") {
+      const o = origin(cell.id), points = cell.geometry!.points ?? {};
+      const end = (ref: string | null, point: Point | undefined): Point | null => {
+        if (ref !== null) { const b = boxOf(byId.get(ref)!); return { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }; }
+        return point ? { x: o.x + point.x, y: o.y + point.y } : null;
+      };
+      const p = end(cell.source, points.sourcePoint), q = end(cell.target, points.targetPoint);
+      // An end with neither a step nor a point is not drawn; nothing of it can be hidden.
+      if (p && q) painted.push({ what: `arrow ${shown(cell.id)}`, line: [p, q], ends: [cell.source, cell.target].filter((e): e is string => e !== null) });
+    }
+  }
 }

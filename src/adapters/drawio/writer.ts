@@ -22,7 +22,10 @@ export const LAYER = 'pn:layer';
 export const GROUP_PREFIX = 'pn:group:';
 export const FRAME_PAD = 20;
 export const FRAME_TITLE = 30;
-export const FRAME_STYLE = `swimlane;container=1;collapsible=0;startSize=${FRAME_TITLE};html=0;`;
+/** A frame's title band is not filled (`fillColor=none`): frames whose envelopes overlap, and a frame
+ * over a step or an arrow, never hide anything in draw.io (review m2d; measured: without it the band is
+ * filled white). */
+export const FRAME_STYLE = `swimlane;container=1;collapsible=0;startSize=${FRAME_TITLE};fillColor=none;html=0;`;
 export const GROUP_STYLE = 'group;';
 export const EDGE_STYLE = 'endArrow=classic;html=0;';
 export const STROKE_HEX: Readonly<Record<StepV2['stroke'], string>> = Object.freeze({ black: '#000000', red: '#b85450', green: '#82b366', blue: '#6c8ebf', orange: '#d79b00' });
@@ -36,6 +39,8 @@ export interface XmlNode { name: string; attrs: Record<string, string>; children
 export class WriterError extends Error { readonly code = 'constraint_refused'; }
 
 interface Box { x: number; y: number; width: number; height: number }
+/** Where empty frames without a remembered box go: a row from (0, -400), 200 × 120 each, 240 apart. */
+export const EMPTY_FRAME = Object.freeze({ x: 0, y: -400, width: 200, height: 120, pitch: 240 });
 const envelope = (boxes: Box[]): Box => {
   const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
   return { x, y, width: Math.max(...boxes.map(b => b.x + b.width)) - x, height: Math.max(...boxes.map(b => b.y + b.height)) - y };
@@ -65,10 +70,13 @@ export function writeCells(state: State, memory: WriterMemory): XmlNode[] {
     groupBox.set(groupId, { frameId: members[0]!.frameId, box: envelope(members) });
   }
   const frameBox = new Map<string, Box>();
+  // An empty frame without a remembered box gets its own place in a row above the diagram: two empty
+  // frames never share one, so no frame's title band hides another's name (review m2d).
+  let unplaced = 0;
   for (const frame of frames) {
     const members = steps.filter(s => s.frameId === frame.id);
     const box = members.length ? (() => { const e = envelope(members); return { x: e.x - FRAME_PAD, y: e.y - FRAME_PAD - FRAME_TITLE, width: e.width + 2 * FRAME_PAD, height: e.height + 2 * FRAME_PAD + FRAME_TITLE }; })()
-      : memory.frames.get(frame.id) ?? { x: 0, y: -400, width: 200, height: 120 };
+      : memory.frames.get(frame.id) ?? { x: EMPTY_FRAME.x + EMPTY_FRAME.pitch * unplaced++, y: EMPTY_FRAME.y, width: EMPTY_FRAME.width, height: EMPTY_FRAME.height };
     frameBox.set(frame.id, box); memory.frames.set(frame.id, box);
   }
   const origin = (parent: string): { x: number; y: number } => {
@@ -87,8 +95,11 @@ export function writeCells(state: State, memory: WriterMemory): XmlNode[] {
     cells.push(node('mxCell', { id: step.id, value: step.label, style: stepStyle(step), vertex: '1', parent }, [geometry(step, origin(parent))]));
     memory.centres.set(step.id, { x: step.x + Math.round(step.width / 2), y: step.y + Math.round(step.height / 2) });
   }
+  // An arrow with a live end sits on the layer, after every frame and step, so draw.io paints it over
+  // them and no filled step of another frame hides it (review m2d); its frame follows from its ends.
+  // An arrow with both ends loose stays in its frame, which is the only place that frame is kept.
   for (const arrow of arrows) {
-    const parent = arrow.frameId ?? LAYER, o = origin(parent), loose = memory.loose.get(arrow.id) ?? {};
+    const parent = arrow.from === null && arrow.to === null ? arrow.frameId ?? LAYER : LAYER, o = origin(parent), loose = memory.loose.get(arrow.id) ?? {};
     const points: XmlNode[] = [];
     for (const [end, ref] of [['source', arrow.from], ['target', arrow.to]] as const) {
       if (ref !== null) { const centre = memory.centres.get(ref); if (centre) loose[end] = centre; continue; }

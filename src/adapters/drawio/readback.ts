@@ -121,6 +121,13 @@ export function readBack(cells: readonly XmlNode[], adapterId = 'drawio'): ReadB
     const group = chain.find(a => kinds.get(a) === 'group');
     objects[id] = { id, type: 'step', deleted: false, frameId: frame, label: cell.attrs.value ?? '', x, y, width: g.width, height: g.height, shape: SHAPE_OF[token!]!, groupId: group ? group.slice(GROUP_PREFIX.length) : null, stroke: STROKE_OF[stroke!] ?? 'black', fill: FILL_OF[fill!] ?? 'none' } satisfies StepV2;
   }
+  // An arrow's frame follows world/2's rule: its live ends' common frame, else none; with both ends
+  // loose, the frame it sits in (the writer puts arrows with a live end on the layer).
+  for (const object of Object.values(objects)) {
+    if (object.type !== 'arrow') continue;
+    const ends = [object.from, object.to].filter((end): end is string => end !== null).map(end => (objects[end] as StepV2 | undefined)?.frameId ?? null);
+    if (ends.length) object.frameId = ends.every(frame => frame === ends[0]) ? ends[0]! : null;
+  }
   const state: State = { objects };
   const violation = constraintViolation(state, structuralConstraintsOf(adapterId));
   if (violation) issues.push(`constraint ${violation.constraint} at ${violation.objectId}`);

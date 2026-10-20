@@ -14,7 +14,7 @@ import { stepV2, v2Task } from '../support/world-v2.ts';
 
 const ROOTS = '<mxCell id="0"/><mxCell id="1" parent="0"/>';
 const STEP = 'rounded=0;html=0;strokeColor=#000000;fillColor=none;';
-const FRAME = 'swimlane;container=1;collapsible=0;startSize=30;html=0;';
+const FRAME = 'swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;';
 const model = (cells: string, roots = ROOTS): string => `<mxGraphModel><root>${roots}${cells}</root></mxGraphModel>`;
 const file = (cells: string): string => `<mxfile host="x"><diagram id="p" name="Page-1">${model(cells)}</diagram></mxfile>`;
 const geo = (x: number | string, y: number | string, w: number | string = 160, h: number | string = 80, extra = ''): string => `<mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"${extra}/>`;
@@ -139,7 +139,9 @@ test('styles: only the adapter\'s names, keys and values; one head per arrow', (
     assert.throws(() => read(vertex('a', 'A', style)), reason('unmodeled_value'), style);
   }
   assert.throws(() => read(vertex('a', 'A', 'rounded=0;html=1;strokeColor=#000000;fillColor=none;')), reason('markup_label'), 'html=1: the label is markup');
-  for (const style of ['swimlane;', 'swimlane;container=1;', `${FRAME}noLabel=1;`, 'swimlane;container=1;collapsible=1;startSize=30;']) assert.throws(() => read(vertex('f', 'F', style, '1', geo(0, 0, 400, 200))), reason('unmodeled_value'), style);
+  for (const style of ['swimlane;', 'swimlane;container=1;', `${FRAME}noLabel=1;`, 'swimlane;container=1;collapsible=1;startSize=30;fillColor=none;',
+    // A filled title band (draw.io's default, or any colour) could hide what lies under it (review m2d).
+    'swimlane;container=1;collapsible=0;startSize=30;html=0;', 'swimlane;container=1;collapsible=0;startSize=30;fillColor=#ffffff;html=0;', `${FRAME}swimlaneFillColor=#ffffff;`]) assert.throws(() => read(vertex('f', 'F', style, '1', geo(0, 0, 400, 200))), reason('unmodeled_value'), style);
   for (const style of ['group;opacity=0;', 'group;html=0;']) assert.throws(() => read(vertex('g', '', style, '1', geo(0, 0, 400, 200), ' connectable="0"')), reason('unmodeled_value'), style);
   assert.throws(() => read(`<mxCell id="g" value="Shown" style="group;" vertex="1" connectable="0" parent="1">${geo(0, 0, 400, 200)}</mxCell>`), reason('unmodeled_value'), 'a group with a label');
   assert.throws(() => read(vertex('a', 'A', STEP, '1', geo(0, 0), ' connectable="0"')), reason('unmodeled_value'), 'connectable on a step');
@@ -179,6 +181,66 @@ test('labels, colours and geometry: plain text, no snapped colours, bounded valu
   assert.throws(() => read(group('g', '1', geo('9223372036854775808', 0)) + vertex('a', 'A', STEP, 'g', geo('-9223372036854775808', 0))), reason('geometry_invalid'));
   assert.throws(() => read(group('g', '1', geo('1e400', 0)) + vertex('a', 'A', STEP, 'g', geo('-1e400', 0))), reason('geometry_invalid'));
   assert.equal((read(vertex('f', 'F', FRAME, '1', geo(600_000, 0, 400, 200)) + group('g', 'f', geo(300_000, 0)) + vertex('a', 'A', STEP, 'g', geo(50_000, 0))).state.objects.a as { x: number }).x, 950_000);
+});
+
+test('what draw.io paints over what: nothing read lies under a filled step painted later, and no frame name is drawn over a label (review m2d)', () => {
+  // a at 0..160 x 0..80 (centre 80, 40), b at 400..560 x 0..80 (centre 480, 40): the arrow runs along y = 40.
+  const ab = vertex('a', 'A', STEP, '1', geo(0, 0)) + vertex('b', 'B', STEP, '1', geo(400, 0)) + edge('e', 'a', 'b');
+  const FILLED = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;';
+  const cover = (style: string, value = '') => vertex('c', value, style, '1', geo(250, 20, 60, 40));
+  // A filled step over the arrow's middle: hidden when painted after it, on top of it when painted before.
+  assert.throws(() => read(ab + cover(FILLED)), reason('structure_invalid'), 'a filled step painted after the arrow');
+  assert.ok(read(cover(FILLED) + ab).state.objects.e, 'the arrow painted after the filled step');
+  assert.ok(read(ab + cover(STEP)).state.objects.c, 'an unfilled step hides nothing');
+  // A filled step over an earlier step's box; a filled end step over its own arrow (whose line ends inside it).
+  assert.throws(() => read(vertex('a', 'A') + vertex('d', 'D', FILLED, '1', geo(100, 50))), reason('structure_invalid'), 'a filled step over an earlier step');
+  assert.ok(read(vertex('a', 'A', STEP, '1', geo(0, 0)) + edge('e', 'a', 'b') + vertex('b', 'B', FILLED, '1', geo(400, 0))).state.objects.e, 'the end step itself');
+  // The adapter's frame band is not filled: a frame over the arrow hides nothing.
+  assert.ok(read(ab + vertex('f', '', FRAME, '1', geo(250, 25, 100, 30))).state.objects.e, 'an unfilled band over the arrow');
+  // A frame's name is drawn in its band whatever the order: never over a step's label line.
+  assert.throws(() => read(ab + vertex('f', 'Other', FRAME, '1', geo(0, 25, 160, 30))), reason('structure_invalid'), 'a frame name over a label');
+  assert.throws(() => read(vertex('f', 'Other', FRAME, '1', geo(0, 25, 160, 30)) + ab), reason('structure_invalid'), 'the same, painted first');
+  assert.ok(read(ab + vertex('f', '', FRAME, '1', geo(0, 25, 160, 30))).state.objects.f, 'an empty name draws nothing');
+  assert.ok(read(vertex('f', 'Lane', FRAME, '1', geo(-20, -50, 200, 150)) + ab.replace(`parent="1">${geo(0, 0)}`, `parent="f">${geo(20, 50)}`)).state.objects.a, 'the frame\'s own step below its band');
+  // A long label reaches past its box: 12 px a character is the bound used (40 characters: 480 px,
+  // centred on x = 80, so -160..320); a band at 250..310 is over it, one at 330..430 is not.
+  assert.throws(() => read(vertex('a', 'x'.repeat(40), STEP, '1', geo(0, 0)) + vertex('f', 'F', FRAME, '1', geo(250, 25, 60, 30))), reason('structure_invalid'), 'a label wider than its box');
+  assert.ok(read(vertex('a', 'x'.repeat(40), STEP, '1', geo(0, 0)) + vertex('f', 'F', FRAME, '1', geo(330, 25, 100, 30))).state.objects.f);
+  // A filled step over a frame's name, painted later.
+  assert.throws(() => read(vertex('f', 'Lane', FRAME, '1', geo(0, 0, 300, 200)) + vertex('d', 'D', FILLED, '1', geo(100, 5, 60, 40))), reason('structure_invalid'), 'a filled step over a frame name');
+});
+
+test('the XML prolog and the file\'s own attributes: only what an XML parser and draw.io\'s export allow (review m2d)', () => {
+  const doc = file(two);
+  // Outside the root only space, tab, CR and LF.
+  for (const space of [' ', ' ', '　', '﻿']) {
+    assert.throws(() => parseDrawio(doc + space), reason('xml_invalid'), `trailing U+${space.codePointAt(0)!.toString(16)}`);
+    // A leading U+FEFF is the byte-order mark, allowed once (below).
+    if (space !== '﻿') assert.throws(() => parseDrawio(space + doc), reason('xml_invalid'), `leading U+${space.codePointAt(0)!.toString(16)}`);
+  }
+  assert.ok(parseDrawio(` \t\r\n${doc}\r\n `).state.objects.a);
+  assert.throws(() => parseDrawio(`<?xml version="1.0"?> ${doc}`), reason('xml_invalid'), 'a no-break space after the declaration');
+  const packed = deflateRawSync(Buffer.from(encodeURIComponent(` ${model(two)}`), 'utf8')).toString('base64');
+  assert.throws(() => parseDrawio(`<mxfile><diagram id="p">${packed}</diagram></mxfile>`), reason('xml_invalid'), 'a no-break space before the inflated model');
+  // The declaration by its grammar.
+  for (const declaration of ['<?xml ?>', '<?xml foo?>', '<?xml version="9"?>', '<?xml version="1.0" encoding="no-such"?>', '<?xml version="1.0" encoding="ISO-8859-1"?>', '<?xml version="1.0" standalone="maybe"?>', '<?xml version="1.0"encoding="UTF-8"?>', '<?xml encoding="UTF-8" version="1.0"?>', '<?XML version="1.0"?>']) {
+    assert.throws(() => parseDrawio(declaration + doc), reason('xml_invalid'), declaration);
+  }
+  for (const declaration of ['<?xml version="1.0"?>', `<?xml version='1.0' encoding='utf-8' standalone='yes' ?>`, '<?xml version="1.0" encoding="UTF-8"?>\n']) assert.ok(parseDrawio(declaration + doc).state.objects.a, declaration);
+  // A UTF-8 byte-order mark before the document, as every XML parser allows it; a second one is text.
+  assert.ok(parseDrawio(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>${doc}`)])).state.objects.a);
+  assert.throws(() => parseDrawio(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf]), Buffer.from(doc)])), reason('xml_invalid'));
+  // No namespace declaration, reserved URIs included.
+  for (const uri of ['http://www.w3.org/2000/xmlns/', 'http://www.w3.org/XML/1998/namespace', 'urn:x']) assert.throws(() => parseDrawio(doc.replace('<mxfile', `<mxfile xmlns="${uri}"`)), reason('xml_invalid'), uri);
+  // The file's own attributes: draw.io's export set, with the picture's values pinned.
+  const exported = '<mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">';
+  assert.ok(parseDrawio(doc.replace('<mxGraphModel>', exported)).state.objects.a, 'the attributes draw.io\'s own export carries');
+  for (const attributes of ['background="#000000"', 'backgroundImage="{&quot;src&quot;:&quot;data:x&quot;}"', 'math="1"', 'shadow="1"', 'adaptiveColors="auto"']) {
+    assert.throws(() => parseDrawio(doc.replace('<mxGraphModel>', `<mxGraphModel ${attributes}>`)), reason('unmodeled_value'), attributes);
+  }
+  assert.throws(() => parseDrawio(doc.replace('<mxfile host="x">', '<mxfile host="x" pages="2">')), reason('unmodeled_value'), 'an mxfile attribute');
+  assert.throws(() => parseDrawio(doc.replace('<diagram id="p" name="Page-1">', '<diagram id="p" name="Page-1" background="#000000">')), reason('unmodeled_value'), 'a diagram attribute');
+  assert.throws(() => parseDrawio(doc.replace('<root>', '<root id="r">')), reason('unmodeled_value'), 'a root attribute');
 });
 
 test('limits are enforced by name', () => {

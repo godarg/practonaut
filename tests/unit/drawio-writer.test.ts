@@ -2,8 +2,9 @@
 // without a browser. Expected cells are derived by hand from the record's mapping.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { freshMemory, modelXml, writeCells, type XmlNode } from '../../src/adapters/drawio/writer.ts';
+import { FRAME_STYLE, freshMemory, modelXml, writeCells, type XmlNode } from '../../src/adapters/drawio/writer.ts';
 import { readBack, writeCheck } from '../../src/adapters/drawio/readback.ts';
+import { parseDrawio } from '../../src/checker/drawio.ts';
 import type { State } from '../../src/world/types.ts';
 import { stepV2 } from '../support/world-v2.ts';
 
@@ -25,7 +26,10 @@ test('the writer follows the decided mapping: ids, parents, styles, relative int
   assert.deepEqual(cells.map(c => c.attrs.id), ['pn:root', 'pn:layer', 'f1', 'pn:group:g1', 'a', 'b', 'c', 'ab', 'loose'], 'live objects only; the tombstone has no cell');
   // Frame: envelope of a and b (100..560 x 100..180) plus 20 padding and a 30 title band.
   assert.deepEqual(cell(cells, 'f1').children[0]!.attrs, { x: '80', y: '50', width: '500', height: '150', as: 'geometry' });
-  assert.equal(cell(cells, 'f1').attrs.style, 'swimlane;container=1;collapsible=0;startSize=30;html=0;');
+  // The title band is not filled, so a frame never hides what lies under it (review m2d).
+  assert.equal(cell(cells, 'f1').attrs.style, 'swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;');
+  // An arrow with a live end sits on the layer, after every frame and step (review m2d).
+  assert.deepEqual([cell(cells, 'ab').attrs.parent, cell(cells, 'loose').attrs.parent], ['pn:layer', 'pn:layer']);
   // Group: envelope 100..560 x 100..180, relative to the frame's origin (80, 50).
   assert.deepEqual([cell(cells, 'pn:group:g1').attrs.parent, cell(cells, 'pn:group:g1').attrs.style, cell(cells, 'pn:group:g1').children[0]!.attrs], ['f1', 'group;', { x: '20', y: '50', width: '460', height: '80', as: 'geometry' }]);
   // a sits at the group's origin: x and y are 0 and left out, as draw.io exports them.
@@ -38,6 +42,22 @@ test('the writer follows the decided mapping: ids, parents, styles, relative int
   assert.match(modelXml(cells), /^<mxGraphModel><root><mxCell id="pn:root"\/><mxCell id="pn:layer" parent="pn:root"\/>/);
   assert.match(modelXml(writeCells({ objects: { s: stepV2('s', 'a "b" & <c>\nd', 1, 2) } }, freshMemory())), /value="a &quot;b&quot; &amp; &lt;c&gt;&#xa;d"/);
   assert.throws(() => writeCells({ objects: { a: stepV2('a', 'A', 0, 0, { groupId: 'g' }), b: stepV2('b', 'B', 0, 0, { groupId: 'g', frameId: 'f' }), f: { id: 'f', type: 'frame', deleted: false, name: 'F' } } }, freshMemory()), /spans frames/);
+});
+
+test('nothing the adapter writes hides anything in draw.io: empty frames get their own places, a both-loose arrow stays in its frame (review m2d)', () => {
+  const frames: State = { objects: {
+    e1: { id: 'e1', type: 'frame', deleted: false, name: 'First' },
+    e2: { id: 'e2', type: 'frame', deleted: false, name: 'Second' },
+    free: { id: 'free', type: 'arrow', deleted: false, frameId: 'e2', from: null, to: null },
+  } };
+  const cells = writeCells(frames, freshMemory());
+  // Two empty frames without a remembered box: (0, -400) and (240, -400), 200 × 120 each.
+  assert.deepEqual([cell(cells, 'e1').children[0]!.attrs, cell(cells, 'e2').children[0]!.attrs], [{ y: '-400', width: '200', height: '120', as: 'geometry' }, { x: '240', y: '-400', width: '200', height: '120', as: 'geometry' }]);
+  // An arrow with both ends loose keeps its frame as its parent, the only place it is recorded.
+  assert.equal(cell(cells, 'free').attrs.parent, 'e2');
+  assert.deepEqual(readBack(cells).state.objects, live(frames));
+  // Every export the writer makes for the state above and the module's own state reads in the checker's reader.
+  for (const written of [cells, writeCells(state, freshMemory())]) assert.doesNotThrow(() => parseDrawio(`<mxfile><diagram id="p">${modelXml(written)}</diagram></mxfile>`));
 });
 
 test('the derived memory is reset per start: the same state writes the same cells whatever was written before', () => {
@@ -77,7 +97,7 @@ test('integrity: a live group passes; markup, foreign styles, cycles, edge paren
   issue(c => { cell(c, 'c').children[0]!.attrs.x = '10.5'; }, /not an integer/);
   issue(c => { cell(c, 'ab').attrs.target = 'f1'; }, /not a step/);
   // A second frame inside the group, holding b: the group g1 now spans f1 and f2, which world/2 refuses for draw.io.
-  issue(c => { c.push({ name: 'mxCell', attrs: { id: 'f2', value: 'Inner', style: 'swimlane;container=1;collapsible=0;startSize=30;html=0;', vertex: '1', parent: 'pn:group:g1' }, children: [{ name: 'mxGeometry', attrs: { x: '300', width: '200', height: '120', as: 'geometry' }, children: [] }] }); cell(c, 'b').attrs.parent = 'f2'; }, /constraint group-within-one-frame/);
+  issue(c => { c.push({ name: 'mxCell', attrs: { id: 'f2', value: 'Inner', style: FRAME_STYLE, vertex: '1', parent: 'pn:group:g1' }, children: [{ name: 'mxGeometry', attrs: { x: '300', width: '200', height: '120', as: 'geometry' }, children: [] }] }); cell(c, 'b').attrs.parent = 'f2'; }, /constraint group-within-one-frame/);
   issue(c => { c.push({ ...clone([cell(c, 'c')])[0]! }); }, /duplicate id c/);
 });
 

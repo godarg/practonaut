@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
 import { createDrawioAdapter, type DrawioAdapter } from '../../../src/adapters/drawio/index.ts';
+import { FRAME_STYLE } from '../../../src/adapters/drawio/writer.ts';
 import { runOracle } from '../../../src/authoring/from-scenes.ts';
 import { checkSubmission, CheckerError } from '../../../src/checker/index.ts';
 import { DRAWIO_MARKERS, parseDrawio } from '../../../src/checker/drawio.ts';
@@ -155,9 +156,33 @@ test('arrow markers: draw.io draws a head for every listed marker and none for "
   } finally { await adapter.close(); }
 });
 
+test('what draw.io paints, behind the reader\'s m2d rules: a filled band by default, an unfilled one with fillColor=none, a later filled step over an arrow, a page background', { skip, timeout: 300_000 }, async () => {
+  const S = 'rounded=0;html=0;strokeColor=#000000;fillColor=none;';
+  const pair = vertex('a', 'A', S, '1', geo(0, 0, 160, 80)) + vertex('b', 'B', S, '1', geo(400, 0, 160, 80)) + '<mxCell id="e" value="" style="endArrow=classic;html=0;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>';
+  const adapter = await start();
+  try {
+    const svgOf = async (xml: string): Promise<string> => { await adapter.conformanceWrite(xml, []); return (await adapter.exportArtifact()).svg; };
+    // A swimlane is drawn as three paths: the band (top, 30 px), the body, the line between them.
+    const bandFill = (svg: string): string | undefined => { const band = /<path\b[^>]*>/.exec(cellSvg(svg, 'f'))?.[0]; return band === undefined ? undefined : /\bfill="([^"]*)"/.exec(band)?.[1]; };
+    // The frame's band: filled by draw.io's default style, unfilled with the adapter's fillColor=none.
+    const frame = (style: string) => `<mxCell id="f" value="" style="${style}" vertex="1" parent="1"><mxGeometry x="180" y="25" width="200" height="100" as="geometry"/></mxCell>`;
+    const filledBand = bandFill(await svgOf(model(pair + frame('swimlane;container=1;collapsible=0;startSize=30;html=0;'))));
+    assert.ok(filledBand !== undefined && filledBand !== 'none', `the default band is filled (${filledBand})`);
+    assert.equal(bandFill(await svgOf(model(pair + frame(FRAME_STYLE)))), 'none', 'the adapter\'s band is not filled');
+    // A filled step later in the file is drawn after the arrow, with its fill: it covers the line.
+    const covered = await svgOf(model(pair + vertex('c', 'C', 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;', '1', geo(250, 20, 60, 40))));
+    assert.ok(covered.indexOf('data-cell-id="e"') < covered.indexOf('data-cell-id="c"'), 'document order is paint order');
+    assert.match(cellSvg(covered, 'c'), /<rect\b[^>]*\bfill="#dae8fc"/);
+    // The model's background attribute is kept and painted: the reader refuses it.
+    const dark = await adapter.conformanceWrite(model(pair).replace('<mxGraphModel>', '<mxGraphModel background="#000000">'), []);
+    assert.match(dark.exported, /<mxGraphModel\b[^>]*\bbackground="#000000"/);
+    assert.match(/<svg\b[^>]*>/.exec((await adapter.exportArtifact()).svg)![0], /background: #000000/);
+  } finally { await adapter.close(); }
+});
+
 test('the reader against draw.io: for every differential fixture it agrees with the app\'s export and drawing, or refuses', { skip, timeout: 600_000 }, async () => {
   const S = 'rounded=0;html=0;strokeColor=#000000;fillColor=none;', E = 'ellipse;html=0;strokeColor=#000000;fillColor=none;', R = 'rhombus;html=0;strokeColor=#000000;fillColor=none;';
-  const FRAME = 'swimlane;container=1;collapsible=0;startSize=30;html=0;';
+  const FRAME = 'swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;', FILLED = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;';
   const group = (id: string, parent: string, g: string): string => vertex(id, '', 'group;', parent, g, ' connectable="0"');
   const T = vertex('t', 'T', S, '1', geo(400, 0));
   const arrow = (style: string): string => `<mxCell id="e" value="" style="${style}" edge="1" parent="1" source="ref" target="t"><mxGeometry relative="1" as="geometry"/></mxCell>`;
@@ -205,6 +230,15 @@ test('the reader against draw.io: for every differential fixture it agrees with 
     { id: 'html-label', xml: model(REF + vertex('a', ' A ', 'rounded=0;html=1;strokeColor=#000000;fillColor=none;')), refused: 'markup_label' },
     { id: 'zero-width', xml: model(REF + vertex('a', 'A', S, '1', geo(300, 300, 0, 50))), refused: 'geometry_invalid' },
     { id: 'relative-ancestor', xml: model(REF + group('g', '1', geo(0.1, 0.1, 300, 100, ' relative="1"')) + vertex('a', 'A', S, 'g', geo(10, 10))), refused: 'unmodeled_value' },
+    // Review m2d: what draw.io paints over what, the XML prolog, the model's own attributes.
+    { id: 'unfilled-band-over-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('f', '', FRAME, '1', geo(150, 10, 200, 30))) },
+    { id: 'filled-band-over-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('f', '', 'swimlane;container=1;collapsible=0;startSize=30;html=0;', '1', geo(150, 10, 200, 30))), refused: 'unmodeled_value' },
+    { id: 'frame-name-over-label', xml: model(REF + T + vertex('f', 'Other', FRAME, '1', geo(400, 10, 100, 30))), refused: 'structure_invalid' },
+    { id: 'filled-step-after-arrow', xml: model(REF + T + arrow('endArrow=classic;html=0;') + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30))), refused: 'structure_invalid' },
+    { id: 'filled-step-before-arrow', xml: model(REF + T + vertex('c', 'C', FILLED, '1', geo(250, 10, 60, 30)) + arrow('endArrow=classic;html=0;')) },
+    { id: 'model-background', xml: model(REF).replace('<mxGraphModel>', '<mxGraphModel background="#000000">'), refused: 'unmodeled_value' },
+    { id: 'no-break-space-after-root', xml: `${model(REF)} `, refused: 'xml_invalid' },
+    { id: 'namespace-declaration', xml: model(REF).replace('<mxGraphModel>', '<mxGraphModel xmlns="http://www.w3.org/2000/xmlns/">'), refused: 'xml_invalid' },
   ];
   const adapter = await start();
   try {
