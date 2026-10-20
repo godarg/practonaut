@@ -206,8 +206,9 @@ describe('challenge-layout 1.0.0', () => {
     const collapsed = layoutSelfCheck(seeds.slice(0, 20), 1, 'draft', 0.1, (_seed, level, tryIndex) => draftFor('layout', 1, level, tryIndex));
     assert.equal(collapsed.instances, 20);
     for (const item of ['part branch', 'part fork', 'part plain chain', 'lanes 1', 'clause W', 'branch × C']) assert.ok(collapsed.belowFloor.some(entry => entry.startsWith(item)), `${item}: ${collapsed.belowFloor.join('; ')}`);
-    // The draft-level count is the built one: building changes nothing on a sample.
-    const built = layoutSelfCheck([1, 2, 3, 4, 5, 6], 'mixed', 'build'), drafted = layoutSelfCheck([1, 2, 3, 4, 5, 6], 'mixed', 'draft');
+    // The draft-level count is the built one: building changes nothing on one seed per difficulty (the
+    // tool's build mode shows it on 100 seeds per difficulty).
+    const built = layoutSelfCheck([1, 2, 3], 'mixed', 'build'), drafted = layoutSelfCheck([1, 2, 3], 'mixed', 'draft');
     assert.deepEqual({ ...built, mode: 'draft' }, drafted);
   });
 
