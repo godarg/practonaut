@@ -858,9 +858,9 @@ naming the world it benches and the task identity of the instance; the runner th
 one **run-end record** when the run ends, with the SHA-256 of the judged `session.json`, of
 `agent.stdout` and of `checker.json`, the status, the failure and the observed billing class. There is
 **one local ledger per user and repository**, under `PRACTONAUT_HOME`
-(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the repository's normalised `origin`
-URL and root commit), shared with one lock by every clone and worktree of the repository on the
-machine: one canonical JSON record per line, each chained to the line before by its SHA-256. A second
+(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the root commit alone — the same from
+every directory, clone and remote; a fork shares it, and with it the budget), shared with one lock by
+every clone and worktree of the repository on the machine: one canonical JSON record per line, each chained to the line before by its SHA-256. A second
 machine, or a second user with another `PRACTONAUT_HOME`, counts on a ledger of its own until it
 pushes; the committed copy's history catches the overlap only then. A start that would pass 800 is refused before the client starts
 (`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
@@ -951,7 +951,9 @@ folder and writes no report), is recovered **through the guard**: the same `node
 bench --purpose … --plan|--declaration … -- <its arguments> --recover <bench folder>`. Recovery starts
 no client; it rebuilds and re-verifies the report from the run folders, appends the run-end record of
 every run its folder proves (judged, or an infra_error its client's own output reports), marked
-`recovered`, and names the starts that stay void. `probe` and `gate` take the recovered report; its
+`recovered`, and names the starts that stay void. A run that already has its run-end record keeps the
+outcome the record states (a recorded infra_error stays one, whatever its folder holds; a recorded
+judged run whose verdict left its folder refuses the recovery by the run's name). `probe` and `gate` take the recovered report; its
 requested model is the one its start entries name. Do not rerun a judged or void task, under any
 purpose or on any world: the ledger shows every start on the round's instances, and the gate refuses
 best-of-N and a judged run it was not given. `probe`, `declare` and `gate` take `--bench-root

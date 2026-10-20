@@ -189,8 +189,11 @@ points marked *(review 2)* close them.
      when the bench was killed or could not append it, by `bench --recover` through the guard from the
      run's re-verified folder *(review 2)*: a judged run, or an infra_error its client's own output
      reports (a shipped parser re-derived it). Such a record is marked `recovered`, and the gate report
-     counts them. A run-end the runner cannot append (a held lock, a missing ledger) stops the bench at
-     once, without a report, for `--recover`.
+     counts them. A run that already has its run-end record keeps the outcome that record states: one
+     recorded as an infra_error is listed with the record's failure whatever its folder holds now, and
+     one recorded as judged is rebuilt from its folder, which must still hold that verdict, else the
+     recovery is refused by the run's name. A run-end the runner cannot append (a held lock, a missing
+     ledger) stops the bench at once, without a report, for `--recover`.
    - *A start without its run-end record is void, whatever its run folder holds* *(review, review 2:
      the verdict is on disk before the record is appended, and a folder's verdict files can be
      deleted)*: it counts, it is never digested or scored (not passed, counted toward the void rule),
@@ -242,10 +245,14 @@ points marked *(review 2)* close them.
       before model work, read by a shipped parser, with no host call beyond the bridge's start-up read
       and no tokens (PADR-0044 decision 9).
    6. *One local ledger per user and repository* *(review, review 2)*: under PRACTONAUT_HOME, keyed by
-      the repository's normalised `origin` URL and its root commit
+      the root commit of the repository's history alone
       (`release-ledgers/<key>/release-ledger-0.3.0.jsonl`), so every clone and every worktree of the
       repository on one machine shares one file and one lock, and none can count to 800 again; no
-      option names another file. It is created only by `ledger init`, which refuses, in this order,
+      option names another file. Not by the `origin` URL: a relative one reads differently from each
+      directory, and every spelling of a URL would need one normal form. The root commit is the same
+      from every directory, clone and remote; a fork shares it and so shares the budget, which errs on
+      the safe side. A branch with an unrelated history (another root commit) is another repository
+      here, like another PRACTONAUT_HOME. It is created only by `ledger init`, which refuses, in this order,
       when this repository's ledger exists (`ledger_exists`) or lies where an earlier Practonaut kept
       it (`ledger_elsewhere`), in a shallow clone (`shallow_clone`), when the pushed versions of the
       committed ledger over HEAD and every remote-tracking branch are not one history
