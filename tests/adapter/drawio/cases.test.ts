@@ -15,6 +15,7 @@ import { LIBRARY_CASES } from '../../../src/library/index.ts';
 import type { Action, State } from '../../../src/world/types.ts';
 import { stepV2 } from '../../support/world-v2.ts';
 import { drawioAvailability, drawioLibrary, drawioTaskWorld } from '../../support/drawio.ts';
+import { plannedSequences } from '../../support/drawio-run.ts';
 
 const availability = await drawioAvailability();
 const skip = availability.ok ? false : availability.skip;
@@ -62,6 +63,23 @@ test('derived memory: two-frames after two different sequences exports the same 
     const one = await after(task.oracle.steps), two = await after(task.oracle.nearMisses[0]!.steps), three = await after([]);
     assert.equal(one.native, two.native); assert.equal(one.native, three.native);
     assert.equal(one.png, two.png); assert.equal(one.png, three.png);
+  } finally { await adapter.close(); }
+});
+
+test('the same state gives the same PNG whatever the browser showed before (found by a shuffled run)', { skip, timeout: 300_000 }, async () => {
+  // A shuffled conformance run once drew this start 2,129 px wide after the other sequence and 2,130 px
+  // after any other order: draw.io's PNG export depended on the diagram loaded before.
+  const plan = plannedSequences(), at = (key: string) => plan.find(p => p.key === key)!;
+  const target = at('family/injection/injection-2/drawn/start'), before = at('family/repair/repair-1/drawn/near-4');
+  const targetState = new Session(target.world, target.seed, target.taskId).state;
+  const resolved = runOracle(before.world, before.seed, before.taskId, before.steps as never); assert.ok(resolved.ok);
+  const adapter = await start();
+  try {
+    const png = async (state: State): Promise<string> => { assert.equal((await adapter.restoreState(state)).ok, true); return Buffer.from(await adapter.renderPng()).toString('base64'); };
+    const fresh = await png(targetState);
+    await png(resolved.session.state);
+    assert.equal(await png(targetState), fresh, 'after another diagram');
+    assert.equal(await png(targetState), fresh, 'after itself');
   } finally { await adapter.close(); }
 });
 

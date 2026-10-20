@@ -56,6 +56,8 @@ export interface DrawioAdapter extends MirrorAdapter {
 }
 
 const failure = (code: Failure['code'], message: string): AdapterResult => ({ ok: false, error: { code, message, details: {} } });
+/** The model every write starts from: the adapter's root and layer, nothing else. */
+const EMPTY_MODEL = modelXml([{ name: 'mxCell', attrs: { id: ROOT }, children: [] }, { name: 'mxCell', attrs: { id: LAYER, parent: ROOT }, children: [] }]);
 const live = (state: State): State['objects'] => Object.fromEntries(Object.entries(state.objects).filter(([, object]) => !object.deleted));
 const sameLive = (a: State, b: State): boolean => isDeepStrictEqual(live(a), live(b));
 function checkState(state: State): void {
@@ -99,7 +101,10 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
   };
   const cellsOf = async (xml: string): Promise<{ cells: XmlNode[] } | { error: string }> =>
     current().wait(() => current().page.evaluate(x => (window as unknown as { __pn: { cells(x: string): unknown } }).__pn.cells(x), xml)) as Promise<{ cells: XmlNode[] } | { error: string }>;
-  const load = async (xml: string): Promise<void> => { await request({ action: 'load', xml }, 'load'); };
+  // Every write starts from the empty model: draw.io's PNG export of a diagram depends by a pixel on the
+  // diagram loaded before it (measured: 2,130 or 2,129 px wide for one state), so the same state gives
+  // the same PNG whatever the browser showed before (decision 5.1).
+  const load = async (xml: string): Promise<void> => { await request({ action: 'load', xml: EMPTY_MODEL }, 'load'); await request({ action: 'load', xml }, 'load'); };
   const disallowed = (): boolean => current().networkAttempts().length > 0;
   /** The app's current state, from its export, with the integrity check. */
   const readCurrent = async (): Promise<{ state: State; issues: string[]; exported: string }> => {
