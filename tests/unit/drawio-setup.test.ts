@@ -211,16 +211,25 @@ test('the lock (review m2c, runtime-2): a fresh lock not yet written is busy, tw
       hold = undefined; during = undefined;
     }
     // Two setups started together on one version directory, again and again: one downloads, the other
-    // stops by name, and every lock is gone afterwards.
+    // stops by name, and every lock is gone afterwards. The download is held until one setup has
+    // stopped, so the two overlap on any machine: unheld, a setup that started late found the first's
+    // finished download and answered "already" (CI, Node 26).
     for (let trial = 0; trial < 25; trial++) {
       const other = home(); requests = 0;
+      let serveTrial!: () => void; hold = new Promise<void>(r => { serveTrial = r; });
       try {
-        const both = await Promise.allSettled([installDrawio(options(server.origin, other)), installDrawio(options(server.origin, other))]);
+        const setups = [installDrawio(options(server.origin, other)), installDrawio(options(server.origin, other))];
+        const stopped = Promise.race(setups.map(setup => setup.then(() => undefined, () => undefined)));
+        // A setup that never stops (both downloading) is served after 10 s, so the assertions name it.
+        let fallback: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([stopped, new Promise<void>(r => { fallback = setTimeout(r, 10_000); })]);
+        clearTimeout(fallback); serveTrial();
+        const both = await Promise.allSettled(setups);
         const outcomes = both.map(r => r.status === 'fulfilled' ? r.value.status : r.reason instanceof DrawioInstallError ? r.reason.reason : String(r.reason)).sort();
         assert.deepEqual(outcomes, ['busy', 'installed'], `trial ${trial}`);
         assert.equal(requests, 1, `trial ${trial}: one download`);
         assert.deepEqual(readdirSync(drawioRuntimeDirectory(other, opts.pin!)), [opts.pin!.asset], `trial ${trial}: no lock, temp or partial file is left`);
-      } finally { rmSync(other, { recursive: true, force: true }); }
+      } finally { serveTrial(); hold = undefined; rmSync(other, { recursive: true, force: true }); }
     }
   } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
