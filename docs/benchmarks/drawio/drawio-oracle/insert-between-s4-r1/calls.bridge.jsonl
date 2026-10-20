@@ -1,6 +1,6 @@
 {"id":2,"tool":"observe","code":"ok","resultBytes":5640,"bridgeMs":3.6}
-{"id":3,"tool":"act","code":"ok","resultBytes":890,"bridgeMs":30.5}
-{"id":4,"tool":"act","code":"ok","resultBytes":1370,"bridgeMs":37.8}
-{"id":5,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":25.1}
-{"id":6,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":24}
-{"id":7,"tool":"check_result","code":"ok","resultBytes":3950,"bridgeMs":17.4}
+{"id":3,"tool":"act","code":"ok","resultBytes":890,"bridgeMs":31}
+{"id":4,"tool":"act","code":"ok","resultBytes":1370,"bridgeMs":45.6}
+{"id":5,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":21.8}
+{"id":6,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":28.7}
+{"id":7,"tool":"check_result","code":"ok","resultBytes":3950,"bridgeMs":9.7}
