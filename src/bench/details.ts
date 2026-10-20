@@ -21,13 +21,13 @@ import { LIMITS } from '../package/limits.ts';
 import { evaluate } from '../predicate/index.ts';
 import { generateVariant } from '../world/variant.ts';
 import { validateState } from '../world/schema.ts';
-import { isLayoutPredicate, worldEra, type Action, type Localized, type Predicate, type SessionData, type State, type World } from '../world/types.ts';
+import { isLayoutPredicate, worldEra, type Action, type Localized, type Predicate, type SessionData, type State, type Step, type World } from '../world/types.ts';
 import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
-import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupOutlines, groupsOf, judgedBounds, judgedOverlay, pictureOverflow, schematicBounds, schematicSvg, textFloorScale, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend, type MarkPlacement } from './schematic.ts';
+import { engineSvgMarkup, exportHalo, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, judgedBounds, judgedOverlay, judgedParts, pictureOverflow, PICTURE_FLOOR, schematicBounds, schematicHalo, schematicSvg, schematicText, textFloorScale, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend, type JudgedParts, type MarkPlacement, type OverlayContext } from './schematic.ts';
 import { layoutReasons, type LayoutReason } from '../predicate/index.ts';
 import type { LayoutOverlay } from '../host/protocol.ts';
 
@@ -63,25 +63,29 @@ export interface RunDetail {
   targetObjects: BoardObject[];
   /** Whether the pictures (one shared width) are wider than a phone or a desktop column. */
   overflow: 'none' | 'narrow' | 'wide';
-  /** The first object where the final board and the target differ lies in the right half of the
-   * shared viewBox: a picture that scrolls opens at that end. */
-  fromEnd: boolean;
+  /** Where each picture of a scrolling pair opens (openingSide): at the end of its own first difference
+   * from the other, when that end shows one of its steps. */
+  opening: { final: 'start' | 'end'; target: 'start' | 'end' };
   /** The export carries the judged state's group outline (it shows no groups of its own). */
   groupOverlay: boolean;
   /** A layout task's judged geometry (PADR-0047 decision 7): the conditions' overlays, whether the
    * pictures draw them, and for each unmet layout clause its numbered reasons from the shared analysis. */
-  layout: { overlays: LayoutOverlay[]; drawn: boolean; marks: LayoutMark[] } | null;
+  layout: { overlays: LayoutOverlay[]; drawn: boolean; marks: LayoutMark[]; parts: { final: JudgedParts; target: JudgedParts | null } } | null;
   calls: CallSummary | null; callsMissing: Missing | null;
   /** Distinct MCP client names that changed the board (from the mutation log). */
   clients: string[];
   rejected: Array<[string, number]>;
 }
-/** One reason an unmet layout clause names (at most five per clause), numbered on the final board and
- * in its legend. `names` gives each named object as the board shows it: a step's label, an arrow's
- * end labels (null for a loose end). */
+/** One reason an unmet layout clause names (at most five per clause), labelled on the final board and
+ * in its legend by its condition and its place among that condition's reasons ("7.1", design review
+ * L1-F11). `names` gives each named object as the board shows it: a step's label, an arrow's end
+ * labels (null for a loose end). `measured` gives the legend its numbers in px (L1-F10): how far apart
+ * two boxes are (negative: they overlap), how much two anchors differ, how far two boxes overlap along
+ * the axis, or the smallest and the largest gap. */
 export interface LayoutMark {
-  number: number; condition: number; clause: LayoutOverlay; reason: LayoutReason;
+  number: number; label: string; condition: number; clause: LayoutOverlay; reason: LayoutReason;
   names: Record<string, { step: string } | { from: string | null; to: string | null }>;
+  measured?: { value: number } | { smallest: number; largest: number };
 }
 /** The marks of the unmet layout clauses of `conditions` on `state`, numbered from 1; a clause whose
  * boxes leave the judged range gets none (the checker refuses such a board). */
@@ -89,21 +93,34 @@ export function layoutMarks(state: State, conditions: ReadonlyArray<{ predicate:
   const marks: LayoutMark[] = [];
   const label = (id: string): string => { const object = state.objects[id]; return object?.type === 'step' ? object.label : ''; };
   const name = (id: string): LayoutMark['names'][string] => { const object = state.objects[id]; return object?.type === 'arrow' ? { from: object.from === null ? null : label(object.from), to: object.to === null ? null : label(object.to) } : { step: label(id) }; };
+  const box = (id: string): { x: number; y: number; width: number; height: number } => { const object = state.objects[id]; return object?.type === 'step' ? object : { x: 0, y: 0, width: 0, height: 0 }; };
+  // Along an axis: where a box starts and ends; the gap between two boxes (negative when they overlap).
+  const span = (id: string, axis: 'x' | 'y'): [number, number] => { const b = box(id); return axis === 'x' ? [b.x, b.x + b.width] : [b.y, b.y + b.height]; };
+  const gap = (a: string, b: string, axis: 'x' | 'y'): number => { const [s, e] = span(a, axis), [t, f] = span(b, axis); return Math.max(t - e, s - f); };
+  const anchor = (id: string, axis: 'x' | 'y', at: 'start' | 'center' | 'end'): number => { const [s, e] = span(id, axis); return at === 'start' ? s : at === 'end' ? e : (s + e) / 2; };
+  const measure = (reason: LayoutReason, clause: LayoutOverlay): LayoutMark['measured'] => {
+    if (reason.kind === 'overlap' && clause.op === 'noOverlap' && clause.gap > 0) return { value: Math.max(gap(reason.steps[0], reason.steps[1], 'x'), gap(reason.steps[0], reason.steps[1], 'y')) };
+    if (reason.kind === 'spread' && clause.op === 'aligned') return { value: Math.abs(anchor(reason.steps[0], clause.axis, clause.anchor) - anchor(reason.steps[1], clause.axis, clause.anchor)) };
+    if (reason.kind === 'projection' && clause.op === 'evenlySpaced') return { value: -gap(reason.steps[0], reason.steps[1], clause.axis) };
+    if (reason.kind === 'gaps' && clause.op === 'evenlySpaced') return { smallest: gap(reason.smallest[0], reason.smallest[1], clause.axis), largest: gap(reason.largest[0], reason.largest[1], clause.axis) };
+    return undefined;
+  };
   conditions.forEach((condition, index) => {
     if (!condition.layout || !isLayoutPredicate(condition.predicate)) return;
     let reasons: LayoutReason[];
     try { reasons = layoutReasons(condition.predicate, state, 5); } catch { return; }
-    for (const reason of reasons) {
+    reasons.forEach((reason, k) => {
       const ids = 'steps' in reason ? reason.steps : 'arrows' in reason ? reason.arrows : reason.kind === 'gaps' ? [...reason.smallest, ...reason.largest] : reason.kind === 'loose' ? [reason.arrow] : reason.kind === 'outside' ? [reason.step] : reason.kind === 'touch' ? [reason.arrow, reason.step] : [];
-      marks.push({ number: marks.length + 1, condition: index + 1, clause: condition.layout, reason, names: Object.fromEntries(ids.map(id => [id, name(id)])) });
-    }
+      const measured = measure(reason, condition.layout!);
+      marks.push({ number: marks.length + 1, label: `${index + 1}.${k + 1}`, condition: index + 1, clause: condition.layout!, reason, names: Object.fromEntries(ids.map(id => [id, name(id)])), ...(measured ? { measured } : {}) });
+    });
   });
   return marks;
 }
 /** Where the marks go on the picture: the steps and arrows each reason names. */
 const placements = (marks: readonly LayoutMark[]): MarkPlacement[] => marks.map(mark => {
   const ids = Object.entries(mark.names);
-  return { number: mark.number, steps: [...new Set(ids.filter(([, value]) => 'step' in value).map(([id]) => id))], arrows: ids.filter(([, value]) => !('step' in value)).map(([id]) => id) };
+  return { label: mark.label, steps: [...new Set(ids.filter(([, value]) => 'step' in value).map(([id]) => id))], arrows: ids.filter(([, value]) => !('step' in value)).map(([id]) => id) };
 });
 export interface ReportDetails {
   folder: 'read' | 'missing' | 'world-changed' | 'world-unreadable'; runs: Map<string, RunDetail>;
@@ -296,7 +313,7 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
   for (const [index, run] of report.runs.entries()) {
-    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', fromEnd: false, groupOverlay: false, layout: null, calls: null, callsMissing: null, clients: [], rejected: [] };
+    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', opening: { final: 'start', target: 'start' }, groupOverlay: false, layout: null, calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
@@ -399,22 +416,56 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     // outline is laid over it when the two share coordinates; when they cannot, neither picture draws
     // groups (the legend under each still names them).
     const placed = !engine || engine.box !== null;
-    // The judged geometry is drawn like the group outline: on both pictures when they share coordinates.
-    const judgedFinal = placed ? judgedOverlay(state, overlays, placements(marks), words, `run${index}-final`) : '';
-    if (overlays.length) detail.layout = { overlays, drawn: placed, marks };
+    if (overlays.length) detail.layout = { overlays, drawn: placed, marks, parts: { final: judgedParts(state, overlays), target: target ? judgedParts(target, overlays) : null } };
     // Both pictures share one size class, wide enough that the export's smallest text (a frame's name) stays at 12 px.
     const scale = engine ? textFloorScale(engine.read.smallestText) : 1, sizeWidth = finalView.width * scale;
+    // The judged geometry is drawn like the group outline: on both pictures when they share coordinates,
+    // kept off each picture's own text and outlines.
+    const schematicContext = (of: State, groups: boolean): OverlayContext => ({ ...schematicText(of, { frames: true, groups, groupWord: words.group }), halo: schematicHalo(of, groups) });
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
-      const groups = engine.box ? groupOutlines(state, words) : '', overlay = groups + judgedFinal;
+      const groups = engine.box ? groupOutlines(state, words) : '';
+      let judgedFinal = '';
+      if (placed && overlays.length) {
+        const shift = (box: Box): Box => ({ ...box, x: box.x + offset![0], y: box.y + offset![1] });
+        // The export's own texts (labels, frame names); the schematic's label estimate where none was read.
+        const own = schematicText(state, { labels: engine.read.texts.length === 0, frames: false, groups: true, groupWord: words.group });
+        judgedFinal = judgedOverlay(state, overlays, placements(marks), words, `run${index}-final`, { texts: [...engine.read.texts.map(text => shift(text.box)), ...own.texts], outlines: [...engine.read.outlines.map(shift), ...own.outlines], halo: exportHalo(engine.read, offset!) });
+      }
+      const overlay = groups + judgedFinal;
       detail.groupOverlay = groups !== '';
       detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height }, sizeWidth }) };
-    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView, sizeWidth, ...(judgedFinal ? { overlay: judgedFinal } : {}) }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, sizeWidth: targetView!.width * scale, ...(placed && overlays.length ? { overlay: judgedOverlay(target, overlays, [], words, `run${index}-target`) } : {}) }); detail.targetObjects = boardObjects(target); }
+    } else {
+      const judgedFinal = overlays.length ? judgedOverlay(state, overlays, placements(marks), words, `run${index}-final`, schematicContext(state, true)) : '';
+      detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView, sizeWidth, ...(judgedFinal ? { overlay: judgedFinal } : {}) }) };
+    }
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, sizeWidth: targetView!.width * scale, ...(placed && overlays.length ? { overlay: judgedOverlay(target, overlays, [], words, `run${index}-target`, schematicContext(target, placed)) } : {}) }); detail.targetObjects = boardObjects(target); }
     detail.overflow = pictureOverflow(sizeWidth);
-    // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
-    const difference = target && placed ? firstDifference(state, target) : null;
-    detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;
+    // Where each scrolling picture opens (design review L1-F6): at the end where its own first
+    // difference lies, as long as a phone's window there shows one of its steps (else the other end).
+    if (target && placed) {
+      const steps = (of: State): Box[] => Object.values(of.objects).flatMap(object => object.type === 'step' && !object.deleted ? [object] : []);
+      detail.opening = { final: openingSide(finalView, sizeWidth, steps(state), firstDifference(target, state)), target: openingSide(targetView!, sizeWidth, steps(target), firstDifference(state, target)) };
+    }
   }
   return { folder: 'read', runs, explanations };
+}
+
+/** The CSS px a report picture shows at once on a 320 px phone (the page's gutters and the frame's
+ * border taken off). */
+export const PHONE_WINDOW = 280;
+/**
+ * The end a scrolling picture opens at: the end whose half holds `difference` (the x of its first
+ * difference from the other picture), when a phone's window there shows at least one of `steps`; else
+ * the other end when that one does; else the start. A picture at its smallest width (its size class's
+ * floor) shows PHONE_WINDOW px of it.
+ */
+export function openingSide(view: Box, sizeWidth: number, steps: readonly Box[], difference: number | null): 'start' | 'end' {
+  const floor = Math.min(60, Math.max(3, Math.ceil(sizeWidth / 100))) * 100 * PICTURE_FLOOR;
+  const window = PHONE_WINDOW * view.width / floor;
+  const shows = (left: number): boolean => steps.some(step => step.x < left + window && step.x + step.width > left);
+  const start = shows(view.x), end = shows(view.x + view.width - window);
+  const prefer = difference !== null && difference > view.x + view.width / 2 ? 'end' : 'start';
+  if (prefer === 'end' ? end : start) return prefer;
+  return prefer === 'end' ? 'start' : end ? 'end' : 'start';
 }

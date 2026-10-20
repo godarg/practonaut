@@ -84,3 +84,30 @@ export function layoutDefects(): string[] {
   }
   return defects;
 }
+
+/**
+ * Defects of a report's board pictures, as rendered (design review L1-F5, L1-F6):
+ * - the report's own overlay text on a picture (the layout area's label, a mark's label) is never under
+ *   the export's dark filter, and its contrast is at least 4.5:1 against what it is set on;
+ * - a picture that scrolls opens with at least one step's label in its window.
+ */
+export function pictureDefects(): string[] {
+  const defects: string[] = [];
+  const rgb = (value: string): [number, number, number] | null => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(value); return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null; };
+  const luminance = ([r, g, b]: [number, number, number]): number => { const c = (v: number): number => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b); };
+  const contrast = (a: [number, number, number], b: [number, number, number]): number => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p) as [number, number]; return (x + 0.05) / (y + 0.05); };
+  for (const text of document.querySelectorAll('.sch-judged-label, .sch-mark-number')) {
+    if (!text.getClientRects().length) continue;
+    for (let node: Element | null = text; node && node.tagName.toLowerCase() !== 'body'; node = node.parentElement) if (getComputedStyle(node).filter !== 'none') { defects.push(`overlay text "${text.textContent}" is under a filter`); break; }
+    const fill = rgb(getComputedStyle(text).fill);
+    const on = text.classList.contains('sch-mark-number') ? rgb(getComputedStyle(text.previousElementSibling!).fill) : rgb(getComputedStyle(text.closest('.board-scroll')!).backgroundColor);
+    if (fill && on && contrast(fill, on) < 4.5) defects.push(`overlay text "${text.textContent}" has contrast ${contrast(fill, on).toFixed(2)}:1`);
+  }
+  for (const frame of document.querySelectorAll('.board-scroll')) {
+    if (!frame.getClientRects().length || frame.scrollWidth <= frame.clientWidth + 1) continue;
+    const window = frame.getBoundingClientRect();
+    const labels = [...frame.querySelectorAll('svg.schematic text.sch-label, svg.engine-board .engine-content text')].filter(text => text.classList.contains('sch-label') || parseFloat(text.getAttribute('font-size') ?? '0') >= 18);
+    if (!labels.some(text => { const box = text.getBoundingClientRect(); return box.width > 0 && box.right > window.left && box.left < window.right; })) defects.push(`the picture "${frame.getAttribute('aria-label')}" opens without a step in view`);
+  }
+  return defects;
+}

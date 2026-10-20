@@ -128,20 +128,70 @@ function keptValue(key: string, value: string, prefix: string): string | null {
   return value;
 }
 
-function serialise(node: Element, prefix: string, root: boolean): string {
+function serialise(node: Element, prefix: string, root: boolean, ids = true): string {
   if (!ELEMENTS.has(node.name)) return '';
   const attributes = node.attributes.flatMap(([key, value]) => {
-    if (!ATTRIBUTES.has(key) || (root && (key === 'width' || key === 'height'))) return [];
+    if (!ATTRIBUTES.has(key) || (root && (key === 'width' || key === 'height')) || (!ids && key === 'id')) return [];
     const kept = keptValue(key, value, prefix);
     return kept === null ? [] : [` ${key}="${kept}"`];
   }).join('');
-  const children = node.children.map(child => typeof child === 'string' ? (TEXT_ELEMENTS.has(node.name) ? escapeText(readableText(child)) : '') : serialise(child, prefix, false)).join('');
+  const children = node.children.map(child => typeof child === 'string' ? (TEXT_ELEMENTS.has(node.name) ? escapeText(readableText(child)) : '') : serialise(child, prefix, false, ids)).join('');
   return root ? children : `<${node.name}${attributes}>${children}</${node.name}>`;
 }
 
-/** An export, read: its viewBox and its allowlisted content (ids prefixed), not yet placed, and the
- * smallest font size of its text in board units (Excalidraw draws a frame's name at 14), or null. */
-export interface EngineSvg { box: Box; content: string; smallestText: number | null }
+/** One text of the export (a label's lines, a frame's name) with where it lies, and its markup again
+ * (ids left out) so the report can draw it once more over its own marks. */
+export interface EngineText { box: Box; markup: string }
+/** An export, read: its viewBox and its allowlisted content (ids prefixed), not yet placed, the
+ * smallest font size of its text in board units (Excalidraw draws a frame's name at 14) or null, and
+ * where its texts and outlines (unfilled rectangles: frames) lie in its own units. The
+ * report keeps its judged lines off the texts and its labels off texts and outlines (design review
+ * L1-F4). Geometry is read only where the transform is a translation (with a zero rotation, as
+ * Excalidraw writes it); anything else is left out of these lists, never guessed. */
+export interface EngineSvg { box: Box; content: string; smallestText: number | null; texts: EngineText[]; outlines: Box[] }
+const TRANSFORM = /^\s*translate\(\s*(-?[0-9.]+)(?:\s*,\s*|\s+)(-?[0-9.]+)\s*\)(?:\s*rotate\(\s*(-?[0-9.]+)(?:(?:\s*,\s*|\s+)(-?[0-9.]+)(?:\s*,\s*|\s+)(-?[0-9.]+))?\s*\))?\s*$/i;
+function exportGeometry(root: Element, prefix: string): Pick<EngineSvg, 'texts' | 'outlines'> {
+  const texts: EngineText[] = [], outlines: Box[] = [];
+  const attribute = (node: Element, key: string): string | undefined => node.attributes.find(([name]) => name === key)?.[1];
+  const number = (node: Element, key: string): number => parseFloat(attribute(node, key) ?? '');
+  const estimate = (node: Element, dx: number, dy: number): Box | null => {
+    const size = number(node, 'font-size'), x = number(node, 'x'), y = number(node, 'y');
+    if (![size, x, y].every(Number.isFinite) || size <= 0) return null;
+    const content = node.children.map(child => typeof child === 'string' ? child : '').join(''), width = [...content].length * size * 0.62;
+    const anchor = attribute(node, 'text-anchor');
+    return { x: dx + x - (anchor === 'middle' ? width / 2 : anchor === 'end' ? width : 0), y: dy + y - size * 0.9, width, height: size * 1.2 };
+  };
+  const visit = (node: Element, dx: number, dy: number): void => {
+    if (!ELEMENTS.has(node.name) || node.name === 'defs' || node.name === 'clipPath' || node.name === 'mask') return;
+    const transform = attribute(node, 'transform');
+    let x = dx, y = dy, own: Box | null = null;
+    if (transform !== undefined) {
+      const match = TRANSFORM.exec(transform);
+      if (!match || (match[3] !== undefined && Number(match[3]) !== 0)) return;
+      x += Number(match[1]); y += Number(match[2]);
+      if (match[4] !== undefined && Number(match[4]) >= 0 && Number(match[5]) >= 0) own = { x, y, width: 2 * Number(match[4]), height: 2 * Number(match[5]) };
+    }
+    const elements = node.children.filter((child): child is Element => typeof child !== 'string');
+    const lines = elements.filter(child => child.name === 'text');
+    if (node.name === 'g' && lines.length) {
+      // Excalidraw's text group: its rotation centre is the middle of the text's box.
+      const boxes = lines.map(line => estimate(line, x, y)).filter((box): box is Box => box !== null);
+      const box = own && own.width > 0 ? own : boxes.length ? boxes.reduce((a, b) => { const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y); return { x: left, y: top, width: Math.max(a.x + a.width, b.x + b.width) - left, height: Math.max(a.y + a.height, b.y + b.height) - top }; }) : null;
+      if (box) texts.push({ box, markup: `<g transform="translate(${numeral(dx)} ${numeral(dy)})">${serialise(node, prefix, false, false)}</g>` });
+      return;
+    }
+    if (node.name === 'text') { const box = estimate(node, x, y); if (box) texts.push({ box, markup: `<g transform="translate(${numeral(dx)} ${numeral(dy)})">${serialise(node, prefix, false, false)}</g>` }); return; }
+    if (node.name === 'rect') {
+      const width = number(node, 'width'), height = number(node, 'height');
+      const left = x + (Number.isFinite(number(node, 'x')) ? number(node, 'x') : 0), top = y + (Number.isFinite(number(node, 'y')) ? number(node, 'y') : 0);
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 && attribute(node, 'fill') === 'none' && attribute(node, 'stroke') !== undefined) outlines.push({ x: left, y: top, width, height });
+      return;
+    }
+    for (const child of elements) visit(child, x, y);
+  };
+  visit(root, 0, 0);
+  return { texts, outlines };
+}
 function smallestText(node: Element): number | null {
   let smallest: number | null = null;
   const visit = (element: Element): void => {
@@ -167,9 +217,9 @@ export function readEngineSvg(text: string, prefix: string): EngineSvg {
   const first = root.children.find((child): child is Element => typeof child !== 'string' && ELEMENTS.has(child.name) && child.name !== 'defs');
   const value = (node: Element, key: string): number => Number(node.attributes.find(([name]) => name === key)?.[1] ?? NaN);
   if (first?.name === 'rect' && value(first, 'x') === x && value(first, 'y') === y && value(first, 'width') === width && value(first, 'height') === height && first.children.length === 0) root.children.splice(root.children.indexOf(first), 1);
-  return { box: { x, y, width, height }, content: serialise(root, prefix, true), smallestText: smallestText(root) };
+  return { box: { x, y, width, height }, content: serialise(root, prefix, true), smallestText: smallestText(root), ...exportGeometry(root, prefix) };
 }
-const numeral = (value: number): string => String(Math.round(value * 100) / 100);
+function numeral(value: number): string { return String(Math.round(value * 100) / 100); }
 
 /**
  * The export's drawing as inline SVG markup: `<svg viewBox class role aria-label>` around the
@@ -182,7 +232,26 @@ export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: str
   const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
-  // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
-  const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
+  // `overlay` is the report's own markup (the judged state's group outline and judged geometry), in the
+  // shared viewBox's units. Only the export's own content is in `engine-content`, the group the dark
+  // theme filters (design review L1-F5): the overlay keeps its own colours.
+  const content = `<g class="engine-content">${options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content}</g>` + (options.overlay ?? '');
   return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(options.sizeWidth ?? view.width)}" role="img" aria-label="${label}">${content}</svg>`;
 }
+/** A ringed step's label as the export draws it, drawn again over the judged ring with a halo in the
+ * colour behind it: the step's own fill, else the report's canvas (the export's paper is left out). Its
+ * colours are the content tokens, Excalidraw's own values in either theme, so it stays outside the dark
+ * filter like the rest of the overlay (design review L1-F2, L1-F5). */
+export function exportHalo(read: EngineSvg, offset: [number, number]): (step: Box & { fill?: string }) => string {
+  const inside = (box: Box, x: number, y: number): boolean => x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+  return step => {
+    // The export's texts whose middle lies in the step's box, in the export's own units.
+    const local = { x: step.x - offset[0], y: step.y - offset[1], width: step.width, height: step.height };
+    const texts = read.texts.filter(text => inside(local, text.box.x + text.box.width / 2, text.box.y + text.box.height / 2));
+    if (!texts.length) return '';
+    const behind = step.fill && Object.hasOwn(HALO_FILLS, step.fill) ? ` ${HALO_FILLS[step.fill]}` : '';
+    return `<g class="engine-halo${behind}" transform="translate(${numeral(offset[0])} ${numeral(offset[1])})">${texts.map(text => text.markup).join('')}</g>`;
+  };
+}
+// Palette names map to halo classes on the content tokens; no colour value lives in code.
+const HALO_FILLS: Readonly<Record<string, string>> = { red: 'sch-halo--fill-red', green: 'sch-halo--fill-green', blue: 'sch-halo--fill-blue', yellow: 'sch-halo--fill-yellow' };

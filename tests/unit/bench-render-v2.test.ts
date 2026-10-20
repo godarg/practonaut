@@ -89,7 +89,7 @@ test('engine SVG: only geometry and paint survive; scripts, links, styles, fonts
   assert.match(markup, /<text x="1" y="1">evil\\u\{202e\}txt\.exe<\/text>/); assert.equal(markup.includes('\u202e'), false);
   // Placed in a shared viewBox: the drawing moves by the offset, the viewBox and size class are the pair's.
   const placed = engineSvgMarkup(exported, { prefix: 'run1', label: 'x', classes: 'engine-board', offset: [80, -20], viewBox: { x: 0, y: -20, width: 1250, height: 400 } });
-  assert.match(placed, /^<svg viewBox="0 -20 1250 400" class="engine-board pw-13" role="img" aria-label="x"><g transform="translate\(80 -20\)"><defs>/);
+  assert.match(placed, /^<svg viewBox="0 -20 1250 400" class="engine-board pw-13" role="img" aria-label="x"><g class="engine-content"><g transform="translate\(80 -20\)"><defs>/);
   for (const forbidden of ['<script', 'onload', 'alert(2)', '<foreignObject', 'html', 'style', 'data:', '<a ', 'link', '<image', 'https:', 'javascript', 'xlink', 'font-family', '<metadata']) assert.equal(markup.includes(forbidden), false, forbidden);
   assert.match(markup, /<mask id="run1-m">/); assert.match(markup, /mask="url\(#run1-m\)"/);
   // The export's background (a rectangle over the whole viewBox) is paper, not content: left out.

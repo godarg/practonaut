@@ -176,13 +176,13 @@ td.text code{overflow-wrap:anywhere}
 .legend{margin-top:var(--pn-space-2);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .legend-title{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold)}
 
-/* The real engine's export keeps its own paint; in dark mode it gets Excalidraw's own dark-mode filter,
-   which the content tokens of the schematic reproduce, so a pair shows one palette. Its text keeps
-   Excalidraw's monospace look, like the schematic's step labels. */
+/* The real engine's export keeps its own paint; in dark mode its own content (never the report's overlay
+   on it) gets Excalidraw's own dark-mode filter, which the content tokens of the schematic reproduce, so
+   a pair shows one palette. Its text keeps Excalidraw's monospace look, like the schematic's step labels. */
 .engine-board text{font-family:var(--pn-font-mono)}
 .engine-board .sch-group-label{font-family:var(--pn-font-sans)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board{filter:invert(93%) hue-rotate(180deg)}}
-:root[data-theme="dark"] .engine-board{filter:invert(93%) hue-rotate(180deg)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board .engine-content{filter:invert(93%) hue-rotate(180deg)}}
+:root[data-theme="dark"] .engine-board .engine-content{filter:invert(93%) hue-rotate(180deg)}
 
 /* Schematic of a judged state: content tokens carry Excalidraw's own palette; corners are sharp and
    arrows black, as Excalidraw draws them here. */
@@ -208,14 +208,30 @@ td.text code{overflow-wrap:anywhere}
 .sch-tip{fill:var(--pn-color-content-line-black)}
 .sch-loose{fill:var(--pn-color-canvas);stroke:var(--pn-color-danger-icon);stroke-width:2.5}
 .sch-loose-label{fill:var(--pn-color-danger-fg);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
-/* What a layout task judges (PADR-0047): neutral dashes over the picture; an unmet clause's numbered
-   marks, each explained by a legend line in words. */
+/* What a layout task judges (PADR-0047): thin solid neutral lines over the picture, square-cornered
+   (frames are rounded), never dashed (dashes mean uncertainty, design language §7.4); an unmet clause's
+   labelled marks, each explained by a legend line in words. A ringed step's label is drawn again over
+   its ring with a halo in the colour behind it, so the ring never runs through its letters. */
 .sch-judged{pointer-events:none}
-.sch-judged-canvas{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:14 8}
+.sch-judged-canvas{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2}
 .sch-judged-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
-.sch-judged-box{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:1.5;stroke-dasharray:6 6}
-.sch-judged-segment{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:8 6;stroke-linecap:round}
+.sch-judged-box{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:1.25}
+.sch-judged-segment{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:1.5;stroke-linecap:round}
 .sch-judged-point{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2}
+.sch-halo{paint-order:stroke;stroke-width:6px;stroke-linejoin:round;stroke:var(--pn-color-canvas)}
+.sch-halo--frame{stroke:var(--pn-color-frame-bg)}
+.sch-halo--group{stroke:var(--pn-color-accent-tint)}
+.sch-halo--fill-red{stroke:var(--pn-color-content-fill-red)}
+.sch-halo--fill-green{stroke:var(--pn-color-content-fill-green)}
+.sch-halo--fill-blue{stroke:var(--pn-color-content-fill-blue)}
+.sch-halo--fill-yellow{stroke:var(--pn-color-content-fill-yellow)}
+/* An export's label drawn again over a ring: content tokens (Excalidraw's own values in either theme),
+   outside the export's dark filter. */
+.engine-halo text{fill:var(--pn-color-content-text);paint-order:stroke;stroke-width:6px;stroke-linejoin:round;stroke:var(--pn-color-canvas)}
+.engine-halo.sch-halo--fill-red text{stroke:var(--pn-color-content-fill-red)}
+.engine-halo.sch-halo--fill-green text{stroke:var(--pn-color-content-fill-green)}
+.engine-halo.sch-halo--fill-blue text{stroke:var(--pn-color-content-fill-blue)}
+.engine-halo.sch-halo--fill-yellow text{stroke:var(--pn-color-content-fill-yellow)}
 .sch-mark{fill:var(--pn-color-danger-solid)}
 .sch-mark-number{fill:var(--pn-color-text-on-accent);font:var(--pn-weight-semibold) var(--pn-text-title3) var(--pn-font-sans)}
 .engine-board .sch-judged-label,.engine-board .sch-mark-number{font-family:var(--pn-font-sans)}
