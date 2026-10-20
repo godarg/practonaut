@@ -15,8 +15,9 @@ import { join } from 'node:path';
 import { validateBenchReportV3, type SessionRunV3 } from '../../src/bench/report.ts';
 import { checkRetune, developmentDigest, fileHash, funded, fundingAt, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, validateDeclaration, validateProbe, RoundError, type Declaration } from '../../src/challenge/declaration.ts';
 import { attests, computeGate, exemptRun, mergeAgentRuns, preflightGate, probeRuns, renderGate, GateInputError, type GateReport } from '../../src/challenge/gate.ts';
-import { checkUnit, PREREGISTERED_UNITS, UnitError } from '../../src/challenge/units.ts';
-import { heldOutSeedsV1, validateDeclarationV1, validateLedgerV1 } from '../../src/challenge/round-020.ts';
+import { checkUnit, parseUnit, PREREGISTERED_UNITS, UnitError } from '../../src/challenge/units.ts';
+import { FAMILIES } from '../../src/challenge/families.ts';
+import { FAMILIES_V1, heldOutSeedsV1, validateDeclarationV1, validateLedgerV1 } from '../../src/challenge/round-020.ts';
 import { countLedger, parseLedger, roundStarts, type RoundBody } from '../../src/challenge/ledger.ts';
 import { HAIKU, OPUS, SONNET, UNIT, admissionOf, builtinRun, declarationOf, declaredOf, first, gateReport, hash, heldReport, identityOf, inputOf, ledgerOf, planOf, presetRun, probeIdentities, probeRecordOf, probeReport, report, roundLedger, roundOf, GENERATOR, HELD_WORLD, PROBE_WORLD } from '../support/challenge-round.ts';
 
@@ -43,7 +44,15 @@ test('units: preregistered, approved by name (review: gate-maintainer-approval-n
   for (const family of ['limited-checks', 'tight-budget', 'human-edit']) refused(() => checkUnit(`${family}.excalidraw-mcp-0.3.2`, true), 'unit_family_toolchain');
   refused(() => checkUnit('repair.excalidraw-mcp-0.3.2', false), 'toolchain_unavailable');
   refused(() => checkUnit('repair.some-server-1.0.0', true), 'toolchain_unknown');
-  refused(() => checkUnit('layout.practonaut', false), 'family_unavailable', /no generator in this Practonaut yet/);
+  // What the 0.3.0 gate offers today, by the generators this Practonaut has (FAMILIES): a preregistered
+  // unit on Practonaut's toolchain is gateable once its family has a generator, and refused as
+  // family_unavailable until then. The change that adds a generator changes the list below by one line.
+  const practonautUnits = PREREGISTERED_UNITS.filter(unit => parseUnit(unit).toolchain === 'practonaut');
+  for (const unit of practonautUnits) {
+    if ((FAMILIES as readonly string[]).includes(parseUnit(unit).family)) assert.equal(checkUnit(unit, false).id, unit);
+    else refused(() => checkUnit(unit, false), 'family_unavailable', /no generator in this Practonaut yet/);
+  }
+  assert.deepEqual(practonautUnits.filter(unit => !(FAMILIES as readonly string[]).includes(parseUnit(unit).family)), ['layout.practonaut', 'human-edit.practonaut']);
   refused(() => checkUnit('repair', true), 'unit_invalid');
   // The plan and the declaration record which unit the maintainer approved; another unit's approval refuses.
   assert.equal(planOf().maintainerApprovedUnit, UNIT);
@@ -504,5 +513,9 @@ test('the 0.2.0 rounds stay readable: every committed /1 declaration and ledger 
   }
   assert.deepEqual(ledgers.map(name => validateLedgerV1(JSON.parse(readFileSync(join(folder, name), 'utf8'))).spent.total), [87, 87, 87, 87, 87]);
   refused(() => validateDeclaration(JSON.parse(readFileSync(join(folder, declarations[0]!), 'utf8'))), 'declaration_invalid');
+  // 0.2.0 had five families, whatever families later releases add.
+  assert.deepEqual([...FAMILIES_V1], ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget']);
+  const first = JSON.parse(readFileSync(join(folder, declarations[0]!), 'utf8'));
+  assert.throws(() => validateDeclarationV1({ ...first, family: 'layout', generator: { ...first.generator, id: 'challenge-layout' } }), (error: unknown) => (error as { code?: string }).code === 'declaration_invalid' && /family/.test((error as Error).message));
 });
 void parseLedger; void admissionOf;

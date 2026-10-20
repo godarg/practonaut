@@ -8,13 +8,16 @@ import { z } from 'zod';
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { MODEL_ID } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
-import { FAMILIES, generatorId } from './families.ts';
+import { generatorId } from './families.ts';
 
 export const DECLARATION_SCHEMA_V1 = 'practonaut.challenge-declaration/1';
 export const LEDGER_SCHEMA_V1 = 'practonaut.challenge-ledger/1';
 /** The preregistered 0.2.0 round: 3 development instances × 3 agents and 26 held-out instances × 3
  * agents, 87 model runs; the release budget was 500 model runs. */
 export const ROUND_V1 = Object.freeze({ developmentInstances: 3, agents: 3, developmentRuns: 9, heldOutInstances: 26, heldOutRuns: 78, roundRuns: 87, releaseBudget: 500, maxRounds: 2 });
+/** The five families of 0.2.0, pinned: a family a later release adds (the layout family of 0.3.0) is
+ * never a 0.2.0 round's, whatever the generators of this Practonaut are. */
+export const FAMILIES_V1 = Object.freeze(['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget'] as const);
 /** Model runs 0.2.0 had used when its gate was preregistered (500 − 465). */
 export const RELEASE_RUNS_BEFORE_ROUNDS_V1 = 35;
 /** Held-out seed bases lie in [1 000 000, 1 000 000 + HELD_OUT_SPAN). */
@@ -34,7 +37,7 @@ const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const whole = (low: number, high: number) => z.number().int().min(low).max(high);
 export const DeclarationSchemaV1 = z.strictObject({
   schema: z.literal(DECLARATION_SCHEMA_V1),
-  family: z.enum(FAMILIES),
+  family: z.enum(FAMILIES_V1),
   round: whole(1, ROUND_V1.maxRounds),
   generator: z.strictObject({ id: z.string().max(64), version: z.string().regex(/^\d+\.\d+\.\d+$/) }),
   difficulty: z.enum(['1', '2', '3', 'mixed']),
@@ -94,7 +97,7 @@ export function heldOutSeedsV1(declaration: Pick<DeclarationV1, 'family' | 'roun
 
 /** A committed 0.2.0 round ledger: the round's spend and the release total after it. */
 export const LedgerSchemaV1 = z.strictObject({
-  schema: z.literal(LEDGER_SCHEMA_V1), family: z.enum(FAMILIES), round: whole(1, ROUND_V1.maxRounds),
+  schema: z.literal(LEDGER_SCHEMA_V1), family: z.enum(FAMILIES_V1), round: whole(1, ROUND_V1.maxRounds),
   declaration: z.strictObject({ sha256, commit: z.string().regex(/^[0-9a-f]{40}$/) }),
   spent: z.strictObject({ development: whole(0, 1000), heldOut: whole(0, 1000), total: whole(0, 1000), rejected: whole(0, 1000).optional() }),
   releaseRuns: whole(0, ROUND_V1.releaseBudget),
