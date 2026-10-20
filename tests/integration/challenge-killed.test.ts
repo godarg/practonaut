@@ -23,8 +23,11 @@ test('a guarded bench killed with kill -9 is recovered through the guard: a run 
     // repair-1's agent ends without a tool call (infra_error, no_tool_call, recorded); repair-2 is judged
     // and recorded; repair-3's agent never ends: kill -9 the bench, then the agent.
     const running = p.background(guarded(), { ...model, PN_FAKE_CRASH_FIRST: '1', PN_FAKE_SLEEP_AFTER: '2' });
-    assert.ok(await until(() => existsSync(join(p.state, 'sleeper.pid')), 120_000), 'the third run started');
-    sleeper = Number(await readFile(join(p.state, 'sleeper.pid'), 'utf8'));
+    // The stand-in's pid, once its file holds a positive whole number (an empty or partly written file
+    // would read as 0, and a signal to -0 would reach this test's own process group).
+    const pid = async (): Promise<number> => Number(await readFile(join(p.state, 'sleeper.pid'), 'utf8').catch(() => ''));
+    assert.ok(await until(async () => { const value = await pid(); return Number.isSafeInteger(value) && value > 0; }, 120_000), 'the third run started and named its pid');
+    sleeper = await pid();
     running.child.kill('SIGKILL'); await running.exited;
     process.kill(-sleeper, 'SIGKILL');
     assert.ok(await until(() => { try { process.kill(-sleeper!, 0); return false; } catch { return true; } }, 5_000), 'the agent is gone');

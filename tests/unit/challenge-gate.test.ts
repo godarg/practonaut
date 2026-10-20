@@ -517,5 +517,9 @@ test('the 0.2.0 rounds stay readable: every committed /1 declaration and ledger 
   assert.deepEqual([...FAMILIES_V1], ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget']);
   const first = JSON.parse(readFileSync(join(folder, declarations[0]!), 'utf8'));
   assert.throws(() => validateDeclarationV1({ ...first, family: 'layout', generator: { ...first.generator, id: 'challenge-layout' } }), (error: unknown) => (error as { code?: string }).code === 'declaration_invalid' && /family/.test((error as Error).message));
+  // And a 0.2.0 ledger: only the five families (review: the ledger counterpart of the pin).
+  const ledger = JSON.parse(readFileSync(join(folder, ledgers[0]!), 'utf8'));
+  assert.doesNotThrow(() => validateLedgerV1(ledger));
+  assert.throws(() => validateLedgerV1({ ...ledger, family: 'layout' }), (error: unknown) => (error as { code?: string }).code === 'declaration_invalid' && /the ledger does not match practonaut\.challenge-ledger\/1: family/.test((error as Error).message));
 });
 void parseLedger; void admissionOf;
