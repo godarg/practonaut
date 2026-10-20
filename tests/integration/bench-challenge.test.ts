@@ -98,3 +98,28 @@ test('the largest held-out set the gate takes (26 long-horizon instances at diff
     assert.equal(validated.status, 0, validated.stdout + validated.stderr);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('a generated layout set (PADR-0047): every near miss fails in a checker process, the oracle passes, random does not, --verify passes', { timeout: 400_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-challenge-layout-'));
+  try {
+    const made = run([TOOL, 'generate', 'layout', '--set', 'dev', '--count', '3', '--difficulty', 'mixed', '--out', join(dir, 'set')]);
+    assert.equal(made.status, 0, made.stderr);
+    const instances = await json(join(dir, 'set', 'instances.json'));
+    // The family's cap is 60 actions (its artifact-level object allowance too); no task limit.
+    assert.equal(instances.bench.recommended.maxActions, 60);
+    for (const instance of instances.instances) assert.equal(instance.limits, undefined);
+    const verified = run([TOOL, 'verify', join(dir, 'set')]);
+    assert.equal(verified.status, 0, verified.stdout + verified.stderr);
+    assert.match(verified.stdout, /references passed 3\/3; near misses failed (\d+)\/\1 \(separate checker processes\)/);
+    const args = (instances.bench.args as string[]).slice(1);
+    const oracle = await bench(['--agent', 'oracle', ...args, '--mirror', 'off']);
+    assert.deepEqual(oracle.report.runs.map((value: Json) => value.pass), [true, true, true]);
+    assert.equal(oracle.report.environment.world.generated[0].id, 'challenge-layout');
+    const random = await bench(['--agent', 'random', ...args, '--mirror', 'off']);
+    assert.deepEqual(random.report.runs.map((value: Json) => value.pass), [false, false, false]);
+    for (const folder of [oracle.folder, random.folder]) {
+      const checked = run([CLI, 'report', join(folder, 'report.json'), '--verify']);
+      assert.equal(checked.status, 0, checked.stderr);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
