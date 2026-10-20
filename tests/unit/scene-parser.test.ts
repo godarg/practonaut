@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseScene, CheckerError } from '../../src/checker/index.ts';
+import { evaluate } from '../../src/predicate/index.ts';
 import type { StepV2 } from '../../src/world/types.ts';
+import { everything, noOverlap } from '../support/layout-board.ts';
 
 // Fixtures are written by hand in Excalidraw's own field names; no Practonaut serializer is used.
 const file = (elements: unknown[], extra: Record<string, unknown> = {}): string => JSON.stringify({ type: 'excalidraw', version: 2, source: 'https://excalidraw.com', elements, appState: { viewBackgroundColor: '#ffffff' }, files: {}, ...extra });
@@ -18,7 +20,9 @@ describe('tolerant world/2 scene parser', () => {
       shape('e1', 'ellipse', { strokeColor: '#e03131', backgroundColor: '#a5d8ff', groupIds: ['outer'] }), text('t2', 'e1', 'Ship'),
       shape('d1', 'diamond', { strokeColor: '#c2255c', backgroundColor: '#ff8787' }),
     ]));
-    assert.deepEqual(step(state, 'r1'), { id: 'r1', type: 'step', deleted: false, frameId: 'frm', label: 'Review\norder', x: 10, y: 21, width: 150, height: 80, shape: 'rectangle', groupId: 'outer', stroke: 'black', fill: 'yellow' });
+    // The box by its rounded edges (PADR-0047 decision 10): x 10.4 → 10 and 10.4 + 150.2 = 160.6 → 161;
+    // y 20.6 → 21 and 20.6 + 79.5 = 100.1 → 100.
+    assert.deepEqual(step(state, 'r1'), { id: 'r1', type: 'step', deleted: false, frameId: 'frm', label: 'Review\norder', x: 10, y: 21, width: 151, height: 79, shape: 'rectangle', groupId: 'outer', stroke: 'black', fill: 'yellow' });
     assert.deepEqual([step(state, 'e1').shape, step(state, 'e1').stroke, step(state, 'e1').fill, step(state, 'e1').groupId, step(state, 'e1').frameId], ['ellipse', 'red', 'blue', 'outer', null]);
     // Off-palette colours fall to the nearest named one; a shape without text is an unlabelled step.
     assert.deepEqual([step(state, 'd1').shape, step(state, 'd1').stroke, step(state, 'd1').fill, step(state, 'd1').label], ['diamond', 'red', 'red', '']);
@@ -62,6 +66,22 @@ describe('tolerant world/2 scene parser', () => {
     reject(file([shape('a', 'rectangle'), text('t', 'a', 'A​B')]), /invisible format/);
     reject(file([shape('a', 'rectangle', { customData: { practonautId: 'b' } }), shape('b', 'rectangle')]), /duplicate semantic id/);
     assert.throws(() => parseScene(Buffer.alloc(10 * 1024 * 1024 + 1, 32)), /10 MiB/);
+  });
+  it('rounds each box by its edges: shared edges stay shared, negative sizes keep the box where it is drawn, a collapse is widened and reported (PADR-0047 decision 10)', () => {
+    // Expected edges by hand: round(v) = ⌊v + 0.5⌋ (half up), applied to the left and the right edge.
+    const span = (state: ReturnType<typeof parseScene>['state'], id: string): [number, number, number, number] => { const s = step(state, id); return [s.x, s.x + s.width, s.y, s.y + s.height]; };
+    const touching = parseScene(file([shape('A', 'rectangle', { x: 0.5, y: 0, width: 10.5, height: 10 }), shape('B', 'rectangle', { x: 11, y: 0, width: 10, height: 10 })]));
+    assert.deepEqual([span(touching.state, 'A'), span(touching.state, 'B')], [[1, 11, 0, 10], [11, 21, 0, 10]], 'A from 0.5 to 11.0 and B from 11 touch');
+    assert.equal(evaluate(noOverlap(everything('step', 2)), touching.state).ok && (evaluate(noOverlap(everything('step', 2)), touching.state) as { value: boolean }).value, true, 'and are judged touching, not overlapping');
+    const halves = parseScene(file([shape('P', 'rectangle', { x: 2.5, y: -0.5, width: 1, height: 1 }), shape('N', 'rectangle', { x: -1.5, y: -2.5, width: 1, height: 1 })]));
+    assert.deepEqual([span(halves.state, 'P'), span(halves.state, 'N')], [[3, 4, 0, 1], [-1, 0, -2, -1]], 'half values round up, also below zero');
+    assert.equal(Object.is(step(halves.state, 'P').y, 0), true, 'y −0.5 rounds to 0, never to −0');
+    const negative = parseScene(file([shape('W', 'rectangle', { x: 100, y: 50, width: -40, height: -20 })]));
+    assert.deepEqual(span(negative.state, 'W'), [60, 100, 30, 50], 'a negative size keeps the box where it is drawn');
+    const collapse = parseScene(file([shape('A', 'rectangle', { x: 0, y: 0, width: 0.25, height: 10 }), shape('B', 'rectangle', { x: 0.25, y: 0, width: 0.25, height: 10 })]));
+    assert.deepEqual([span(collapse.state, 'A'), span(collapse.state, 'B')], [[0, 1, 0, 10], [0, 1, 0, 10]], 'A collapses to 0–0 and is widened to 0–1; B rounds to 0–1');
+    assert.deepEqual(collapse.geometry, { collapsed: ['A'], rotated: [] }, 'the collapse is reported for a layout unit\'s reading rules');
+    assert.deepEqual(parseScene(file([shape('r', 'rectangle', { angle: 0.3 }), shape('s', 'rectangle', { y: 200 }), shape('t', 'ellipse', { y: 400, angle: null })])).geometry, { collapsed: [], rotated: ['r'] }, 'a rotation is reported, the judged box stays unrotated');
   });
   it('non-semantic native ids get a stable derived identity', () => {
     const one = parseScene(file([shape('x.y:z', 'rectangle')])), two = parseScene(file([shape('x.y:z', 'rectangle')]));

@@ -10,7 +10,20 @@ const MAX_SCENE_BYTES = 10 * 1024 * 1024;
 const MAX_ELEMENTS = 5000;
 const MAX_COORDINATE = 1_000_000;
 export interface Unmodeled { id: string; type: string; reason: "free_text" | "arrow_label" | "unsupported_type" }
-export interface SceneReport { state: State; unmodeled: Unmodeled[] }
+/** What a reading rule of a layout unit refuses and other readings keep (PADR-0047 decision 10):
+ * steps whose box collapsed to no width or height when its edges were rounded (judged widened to
+ * 1 px), and steps drawn at an angle other than 0 (judged unrotated). Semantic step ids. */
+export interface SceneGeometry { collapsed: string[]; rotated: string[] }
+export interface SceneReport { state: State; unmodeled: Unmodeled[]; geometry: SceneGeometry }
+
+/** One axis of a box rounded by its edges (PADR-0047 decision 10): a negative size keeps the box where
+ * it is drawn, and an edge two boxes share rounds to one integer. `collapsed` when both edges round
+ * to the same integer; the judged box is then widened to 1 px towards positive coordinates. */
+export function roundedSpan(start: number, size: number): { start: number; size: number; collapsed: boolean } {
+  // `+ 0` turns Math.round's −0 into 0.
+  const low = Math.round(Math.min(start, start + size)) + 0, high = Math.round(Math.max(start, start + size)) + 0;
+  return { start: low, size: Math.max(1, high - low), collapsed: high === low };
+}
 
 // Excalidraw 0.18.1 picker colours. Any other colour maps to the nearest named one.
 const STROKES: ReadonlyArray<[StrokeColor, string]> = [["black", "#1e1e1e"], ["red", "#e03131"], ["green", "#2f9e44"], ["blue", "#1971c2"], ["orange", "#f08c00"]];
@@ -50,6 +63,8 @@ interface Element {
   frameId: string | null; containerId: string | null; groupIds: string[];
   text?: string; originalText?: string; name?: string | null; strokeColor?: unknown; backgroundColor?: unknown;
   startBinding?: string | null; endBinding?: string | null; startArrowhead?: unknown; endArrowhead?: unknown; practonautId?: string;
+  /** Drawn at an angle other than 0 (any other value than an absent, null or zero angle). */
+  rotated: boolean;
 }
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 function element(value: unknown, index: number): Element {
@@ -78,7 +93,7 @@ function element(value: unknown, index: number): Element {
     groupIds: Array.isArray(e.groupIds) ? e.groupIds.filter((g): g is string => typeof g === "string" && g.length > 0 && g.length <= 200).slice(0, 32) : [],
     ...(text("text") === undefined ? {} : { text: text("text")! }), ...(text("originalText") === undefined ? {} : { originalText: text("originalText")! }),
     ...(e.name === null || typeof e.name === "string" ? { name: typeof e.name === "string" ? e.name.slice(0, 256) : null } : {}),
-    strokeColor: e.strokeColor, backgroundColor: e.backgroundColor,
+    strokeColor: e.strokeColor, backgroundColor: e.backgroundColor, rotated: e.angle !== undefined && e.angle !== null && e.angle !== 0,
     startBinding: binding("startBinding"), endBinding: binding("endBinding"), startArrowhead: e.startArrowhead, endArrowhead: e.endArrowhead,
     ...(typeof custom === "string" ? { practonautId: custom } : {}),
   };
@@ -92,7 +107,9 @@ function label(value: string): string {
   return normalized;
 }
 /** Parse a native Excalidraw drawing (file or clipboard export). Angles, fonts, opacity and
- * stroke styles are presentation and ignored; unknown element kinds are listed, never fatal. */
+ * stroke styles are presentation and ignored; unknown element kinds are listed, never fatal. A step's
+ * box is rounded by its edges (`roundedSpan`); rotated and collapsed steps are listed in `geometry`
+ * for the reading rules of a layout unit (PADR-0047 decision 10), which refuse them. */
 export function parseScene(input: string | Uint8Array): SceneReport {
   const bytes = typeof input === "string" ? Buffer.from(input) : input;
   if (bytes.length > MAX_SCENE_BYTES) invalid("scene exceeds 10 MiB");
@@ -120,15 +137,20 @@ export function parseScene(input: string | Uint8Array): SceneReport {
     return target && FRAME_TYPES.has(target.type) ? ids.get(target.id)! : null;
   };
   const consumed = new Set<string>();
+  const geometry: SceneGeometry = { collapsed: [], rotated: [] };
   for (const e of live) {
     if (!STEP_TYPES.has(e.type)) continue;
     const id = assign(e, "s");
     const text = live.find(t => t.type === "text" && t.containerId === e.id);
     if (text) consumed.add(text.id);
     const groups = e.groupIds.map(group => semanticId(group, "g"));
+    // The box by its rounded edges, for every world/2 reading (PADR-0047 decision 10).
+    const horizontal = roundedSpan(e.x, e.width), vertical = roundedSpan(e.y, e.height);
+    if (horizontal.collapsed || vertical.collapsed) geometry.collapsed.push(id);
+    if (e.rotated) geometry.rotated.push(id);
     objects[id] = {
       id, type: "step", deleted: false, frameId: frameOf(e), label: label(text ? text.originalText ?? text.text ?? "" : ""),
-      x: Math.round(e.x), y: Math.round(e.y), width: Math.max(1, Math.round(Math.abs(e.width))), height: Math.max(1, Math.round(Math.abs(e.height))),
+      x: horizontal.start, y: vertical.start, width: horizontal.size, height: vertical.size,
       shape: e.type as Shape, groupId: groups.at(-1) ?? null, stroke: strokeName(e.strokeColor), fill: fillName(e.backgroundColor),
     };
   }
@@ -155,5 +177,5 @@ export function parseScene(input: string | Uint8Array): SceneReport {
     if (e.type === "text") unmodeled.push({ id: e.id, type: e.type, reason: e.containerId && byId.get(e.containerId)?.type === "arrow" ? "arrow_label" : "free_text" });
     else unmodeled.push({ id: e.id, type: e.type, reason: "unsupported_type" });
   }
-  return { state: validateSubmissionState({ objects }, undefined, 2), unmodeled };
+  return { state: validateSubmissionState({ objects }, undefined, 2), unmodeled, geometry };
 }
