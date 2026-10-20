@@ -362,6 +362,15 @@ The CI after-run follows once this branch is on `main` (a maintainer step).
 
 ## Known gaps
 
+- `tests/adapter/browser-shell-network.test.ts` failed in 2 of the 18 Linux CI runs that ran it up to
+  2026-10-19, both pushes to `main` (2cc9126, aeca1c0): the hostile page's load event did not come
+  within 30 s, and none of its data: frame's attempts were recorded, so that frame had not run its
+  script. The same tree (#68's head 23ee964 is identical to 2cc9126) passed in its pull-request run
+  on the same runner image, with the same system packages and the same Chromium; the other 16 runs
+  passed in about 3 s, and 45 runs on macOS (main and this branch, alone and beside the other adapter
+  files) all passed. The cause is not isolated; no Linux image was at hand to repeat it. The test
+  now releases its listener when the start fails (before, it held the file to its 180 s limit) and
+  names the state of every frame when the load times out.
 - The two timing-sensitive files
   (`tests/e2e/timing/`: initial-module deadline, font readiness; product deadlines of 8–10 s)
   run serially after the concurrent batch: under four parallel browsers they missed their windows.
