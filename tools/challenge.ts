@@ -20,7 +20,7 @@
 //   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--out <file.md>]
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash, fileHash, GATE_PRESET, heldOutSeeds } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
@@ -91,6 +91,10 @@ const defaultFolder = (): string => join(gitPath(['rev-parse', '--show-toplevel'
  * repository's normalised origin URL and root commit, so every clone and worktree of the repository on
  * this machine shares it and its lock. Never a path an option names. */
 async function localLedger(): Promise<string> {
+  // A data folder named relatively is resolved against each directory a command runs in: another folder,
+  // and another ledger, from each of them.
+  const configured = process.env.PRACTONAUT_HOME;
+  if (configured !== undefined && configured !== '' && !isAbsolute(configured)) fail(`PRACTONAUT_HOME is a relative path (${configured}); the release ledger would be another file in every directory: name it absolutely`);
   const identity = repositoryIdentity(process.cwd()) ?? fail('not in a git repository with a commit: the release ledger belongs to a repository');
   return releaseLedgerPath((await resolvedDataPaths()).home, identity.key);
 }
