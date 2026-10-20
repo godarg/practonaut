@@ -347,7 +347,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   const admission = events.find(event => event.event === 'admitted' && event.record === fileHash(probe) && event.plan === planHash);
   if (!admission) fail('probe_unrecorded', 'the release ledger holds no admission of this pre-probe record (`probe` registers it)');
   if (!events.some(event => event.event === 'declared' && event.declaration === declHash && event.world === input.worldContentHash)) fail('declaration_unrecorded', 'the release ledger holds no registration of this declaration and its held-out world (`declare` registers it)');
-  const members = roundStarts(ledger, declaration.unit, declaration.round, [...input.identities.probe, ...input.identities.heldOut]);
+  const members = roundStarts(ledger, declaration.unit, declaration.round);
   const redeclared = members.find(start => start.purpose === 'held-out' && start.basis !== declHash);
   if (redeclared) fail('round_redeclared', `${declaration.unit} round ${declaration.round} has a held-out run under another declaration (start entry ${redeclared.seq}, ${redeclared.run}); a round is not declared again once its held-out runs started`);
   // Funding, re-derived from the ledger as the declaration counted it (PADR-0042 decision 8 as amended).
@@ -366,7 +366,6 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   if (input.identities.heldOut.length !== plan.length) fail('set_mismatch', 'the held-out instances are not the declaration\'s');
   // The pre-probe: the declared one, from the pushed ledger.
   const pre = probeRuns({ plan: probePlan, planHash, worldContentHash: input.probeWorld, identities: input.identities.probe, reports: input.development, ledger });
-  if (pre.void.length) fail('development_mismatch', `the pre-probe has void runs (${pre.void.join(', ')}); it does not admit the unit`);
   if (pre.digest !== declaration.development.digest || pre.digest !== probe.digest) fail('development_mismatch', 'the pre-probe runs are not the ones the declaration digests');
   if (!isDeepStrictEqual(pre.outcomes.map(entry => entry.pass), declaration.development.passed)) fail('development_mismatch', 'the pre-probe outcomes differ from the declaration');
   // Baselines: free, so an infra_error or a missing run is rerun, never counted.

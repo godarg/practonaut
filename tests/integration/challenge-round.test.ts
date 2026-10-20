@@ -162,6 +162,11 @@ test('ledger init refuses while model-run folders exist that no pushed version o
     const home = join(dir, 'home2'); await cp(p.benchRoot, join(home, 'bench'), { recursive: true });
     const made = p.tool(['ledger', 'init'], { PRACTONAUT_HOME: home });
     assert.equal(made.status, 0, made.stderr); assert.match(made.stdout, /a copy of the longest pushed ledger \(3 records\)/);
+    // Pushed versions that are not one history (a branch whose ledger is not a prefix of another's): refused.
+    p.git('switch', '-c', 'third'); await mkdir(p.folder, { recursive: true }); await writeFile(join(p.folder, 'release-ledger.jsonl'), counted(1));
+    p.git('add', '-A'); p.git('commit', '-m', 'another ledger'); p.git('push', '-u', 'origin', 'third'); p.git('switch', 'main');
+    const refusedThird = p.tool(['ledger', 'init'], { PRACTONAUT_HOME: join(dir, 'home3') });
+    assert.equal(refusedThird.status, 2); assert.match(refusedThird.stderr, /ledger_diverged: the pushed versions of the release ledger are not one history/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

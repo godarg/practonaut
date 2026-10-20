@@ -443,7 +443,7 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
   const reports: GateReport[] = [];
   for (const path of files.reports) reports.push(await readGateReport(path, true));
   const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, identities, reports, ledger: ledger.ledger }));
-  if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes) || again.void.length) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
+  if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes)) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
   // The ladder: as declared; billing as the pre-probe's preset was set up; Claude Code attests its model.
   const billing = reports[0]!.report.agent.billing.class;
   const ladder = files.ladder.map(agent => ({ preset: agent.preset, client: agent.preset, model: agent.model, attestation: agent.preset === GATE_PRESET ? 'client-attested' as const : 'not-attested' as const, billing }));

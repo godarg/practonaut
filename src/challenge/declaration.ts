@@ -272,9 +272,9 @@ const HELD_OUT_RUNS = SHAPE_B.heldOut * SHAPE_B.agents, ROUND_RUNS = (SHAPE_B.he
 /**
  * Funding read from the release ledger as it was when a unit was declared (PADR-0042 decision 8 as
  * amended): `before`, the runs counted; `reserved`, the runs kept for others — for every other round
- * that is declared, its held-out runs less those counted and final (judged, or void: an exempt or local
- * run is not counted and an infra_error is benched again, so neither uses up a held-out run of its
- * instances); for every other unit admitted before this
+ * that is declared, its held-out runs less its own held-out runs that are counted and final (judged,
+ * or void; an exempt or local run is not counted and an infra_error is benched again, so neither uses
+ * one up); for every other unit admitted before this
  * one (an earlier `admitted` record) and not declared, its 78 held-out runs; and, for a unit on
  * Practonaut's own actions while artifact mode is not accepted, two rounds for foreign toolchains less
  * those declared. The ledger is shared by every checkout and branch, so no admission or declaration
@@ -288,8 +288,7 @@ export function fundingAt(ledger: Ledger, unit: string, round: number, admission
     const own = events.filter(event => event.unit === key.unit && event.round === key.round);
     const declared = own.filter(event => event.event === 'declared').at(-1);
     if (declared) {
-      const held = new Set(declared.instances);
-      const final = roundStarts(ledger, key.unit, key.round).filter(start => (held.has(start.instance) || (start.purpose === 'held-out' && start.basis === declared.declaration))
+      const final = roundStarts(ledger, key.unit, key.round).filter(start => start.purpose === 'held-out' && start.basis === declared.declaration
         && spentStart(ledger, start) && released(start, ledger.ends.get(start.seq)) === null).length;
       reserved += Math.max(0, declared.heldOutRuns - final);
       if (parseUnit(key.unit).toolchain !== PRACTONAUT_TOOLCHAIN) foreignDeclared++;

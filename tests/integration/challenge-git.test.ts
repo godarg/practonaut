@@ -122,18 +122,19 @@ test('runs outside the ledger are found by task identity on any world: a dev set
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ledger-scan-'));
   try {
     // The round's pre-probe set, the same seeds generated as a tuning set (another world id), and other seeds.
-    const round = generateSet('repair', [1, 2], 1, 'practonaut-r1-probe1'), dev = generateSet('repair', [1, 2], 1, 'dev'), other = generateSet('repair', [8], 1, 'dev');
+    const round = generateSet('repair', [1, 2], 1, 'practonaut-r1-probe1'), dev = generateSet('repair', [1, 2], 1, 'dev'), other = generateSet('repair', [8], 1, 'dev'), harder = generateSet('repair', [1], 2, 'dev');
     const tasks = ['repair-1', 'repair-2'], identities = setIdentities(round, tasks);
     assert.deepEqual(setIdentities(dev, tasks), identities);
     assert.notEqual(canonicalJson(dev.world), canonicalJson(round.world));
     const root = join(dir, 'bench'), bench = (name: string) => join(root, name);
-    const packed = async (set: typeof round, name: string): Promise<Buffer> => { await writeSet(set, join(dir, name), { family: 'repair', set: 'dev', difficulty: '1', seeds: set === other ? [8] : [1, 2] }); return packWorld(join(dir, name, 'world')); };
-    const worlds = { round: await packed(round, 'round'), dev: await packed(dev, 'dev'), other: await packed(other, 'other') };
+    const packed = async (set: typeof round, name: string): Promise<Buffer> => { await writeSet(set, join(dir, name), { family: 'repair', set: 'dev', difficulty: '1', seeds: set === other ? [8] : set === harder ? [1] : [1, 2] }); return packWorld(join(dir, name, 'world')); };
+    const worlds = { round: await packed(round, 'round'), dev: await packed(dev, 'dev'), other: await packed(other, 'other'), harder: await packed(harder, 'harder') };
+    assert.notEqual(setIdentities(harder, ['repair-1'])[0], identities[0], 'the same task id at another difficulty is another instance');
     // [bench, run, agent output, world package in the folder ('tampered': a report binding another SHA-256)]
     for (const [name, run, stdout, world] of [
       ['20261102T100000Z-0001', 'repair-1-s1-r1', true, 'round'], ['20261102T100000Z-0002', 'repair-1-s1-r1', true, 'round'], ['20261102T100000Z-0003', 'repair-1-s1-r1', false, 'round'],
       ['20261102T100000Z-0004', 'repair-2-s1-r1', true, 'dev'], ['20261102T100000Z-0005', 'repair-8-s1-r1', true, 'other'], ['20261102T100000Z-0006', 'repair-2-s1-r1', true, null],
-      ['20261102T100000Z-0007', 'repair-1-s1-r1', true, 'tampered'],
+      ['20261102T100000Z-0007', 'repair-1-s1-r1', true, 'tampered'], ['20261102T100000Z-0008', 'repair-1-s1-r1', true, 'harder'],
     ] as const) {
       await mkdir(join(bench(name), run), { recursive: true });
       if (stdout) await writeFile(join(bench(name), run, 'agent.stdout'), '{}\n');
@@ -145,7 +146,8 @@ test('runs outside the ledger are found by task identity on any world: a dev set
     const body: StartBody = { kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: 'repair-1-s1-r1', world: 'f'.repeat(64), instance: identities[0]! };
     const listed = parseLedger(headerLine() + nextLine(parseLedger(headerLine()), body).line);
     // 0001 is in the ledger; 0003 has no agent output; 0004 runs the round's instance on the dev world;
-    // 0005 another instance; 0006 has no report (by task id); 0007's world does not match its binding (by task id).
+    // 0005 another instance; 0006 has no report (by task id); 0007's world does not match its binding (by
+    // task id); 0008 is another instance under the same task id.
     assert.deepEqual(await scanOutside([root], { identities: new Set(identities), tasks: new Set(tasks) }, listed), [
       { bench: '20261102T100000Z-0002', run: 'repair-1-s1-r1' }, { bench: '20261102T100000Z-0004', run: 'repair-2-s1-r1' },
       { bench: '20261102T100000Z-0006', run: 'repair-2-s1-r1' }, { bench: '20261102T100000Z-0007', run: 'repair-1-s1-r1' },
