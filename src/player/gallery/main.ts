@@ -105,6 +105,10 @@ function patterns(): HTMLElement {
     h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Board: selected' }), canvas(boardScene(), 'Wähle einen Schritt oder eine Verbindung.')),
     h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Board: picked up' }), canvas(boardScene({ pickedId: 'b', steps: boardScene().steps.map(step => step.id === 'b' ? { ...step, at: { x: 380, y: 240 } } : step), selectedId: 'b' }), 'Schritt aufgenommen. Pfeiltasten bewegen ihn; Enter platziert.')),
     h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Board: pending connection and loose ends' }), canvas(boardScene({ selectedId: 'c', connect: { from: 'a', to: 'c' }, arrows: [{ id: 'ab', from: 'a', to: null }, { id: 'bc', from: null, to: 'c' }] }), 'Wähle ein Ziel; Enter bestätigt, Escape bricht ab.')),
+    h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Board: judged geometry of a layout task' }), canvas(boardScene({ selectedId: '',
+      steps: [{ id: 'a', label: 'Collect draft', x: 120, y: 200, width: 180, height: 100, shape: 'ellipse' }, { id: 'b', label: 'Review draft', x: 380, y: 200, width: 180, height: 100, shape: 'diamond' }, { id: 'c', label: 'Publish draft', x: 640, y: 200, width: 180, height: 100 }],
+      arrows: [{ id: 'ab', from: 'a', to: 'b' }, { id: 'bc', from: 'b', to: 'c' }, { id: 'cc', from: 'c', to: 'c' }],
+      judged: { segments: [{ id: 'ab', from: 'a', to: 'b' }, { id: 'bc', from: 'b', to: 'c' }], points: ['c'], boxes: ['a', 'b'], canvases: [{ x: 80, y: 140, width: 800, height: 220, label: 'Arbeitsfläche (80, 140)–(880, 360)' }] } }), 'Gestrichelt: was die Layout-Bedingungen beurteilen.')),
     h('div', { class: 'gallery-stack' }, h('h3', { class: 't-title3', text: 'Tool palette and tray' }), palette, chips),
     h('div', { class: 'gallery-pair' }, goals, h('div', { class: 'gallery-stack' }, hints, history)));
 }
