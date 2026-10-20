@@ -499,6 +499,8 @@ function boardSvg(): SVGSVGElement {
   const judged = judgedLayer();
   return drawBoard({
     name: msg('board'), looseLabel: msg('loose'), frameName: frames().map(frame => frame.name).join(' · '), steps: sceneSteps, arrows: sceneArrows, selectedId: selected, ...(judged ? { judged } : {}),
+    // A layout task's conditions are about its lanes: each frame is drawn as its own outline (L1-F15).
+    ...(judged ? { lanes: frames().map(frame => ({ name: frame.name, steps: steps().filter(step => step.frameId === frame.id).map(step => step.id) })) } : {}),
     ...(move ? { pickedId: move.origin } : {}), ...(pending ? { previewArrowId: pending.origin } : {}),
     ...(pending?.kind === 'connect' ? { connect: { from: pending.origin, to: selected } } : {}),
   }, {
@@ -597,8 +599,14 @@ function boardSection(): HTMLElement {
   scroll.addEventListener('scroll', edges, { passive: true });
   boardResize.disconnect(); boardResize = new ResizeObserver(edges); boardResize.observe(scroll);
   section.append(canvas, hint, h('p', { class: 'practice-note' }, icon('info'), h('span', { text: current!.mirror === 'off' ? msg('modelOnly') : msg('boardModel'), attrs: { 'data-testid': 'mirror-mode-note' } })));
-  // A layout task says in words what its dashed lines are (never colour or dashes alone).
-  if (layoutOverlays().length) section.append(h('p', { class: 'practice-note', testid: 'judged-note' }, icon('info'), h('span', { text: msg('judgedNote') })));
+  // A layout task says in words what its judged layer shows (never lines or colour alone), naming only
+  // the parts this board draws.
+  const judged = judgedLayer();
+  if (judged) {
+    const parts = [...(judged.segments.length ? [msg('judgedPartLines')] : []), ...(judged.boxes.length ? [msg('judgedPartBoxes')] : []), ...(judged.points.length ? [msg('judgedPartRings')] : []), ...(judged.canvases.length ? [msg('judgedPartArea')] : [])];
+    const listed = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ${msg('judgedPartAnd')} ${parts.at(-1)}` : parts[0] ?? '';
+    if (listed) section.append(h('p', { class: 'practice-note', testid: 'judged-note' }, icon('info'), h('span', { text: msg('judgedNote').replace('{parts}', listed) })));
+  }
   section.append(disclosure({ summary: msg('help'), class: 'practice-help' }, h('p', { class: 't-subhead t-secondary', text: msg('keyboard') })));
   return section;
 }
@@ -655,11 +663,16 @@ function goalCard(): HTMLElement {
   // A world without sentences for its goal (world/1) states it in the prompt: those sentences are the visible lines, the formula stays behind the switch.
   const formalOnly = (condition: { formalText?: unknown }): boolean => !condition.formalText;
   const promptLines = c.task.conditions.length === 1 && formalOnly(c.task.conditions[0]!) ? sentences(text(c.task.prompt)) : undefined;
+  // Layout conditions about arrows state the same rule word for word: it is shown under the first only.
+  const said = new Set<string>();
   c.task.conditions.forEach((condition, order) => {
     const entry = matches ? lastCheck!.conditions.find(value => value.id === condition.id) : undefined;
     const item = h('li', { class: `goal-item${entry ? (entry.met ? ' goal-item--met' : ' goal-item--unmet') : ''}`, vars: { '--_i': order } }, statusIcon(entry ? (entry.met ? 'met' : 'unmet') : 'pending'));
     const body = h('div', { class: 'goal-item__body' }, h('span', { class: 'condition-status sr-only', text: entry ? msg(entry.met ? 'met' : 'unmet') : msg('noCheck') }));
-    const visible = promptLines ?? (formalOnly(condition) ? undefined : sentences(text(condition.text)));
+    const own = promptLines ?? (formalOnly(condition) ? undefined : sentences(text(condition.text)));
+    const fresh = condition.layout && own ? own.filter((line, index) => index === 0 || !said.has(line)) : own;
+    if (condition.layout) for (const line of own ?? []) said.add(line);
+    const visible = fresh;
     (visible ?? [text(condition.text)]).forEach((sentence, index) => body.append(h(visible ? 'p' : 'pre', { class: visible ? (index ? 'goal-item__text goal-item__text--more' : 'goal-item__text') : 'author-data', text: sentence })));
     const formal = condition.formalText ?? (promptLines ? condition.text : undefined);
     if (formal && showFormal) body.append(h('div', { class: 'goal-item__formal', testid: 'goal-formal' }, h('p', { class: 'sr-only', text: msg('formalLabel') }), h('pre', { class: 'author-data', text: text(formal) })));
@@ -682,15 +695,17 @@ function goalCard(): HTMLElement {
   const checksNote = checks ? h('p', { class: 'goal-note', testid: 'checks-left', text: checksLeft === 0 ? msg('checksNone') : count(checksLeft!, 'checksLeft1', 'checksLeftN').replace('{limit}', String(checks.limit)) }) : undefined;
   const checkButton = button({ label: owner === 'variant' || (owner === 'demo' && matches) ? msg('checkAgain') : msg('check'), icon: 'check', variant: owner === 'check' && !quietCheck && checksLeft !== 0 ? 'primary' : owner === 'check' ? 'tinted' : 'secondary', size: 'lg', block: true, testid: 'check', onClick: () => { void check(); }, disabled: locked() || checksLeft === 0 });
   const formalSwitch = hasFormal ? button({ label: msg(showFormal ? 'formalHide' : 'formalShow'), icon: showFormal ? 'chevronUp' : 'chevronDown', variant: 'plain', size: 'sm', class: 'goal-formal-switch', testid: 'formal-switch', pressed: showFormal, onClick: () => { showFormal = !showFormal; render(); document.querySelector<HTMLElement>('[data-testid="formal-switch"]')?.focus(); } }) : undefined;
-  result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
-  // In the real editor nothing is drawn over its canvas: a note names what is judged and points to the
-  // Practice board, which draws it (PADR-0047 decision 7).
+  // In the real editor nothing is drawn over its canvas: at the top of the Goal card, where it is seen
+  // first (L1-F8), a note names what is judged and a button leads to the board, which draws it
+  // (PADR-0047 decision 7).
+  const editorNote: HTMLElement[] = [];
   if (workspace === 'editor' && layoutOverlays().length) {
     const canvas = layoutOverlays().find(overlay => overlay.op === 'within');
     const where = canvas && canvas.op === 'within' ? msg('judgedEditorCanvas').replace('{from}', corners(canvas.canvas)[0]).replace('{to}', corners(canvas.canvas)[1]) : '';
-    result.append(h('p', { class: 'goal-note', testid: 'judged-editor-note', text: msg('judgedEditor').replace('{canvas}', where) }),
-      button({ label: msg('judgedShow'), icon: 'target', variant: 'secondary', size: 'sm', testid: 'judged-show-board', disabled: !phase3, onClick: () => { void phase3?.select('board'); } }));
+    editorNote.push(h('div', { class: 'goal-judged', testid: 'judged-editor' }, h('p', { class: 'goal-note', testid: 'judged-editor-note', text: msg('judgedEditor').replace('{canvas}', where) }),
+      button({ label: msg('judgedShow'), icon: 'target', variant: 'secondary', size: 'sm', testid: 'judged-show-board', disabled: !phase3, onClick: () => { void phase3?.select('board'); } })));
   }
+  result.append(...(verdict ? [verdict] : []), ...(facts ? [facts] : []), ...editorNote, goals, ...(formalSwitch ? [formalSwitch] : []), h('p', { class: 'goal-note', text: msg('endOnly') }));
   if (owner === 'variant') result.append(button({ label: msg('newVariantNext'), icon: 'shuffle', variant: changesLeft === 0 ? 'secondary' : 'primary', size: 'lg', block: true, testid: 'goal-new-variant', disabled: working, onClick: () => changeAttempt() }));
   if (owner === 'demo' && !demoRunning()) result.append(button({ label: msg('demoOwnAttempt'), icon: 'reset', variant: 'primary', size: 'lg', block: true, testid: 'demo-own-attempt', disabled: working, onClick: ownAttempt }));
   for (const note of [changesNote, checksNote]) if (note) result.append(note);

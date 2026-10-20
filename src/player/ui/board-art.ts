@@ -5,6 +5,7 @@
  * Display geometry only: the host owns semantic positions.
  */
 import { motion } from './motion.ts';
+import { outsidePath, type Rect } from './rect-union.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -32,11 +33,15 @@ export interface BoardScene {
   looseLabel?: string;
   /** Accessible name of the drawing. */
   name: string;
-  /** What a layout task judges (PADR-0047 decision 7), drawn over the board in dashes. */
+  /** What a layout task judges (PADR-0047 decision 7), drawn over the board in thin neutral lines. */
   judged?: JudgedLayer;
+  /** Frames drawn each as its own outline around its steps, with its name (a layout task's lanes,
+   * design review L1-F15); without it the board is one frame named `frameName`. */
+  lanes?: Array<{ name: string; steps: string[] }>;
 }
 /** The judged geometry of a layout task, from its public conditions and the public board: no verdict,
- * no offending object. Decorative in the drawing; the condition sentences carry the meaning. */
+ * no offending object. It carries information (aria-hidden only because the condition sentences and the
+ * line under the board say the same in words). */
 export interface JudgedLayer {
   /** Arrows judged as the straight segment between the centres of two different steps. */
   segments: Array<{ id: string; from: string; to: string }>;
@@ -103,6 +108,16 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
   const crop = hooks.compact && steps.length > 0;
   // What the drawing must show: the steps and, for a layout task, every canvas it judges.
   const canvases = scene.judged?.canvases ?? [];
+  // Each lane: its steps' boxes with room around them and its name above them.
+  const byStep = new Map(steps.map(step => [step.id, step]));
+  const lanes = (scene.lanes ?? []).flatMap(lane => {
+    const members = lane.steps.flatMap(id => { const step = byStep.get(id); return step ? [{ ...place(step), width: step.width, height: step.height }] : []; });
+    if (!members.length) return [];
+    const x = Math.min(...members.map(m => m.x)) - 24, y = Math.min(...members.map(m => m.y)) - (crop ? 64 : 48);
+    return [{ name: lane.name, x, y, width: Math.max(...members.map(m => m.x + m.width)) + 24 - x, height: Math.max(...members.map(m => m.y + m.height)) + 24 - y }];
+  });
+  // The margins around the steps and layout areas hold the lanes' outlines and names and the area's
+  // corners written under it, so neither widens the drawing (and its smallest width).
   const rects = [...steps.map(step => ({ x: place(step).x, y: place(step).y, width: step.width, height: step.height })), ...canvases];
   const left = Math.min(...rects.map(rect => rect.x)), right = Math.max(...rects.map(rect => rect.x + rect.width));
   const top = Math.min(...rects.map(rect => rect.y)), bottom = Math.max(...rects.map(rect => rect.y + rect.height));
@@ -110,15 +125,29 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
   const width = (crop ? right + 36 : Math.max(960, ...rects.map(rect => rect.x + rect.width + 40))) - minX, height = (crop ? bottom + 64 : Math.max(420, ...rects.map(rect => rect.y + rect.height + 60))) - minY;
   const svg = node('svg', { viewBox: `${minX} ${minY} ${width} ${height}`, class: `board-svg${crop ? ' board-svg--compact' : ''}`, role: 'group', 'aria-label': scene.name, tabindex: '-1' });
   svg.dataset.testid = 'board';
-  svg.append(defs(),
-    node('rect', { x: String(minX + 12), y: String(minY + 12), width: String(width - 24), height: String(height - 24), rx: '28', class: 'board-frame', 'aria-hidden': 'true' }),
+  svg.append(defs());
+  // Judged lines (segments, boxes, layout areas) never cross text on the board: one clip, defined once
+  // every label is placed, cuts out the union of the label areas (two overlapping areas stay cut, never
+  // cut twice). A label area is a display estimate of where the text lies.
+  const clipId = scene.judged ? `judged-clip-${++boards}` : '', clipped = scene.judged ? { 'clip-path': `url(#${clipId})` } : {};
+  const labelAreas: Rect[] = [];
+  const textArea = (text: string, x: number, baseline: number, size: number): Rect => ({ x: x - 2, y: baseline - size, width: text.length * size * 0.6 + 8, height: size * 1.3 });
+  if (scene.lanes) for (const lane of lanes) {
+    const group = node('g', { class: 'board-lane', 'aria-hidden': 'true' });
+    group.dataset.testid = 'board-lane';
+    group.append(node('rect', { x: String(lane.x), y: String(lane.y), width: String(lane.width), height: String(lane.height), rx: '20', class: 'board-frame' }),
+      node('text', { x: String(lane.x + 16), y: String(lane.y + (crop ? 44 : 30)), class: 'board-frame-label' }, lane.name));
+    labelAreas.push(textArea(lane.name, lane.x + 16, lane.y + (crop ? 44 : 30), crop ? 34 : 15));
+    svg.append(group);
+  } else svg.append(node('rect', { x: String(minX + 12), y: String(minY + 12), width: String(width - 24), height: String(height - 24), rx: '28', class: 'board-frame', 'aria-hidden': 'true' }),
     node('text', { x: String(minX + 36), y: String(minY + 48), class: 'board-frame-label', 'aria-hidden': 'true' }, scene.frameName));
-  // The canvas a layout task names: a dashed outline under everything, its corners as a quiet label inside.
+  // The layout area a layout task names: a thin outline under everything, its corners as a quiet label under it.
   for (const canvas of canvases) {
     const group = node('g', { class: 'judged', 'aria-hidden': 'true' });
     group.dataset.testid = 'judged-canvas';
-    group.append(node('rect', { x: String(canvas.x), y: String(canvas.y), width: String(canvas.width), height: String(canvas.height), class: 'judged-canvas' }),
-      node('text', { x: String(canvas.x + 12), y: String(canvas.y + (crop ? 30 : 22)), class: 'judged-canvas-label' }, canvas.label));
+    group.append(node('rect', { x: String(canvas.x), y: String(canvas.y), width: String(canvas.width), height: String(canvas.height), class: 'judged-canvas', ...clipped }),
+      node('text', { x: String(canvas.x), y: String(canvas.y + canvas.height + (crop ? 30 : 22)), class: 'judged-canvas-label' }, canvas.label));
+    labelAreas.push(textArea(canvas.label, canvas.x, canvas.y + canvas.height + (crop ? 30 : 22), crop ? 20 : 15));
     svg.append(group);
   }
 
@@ -170,16 +199,16 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
   }
   if (scene.connect) svg.append(node('path', { d: route(scene.connect.from, scene.connect.to).d, class: 'edge pending', 'marker-end': 'url(#arrow-tip-pending)', 'aria-hidden': 'true' }));
 
-  // An ellipse or a diamond is judged by its box: the box in dashes, under the shape, so its corners show.
+  // An ellipse or a diamond is judged by its box: the box outlined under the shape, so its corners show.
   for (const id of scene.judged?.boxes ?? []) {
     const step = byId.get(id);
     if (!step) continue;
-    const at = place(step), outline = node('rect', { x: String(at.x), y: String(at.y), width: String(step.width), height: String(step.height), class: 'judged-box', 'aria-hidden': 'true' });
+    const at = place(step), outline = node('rect', { x: String(at.x), y: String(at.y), width: String(step.width), height: String(step.height), class: 'judged-box', 'aria-hidden': 'true', ...clipped });
     outline.dataset.testid = 'judged-box';
     svg.append(outline);
   }
-  const labelAreas: Array<{ x: number; y: number; width: number; height: number }> = [];
-  const textUnits = [crop ? 34 : 15, ...(scene.arrows.some(arrow => arrow.from === null || arrow.to === null) && scene.looseLabel ? [crop ? 20 : 13] : []), ...(canvases.length ? [crop ? 20 : 13] : [])];
+  // The layout area's label is set like a frame's name (subhead), so it never sets the board's scale (L1-F9).
+  const textUnits = [crop ? 34 : 15, ...(scene.arrows.some(arrow => arrow.from === null || arrow.to === null) && scene.looseLabel ? [crop ? 20 : 13] : []), ...(canvases.length ? [crop ? 20 : 15] : [])];
   const feel = motion();
   const previous = new Map(hooks.drawn ?? []);
   hooks.drawn?.clear();
@@ -200,11 +229,14 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
     const fit = sizes.find(([, unit]) => stepLines(step.label, step.width, unit).length * unit * 1.25 <= step.height - 24) ?? sizes[sizes.length - 1]!;
     textUnits.push(fit[1]);
     const unit = fit[1], lines = stepLines(step.label, step.width, unit), cx = at.x + step.width / 2, leading = unit * 1.3;
-    const label = node('text', { x: String(cx), y: String(at.y + step.height / 2 - (lines.length - 1) * leading / 2 + unit * 0.35), 'text-anchor': 'middle', class: `step-label step-label--${fit[0]}`, 'aria-hidden': 'true' });
+    const ringed = scene.judged?.points.includes(step.id) ?? false;
+    const label = node('text', { x: String(cx), y: String(at.y + step.height / 2 - (lines.length - 1) * leading / 2 + unit * 0.35), 'text-anchor': 'middle', class: `step-label step-label--${fit[0]}${ringed ? ' step-label--halo' : ''}`, 'aria-hidden': 'true' });
     lines.forEach((line, row) => label.append(node('tspan', { x: String(cx), dy: row ? String(leading) : '0' }, line)));
-    // A self-loop is judged as the point at its step's centre: a small ring there, under the label.
-    if (scene.judged?.points.includes(step.id)) {
-      const ring = node('circle', { cx: String(cx), cy: String(at.y + step.height / 2), r: crop ? '12' : '8', class: 'judged-point', 'aria-hidden': 'true' });
+    // A self-loop is judged as the point at its step's centre: a ring there, taller than the label's
+    // letters so it shows above and below them, under the label, whose halo keeps the ring out of its
+    // letters (design review L1-F2).
+    if (ringed) {
+      const ring = node('circle', { cx: String(cx), cy: String(at.y + step.height / 2), r: crop ? '28' : '15', class: 'judged-point', 'aria-hidden': 'true' });
       ring.dataset.testid = 'judged-point';
       group.append(ring);
     }
@@ -221,13 +253,13 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
       else if (!before && previous.size) group.animate([{ opacity: 0, transform: 'scale(0.92)' }, { opacity: 1, transform: 'scale(1)' }], { duration: feel.base, easing: feel.out });
     }
   }
-  // The judged segments run from centre to centre over the cards, never across a label (a clip with
-  // the label areas cut out).
-  if (scene.judged?.segments.length) {
-    const clipId = `judged-clip-${++boards}`, clip = node('clipPath', { id: clipId });
-    const area = (r: { x: number; y: number; width: number; height: number }): string => `M ${r.x} ${r.y} h ${r.width} v ${r.height} h ${-r.width} Z`;
-    clip.append(node('path', { d: [area({ x: minX, y: minY, width, height }), ...labelAreas.map(area)].join(' '), 'clip-rule': 'evenodd' }));
+  if (scene.judged) {
+    const clip = node('clipPath', { id: clipId });
+    clip.append(node('path', { d: outsidePath({ x: minX, y: minY, width, height }, labelAreas), 'clip-rule': 'evenodd' }));
     svg.querySelector('defs')!.append(clip);
+  }
+  // The judged segments run from centre to centre over the cards, cut around every label.
+  if (scene.judged?.segments.length) {
     const layer = node('g', { class: 'judged', 'clip-path': `url(#${clipId})`, 'aria-hidden': 'true' });
     layer.dataset.testid = 'judged-segments';
     const centreOf = (id: string): [number, number] | undefined => { const step = byId.get(id); if (!step) return undefined; const at = place(step); return [at.x + step.width / 2, at.y + step.height / 2]; };
