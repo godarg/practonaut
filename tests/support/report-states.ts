@@ -231,7 +231,8 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     // its comparison with the Excalidraw library's runs, paired by task identity.
     { id: 'report-drawio-library', html: language => reportPage(drawioOracle, language, drawioOracle.verification) },
     { id: 'report-drawio-library-open', html: language => reportPage(drawioOracle, language, drawioOracle.verification), open: true },
-    { id: 'compare-drawio-library', html: compared({ report: excalidrawOracle.report, verification: excalidrawOracle.verification, name: 'excalidraw-oracle' }, { report: drawioOracle.report, verification: drawioOracle.verification, name: 'drawio-oracle' }) },
+    // Named by the reports' own labels, as `compare` names them (docs/benchmarks/drawio/compare.html).
+    { id: 'compare-drawio-library', html: compared({ report: excalidrawOracle.report, verification: excalidrawOracle.verification }, { report: drawioOracle.report, verification: drawioOracle.verification }) },
   ];
   if (fixtures.engine) {
     const engine = fixtures.engine;
