@@ -248,11 +248,15 @@ export function judgedOverlay(state: State, overlays: readonly LayoutOverlay[], 
   const placed: Box[] = [];
   const free = (box: Box): boolean => !placed.some(other => meets(box, other)) && !context.texts.some(text => meets(box, text));
   const mark = (x: number, y: number, label: string): string => {
-    const width = Math.max(32, [...label].length * 11 + 14), at = (left: number): Box => ({ x: left, y: y - 16, width, height: 32 });
-    let left = x - width / 2;
-    for (let tries = 0; tries < 32 && !free(at(left)); tries++) left = Math.max(left + 4, ...[...placed, ...context.texts].filter(other => meets(at(left), other)).map(other => other.x + other.width + 4));
-    placed.push(at(left));
-    return `<rect x="${n(left)}" y="${n(y - 16)}" width="${n(width)}" height="32" rx="16" class="sch-mark"/><text x="${n(left + width / 2)}" y="${n(y + 7)}" text-anchor="middle" class="sch-mark-number">${xml(label)}</text>`;
+    const width = Math.max(32, [...label].length * 11 + 14);
+    // The free place nearest the anchor: side by side first, then a row above or below.
+    const places = [0, 1, -1, 2, -2, 3, -3].flatMap(column => [0, -1, 1, -2, 2].map(row => ({ x: x - width / 2 + column * (width + 4), y: y + row * 36 })))
+      .sort((a, b) => Math.hypot(a.x + width / 2 - x, (a.y - y) * 1.5) - Math.hypot(b.x + width / 2 - x, (b.y - y) * 1.5));
+    const box = (place: { x: number; y: number }): Box => ({ x: place.x, y: place.y - 16, width, height: 32 });
+    let place = places.find(candidate => free(box(candidate)));
+    if (!place) { let left = x - width / 2; for (let tries = 0; tries < 64 && !free(box({ x: left, y })); tries++) left = Math.max(left + 4, ...[...placed, ...context.texts].filter(other => meets(box({ x: left, y }), other)).map(other => other.x + other.width + 4)); place = { x: left, y }; }
+    placed.push(box(place));
+    return `<rect x="${n(place.x)}" y="${n(place.y - 16)}" width="${n(width)}" height="32" rx="16" class="sch-mark"/><text x="${n(place.x + width / 2)}" y="${n(place.y + 7)}" text-anchor="middle" class="sch-mark-number">${xml(label)}</text>`;
   };
   const markParts: string[] = [];
   for (const placement of marks) {

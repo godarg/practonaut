@@ -114,12 +114,14 @@ describe('report: unmet layout clauses', () => {
     assert.equal(count(/class="sch-judged-point"/g), 1);
     // Ship's label again over its ring, with a halo in its frame's colour (it has no fill).
     assert.match(svg, /<circle cx="400" cy="240" r="18" class="sch-judged-point"\/><text x="400" y="[\d.]+" text-anchor="middle" class="sch-label sch-halo sch-halo--frame"><tspan x="400" dy="0">Ship<\/tspan><\/text>/);
-    // Marks are capsules with their label; two on Check stand side by side.
+    // Marks are capsules with their label; the two on Check (1.1 and 12.3) and the one on Decide (1.1)
+    // stay near their corners, (480, 120) and (540, 100), without covering each other.
     assert.equal(count(/class="sch-mark"/g), 4);
     assert.deepEqual([...svg.matchAll(/class="sch-mark-number">([^<]*)</g)].map(m => m[1]), ['1.1', '1.1', '2.1', '12.3']);
-    const check = [...svg.matchAll(/<rect x="([\d.]+)" y="104" width="([\d.]+)" height="32" rx="16" class="sch-mark"\/>/g)].map(m => [Number(m[1]), Number(m[2])] as const);
-    assert.equal(check.length, 2, 'two marks at Check\'s corner (480, 120)');
-    assert.ok(check[1]![0] >= check[0]![0] + check[0]![1], 'side by side, not on top of each other');
+    const capsules = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="32" rx="16" class="sch-mark"\/><text [^>]*>([^<]*)</g)].map(m => ({ label: m[4]!, x: Number(m[1]) + Number(m[3]) / 2, y: Number(m[2]) + 16, box: { x: Number(m[1]), y: Number(m[2]), width: Number(m[3]), height: 32 } }));
+    const near = (label: string, x: number, y: number): boolean => capsules.some(c => c.label === label && Math.hypot(c.x - x, c.y - y) <= 160);
+    assert.ok(near('1.1', 480, 120) && near('1.1', 540, 100) && near('12.3', 480, 120) && near('2.1', 780, 300), JSON.stringify(capsules));
+    for (const [i, a] of capsules.entries()) for (const b of capsules.slice(i + 1)) assert.equal(meets(a.box, b.box), false);
     assert.equal(judgedOverlay(LAYOUT_START_STATE, [], [], { canvas: 'Layout area' }, 'x', schematic(LAYOUT_START_STATE)), '', 'no layout condition, no overlay');
     // Every mark of the start's thirteen reasons: no two cover each other, none covers a label. On the
     // start, Ship's centre is the middle of the arrow Decide → Pack and the point of its self-loop.
