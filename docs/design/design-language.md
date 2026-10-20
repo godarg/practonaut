@@ -521,7 +521,9 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   focus is still on the button, the picture is brought into view and announced, and the inspector
   keeps its scroll position across redraws. In a draw.io session the interim notice (PADR-0049 9.2)
   stands once, last, under "Rules and origins", off the working surface; that disclosure stays as the
-  reader left it across redraws.
+  reader left it across redraws. A world without rules says so there first ("This exercise's world has
+  no rules: an action changes only what it names, with no further consequence."), so the disclosure
+  never opens on the notice alone.
 - **Goal**: the world states a goal as one verdict; its sentences are shown as separate short lines
   under one status icon (the first in primary text, the rest secondary). Before a check the ring
   is empty and there is no verdict; after a check one short verdict banner ("All conditions met." /
@@ -574,7 +576,10 @@ connection in accent; **picked up** = card lifts 4 units with a deep shadow and 
 **pending connection** = dashed accent line with flowing dashes; **bound start** = a small anchor
 dot on the card edge and an arrowhead that touches the target; **loose end** = hollow ring in
 danger (the negative counterpart of the anchor); **focus** = a wider ring in the focus colour.
-Selection is never a colour change alone.
+Selection is never a colour change alone. The board draws one frame around every step, named with
+every frame's name; world/2 frames are not drawn one by one. A step's frame is therefore said in words:
+its chip and accessible name say "in „Name“" when the world has several frames, and "no frame" /
+"ohne Rahmen" for a step outside every frame (review D3-F2).
 
 ### 10.3 Excalidraw workspace
 
@@ -813,8 +818,14 @@ below one px per unit; focus and scroll lost after "Show in the real tool"; the 
 notice missing; draw.io's picture altered in the report; captures that ignored a state's anchor) and
 seven minors. All were fixed and checked on new captures. Round D2 (2026-10-20, commit 1cb8ff3) was
 conditional: no blocker, two majors (a refusal whose advice did not work in this Player; a hard white
-slab for a narrow draw.io picture in a dark report card) and seven minors, all fixed; a short round
-D3 on the touched states follows ([pull request #70](https://github.com/godarg/practonaut/pull/70)).
+slab for a narrow draw.io picture in a dark report card) and seven minors. Both majors and five minors
+were fixed; two were consciously not done as proposed: the board still draws one frame around every
+step, so a step taken out of its frame still lies inside the drawn frame (D2-F5's geometry), and an
+unavailable workspace's reason is spoken when pressed, not shown (D2-F7). Round D3 (2026-10-20, commit
+4d36d07, 16 captures) passed: no blocker, no major, four minors (the report's faded edge dissolving the
+frame of draw.io's picture, a step outside the only frame not named in words, this record, rules and
+origins opening on the notice alone), all fixed and checked on new captures
+([pull request #70](https://github.com/godarg/practonaut/pull/70)).
 
 Round R1 of the bench report v3 pages of 0.3.0 (the artifact-judged report, a report whose client
 values were not re-derived, the compare pages across worlds and the refusals of the regression gate

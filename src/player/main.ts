@@ -130,6 +130,8 @@ function styleText(step: Step): string {
   if (step.groupId !== null) parts.push(msg('grouped'));
   const frame = step.frameId === null ? undefined : current!.state.objects[step.frameId];
   if (frame?.type === 'frame' && frames().length > 1) parts.push(msg('inFrame').replace('{frame}', frame.name));
+  // The board draws one frame around every step (§10.2): a step outside every frame says so in words.
+  else if (step.frameId === null && frames().length > 0) parts.push(msg('noFrameShort'));
   return parts.join(', ');
 }
 function focusObject(id: string): void {
@@ -756,6 +758,8 @@ function howCheckedCard(): HTMLElement {
   }
   const rules = h('div', { class: 'rule-list' });
   for (const rule of c.rules) rules.append(h('div', { class: 'rule-item' }, h('span', { class: 't-footnote t-medium', text: `${msg('confirmed')} · ${rule.id}` }), h('small', { class: 'rule-origin', text: `${msg('origin')}: ${rule.evidence.map(evidence => `${evidence.run} / ${evidence.case}`).join('; ')}` })));
+  // A world without rules says so, so the disclosure never opens on the notice alone (review D3-F4).
+  if (!c.rules.length) rules.append(h('p', { class: 'rules-none', testid: 'rules-none', text: msg('noRules') }));
   // An app whose name needs the interim notice (PADR-0049 9.2) gets it once, off the working surface.
   const notice = Object.hasOwn(appNotices, c.world.adapterId) ? appNotices[c.world.adapterId]! : undefined;
   if (notice) rules.append(h('p', { class: 'app-notice', testid: 'app-notice', text: msg(notice) }));

@@ -193,7 +193,10 @@ All notable changes are recorded here. The format follows
 - Bench report, draw.io: the frame of draw.io's picture is the picture's light ground, padded around
   the centred picture (a narrow picture was a white slab in a dark frame); a board's scroll line and
   faded edge appear only where its frame is narrower than it; the interim notice comes last in the
-  closing notes. "Rules and origins" stays open across redraws.
+  closing notes. "Rules and origins" stays open across redraws, and in a world without rules says so
+  before the notice. The frame of draw.io's picture keeps its corners and hairline when the picture
+  scrolls (the faded edge is on an inner scroller). A step outside every frame says "no frame" in its
+  chip and accessible name, since the board draws one frame around every step.
 - The model-only banner names one download with its size first and keeps number and unit, and a
   product and its version, together ("one download of about 48 MB: draw.io 32.4.1"); the file name
   stays in the terminal. German names a frame "Rahmen" in the group refusal.

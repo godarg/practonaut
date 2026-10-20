@@ -504,9 +504,12 @@ function boardHtml(detail: RunDetail, report: SessionReportView, language: Langu
   const end = detail.overflow !== 'none' && detail.fromEnd ? ' from-end' : '';
   // A pair at its exact width (draw.io) says so only where its frame is narrower: a container query per
   // width (fitRules); draw.io's own picture lies on the light picture ground, padded, in its frame.
+  // draw.io's own picture: the frame is its padded light ground and does not scroll; an inner, bare
+  // scroller carries the faded edge, so the ground's corners and hairline stay whole (review D3-F1).
   const frame = (markup: string, label: string, fit?: number, own = false): string => {
-    const sizing = fit !== undefined ? `fit-${fit}` : overflow, ground = own ? ' board-scroll--picture' : '';
-    return `<div class="board-scroll ${sizing}${ground}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${fit === undefined && detail.overflow === 'none' ? '' : `<p class="scroll-hint ${sizing}">${esc(t.scrollHint)}</p>`}`;
+    const sizing = fit !== undefined ? `fit-${fit}` : overflow;
+    const scroller = `<div class="board-scroll ${sizing}${own ? ' board-scroll--bare' : ''}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>`;
+    return `${own ? `<div class="board-picture">${scroller}</div>` : scroller}${fit === undefined && detail.overflow === 'none' ? '' : `<p class="scroll-hint ${sizing}">${esc(t.scrollHint)}</p>`}`;
   };
   const legend: string[] = [];
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));

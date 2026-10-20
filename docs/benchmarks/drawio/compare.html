@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-1sDOqgQWRib6/9Q1Bka3PHW6c6SNVGc0TiI4xxKtp7E='; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-TR4CH4T7BoOSJ1lkgC+vhGU1T8nqSrxoCQ/L6bs6CYs='; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Practonaut compare: Excalidraw library, oracle (baseline) → draw.io library, oracle (candidate)</title>
 <style>/*
@@ -574,9 +574,11 @@ td.text code{overflow-wrap:anywhere}
 .board-figure .figure-title{display:block;color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-semibold)}
 .board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-canvas)}
 /* draw.io's own picture: the frame is its light picture ground in both themes, with space-2 padding
-   around the picture, which is centred and scrolls with its ground (design review D2-F2). A board drawn
-   at its exact width is measured against its figure (a container) for its line and faded edge. */
-.board-scroll--picture{background:var(--pn-color-picture-ground);padding:var(--pn-space-2)}
+   around the centred picture (design review D2-F2). The frame does not scroll: an inner, bare scroller
+   does and carries the faded edge, so the frame's corners and hairline stay whole (D3-F1). A board
+   drawn at its exact width is measured against its figure (a container) for its line and faded edge. */
+.board-picture{border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-picture-ground);padding:var(--pn-space-2)}
+.board-scroll.board-scroll--bare{border:0;border-radius:0;background:none}
 .board-figure{container-type:inline-size}
 .schematic,.engine-board{display:block;height:auto;margin:0 auto}
 .schematic:not(.pu),.engine-board:not(.pu){width:100%}

@@ -25,7 +25,7 @@ test('D2-F1, F5: the group refusal names the way forward with the tools, determi
   try {
     const expected = {
       en: 'In this application all steps of a group lie in the same frame. Put the steps into one frame first, or ungroup them before you change a step’s frame. The board is unchanged.',
-      de: 'In dieser Anwendung liegen alle Schritte einer Gruppe im selben Rahmen. Lege die Schritte zuerst in einen Rahmen oder löse die Gruppe, bevor du den Rahmen eines Schritts änderst. Die Arbeitsfläche ist unverändert.',
+      de: 'In dieser Anwendung liegen alle Schritte einer Gruppe im selben Rahmen. Lege die Schritte zuerst in denselben Rahmen oder löse die Gruppe, bevor du den Rahmen eines Schritts änderst. Die Arbeitsfläche ist unverändert.',
     } as const;
     for (const language of ['en', 'de', 'en'] as const) {
       await setLanguage(s.page, language);
@@ -83,17 +83,23 @@ test('D2-F2, F3: in the report draw.io\'s picture lies padded on its own ground 
       const page = await context.newPage(); await page.goto(pathToFileURL(file).href);
       await page.evaluate(() => { for (const details of document.querySelectorAll('details')) details.open = true; });
       const frames = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.board-figure')].map(figure => {
-        const frame = figure.querySelector<HTMLElement>('.board-scroll')!, svg = frame.querySelector('svg')!, hint = figure.querySelector<HTMLElement>('.scroll-hint');
+        // The frame: draw.io's ground around its scroller (review D3-F1), else the scroller itself.
+        const scroller = figure.querySelector<HTMLElement>('.board-scroll')!, frame = figure.querySelector<HTMLElement>('.board-picture') ?? scroller;
+        const svg = scroller.querySelector('svg')!, hint = figure.querySelector<HTMLElement>('.scroll-hint');
         const outer = frame.getBoundingClientRect(), inner = svg.getBoundingClientRect(), style = getComputedStyle(frame);
-        // What lies between the frame's hairline and the picture on its top edge and beside it.
-        const between = (x: number, y: number): string => { const at = document.elementFromPoint(x, y); return at ? getComputedStyle(at).backgroundColor : 'none'; };
+        // What lies between the frame's hairline and the picture on its top edge and beside it: the first
+        // painted background from the element there outwards.
+        const between = (x: number, y: number): string => {
+          for (let at = document.elementFromPoint(x, y); at; at = at.parentElement) { const colour = getComputedStyle(at).backgroundColor; if (!/rgba\(.*, 0\)$/.test(colour) && colour !== 'transparent') return colour; }
+          return 'none';
+        };
         frame.scrollIntoView({ block: 'center' });
         const now = frame.getBoundingClientRect(), pic = svg.getBoundingClientRect();
         return {
           own: svg.classList.contains('engine-board--drawio'), ground: style.backgroundColor,
           gap: { top: inner.top - outer.top - 1, bottom: outer.bottom - inner.bottom - 1 },
           above: between(pic.left + Math.min(40, pic.width / 2), now.top + 3), beside: pic.left - now.left > 6 ? between(now.left + 3, pic.top + pic.height / 2) : null,
-          wider: frame.scrollWidth > frame.clientWidth + 1, hint: hint ? getComputedStyle(hint).display !== 'none' : false,
+          wider: scroller.scrollWidth > scroller.clientWidth + 1, hint: hint ? getComputedStyle(hint).display !== 'none' : false,
         };
       }));
       const own = frames.filter(frame => frame.own);

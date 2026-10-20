@@ -209,7 +209,7 @@ body[data-workspace="author"] .model-only-banner { display: none; }
 .tool-picture__scroll.is-clipped-start { mask-image: linear-gradient(to left, var(--pn-color-text) calc(100% - var(--pn-space-6)), transparent); }
 .tool-picture__scroll.is-clipped-start.is-clipped-end { mask-image: linear-gradient(to right, transparent, var(--pn-color-text) var(--pn-space-6), var(--pn-color-text) calc(100% - var(--pn-space-6)), transparent); }
 .tool-image--natural { width: auto; max-width: none; }
-.tool-scroll-hint, .app-notice { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+.tool-scroll-hint, .app-notice, .rules-none { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
 
 /* Create-an-exercise invitation */
 .invite { display: grid; gap: var(--pn-space-3); }
