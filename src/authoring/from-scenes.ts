@@ -425,7 +425,16 @@ export interface FromStatesOptions extends FromScenesOptions {
   /** Pin the place and size of every step the task leaves exactly as it is (its other attributes
    * are pinned by its signature), so "change nothing else" is part of the goal (PADR-0040). */
   pinUnchanged?: boolean;
+  /** Goal clauses (predicate and sentence) appended after from-scenes' own, before anything is
+   * verified (PADR-0047 decision 9.9): a generator's layout clauses and size pin. With them a start
+   * that differs from the goal only in positions is no longer `start_accepted`. */
+  extraClauses?: Array<{ predicate: Predicate; text: Localized }>;
+  /** Near-miss candidates besides those derived from the reference: whole action sequences from the
+   * start, each kept when it fails (see `verifyTask`). */
+  nearMissCandidates?: NearMissCandidate[];
 }
+/** A near-miss candidate a caller supplies: its kind and its whole action sequence. */
+export interface NearMissCandidate { kind: string; steps: OracleStep[] }
 /**
  * The state-based core of from-scenes: a world/2 task from a start and a goal state (world/2 states,
  * as the checker's scene parser produces them), with goal clauses, error classes, a reference
@@ -453,7 +462,7 @@ export function fromStates(startInput: State, goalInput: State, options: FromSta
   // Uniquely labelled steps present in both scenes whose size differs: the solution resizes them.
   const unique = (state: State) => { const all_ = liveSteps(state), seen = new Map<string, number>(); for (const s of all_) seen.set(s.label, (seen.get(s.label) ?? 0) + 1); return new Map(all_.filter(s => s.label !== '' && seen.get(s.label) === 1).map(s => [s.label, s])); };
   const before = unique(start.state), resized = new Set([...unique(goalState)].filter(([label, s]) => { const b = before.get(label); return b !== undefined && (b.width !== s.width || b.height !== s.height); }).map(([label]) => label));
-  const clauses = goalClauses(goalState, frames, { ...options, tolerance }, tokens.of, resized, options.pinUnchanged ? unchangedSteps(start.state, goalState) : []);
+  const clauses = [...goalClauses(goalState, frames, { ...options, tolerance }, tokens.of, resized, options.pinUnchanged ? unchangedSteps(start.state, goalState) : []), ...(options.extraClauses ?? []).map(clause => structuredClone(clause))];
   const goalPredicate = all(...clauses.map(c => c.predicate));
   const tokenize = (state: State): State => {
     const out = structuredClone(state);
@@ -464,7 +473,7 @@ export function fromStates(startInput: State, goalInput: State, options: FromSta
   if ('problem' in planned) return fail('oracle_unavailable', planned.problem);
   const oracleSteps = planned.steps.map(step => ({ name: step.name, params: Object.fromEntries(Object.entries(step.params).map(([key, value]) => [key, (key === 'label' || key === 'name') && typeof value === 'string' ? tokens.of(value) : value])) }));
   if (!oracleSteps.length) fail('scenes_identical', 'start and goal scene describe the same semantic state');
-  const sentences = describePlan(oracleSteps, start.state, goalState, tokens.of, options.layout === 'relative' || options.align === true);
+  const sentences = describePlan(oracleSteps, start.state, goalState, tokens.of, options.layout === 'relative' || options.align === true || (options.extraClauses?.length ?? 0) > 0);
   const counts = { steps: liveSteps(goalState).length, arrows: liveArrows(goalState).length, frames: liveFrames(goalState).length };
   const task: Task = {
     id: taskId,
@@ -488,7 +497,7 @@ export function fromStates(startInput: State, goalInput: State, options: FromSta
     initialState: { objects: {} }, tasks: [task], variants: { generator: 'finite-seeded-v1', cases },
     provenance: { authors: options.authors ?? ['Practonaut contributors'] }, rights: { license: 'CC0-1.0' },
   }));
-  const verified = checked(() => verifyTask(world, taskId, oracleSteps, tokenize(goalState)));
+  const verified = checked(() => verifyTask(world, taskId, oracleSteps, tokenize(goalState), options.nearMissCandidates ?? []));
   return { world, task: world.tasks[0]!, oracle: verified, goal: tokenize(goalState), unmodeled, summary: { ...counts, clauses: clauses.length, errorClasses: task.errorClasses.length } };
 }
 
@@ -498,8 +507,11 @@ function readState(input: State, which: 'start' | 'goal'): State {
   catch (error) { return fail('state_invalid', `the ${which} state is not a world/2 state: ${error instanceof Error ? error.message : 'invalid'}`); }
 }
 
-/** For every variant: goal state passes (counter-probes included), oracle passes, near misses fail. */
-export function verifyTask(world: World, taskId: string, oracle: OracleStep[], goalState: State): TaskOracle {
+/** For every variant: goal state passes (counter-probes included), oracle passes, near misses fail.
+ * `candidates` are near misses a caller supplies (PADR-0047 decision 9.5): each one that is accepted
+ * by the core, leaves the start and fails is kept after the derived ones, once per kind and set of
+ * violated clauses. */
+export function verifyTask(world: World, taskId: string, oracle: OracleStep[], goalState: State, candidates: readonly NearMissCandidate[] = []): TaskOracle {
   const seeds: Record<string, number> = {};
   for (let seed = 0; Object.keys(seeds).length < world.variants.cases.length && seed < 100_000; seed++) {
     const id = world.variants.cases[variantIndex(world, seed)]!.id;
@@ -542,6 +554,16 @@ export function verifyTask(world: World, taskId: string, oracle: OracleStep[], g
       const order = (miss: NearMiss): number => Number(miss.id.slice('near-'.length));
       nearMisses.sort((a, b) => a.violates.length - b.violates.length || order(a) - order(b));
       nearMisses = nearMisses.slice(0, NEAR_MISSES).map((miss, index) => ({ ...miss, id: `near-${index + 1}` }));
+      const supplied = new Set<string>();
+      for (const candidate of candidates) {
+        const tried = runOracle(world, seed, taskId, candidate.steps);
+        if (!tried.ok || stateHash(tried.session.state) === startHash) continue;
+        const violates = clauses.flatMap((clause, index) => holds(clause, tried.session.state) ? [] : [index]);
+        const key = `${candidate.kind}:${violates.join(',')}`;
+        if (!violates.length || supplied.has(key)) continue;
+        supplied.add(key);
+        nearMisses.push({ id: `near-${nearMisses.length + 1}`, kind: candidate.kind, steps: structuredClone(candidate.steps), violates });
+      }
       if (!nearMisses.length) fail('near_miss_unavailable', `no near miss could be derived from the oracle of ${taskId}`);
     }
     for (const miss of nearMisses) {
