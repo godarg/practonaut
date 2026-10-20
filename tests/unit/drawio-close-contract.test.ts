@@ -129,8 +129,15 @@ test('the review\'s counterexample on draw.io: the mirror\'s close and a recover
   browsers[0]!.page().failing = true;
   await recovering.snapshot().catch(() => undefined);
   const old: CloseResult[] = [];
-  const recovered = await timed(t, recovering.recover(initial, result => { old.push(result); }));
-  assert.deepEqual(old, [{ outcome: 'abandoned' }]); around(recovered.atMs, 8_000);
+  const recovery = recovering.recover(initial, result => { old.push(result); });
+  recovery.catch(() => undefined); // A failure is reported by the await below, not as unhandled.
+  // Part one runs on the fake clock: the old browser's close comes back abandoned at the 8 s it was given.
+  const atOld = await advance(t, () => old.length > 0, 40_000);
+  assert.deepEqual(old, [{ outcome: 'abandoned' }]); around(atOld, 8_000);
+  // Part two, the replacement's start, waits on real reads (the archive, the sink's port) and needs no
+  // timer; the fake clock stands still meanwhile. Ticking it while those reads ran made the recovery's
+  // time depend on the machine (CI: 8,750 to 39,000 ms of fake time in 20 to 35 ms of real time).
+  await recovery;
   assert.equal(browsers.length, 2, 'the replacement started on a slot of its own');
   assert.equal(ledger.unreleased(), 3, 'every browser whose end is not proven keeps its slot');
   for (const browser of browsers) browser.closing.finish();
