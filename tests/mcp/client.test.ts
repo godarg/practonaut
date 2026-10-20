@@ -93,3 +93,24 @@ test("the history names the MCP client that acted, on the modern and the legacy 
     assert.deepEqual((await f.observe()).history.map(item => item.actor), [{ kind: "agent", client: "practonaut-parity" }, { kind: "agent", client: "practonaut-parity" }]);
   } finally { await f.close(); }
 });
+test("a layout task's goal conditions reach the agent exactly as the Player's view holds them, judged geometry included (PADR-0047)", { timeout: 60_000 }, async () => {
+  const { layoutWorld } = await import("../support/layout-world.ts");
+  const f = await fixture({ mirror: "off", world: layoutWorld(), taskId: "tidy" });
+  try {
+    const sdk = await sdkClient(f.host);
+    try {
+      const view = await f.observe();
+      assert.equal(view.task.conditions.filter(condition => condition.layout).length, 8);
+      const compact = await sdk.call("observe", { lang: "both" });
+      assert.ok(compact.ok);
+      assert.deepEqual((compact.value as CompactView).task.conditions, view.task.conditions);
+      const full = await sdk.call("observe", { detail: "full", lang: "both" });
+      assert.ok(full.ok);
+      assert.deepEqual((full.value as typeof view).task.conditions, view.task.conditions);
+      const checked = await sdk.call("check_result", { expectedRevision: view.revision, lang: "both" });
+      assert.ok(checked.ok);
+      assert.deepEqual(checked.value, (await f.observe()).result);
+      assert.deepEqual(checked.value.conditions.map(({ met: _met, ...condition }) => condition), view.task.conditions);
+    } finally { await sdk.close(); }
+  } finally { await f.close(); }
+});
