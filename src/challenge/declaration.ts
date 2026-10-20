@@ -11,7 +11,7 @@ import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { BILLING_CLASSES, MODEL_ID } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
 import { generatorId, generatorVersion, type Family } from './families.ts';
-import { countLedger, released, RELEASE, RELEASE_CAP, roundEvents, roundStarts, spentStart, type Ledger } from './ledger.ts';
+import { countLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, spentStart, type Ledger } from './ledger.ts';
 import { HELD_OUT_SPAN, tierOf } from './round-020.ts';
 import { checkUnit, parseUnit, PRACTONAUT_TOOLCHAIN, UnitError } from './units.ts';
 export { tierOf } from './round-020.ts';
@@ -272,9 +272,9 @@ const HELD_OUT_RUNS = SHAPE_B.heldOut * SHAPE_B.agents, ROUND_RUNS = (SHAPE_B.he
 /**
  * Funding read from the release ledger as it was when a unit was declared (PADR-0042 decision 8 as
  * amended): `before`, the runs counted; `reserved`, the runs kept for others — for every other round
- * that is declared, its held-out runs less its own held-out runs that are counted and final (judged,
- * or void; an exempt or local run is not counted and an infra_error is benched again, so neither uses
- * one up); for every other unit admitted before this
+ * that is declared, its held-out runs less its own held-out runs that are final — judged or void (an
+ * infra_error, exempt or not, is benched again, so it uses none up; a held-out run is never a local
+ * model's in 0.3.0); for every other unit admitted before this
  * one (an earlier `admitted` record) and not declared, its 78 held-out runs; and, for a unit on
  * Practonaut's own actions while artifact mode is not accepted, two rounds for foreign toolchains less
  * those declared. The ledger is shared by every checkout and branch, so no admission or declaration
@@ -289,7 +289,7 @@ export function fundingAt(ledger: Ledger, unit: string, round: number, admission
     const declared = own.filter(event => event.event === 'declared').at(-1);
     if (declared) {
       const final = roundStarts(ledger, key.unit, key.round).filter(start => start.purpose === 'held-out' && start.basis === declared.declaration
-        && spentStart(ledger, start) && released(start, ledger.ends.get(start.seq)) === null).length;
+        && spentStart(ledger, start)).length;
       reserved += Math.max(0, declared.heldOutRuns - final);
       if (parseUnit(key.unit).toolchain !== PRACTONAUT_TOOLCHAIN) foreignDeclared++;
       continue;
