@@ -502,10 +502,11 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   const plan = await readPlan(planPath), probe = await readProbe(probePath);
   // The gate runs with the Practonaut the plan pins (PADR-0042 amended, 3.11).
   if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
-  const { set, seeds } = heldOutSet(declaration);
-  await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
   // The pre-probe world regenerated from the plan, never taken from the declaration or the record.
   const probeWorld = sha256Hex(canonicalJson(probeSet(plan).world));
+  if (declaration.development.world.contentHash !== probeWorld || probe.world.contentHash !== probeWorld) refuse('round_files_mismatch', 'the declaration or the pre-probe record names another pre-probe world than the plan makes');
+  const { set, seeds } = heldOutSet(declaration);
+  await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
   // The cheap refusals first: the pushed ledger and runs outside it, before any report is re-verified.
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
   const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));

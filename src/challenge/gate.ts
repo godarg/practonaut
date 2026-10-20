@@ -318,7 +318,6 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     || !isDeepStrictEqual(declaration.generator, probePlan.generator) || declaration.difficulty !== probePlan.difficulty || !isDeepStrictEqual(declaration.development.seeds, probePlan.seeds) || declaration.development.world.contentHash !== input.probeWorld)
     fail('round_files_mismatch', 'the declaration does not repeat its probe plan (unit, round, toolchain, generator, difficulty, seeds, settings, pre-probe world)');
   if (declaration.alpha !== ALPHA[declaration.round]) fail('alpha_invalid', `round ${declaration.round} decides at α = ${ALPHA[declaration.round]}`);
-  if (probe.world.contentHash !== input.probeWorld) fail('round_files_mismatch', 'the pre-probe record names another pre-probe world than the plan makes');
   // The ledger the pre-probe record and the declaration counted is a prefix of the one gated now.
   const lines = ledger.text.slice(0, -1).split('\n');
   for (const [label, at] of [['pre-probe record', probe.ledger], ['declaration', declaration.budget.ledger]] as const)

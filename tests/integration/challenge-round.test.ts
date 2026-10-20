@@ -145,12 +145,23 @@ test('probe and declare refuse runs of the pre-probe outside the ledger and hold
     assert.equal(later.status, 0, later.stderr);
     refused = p.tool(['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', [OPUS, SONNET, HAIKU].join(','), '--out', declaration]);
     assert.equal(refused.status, 2); assert.match(refused.stderr, /run_outside_ledger: 1 model run folder of this round's tasks holds no start entry in the release ledger \(first: repair-5-s1-r1/);
+    await rm(join(later.path, '..'), { recursive: true });
+    p.ok(['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', [OPUS, SONNET, HAIKU].join(','), '--out', declaration]);
+    p.ok(['ledger', 'write']); p.commit('declare');
+    // The gate regenerates the pre-probe world from the plan (review: gate-probe-world-not-regenerated): a
+    // declaration naming another pre-probe world, committed and recorded by a set's manifest, is refused.
+    const tampered = await json(join(p.repo, declaration)); tampered.development.world.contentHash = 'a'.repeat(64);
+    await writeFile(join(p.repo, declaration), JSON.stringify(tampered, null, 2) + '\n'); p.commit('another pre-probe world');
+    const fakeSet = join(dir, 'fake-set'); await mkdir(fakeSet);
+    await writeFile(join(fakeSet, 'instances.json'), JSON.stringify({ basis: { commit: p.git('rev-parse', 'HEAD') } }));
+    refused = p.tool(['gate', '--preflight', '--declaration', declaration, '--set', fakeSet, '--dev', pre.path, '--oracle', 'o', '--random', 'r']);
+    assert.equal(refused.status, 2, refused.stderr); assert.match(refused.stderr, /round_files_mismatch: the declaration or the pre-probe record names another pre-probe world than the plan makes/);
     // Both hold to the plan's Practonaut.
     const value = await json(join(p.repo, plan)); value.toolchain.practonaut = '0.0.1';
     await writeFile(join(p.repo, plan), JSON.stringify(value, null, 2) + '\n'); p.commit('another pin');
-    for (const command of [['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', join(dir, 'x.json')], ['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', OPUS, '--out', declaration]]) {
+    for (const command of [['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', join(dir, 'x.json')], ['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', OPUS, '--out', declaration, '--force']]) {
       refused = p.tool(command);
-      assert.equal(refused.status, 2); assert.match(refused.stderr, /practonaut_version: the round's plan pins Practonaut 0\.0\.1/);
+      assert.equal(refused.status, 2, refused.stderr); assert.match(refused.stderr, /practonaut_version: the round's plan pins Practonaut 0\.0\.1/);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
