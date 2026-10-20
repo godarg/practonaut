@@ -61,7 +61,8 @@ const FORMAL_OPERAND = String.raw`(?:"(?:[^"\\]|\\.)*"|nicht angebunden|unattach
 const FORMAL_COMPARISON = new RegExp(String.raw`(\S+) ([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
 const FORMAL_PAIR = new RegExp(String.raw`(?<=^|\s)([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
 const escapeFormal = (value: string): string => {
-  const text = (part: string): string => part.replace(/[&<>"']/g, char => ENTITIES[char]!);
+  // A canvas's corners "(40, 40)–(760, 440)" break at their spaces, never at the dash (PADR-0047 formal text).
+  const text = (part: string): string => part.replace(/\u2013(?=\()/gu, '\u2013\u2060').replace(/[&<>"']/g, char => ENTITIES[char]!);
   const operand = (part: string): string => text(part.length <= ID_MAX ? part.replace(/ /gu, '\u00a0') : part);
   // An operator whose left operand closed the comparison before it ("… = nicht angebunden) = 1") still
   // travels with its right operand.

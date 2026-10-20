@@ -27,7 +27,7 @@ import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './repo
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupOutlines, groupsOf, judgedBounds, judgedOverlay, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend, type MarkPlacement } from './schematic.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, judgedBounds, judgedOverlay, pictureOverflow, schematicBounds, schematicSvg, textFloorScale, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend, type MarkPlacement } from './schematic.ts';
 import { layoutReasons, type LayoutReason } from '../predicate/index.ts';
 import type { LayoutOverlay } from '../host/protocol.ts';
 
@@ -402,14 +402,16 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     // The judged geometry is drawn like the group outline: on both pictures when they share coordinates.
     const judgedFinal = placed ? judgedOverlay(state, overlays, placements(marks), words, `run${index}-final`) : '';
     if (overlays.length) detail.layout = { overlays, drawn: placed, marks };
+    // Both pictures share one size class, wide enough that the export's smallest text (a frame's name) stays at 12 px.
+    const scale = engine ? textFloorScale(engine.read.smallestText) : 1, sizeWidth = finalView.width * scale;
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
       const groups = engine.box ? groupOutlines(state, words) : '', overlay = groups + judgedFinal;
       detail.groupOverlay = groups !== '';
-      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
-    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView, ...(judgedFinal ? { overlay: judgedFinal } : {}) }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, ...(placed && overlays.length ? { overlay: judgedOverlay(target, overlays, [], words, `run${index}-target`) } : {}) }); detail.targetObjects = boardObjects(target); }
-    detail.overflow = pictureOverflow(finalView.width);
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height }, sizeWidth }) };
+    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView, sizeWidth, ...(judgedFinal ? { overlay: judgedFinal } : {}) }) };
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, sizeWidth: targetView!.width * scale, ...(placed && overlays.length ? { overlay: judgedOverlay(target, overlays, [], words, `run${index}-target`) } : {}) }); detail.targetObjects = boardObjects(target); }
+    detail.overflow = pictureOverflow(sizeWidth);
     // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
     const difference = target && placed ? firstDifference(state, target) : null;
     detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;

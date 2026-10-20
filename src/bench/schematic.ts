@@ -92,6 +92,9 @@ export const PICTURE_FLOOR = 0.6;
  * smallest width of PICTURE_FLOOR px per unit (rounded up to the next 100 units), so a picture is never
  * drawn below the floor (its frame scrolls instead), and a largest of one px per unit. Both pictures of a
  * pair share one viewBox, so they share the class and the scale. */
+/** How much wider a picture's size class must be counted so that its smallest text, `smallest` board
+ * units (an export's frame names are 14), is still drawn at 12 px: the floor is set for 20 units. */
+export const textFloorScale = (smallest: number | null): number => smallest !== null && smallest < 20 ? 20 / smallest : 1;
 export function pictureSizeClass(width: number): string { return `pw-${Math.min(60, Math.max(3, Math.ceil(width / 100)))}`; }
 /** How far a picture overflows a column: 'narrow' when its floor is wider than a phone column (20rem),
  * 'wide' when it is wider than a desktop column (64rem). */
@@ -211,7 +214,7 @@ export function judgedOverlay(state: State, overlays: readonly LayoutOverlay[], 
   return `<g class="sch-judged">${parts.join('')}${clip}${markParts.join('')}</g>`;
 }
 
-export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean; overlay?: string }): string {
+export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean; overlay?: string; sizeWidth?: number }): string {
   const { steps, frames, arrows } = live(state);
   const byId = new Map(steps.map(step => [step.id, step]));
   const parts: string[] = [];
@@ -304,5 +307,5 @@ export function schematicSvg(state: State, options: { prefix: string; label: str
     const first = y + h / 2 - ((rows.length - 1) * leading) / 2 + LABEL * 0.35;
     parts.push(`<text x="${n(x + w / 2)}" y="${n(first)}" text-anchor="middle" class="${filled ? 'sch-label sch-label--on-fill' : 'sch-label'}">${rows.map((row, index) => `<tspan x="${n(x + w / 2)}" dy="${index ? n(leading) : '0'}">${xml(row)}</tspan>`).join('')}</text>`);
   }
-  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureSizeClass(view.width)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}${options.overlay ?? ''}</svg>`;
+  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureSizeClass(options.sizeWidth ?? view.width)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}${options.overlay ?? ''}</svg>`;
 }

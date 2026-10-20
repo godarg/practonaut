@@ -139,8 +139,21 @@ function serialise(node: Element, prefix: string, root: boolean): string {
   return root ? children : `<${node.name}${attributes}>${children}</${node.name}>`;
 }
 
-/** An export, read: its viewBox and its allowlisted content (ids prefixed), not yet placed. */
-export interface EngineSvg { box: Box; content: string }
+/** An export, read: its viewBox and its allowlisted content (ids prefixed), not yet placed, and the
+ * smallest font size of its text in board units (Excalidraw draws a frame's name at 14), or null. */
+export interface EngineSvg { box: Box; content: string; smallestText: number | null }
+function smallestText(node: Element): number | null {
+  let smallest: number | null = null;
+  const visit = (element: Element): void => {
+    if (element.name === 'text') {
+      const size = parseFloat(element.attributes.find(([key]) => key === 'font-size')?.[1] ?? '');
+      if (Number.isFinite(size) && size > 0) smallest = smallest === null ? size : Math.min(smallest, size);
+    }
+    for (const child of element.children) if (typeof child !== 'string') visit(child);
+  };
+  visit(node);
+  return smallest;
+}
 export function readEngineSvg(text: string, prefix: string): EngineSvg {
   if (Buffer.byteLength(text, 'utf8') > MAX_SVG_BYTES) throw new SvgRefused('too large');
   if (!IDENT.test(prefix)) throw new SvgRefused('an invalid id prefix');
@@ -154,7 +167,7 @@ export function readEngineSvg(text: string, prefix: string): EngineSvg {
   const first = root.children.find((child): child is Element => typeof child !== 'string' && ELEMENTS.has(child.name) && child.name !== 'defs');
   const value = (node: Element, key: string): number => Number(node.attributes.find(([name]) => name === key)?.[1] ?? NaN);
   if (first?.name === 'rect' && value(first, 'x') === x && value(first, 'y') === y && value(first, 'width') === width && value(first, 'height') === height && first.children.length === 0) root.children.splice(root.children.indexOf(first), 1);
-  return { box: { x, y, width, height }, content: serialise(root, prefix, true) };
+  return { box: { x, y, width, height }, content: serialise(root, prefix, true), smallestText: smallestText(root) };
 }
 const numeral = (value: number): string => String(Math.round(value * 100) / 100);
 
@@ -165,11 +178,11 @@ const numeral = (value: number): string => String(Math.round(value * 100) / 100)
  * the picture beside it), so a pair shares one coordinate system and one scale; `overlay` (trusted
  * markup the report draws, never from the file) is laid over it in those units.
  */
-export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string }): string {
+export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string; sizeWidth?: number }): string {
   const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
   // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
   const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
-  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(view.width)}" role="img" aria-label="${label}">${content}</svg>`;
+  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(options.sizeWidth ?? view.width)}" role="img" aria-label="${label}">${content}</svg>`;
 }

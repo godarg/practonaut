@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { layoutMarks } from '../../src/bench/details.ts';
 import { layoutMarkText } from '../../src/bench/render.ts';
-import { judgedOverlay } from '../../src/bench/schematic.ts';
+import { judgedOverlay, pictureSizeClass, textFloorScale } from '../../src/bench/schematic.ts';
+import { readEngineSvg } from '../../src/bench/svg.ts';
 import { publicConditions } from '../../src/host/session.ts';
 import type { State, StepV2 } from '../../src/world/types.ts';
 import { aligned, clearOfSteps, everything, inFrame } from '../support/layout-board.ts';
@@ -50,6 +51,18 @@ describe('report: unmet layout clauses', () => {
     const pile: State = structuredClone(LAYOUT_GOAL_STATE);
     for (const id of ['a1', 'a2', 'a3', 'b1', 'b2', 'b3']) Object.assign(pile.objects[id]!, { x: 100, y: 100 });
     assert.equal(layoutMarks(pile, [conditions[0]!]).length, 5);
+  });
+
+  it('size a pair of pictures so that an export\'s smallest text (a frame\'s name at 14 units) stays at 12 px', () => {
+    // Hand-written export: a frame name at 14 px, a label at 20 px.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400"><text x="0" y="12" font-size="14px">Lane A</text><text x="10" y="40" font-size="20px">Pack</text></svg>';
+    assert.equal(readEngineSvg(svg, 'p').smallestText, 14);
+    assert.equal(readEngineSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect x="0" y="0" width="1" height="1"/></svg>', 'p').smallestText, null);
+    assert.equal(textFloorScale(14), 20 / 14);
+    assert.equal(textFloorScale(20), 1);
+    assert.equal(textFloorScale(null), 1);
+    // The floor is 0.6 px per unit for the class of the width counted: 14-unit text at 20/14 of it is 12 px.
+    assert.equal(pictureSizeClass(1000 * textFloorScale(14)), 'pw-15');
   });
 
   it('draw the judged geometry: the canvas with its corners, the boxes of ellipses and diamonds, the segments, the self-loop ring and the marks', () => {
