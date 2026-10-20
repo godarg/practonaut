@@ -279,8 +279,10 @@ are accepted whenever they are ready.
 
 - **Budget:** at most 800 model runs through subscriptions (Claude, GPT, Gemini together), counted
   from zero for 0.3.0: every run of a model agent made for the project through a subscription —
-  gate runs, pre-probes, red-team, examples, acceptance and development runs. Each such run takes an
-  entry in a local append-only ledger before its client starts, and a start past 800 is refused.
+  gate runs, pre-probes, red-team, examples, acceptance and development runs. Each such run is a
+  bench run through the guarded runner (`node tools/challenge.ts bench`) and takes an entry in the
+  repository's one append-only ledger before its client starts; a start past 800 is refused. A
+  client started outside it cannot be counted, so the project starts none (PADR-0042 amended).
   Runs of local models and of the built-in agents are listed, not counted; reviews and subagents are
   not counted. Per unit and round (held-out + pre-probe) × subscription agents ≤ 100, at most three
   subscription agents, at most two rounds per unit. When the budget is used up, nothing new starts
