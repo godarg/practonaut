@@ -27,8 +27,9 @@ import { openDrawioArchive } from './archive.ts';
 import { APP_ORIGIN, HOST_ORIGIN, hostPage } from './host-page.ts';
 import { DRAWIO_ALLOWLIST, DRAWIO_PIN, DRAWIO_URL_PARAMETERS } from './pin.ts';
 import { readBack, writeCheck } from './readback.ts';
+import { freshRemembered, readScene, sceneOf, type DrawioIO, type DrawioScene } from './scene.ts';
 import { DrawioRuntimeError, drawioRuntimePath, readDrawioRuntime, type DrawioPin } from './runtime.ts';
-import { cloneMemory, freshMemory, LAYER, modelXml, ROOT, writeCells, type WriterMemory, type XmlNode } from './writer.ts';
+import { freshMemory, LAYER, modelXml, ROOT, writeCells, type XmlNode } from './writer.ts';
 
 export { DRAWIO_PIN } from './pin.ts';
 export const DRAWIO_APP_VERSION = DRAWIO_PIN.version;
@@ -64,7 +65,6 @@ function checkState(state: State): void {
   validateState(state, 2);
   for (const object of Object.values(state.objects)) if (object.type === 'step' && !isStepV2(object)) throw new AdapterError('unmodeled', 'draw.io holds world/2 steps only');
 }
-interface Scene { xml: string; memory: WriterMemory; committed: XmlNode[] | undefined }
 const dataUri = (value: unknown, type: string): Buffer => {
   const text = String(value ?? ''), prefix = `data:${type};base64,`;
   if (!text.startsWith(prefix)) throw new AdapterError('integrity_failed', `the app's ${type} export is not a base64 data URI`);
@@ -86,10 +86,10 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
     return { body: await archive.read(name), contentType: type };
   };
   const serveHost = async (path: string): Promise<Fulfilment | undefined> => path === '/' ? { body: page, contentType: 'text/html' } : undefined;
-  let shell: BrowserShell | undefined, memory = freshMemory();
-  /** The cells of the last confirmed write: what the app must still hold whenever the adapter reads it
-   * (review m2c, Codex 3). A change made since, such as a cell hidden with visible="0", is integrity_failed. */
-  let committed: XmlNode[] | undefined;
+  let shell: BrowserShell | undefined;
+  /** The writer's memory and the cells of the last confirmed write (scene.ts). A change that reached the
+   * app since that write, such as a cell hidden with visible="0", is integrity_failed at the next read. */
+  const remembered = freshRemembered();
   const current = (): BrowserShell => shell!;
   const limit = (opts: AdapterOptions = {}): number => operationMs(opts.timeoutMs, options.timeoutMs);
   const request = async <T,>(message: Record<string, unknown>, event: string): Promise<T> =>
@@ -106,13 +106,6 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
   // the same PNG whatever the browser showed before (decision 5.1).
   const load = async (xml: string): Promise<void> => { await request({ action: 'load', xml: EMPTY_MODEL }, 'load'); await request({ action: 'load', xml }, 'load'); };
   const disallowed = (): boolean => current().networkAttempts().length > 0;
-  /** The app's current state, from its export, with the integrity check. */
-  const readCurrent = async (): Promise<{ state: State; issues: string[]; exported: string }> => {
-    const exported = await exportXml(), parsed = await cellsOf(exported);
-    if ('error' in parsed) return { state: { objects: {} }, issues: [`the export does not parse (${parsed.error})`], exported };
-    const result = readBack(parsed.cells);
-    return { ...result, issues: [...(committed ? writeCheck(committed, parsed.cells) : []), ...result.issues], exported };
-  };
   /** Writes `expected` cells (or hand-written XML) and runs every check on what comes back. */
   const writeAndCheck = async (cells: XmlNode[], xml: string = modelXml(cells)): Promise<{ state: State; issues: string[]; exported: string }> => {
     await load(xml);
@@ -126,19 +119,18 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
     await current().wait(() => current().page.waitForFunction('window.__pn && window.__pn.ready === true', undefined, { timeout: 30_000, polling: 10 }));
   };
   const writeState = async (state: State): Promise<{ state: State; issues: string[] }> => {
-    const cells = writeCells(state, memory), result = await writeAndCheck(cells);
-    if (!result.issues.length) committed = cells;
+    const cells = writeCells(state, remembered.memory), result = await writeAndCheck(cells);
+    if (!result.issues.length) remembered.committed = cells;
     return result;
   };
-  const scene: SceneIO<Scene> = {
-    read: async () => ({ xml: await exportXml(), memory: cloneMemory(memory), committed: structuredClone(committed) }),
-    write: async saved => { memory = cloneMemory(saved.memory); committed = structuredClone(saved.committed); await load(saved.xml); },
-    load: async saved => { await startPage(); memory = cloneMemory(saved.memory); committed = structuredClone(saved.committed); await load(saved.xml); },
-  };
+  const io: DrawioIO = { exportXml, cellsOf, load, startPage };
+  /** The app's current state, from its export: integrity, and every difference from the last confirmed write. */
+  const readCurrent = (): Promise<{ state: State; issues: string[]; exported: string }> => readScene(io, remembered);
+  const scene: SceneIO<DrawioScene> = sceneOf(io, remembered);
   const ready = await startShell({ signal: options.signal, origins: { [HOST_ORIGIN]: serveHost, [APP_ORIGIN]: serveApp }, sandbox: 'required', ...(seams.chromium ? { chromium: seams.chromium } : {}), ...(seams.launchContext ? { launchContext: seams.launchContext } : {}), ...(seams.launchMs ? { launchMs: seams.launchMs } : {}), ...(seams.initializeMs ? { initializeMs: seams.initializeMs } : {}) }, async started => {
     shell = started;
     await startPage();
-    memory = freshMemory();
+    remembered.memory = freshMemory();
     const result = await writeState(initialState);
     if (result.issues.length) throw new AdapterError('integrity_failed', `the first scene did not come back intact: ${result.issues[0]}`);
     if (!sameLive(result.state, initialState)) throw new AdapterError('real_tool_disagrees', 'the first scene differs after read-back');
@@ -172,7 +164,7 @@ export async function createDrawioAdapter(initialState: State, options: AdapterO
       checkState(state);
       const refused = refusedByConstraint(state);
       if (refused) return refused;
-      memory = freshMemory();
+      remembered.memory = freshMemory();
       return confirmed(await writeState(state), state);
     }, opts)),
     apply: (transition, opts) => serial(() => transaction(async () => {
