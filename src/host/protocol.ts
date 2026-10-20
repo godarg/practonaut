@@ -1,5 +1,5 @@
 /** Phase-2 shared wire contract. Host owns validation and the sole committed Session. */
-import type { Action, ActionDefinition, Effect, Failure, Localized, LogEntry, Rule, State, World } from "../world/types.ts";
+import type { Action, ActionDefinition, Anchor, Axis, Effect, Failure, Localized, LogEntry, Rule, State, World } from "../world/types.ts";
 
 export const HOST_ROUTES = {
   bootstrap: "/api/bootstrap", resume: "/api/resume", observe: "/api/observe", act: "/api/act",
@@ -22,7 +22,20 @@ export interface PublicCondition {
   id: string; text: Localized;
   /** Complete formal diagnosis, when the exact predicate has a readable narration. */
   formalText?: Localized;
+  /** A layout clause's operator and parameters (PADR-0047 decision 7): what the Player and the
+   * report draw as the judged geometry. A projection of the goal clause alone, never of a board. */
+  layout?: LayoutOverlay;
 }
+/** A layout selection's scope, tagged so a frame named "all" is never every object. */
+export type LayoutWhere = { kind: "all" } | { kind: "outside" } | { kind: "frame"; name: string };
+export interface LayoutScope { type: "step" | "arrow"; scope: LayoutWhere; count: number }
+export type LayoutOverlay =
+  | { op: "noOverlap"; steps: LayoutScope; gap: number }
+  | { op: "aligned"; steps: LayoutScope; axis: Axis; anchor: Anchor; tolerance: number }
+  | { op: "evenlySpaced"; steps: LayoutScope; axis: Axis; tolerance: number }
+  | { op: "within"; steps: LayoutScope; canvas: { x: number; y: number; width: number; height: number } }
+  | { op: "arrowsNoCrossing"; arrows: LayoutScope }
+  | { op: "arrowsClearOfSteps"; arrows: LayoutScope; steps: LayoutScope };
 export interface ConditionResult extends PublicCondition { met: boolean }
 export interface PublicCheck {
   scope: "end-state-only"; hash: string; revision: number; passed: boolean;

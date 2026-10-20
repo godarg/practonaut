@@ -7,7 +7,8 @@ import { selectVariant } from '../world/variant.ts';
 import { actionTemplates } from '../player/messages.ts';
 import { styleNames } from '../world/style-names.ts';
 import { sha256Hex, stateHash } from '../canonical/index.ts';
-import type { Action, Effect, Localized, Predicate, Task, World, State, Value } from '../world/types.ts';
+import { isLayoutPredicate, type Action, type Effect, type Localized, type Predicate, type Task, type World, type State, type Value } from '../world/types.ts';
+import { layoutFormal, layoutOverlay, layoutSentence } from './layout-text.ts';
 import type { ActRequest, HistoryItem, HostErrorCode, HostEvent, HostReply, HostView, MutationDelta, MutationReply, PracticeController, PracticeLimits, PublicCheck, PublicCondition, ResetRequest, RevisionRequest, ServeOptions, VariantRequest,TransactionContext } from './protocol.ts';
 import { TASK_LIMITS } from '../world/schema.ts';
 import { toRaw } from '../adapters/excalidraw/raw.ts';
@@ -109,9 +110,13 @@ export function publicConditions(task: Task): Array<PublicCondition & { predicat
     const formalText = describePredicate(predicate);
     // world/2 tasks state their own sentence per clause; the formal text stays available beside it.
     const text = task.conditionTexts?.[index] ?? describePreparedRepair(predicate, task.initialState) ?? describeCondition(predicate, task.initialState);
-    return { id: `goal-${index + 1}`, text: text ?? formalText, ...(text ? { formalText } : {}), predicate };
+    // A layout clause carries its judged geometry for the pictures (PADR-0047 decision 7).
+    return { id: `goal-${index + 1}`, text: text ?? formalText, ...(text ? { formalText } : {}), ...(isLayoutPredicate(predicate) ? { layout: layoutOverlay(predicate) } : {}), predicate };
   });
 }
+/** A public condition as every surface carries it (Player view, check result, MCP): the predicate stays
+ * inside the host. */
+export const shownCondition = ({ id, text, formalText, layout }: PublicCondition): PublicCondition => ({ id, text, ...(formalText ? { formalText } : {}), ...(layout ? { layout } : {}) });
 
 /** The whole finite T3 tree is matched, including its binding graph and frame clauses.
  * No fragment receives an independent verdict, and no predicate is rewritten. */
@@ -166,6 +171,8 @@ function describePreparedRepair(p: Predicate, initial: State | undefined): Local
 
 /** Only exact public AST shapes receive plain-language narration. Predicate authority stays untouched. */
 function describeCondition(p: Predicate, initial: State | undefined): Localized | undefined {
+  // Every layout clause has one of three selection shapes, so each has its sentence (PADR-0047 decision 6).
+  if (isLayoutPredicate(p)) return layoutSentence(p);
   const words = (en: string, de: string): Localized => ({ en, de });
   const label = (id: string): string | undefined => {
     const object = initial?.objects[id];
@@ -202,6 +209,7 @@ function describePredicate(p: Predicate): Localized {
     const fields: Record<string, string> = language === 'en' ? { label: 'label', name: 'name', frameId: 'frame', from: 'start step', to: 'end step', id: 'identity', x: 'horizontal position', y: 'vertical position', width: 'width', height: 'height', deleted: 'deleted', fontFamily: 'font', shape: 'shape', groupId: 'group', stroke: 'stroke colour', fill: 'fill colour' } : { label: 'Beschriftung', name: 'Name', frameId: 'Frame', from: 'Anfangsschritt', to: 'Endschritt', id: 'Identität', x: 'horizontale Position', y: 'vertikale Position', width: 'Breite', height: 'Höhe', deleted: 'gelöscht', fontFamily: 'Schrift', shape: 'Form', groupId: 'Gruppe', stroke: 'Linienfarbe', fill: 'Füllfarbe' };
     const value = (v: Value): string => v.kind === 'literal' ? (v.value === null ? language === 'en' ? 'unattached' : 'nicht angebunden' : typeof v.value === 'string' ? JSON.stringify(v.value) : typeof v.value === 'boolean' ? (v.value ? language === 'en' ? 'true' : 'wahr' : language === 'en' ? 'false' : 'falsch') : String(v.value)) : v.kind === 'count' ? `${language === 'en' ? 'number of' : 'Anzahl'} ${names[v.type]} [${v.as}] (${predicate(v.where)})` : `${v.variable}.${fields[v.field] ?? v.field}`;
     const predicate = (node: Predicate): string => {
+      if (isLayoutPredicate(node)) return layoutFormal(node, language);
       switch (node.op) {
         case 'true': return language === 'en' ? 'all' : 'alle';
         case 'false': return language === 'en' ? 'none' : 'keine';
@@ -264,7 +272,7 @@ export async function createPracticeController(input: World, options: PracticeSe
     return structuredClone({
       schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
-      task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) })), hintCount: selectedTask.hints.length },
+      task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(shownCondition), hintCount: selectedTask.hints.length },
       tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
       log: candidate.log, history, actions: candidate.world.actions, rules: candidate.world.rules, mirror: mode,
       mirrorHealth: { status: closed ? 'closed' : mode === 'off' ? 'model-only' : mirror ? 'available' : 'unavailable', recoveries },
@@ -459,7 +467,7 @@ export async function createPracticeController(input: World, options: PracticeSe
         if (closed) return rejected(reject('mirror_unavailable', 'Session closed'));
         if (mode === 'required' && !mirror) return rejected(reject('mirror_unavailable', 'Mirror unavailable'));
         const full = evaluate(task().goal, session.state); if (!full.ok) return rejected(reject(full.error.code, full.error.message));
-        const conditions = publicConditions(task()).map(({ id, text, formalText, predicate }) => { const checked = evaluate(predicate, session.state); if (!checked.ok) throw checked.error; return { id, text, ...(formalText ? { formalText } : {}), met: checked.value }; });
+        const conditions = publicConditions(task()).map(condition => { const checked = evaluate(condition.predicate, session.state); if (!checked.ok) throw checked.error; return { ...shownCondition(condition), met: checked.value }; });
         const used = checksUsed + 1;
         const checked: PublicCheck = { scope: 'end-state-only', hash: session.hash, revision, passed: full.value, conditions, errors: consequences(), mode: mode === 'required' ? 'real-engine' : 'model-only', practiceEvidence: !closed && mode === 'required' && !!mirror, ...(checkLimit ? { checksRemaining: checkLimit.limit - used } : {}) };
         admit(makeView(session, { result: checked }, { actions: actionsUsed, checks: used }));deadline(context); result = checked; checksUsed = used;

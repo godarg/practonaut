@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { ACTION_NAMES, V2_ACTION_NAMES, SHAPES, STROKE_COLORS, FILL_COLORS, type ActionDefinition, type ActionName, type Era, type Parameter, type Predicate, type Value, type State, type Step, type World } from "./types.ts";
-import { RUNTIME_LIMITS } from "./limits.ts";
+import { ACTION_NAMES, V2_ACTION_NAMES, SHAPES, STROKE_COLORS, FILL_COLORS, isLayoutPredicate, type ActionDefinition, type ActionName, type Era, type Parameter, type Predicate, type Value, type State, type Step, type World } from "./types.ts";
+import { LAYOUT_LIMITS, RUNTIME_LIMITS } from "./limits.ts";
+import { LAYOUT_MIN_COUNT, layoutProblem, selectionsOf, type LayoutPlace } from "./layout.ts";
 import { preflightJson, preflightPredicate, WorldError } from "./preflight.ts";
 import { isDisplayText } from './display-text.ts';
 import { adapterIdsFor, appVersionsFor, checkWorldApp, type AdapterId, type AppVersion } from "./apps.ts";
@@ -33,6 +34,12 @@ export const ValueSchemaV2: z.ZodType<Value> = z.lazy(() => z.union([
   z.strictObject({ kind: z.literal("field"), variable: id, field: z.enum(FIELD_NAMES_V2) }),
   z.strictObject({ kind: z.literal("count"), type: objType, as: id, where: PredicateSchemaV2 }),
 ]));
+/** A layout clause's selection (PADR-0047 decision 2): the type, the bound variable, a `where` that
+ * world validation holds to three shapes, and the number of objects it must select. */
+const selection = (type: "step" | "arrow", min: number) => z.strictObject({ type: z.literal(type), as: id, where: PredicateSchemaV2, count: z.number().int().min(min).max(LAYOUT_LIMITS.count) });
+const layoutPixels = z.number().int().min(0).max(10_000);
+const layoutCoordinate = z.number().int().min(-LAYOUT_LIMITS.range).max(LAYOUT_LIMITS.range);
+const layoutAxis = z.enum(["x", "y"]);
 export const PredicateSchemaV2: z.ZodType<Predicate> = z.lazy(() => z.union([
   z.strictObject({ op: z.enum(["true", "false"]) }),
   z.strictObject({ op: z.enum(["all", "any"]), args: z.array(PredicateSchemaV2).max(4096) }),
@@ -41,6 +48,15 @@ export const PredicateSchemaV2: z.ZodType<Predicate> = z.lazy(() => z.union([
   z.strictObject({ op: z.literal("near"), left: ValueSchemaV2, right: ValueSchemaV2, tolerance: z.number().int().min(0).max(1_000_000) }),
   z.strictObject({ op: z.enum(["contains", "startsWith"]), left: ValueSchemaV2, right: ValueSchemaV2 }),
   z.strictObject({ op: z.enum(["exists", "every"]), type: objType, as: id, where: PredicateSchemaV2 }),
+  // Layout operators (PADR-0047 decision 3); world/1 predicates (PredicateSchema) never admit them.
+  z.strictObject({ op: z.literal("noOverlap"), select: selection("step", LAYOUT_MIN_COUNT.noOverlap), gap: layoutPixels }),
+  z.strictObject({ op: z.literal("aligned"), select: selection("step", LAYOUT_MIN_COUNT.aligned), axis: layoutAxis, anchor: z.enum(["start", "center", "end"]), tolerance: layoutPixels }),
+  z.strictObject({ op: z.literal("evenlySpaced"), select: selection("step", LAYOUT_MIN_COUNT.evenlySpaced), axis: layoutAxis, tolerance: layoutPixels }),
+  z.strictObject({ op: z.literal("within"), select: selection("step", LAYOUT_MIN_COUNT.within), x: layoutCoordinate, y: layoutCoordinate,
+    width: z.number().int().min(1).max(2 * LAYOUT_LIMITS.range), height: z.number().int().min(1).max(2 * LAYOUT_LIMITS.range) })
+    .refine(canvas => canvas.x + canvas.width <= LAYOUT_LIMITS.range && canvas.y + canvas.height <= LAYOUT_LIMITS.range, "the canvas leaves the judged range of ±1,000,000"),
+  z.strictObject({ op: z.literal("arrowsNoCrossing"), select: selection("arrow", LAYOUT_MIN_COUNT.arrowsNoCrossing) }),
+  z.strictObject({ op: z.literal("arrowsClearOfSteps"), select: selection("arrow", LAYOUT_MIN_COUNT.arrowsClearOfSteps), steps: selection("step", LAYOUT_MIN_COUNT.arrowsClearOfSteps) }),
 ]));
 const base = { id: objectId, deleted: z.boolean() };
 export const ObjectSchema = z.discriminatedUnion("type", [
@@ -184,8 +200,20 @@ function validateBindings(p: Predicate, scope = new Set<string>()): void {
     case "exists": case "every": validateBindings(p.where, new Set([...scope, p.as])); break;
     case "eq": case "lt": case "lte": case "gt": case "gte": case "near": case "contains": case "startsWith": val(p.left); val(p.right); break;
     case "true": case "false": break;
+    // A selection binds its own variable in its own `where` only (PADR-0047 decision 11).
+    default: if (isLayoutPredicate(p)) for (const selection of selectionsOf(p)) validateBindings(selection.where, new Set([...scope, selection.as]));
   }
 }
+/** A layout clause in a place PADR-0047 decision 1.2 forbids, or with another selection shape, is
+ * refused by name. */
+function requireLayoutPlace(p: Predicate, place: LayoutPlace, where: string): void {
+  const problem = layoutProblem(p, place);
+  if (problem) throw new WorldError(`${where}: ${problem}`);
+}
+/** Whether a predicate holds a layout operator anywhere. */
+function hasLayout(p: Predicate): boolean { return layoutProblem(p, "none") !== undefined; }
+/** Whether a predicate holds a `within` clause at a place a layout clause may stand. */
+const usesWithin = (p: Predicate): boolean => p.op === "within" || (p.op === "all" && p.args.some(arg => arg.op === "within")) || (p.op === "not" && p.arg.op === "within");
 /** The era a state belongs to: any world/2 field or a frameless step/arrow makes it world/2. */
 export function inferEra(raw: unknown): Era {
   if (!raw || typeof raw !== "object" || !("objects" in raw)) return 1;
@@ -290,11 +318,25 @@ export function validateWorld(raw: unknown): World {
   for (const a of w.actions) {
     for (const p of Object.values(a.parameters)) if (p.min !== undefined && p.max !== undefined && p.min > p.max) throw new WorldError("parameter min exceeds max");
     a.preconditions.forEach(validatePredicate);
+    // No application refuses an action because of layout (PADR-0047 decision 1.2).
+    a.preconditions.forEach(p => requireLayoutPlace(p, "none", `action ${a.name}`));
   }
-  for (const r of w.rules) r.preconditions.forEach(validatePredicate);
+  for (const r of w.rules) { r.preconditions.forEach(validatePredicate); r.preconditions.forEach(p => requireLayoutPlace(p, "none", `rule ${r.id}`)); }
   for (const t of w.tasks) {
     validatePredicate(t.goal); unique(t.errorClasses.map(e => e.id), "error class"); t.errorClasses.forEach(e => validatePredicate(e.when));
     if (t.conditionTexts !== undefined && t.conditionTexts.length !== goalClauses(t.goal)) throw new WorldError(`task ${t.id} needs one condition text per goal clause`);
+    requireLayoutPlace(t.goal, "goal", `task ${t.id} goal`);
+    for (const e of t.errorClasses) requireLayoutPlace(e.when, "when", `task ${t.id} error class ${e.id}`);
+    const predicates = [t.goal, ...t.errorClasses.map(e => e.when)];
+    if (!predicates.some(hasLayout)) continue;
+    // `within` names absolute coordinates; an offset would move the board but not the canvas (decision 1.4).
+    if (predicates.some(usesWithin) && w.variants.cases.some(c => c.layoutOffset.x !== 0 || c.layoutOffset.y !== 0)) throw new WorldError(`task ${t.id} states a canvas (within): every variant case needs layoutOffset (0, 0)`);
+    // Every box a layout clause can read starts inside the judged range (decision 1.5).
+    const start = t.initialState ?? w.initialState;
+    for (const o of Object.values(start.objects)) {
+      if (o.type !== "step" || o.deleted) continue;
+      if ([o.x, o.y, o.x + o.width, o.y + o.height].some(edge => Math.abs(edge) > LAYOUT_LIMITS.range)) throw new WorldError(`task ${t.id} has layout conditions, and step ${o.id} of its start has an edge outside ±${LAYOUT_LIMITS.range}`);
+    }
   }
   for (const recording of w.provenance.recordings) if (!w.rights.recordings.some(r => r.id === recording)) throw new WorldError("missing recording rights");
   // Zod optional keys also admit undefined in TypeScript; preflight forbids undefined at runtime.

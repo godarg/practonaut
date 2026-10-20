@@ -1,20 +1,42 @@
 import { validatePredicate, validateState, WorldError } from "../world/schema.ts";
 import { RUNTIME_LIMITS } from "../world/limits.ts";
-import type { Failure, Predicate, Scalar, State, Value, WorldObject } from "../world/types.ts";
+import { layoutProblem } from "../world/layout.ts";
+import { isLayoutPredicate, type Failure, type Predicate, type Scalar, type State, type Value, type WorldObject } from "../world/types.ts";
+import { analyse, layoutCharge, LayoutRangeError } from "./layout.ts";
+export { layoutCharge, layoutReasons, LayoutRangeError, type LayoutReason } from "./layout.ts";
 
 export type Evaluation = { ok: true; value: boolean; steps: number } | { ok: false; error: Failure };
 class EvaluationError extends Error {
   readonly code: Failure["code"];
   constructor(code: Failure["code"], message: string) { super(message); this.code = code; }
 }
-/** Every AST/value/visited object is charged, even on a short-circuit path. No executable input. */
-export function evaluate(predicate: Predicate, state: State, options: { fuel?: number } = {}): Evaluation {
+/** The step meter of one evaluation. `tick(n)` debits n steps; a charge that is not a non-negative
+ * safe integer is `checker_invalid` (a malformed formula never passes as a number, PADR-0047
+ * decision 4), more than the fuel is `checker_fuel_exhausted`. */
+export interface Meter { tick(charge?: number): void; readonly steps: number }
+export function createMeter(fuel: number): Meter {
   let steps = 0;
+  return {
+    tick(charge = 1): void {
+      if (!Number.isSafeInteger(charge) || charge < 0) throw new EvaluationError("checker_invalid", `a predicate charge must be a non-negative whole number, not ${String(charge)}`);
+      steps += charge;
+      if (steps > fuel) throw new EvaluationError("checker_fuel_exhausted", "predicate step budget exhausted");
+    },
+    get steps() { return steps; },
+  };
+}
+/** Every AST/value/visited object is charged, even on a short-circuit path. No executable input. A
+ * layout clause is charged its whole formula before it looks at any position (PADR-0047). */
+export function evaluate(predicate: Predicate, state: State, options: { fuel?: number } = {}): Evaluation {
   const fuel = options.fuel ?? RUNTIME_LIMITS.checkerFuel;
-  const tick = (): void => { if (++steps > fuel) throw new EvaluationError("checker_fuel_exhausted", "predicate step budget exhausted"); };
+  const meter = createMeter(fuel);
+  const tick = (charge?: number): void => meter.tick(charge);
   try {
     if (!Number.isSafeInteger(fuel) || fuel < 0 || fuel > RUNTIME_LIMITS.checkerFuel) throw new EvaluationError("checker_invalid", "fuel must be between 0 and the ceiling");
     const ast = validatePredicate(predicate);
+    // A layout clause stands only where its cost adds (PADR-0047 decision 1.2), with a closed selection.
+    const misplaced = layoutProblem(ast, "evaluate");
+    if (misplaced) throw new EvaluationError("checker_invalid", misplaced);
     const normalized = validateState(state);
     const objects = Object.keys(normalized.objects).sort().map(id => normalized.objects[id]!);
     type Env = Map<string, WorldObject>;
@@ -45,6 +67,11 @@ export function evaluate(predicate: Predicate, state: State, options: { fuel?: n
     };
     const pred = (p: Predicate, env: Env): boolean => {
       tick();
+      if (isLayoutPredicate(p)) {
+        // The whole cost first, from the number of objects and the expected counts alone.
+        tick(layoutCharge(p, objects.length));
+        return analyse(p, objects, 1).length === 0;
+      }
       switch (p.op) {
         case "true": return true;
         case "false": return false;
@@ -71,9 +98,10 @@ export function evaluate(predicate: Predicate, state: State, options: { fuel?: n
         }
       }
     };
-    return { ok: true, value: pred(ast, new Map()), steps };
+    return { ok: true, value: pred(ast, new Map()), steps: meter.steps };
   } catch (error) {
-    if (error instanceof EvaluationError) return { ok: false, error: { code: error.code, message: error.message, details: { steps, fuel } } };
+    if (error instanceof EvaluationError) return { ok: false, error: { code: error.code, message: error.message, details: { steps: meter.steps, fuel } } };
+    if (error instanceof LayoutRangeError) return { ok: false, error: { code: "checker_invalid", message: error.message, details: { steps: meter.steps, fuel } } };
     if (error instanceof WorldError) return { ok: false, error: { code: "checker_invalid", message: error.message, details: {} } };
     throw error;
   }

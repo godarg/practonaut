@@ -2293,6 +2293,368 @@
             "where"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "noOverlap"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "step"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "gap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "op",
+            "select",
+            "gap"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "aligned"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "step"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "axis": {
+              "type": "string",
+              "enum": [
+                "x",
+                "y"
+              ]
+            },
+            "anchor": {
+              "type": "string",
+              "enum": [
+                "start",
+                "center",
+                "end"
+              ]
+            },
+            "tolerance": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "op",
+            "select",
+            "axis",
+            "anchor",
+            "tolerance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "evenlySpaced"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "step"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 3,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "axis": {
+              "type": "string",
+              "enum": [
+                "x",
+                "y"
+              ]
+            },
+            "tolerance": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "op",
+            "select",
+            "axis",
+            "tolerance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "within"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "step"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "x": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "y": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000000
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000000
+            }
+          },
+          "required": [
+            "op",
+            "select",
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "arrowsNoCrossing"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "arrow"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "op",
+            "select"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "arrowsClearOfSteps"
+            },
+            "select": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "arrow"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "steps": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "step"
+                },
+                "as": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "where": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 256
+                }
+              },
+              "required": [
+                "type",
+                "as",
+                "where",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "op",
+            "select",
+            "steps"
+          ],
+          "additionalProperties": false
         }
       ]
     }
