@@ -4,12 +4,13 @@
 // test-only preload `tests/support/host-deadline-seam.ts`, which records every real `browser.close()`
 // and, as asked, throttles the renderer, blocks the test process's event loop, or holds the close.
 // `--load` adds host load beside the attempts: CPU workers and file churn in the OS temporary
-// directory (where Playwright keeps Chromium's profile). `--beside <test file>` runs that test file
-// again and again in its own `node --test` process while the attempts run, as `test:integration`
-// (two files at a time) ran `challenge-round.test.ts` beside `host-deadline.test.ts` in both failed
-// Windows runs; its results are kept, not judged.
+// directory (where Playwright keeps Chromium's profile). `--beside <test file>[,<test file>…]` runs
+// those files one after the other, again and again, in their own `node --test` process while the
+// attempts run, as `test:integration` (two files at a time) ran `challenge-round.test.ts` beside
+// `host-deadline.test.ts` in both failed Windows runs — the tests that file held then are now the
+// 0.3.0 gate's challenge-*.test.ts files; its results are kept, not judged.
 //
-//   npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0] [--beside <file>] [--require-pass]
+//   npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0] [--beside <file,…>] [--require-pass]
 //
 // `--require-pass` (the repeat workflow) makes it exit 1 unless each test ran in every attempt and
 // passed, read from each attempt's TAP report with tools/require-test-passed.ts.
@@ -125,7 +126,8 @@ async function main(): Promise<void> {
   };
   const runs = option('--runs', 30, 1), cpu = option('--cpu', 20, 1), block = option('--block', 0, 0), load = option('--load', 0, 0), hold = option('--hold', 0, 0);
   const besideIndex = args.indexOf('--beside'), beside = besideIndex >= 0 ? args[besideIndex + 1] : undefined, requirePass = args.includes('--require-pass');
-  if (besideIndex >= 0 && !beside?.endsWith('.test.ts')) throw new Error('--beside needs a test file');
+  const besideFiles = beside === undefined ? [] : beside.split(',');
+  if (besideIndex >= 0 && (!besideFiles.length || besideFiles.some(file => !file.endsWith('.test.ts')))) throw new Error('--beside needs one or more test files, separated by commas');
   const git = (...command: string[]): string => spawnSync('git', command, { encoding: 'utf8' }).stdout.trim();
   const commit = git('rev-parse', '--short', 'HEAD'), dirty = git('status', '--porcelain').length > 0;
   const srcChanged = git('status', '--porcelain', '--', 'src').length > 0;
@@ -150,7 +152,8 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
   const runPartner = (run: number): void => {
     if (!beside || attemptsDone) return;
     const started = performance.now();
-    const child = spawn(process.execPath, ['--import', './tests/support/test-home.ts', '--test', '--test-reporter=tap', `--test-reporter-destination=${join(root, `beside-${run}.tap`)}`, beside], { stdio: 'ignore' });
+    // One file at a time, as the tests of the one file they were ran one after the other.
+    const child = spawn(process.execPath, ['--import', './tests/support/test-home.ts', '--test', '--test-concurrency=1', '--test-reporter=tap', `--test-reporter-destination=${join(root, `beside-${run}.tap`)}`, ...besideFiles], { stdio: 'ignore' });
     partner = new Promise(done => child.once('close', code => { partnerRuns.push({ run, exitCode: code, ms: Math.round(performance.now() - started) }); runPartner(run + 1); done(); }));
   };
   runPartner(1);

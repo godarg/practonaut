@@ -168,20 +168,23 @@ was lost), except the author practice host's, whose check was inline there and i
 own now.
 
 - `npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0]
-  [--beside <file>] [--require-pass]` (opt-in) runs each of the two tests unchanged in its own
-  `node --test` process, `--runs` times, with the preload `tests/support/host-deadline-seam.ts`
-  (it patches `chromium.launch`): every real `browser.close()` is timed, the renderer is throttled
-  after the first scene write (`--cpu`, `Emulation.setCPUThrottlingRate`), the test process's event
-  loop is blocked for `--block` ms at a time, and `--hold` ms pass before a close starts (a stand-in
-  for a slow close). `--load` adds CPU workers and file churn in the temporary directory;
-  `--beside` runs another test file again and again meanwhile. Playwright's browser-process log
-  (`DEBUG=pw:browser`) lands in each attempt's TAP report, and the summary splits each close into
-  Chromium's exit and the profile removal. It writes
+  [--beside <file,…>] [--require-pass]` (opt-in) runs each of the two tests unchanged in its own
+  `node --test` process, `--runs` times, with the preload `tests/support/host-deadline-seam.ts` (it
+  patches `chromium.launch`): every real `browser.close()` is timed, the renderer is throttled after
+  the first scene write (`--cpu`, `Emulation.setCPUThrottlingRate`), the test process's event loop
+  is blocked for `--block` ms at a time, and `--hold` ms pass before a close starts (a stand-in for
+  a slow close). `--load` adds CPU workers and file churn in the temporary directory; `--beside`
+  runs other test files, one after the other, again and again meanwhile. Playwright's
+  browser-process log (`DEBUG=pw:browser`) lands in each attempt's TAP report, and the summary
+  splits each close into Chromium's exit and the profile removal. It writes
   `.local/amplify-host-deadline/<time>-<commit>-<random>.json`. `--require-pass` exits 1 unless each
   test ran and passed in every attempt (read with `tools/require-test-passed.ts`).
-- `.github/workflows/host-deadline-repeat.yml` (by hand) runs the amplifier on each CI platform in
-  5 jobs of 30 attempts per test, without throttling and beside `challenge-round.test.ts`, with
-  `--require-pass`, and uploads the record after a pass too.
+- `.github/workflows/host-deadline-repeat.yml` (by hand) runs the amplifier on each CI platform in 5
+  jobs of 30 attempts per test, without throttling and beside the 0.3.0 gate's integration files
+  (`challenge-round`, `challenge-ledger-home`, `challenge-probe`, `challenge-declare`,
+  `challenge-recover`, `challenge-killed`: the tests `challenge-round.test.ts` held at the time of
+  the measurements below, now split), with `--require-pass`, and uploads the record after a pass
+  too.
 
 Measured 2026-10-18/19 on one shared machine (other work running beside it), macOS 27 (Apple M4,
 10 cores, Node 22); c645e5f has the product code before this change, b1b071f the named error:
@@ -352,7 +355,7 @@ The CI after-run follows once this branch is on `main` (a maintainer step).
 | Ubuntu, Node 24 and 26 | CI job `node <version> (ubuntu-latest)`, not a required check: check, unit, build, integration, MCP and pack. |
 | Ubuntu, Node 22, by hand | `.github/workflows/ci-recipe-check.yml` (`workflow_dispatch` only, not a required check): the CI recipe of `examples/ci/` with the packed checkout and the oracle agent; `plant_regression` must make it fail ([benchmarks](benchmarks/README.md) §7). |
 | Ubuntu, macOS, Windows (Node 22), by hand | `.github/workflows/native-open-repeat.yml` (`workflow_dispatch` only, not a required check): the H1 native file test alone, 20 jobs per platform after the engine build, evidence uploaded on failure ([Native Open ordering](#native-open-ordering)). |
-| Ubuntu, macOS, Windows (Node 22), by hand | `.github/workflows/host-deadline-repeat.yml` (`workflow_dispatch` only, not a required check): the two real-mirror host deadline tests, 5 jobs of 30 attempts each per platform beside `challenge-round.test.ts`, every browser close timed, the record uploaded after a pass too ([Host deadline tests](#host-deadline-tests)). |
+| Ubuntu, macOS, Windows (Node 22), by hand | `.github/workflows/host-deadline-repeat.yml` (`workflow_dispatch` only, not a required check): the two real-mirror host deadline tests, 5 jobs of 30 attempts each per platform beside the 0.3.0 gate's integration files, every browser close timed, the record uploaded after a pass too ([Host deadline tests](#host-deadline-tests)). |
 
 ## Evaluator rules for worlds
 
