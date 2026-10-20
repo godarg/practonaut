@@ -33,7 +33,7 @@ test('D1-F1, F2, F3: the real tool\'s picture on a light ground in dark mode, at
       return {
         ground: picture ? getComputedStyle(picture).backgroundColor : 'none',
         scale: image ? image.getBoundingClientRect().width / image.naturalWidth : 0,
-        region: picture ? [picture.getAttribute('role'), picture.getAttribute('aria-label'), picture.tabIndex] : null,
+        region: (() => { const region = picture?.querySelector<HTMLElement>('[data-testid=tool-scroll]'); return region ? [region.getAttribute('role'), region.getAttribute('aria-label'), region.tabIndex] : null; })(),
         focus: (document.activeElement as HTMLElement | null)?.dataset?.testid ?? document.activeElement?.tagName,
         inView: !!box && box.top >= frame.top - 1 && box.top < frame.bottom && box.top < innerHeight,
         scrolled: side.scrollTop,

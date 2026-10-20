@@ -28,6 +28,8 @@ let streamPaused = false;
 let working = false, announcement = '', errorCode: string | undefined, lastCheck: PublicCheck | undefined, toolUrl: string | undefined;
 /** The real tool's picture is being fetched: its button stays focusable and says it is busy (§11). */
 let toolBusy = false;
+/** "Rules and origins" in How this is checked, as the reader left it. */
+let rulesOpen = false;
 // Entrance motion only for what just happened, never for a plain re-render.
 let freshVerdict = false, previousHints = 0, previousHistory = 0;
 // Where each step was drawn last, so a step glides to its new place instead of jumping.
@@ -732,12 +734,22 @@ function howCheckedCard(): HTMLElement {
     // An app whose picture is its export at one px per unit is shown at its own size and scrolls sideways.
     const natural = naturalPictureApps.includes(c.world.adapterId);
     const image = h('img', { class: natural ? 'tool-image tool-image--natural' : 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } });
-    const picture = h('div', { class: natural ? 'tool-picture tool-picture--scroll' : 'tool-picture', testid: 'tool-picture', attrs: natural ? { role: 'region', 'aria-label': msg('toolPicture'), tabindex: '0' } : {} }, image);
+    // The rounded ground is the outer element; a picture at its own size scrolls in an unrounded inner
+    // region, so the curve never cuts it, with a faded edge where more lies beyond (design review D2-F4).
+    const scroller = natural ? h('div', { class: 'tool-picture__scroll', testid: 'tool-scroll', attrs: { role: 'region', 'aria-label': msg('toolPicture'), tabindex: '0' } }, image) : undefined;
+    const picture = h('div', { class: 'tool-picture', testid: 'tool-picture' }, scroller ?? image);
     root.append(picture);
-    if (natural) {
+    if (scroller) {
       const hint = h('p', { class: 'tool-scroll-hint', testid: 'tool-scroll-hint', text: msg('toolScroll') });
       hint.hidden = true;
-      const measure = (): void => { hint.hidden = picture.scrollWidth <= picture.clientWidth + 1; };
+      const measure = (): void => {
+        const wider = scroller.scrollWidth > scroller.clientWidth + 1;
+        hint.hidden = !wider;
+        scroller.classList.toggle('is-clipped-start', wider && scroller.scrollLeft > 2);
+        scroller.classList.toggle('is-clipped-end', wider && scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 2);
+      };
+      scroller.addEventListener('scroll', measure, { passive: true });
+      new ResizeObserver(measure).observe(scroller);
       if (image.complete) requestAnimationFrame(measure); else image.addEventListener('load', measure, { once: true });
       root.append(hint);
     }
@@ -747,7 +759,10 @@ function howCheckedCard(): HTMLElement {
   // An app whose name needs the interim notice (PADR-0049 9.2) gets it once, off the working surface.
   const notice = Object.hasOwn(appNotices, c.world.adapterId) ? appNotices[c.world.adapterId]! : undefined;
   if (notice) rules.append(h('p', { class: 'app-notice', testid: 'app-notice', text: msg(notice) }));
-  root.append(disclosure({ summary: msg('rules') }, rules));
+  // Open stays open across redraws, so a reader is not closed out by the next event.
+  const rulesDisclosure = disclosure({ summary: msg('rules'), open: rulesOpen }, rules);
+  rulesDisclosure.addEventListener('toggle', () => { rulesOpen = rulesDisclosure.open; });
+  root.append(rulesDisclosure);
   return root;
 }
 /** The demonstration in three lines, the way every result is made: actions land on the board, the
@@ -823,7 +838,7 @@ function renderBar(): void {
   // neither it nor Create, and says so (design-language §10.1).
   if (current) {
     const mode = phase3?.mode() ?? 'board', ownWorkspace = workspaceApps.includes(current.world.adapterId);
-    const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
+    const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, onUnavailable: item => say(item.ariaLabel ?? item.label), items: (['board', 'editor', 'author'] as const).map(id => {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
       const unavailable = id !== 'board' && (!phase3 || (id === 'author' && !authorAvailable));

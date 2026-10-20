@@ -204,7 +204,10 @@ body[data-workspace="author"] .model-only-banner { display: none; }
    export at one px per unit (draw.io) is shown at that size, in a labelled region that scrolls sideways. */
 .tool-picture { border-radius: var(--pn-radius-md); box-shadow: var(--pn-shadow-raised); background: var(--pn-color-picture-ground); color: var(--pn-color-picture-ink); padding: var(--pn-space-2); }
 .tool-image { display: block; width: 100%; height: auto; }
-.tool-picture--scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.tool-picture__scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.tool-picture__scroll.is-clipped-end { mask-image: linear-gradient(to right, var(--pn-color-text) calc(100% - var(--pn-space-6)), transparent); }
+.tool-picture__scroll.is-clipped-start { mask-image: linear-gradient(to left, var(--pn-color-text) calc(100% - var(--pn-space-6)), transparent); }
+.tool-picture__scroll.is-clipped-start.is-clipped-end { mask-image: linear-gradient(to right, transparent, var(--pn-color-text) var(--pn-space-6), var(--pn-color-text) calc(100% - var(--pn-space-6)), transparent); }
 .tool-image--natural { width: auto; max-width: none; }
 .tool-scroll-hint, .app-notice { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
 

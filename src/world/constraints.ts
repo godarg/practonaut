@@ -40,7 +40,7 @@ export function constraintViolation(state: State, constraints: readonly Structur
         frames.set(step.groupId, (frames.get(step.groupId) ?? new Set()).add(step.frameId));
       }
       for (const group of [...frames.keys()].sort()) {
-        if (frames.get(group)!.size > 1) return { constraint, objectId: group, message: `On this application a group stays within one frame: the steps of group ${group} sit in different frames. Ungroup them, move the steps, then group them again.` };
+        if (frames.get(group)!.size > 1) return { constraint, objectId: group, message: `In this application all steps of a group lie in the same frame: the steps of group ${group} would lie in different frames. Put the steps into one frame first (set_frame), or ungroup them (ungroup) before you change a step's frame. The state is unchanged.` };
       }
     } else {
       for (const object of live) {

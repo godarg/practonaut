@@ -158,6 +158,11 @@ td.text code{overflow-wrap:anywhere}
 .board-figure figcaption{margin-bottom:var(--pn-space-2);max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .board-figure .figure-title{display:block;color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-semibold)}
 .board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-canvas)}
+/* draw.io's own picture: the frame is its light picture ground in both themes, with space-2 padding
+   around the picture, which is centred and scrolls with its ground (design review D2-F2). A board drawn
+   at its exact width is measured against its figure (a container) for its line and faded edge. */
+.board-scroll--picture{background:var(--pn-color-picture-ground);padding:var(--pn-space-2)}
+.board-figure{container-type:inline-size}
 .schematic,.engine-board{display:block;height:auto;margin:0 auto}
 .schematic:not(.pu),.engine-board:not(.pu){width:100%}
 .scroll-hint{display:none;margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}

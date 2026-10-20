@@ -926,14 +926,24 @@ export const DRAWIO_STATES: StateDef[] = [
   } },
   { id: "drawio-constraint-refused", label: "A group across frames refused by draw.io's declared constraint: the board unchanged, the reason in words", workspace: "board", view: ".notice.error", async enter(s) {
     await mirroredDrawio(s);
-    // b leaves the frame, then the Player's own group tool asks to group a (in the frame) with b.
+    // b leaves the frame in membership and in place (below it, clear of it); then the Player's own group
+    // tool asks to group a (in the frame) with b, and the refusal is awaited, never raced (review D2-F5).
+    const b = (await s.observe()).state.objects.b as { x: number; y: number };
     await act(s, { name: "set_frame", params: { id: "b", frameId: null } });
-    await s.page.locator('[data-object-id="b"]').first().waitFor();
+    await act(s, { name: "move_step", params: { id: "b", x: b.x, y: b.y + 260 } });
+    await s.page.waitForFunction(() => document.querySelectorAll("[data-testid=history-entry]").length === 2);
     await s.page.locator('[data-object-id="a"]').first().click(); await s.page.getByTestId("action-group").click();
     await s.page.getByTestId("cancel-preview").waitFor();
     await s.page.locator('[data-object-id="b"]').first().click();
-    if (await s.page.getByTestId("cancel-preview").count()) await s.page.keyboard.press("Enter");
     await s.page.locator(".notice.error").waitFor({ timeout: 15_000 });
+    await s.page.getByTestId("cancel-preview").first().waitFor({ state: "hidden" });
+    await settle(s.page);
+  } },
+  { id: "drawio-rules-open", label: "Rules and origins open in a draw.io session: the rules and, last, the interim notice", workspace: "board", view: "[data-testid=app-notice]", async enter(s) {
+    await mirroredDrawio(s);
+    await s.page.locator("[data-testid=how-checked] details > summary").first().click();
+    await s.page.getByTestId("app-notice").waitFor();
+    await settle(s.page);
   } },
   { id: "drawio-check-pass", label: "Solved in a mirrored draw.io session: history confirmed by draw.io, the verdict", workspace: "board", view: "[data-testid=check-result]", async enter(s) {
     await mirroredDrawio(s); await solveDrawio(s); await checkResult(s, "pass");

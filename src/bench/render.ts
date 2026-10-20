@@ -426,8 +426,14 @@ export function reportStylesheet(): string {
 }
 
 /** One static page: the hashed style is the only thing the CSP allows. */
-export function page(language: Language, title: string, tokensCss: string, body: string): string {
-  const style = tokensCss + reportStylesheet(), hash = createHash('sha256').update(style).digest('base64');
+/** The rules for boards drawn at an exact width: below that frame width (a container query on the
+ * board's figure) the line shows and the edge fades; at or above it the board fits and neither shows. */
+export function fitRules(widths: Iterable<number>): string {
+  const fade = (side: string): string => `mask-image:linear-gradient(to ${side},var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)`;
+  return [...new Set(widths)].sort((a, b) => a - b).map(width => `@container (max-width:${width - 0.5}px){.scroll-hint.fit-${width}{display:block}.board-scroll.fit-${width}{${fade('right')}}.board-scroll.fit-${width}.from-end{${fade('left')}}}`).join('\n');
+}
+export function page(language: Language, title: string, tokensCss: string, body: string, extraCss = ''): string {
+  const style = tokensCss + reportStylesheet() + extraCss, hash = createHash('sha256').update(style).digest('base64');
   return `<!doctype html>
 <html lang="${language}">
 <head>
@@ -496,14 +502,19 @@ function boardHtml(detail: RunDetail, report: SessionReportView, language: Langu
   // first difference from the target lies in the right half, both frames open at that end (F3).
   const overflow = { none: 'fits', narrow: 'overflows-phone', wide: 'overflows-desktop' }[detail.overflow];
   const end = detail.overflow !== 'none' && detail.fromEnd ? ' from-end' : '';
-  const frame = (markup: string, label: string): string => `<div class="board-scroll ${overflow}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${detail.overflow === 'none' ? '' : `<p class="scroll-hint ${overflow}">${esc(t.scrollHint)}</p>`}`;
+  // A pair at its exact width (draw.io) says so only where its frame is narrower: a container query per
+  // width (fitRules); draw.io's own picture lies on the light picture ground, padded, in its frame.
+  const frame = (markup: string, label: string, fit?: number, own = false): string => {
+    const sizing = fit !== undefined ? `fit-${fit}` : overflow, ground = own ? ' board-scroll--picture' : '';
+    return `<div class="board-scroll ${sizing}${ground}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${fit === undefined && detail.overflow === 'none' ? '' : `<p class="scroll-hint ${sizing}">${esc(t.scrollHint)}</p>`}`;
+  };
   const legend: string[] = [];
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));
   legend.push(detail.groups.length ? list(t.groups, detail.groups.map(group => `${group.name}: ${group.members.map(quoted).join(', ')}`)) : `<p class="legend-title">${esc(t.groups)}</p><p class="meta">${esc(t.noGroups)}</p>`);
   if (detail.frames.length) legend.push(list(t.frames, detail.frames.map(item => item.members.length ? fill(language, t.frameMembers, { name: quoted(item.name), members: item.members.map(quoted).join(', ') }) : fill(language, t.emptyFrame, { name: quoted(item.name) }))));
-  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard)}${legend.join('')}</figure>` : '';
+  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard, detail.fit?.final, picture.kind === 'engine' && detail.fit !== undefined)}${legend.join('')}</figure>` : '';
   const target = detail.target
-    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
+    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target, detail.fit?.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
     : banner('neutral', t.noTargetTitle, `<p>${esc(detail.targetMissing === 'unreadable' ? t.targetUnreadable : t.noTarget)}</p>`);
   // The target is drawn in Practonaut's colours, which are Excalidraw's; for another app the note says they can differ.
   return `<div class="boards">${final}${target}</div>${picture && detail.target ? `<p class="note">${esc(app === 'excalidraw' ? t.pairNote : appText(t.pairNoteOther, app))}</p>` : ''}`;
@@ -630,8 +641,8 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${prose(label)}</dt><dd>${prose(value, (report.environment.world.limits ?? []).map(entry => entry.taskId))}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(appText(t.note, e.app.adapterId))}</p>${noticeHtml(t, [e.app.adapterId])}<p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
-  return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(appText(t.note, e.app.adapterId))}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p>${noticeHtml(t, [e.app.adapterId])}</section>`;
+  return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body, fitRules([...(details?.runs.values() ?? [])].flatMap(detail => detail.fit ? [detail.fit.final, detail.fit.target] : [])));
 }
 
 /** A run's failure as identifiers (Technical details): reason, the parser and the client's own code. */

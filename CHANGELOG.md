@@ -186,7 +186,14 @@ All notable changes are recorded here. The format follows
   jumped to its top and the focus fell to the page). The picture's text alternative says what it shows.
 - The workspace control's segments that can never open in a window (draw.io and Create in a draw.io
   session, Create in a practice window) are `aria-disabled`, so the keyboard reaches them and their
-  reason is read.
+  reason is read, and spoken when one is pressed.
+- The refusal of a group across frames names the way forward with the tools that take it ("put the
+  steps into one frame first, or ungroup them before you change a step's frame"), for the person and
+  the agent; it advised moving the steps, which never changes a frame.
+- Bench report, draw.io: the frame of draw.io's picture is the picture's light ground, padded around
+  the centred picture (a narrow picture was a white slab in a dark frame); a board's scroll line and
+  faded edge appear only where its frame is narrower than it; the interim notice comes last in the
+  closing notes. "Rules and origins" stays open across redraws.
 - The model-only banner names one download with its size first and keeps number and unit, and a
   product and its version, together ("one download of about 48 MB: draw.io 32.4.1"); the file name
   stays in the terminal. German names a frame "Rahmen" in the group refusal.

@@ -518,8 +518,10 @@ through a test seam, so the product reads no new variable.
    - **the core** checks every declared constraint on the successor of every world/2 transition; a
      violation refuses the action with the new error code `constraint_refused`, the same for the
      human and the agent, with the state and its hash unchanged. The message names the constraint and
-     the remedy ("on this application a group stays within one frame: ungroup, move the steps, group
-     them again"; "this application cannot store this character in a label or frame name"), and
+     the remedy ("in this application all steps of a group lie in the same frame: put the steps into
+     one frame first, or ungroup them before you change a step's frame", worded with the tools' own
+     names after design review D2-F1; "this application cannot store this character in a label or
+     frame name"), and
      `details.constraint` names it from the closed list. The host keeps that one detail (today it
      keeps only code and message), the Player shows a catalog entry per constraint (EN/DE) with the
      remedy, and MCP replies carry the same message; a test shows that both surfaces give the same

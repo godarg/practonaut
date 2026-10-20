@@ -61,6 +61,9 @@ export interface RunDetail {
   targetObjects: BoardObject[];
   /** Whether the pictures (one shared width) are wider than a phone or a desktop column. */
   overflow: 'none' | 'narrow' | 'wide';
+  /** A pair drawn at its exact width (draw.io's export, one px per unit): the frame width each picture
+   * needs, so its line and faded edge appear only where its frame is narrower (design review D2-F3). */
+  fit?: { final: number; target: number };
   /** The first object where the final board and the target differ lies in the right half of the
    * shared viewBox: a picture that scrolls opens at that end. */
   fromEnd: boolean;
@@ -380,6 +383,8 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
     if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, floor }); detail.targetObjects = boardObjects(target); }
     detail.overflow = pictureOverflow(finalView.width, floor);
+    // draw.io's picture lies on its ground with space-2 (8 px) padding inside the frame's 1 px hairline.
+    if (floor >= PICTURE_FLOOR_DRAWIO) detail.fit = { final: Math.ceil(finalView.width) + 2 * 8 + 2, target: Math.ceil(finalView.width) + 2 };
     // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
     const difference = target && placed ? firstDifference(state, target) : null;
     detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;

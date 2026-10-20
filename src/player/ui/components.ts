@@ -69,6 +69,8 @@ export interface SegmentedOptions {
   items: SegmentedItem[];
   value: string;
   onChange: (id: string) => void;
+  /** Pressing an unavailable item: the caller says why (its reason in the live region). */
+  onUnavailable?: (item: SegmentedItem) => void;
   size?: 'sm' | 'md';
   testid?: string;
 }
@@ -90,7 +92,7 @@ export function segmented(options: SegmentedOptions): HTMLElement {
     node.append(h('span', { text: item.label }));
     node.disabled = !!item.disabled;
     if (item.unavailable) node.setAttribute('aria-disabled', 'true');
-    node.addEventListener('click', () => { if (item.id !== options.value && !item.unavailable) options.onChange(item.id); });
+    node.addEventListener('click', () => { if (item.unavailable) options.onUnavailable?.(item); else if (item.id !== options.value) options.onChange(item.id); });
     root.append(node);
   }
   return root;

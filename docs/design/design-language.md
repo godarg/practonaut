@@ -471,7 +471,7 @@ draw.io."; DE "draw.io öffnet sich in Practonaut nicht als Arbeitsbereich. Übe
 / "Erstellen gibt es für draw.io nicht."). Such a session never names Excalidraw, and its
 inspector has no invitation to create an exercise. A segment that can never open in this window is
 *unavailable*, not disabled: it is `aria-disabled`, so the keyboard reaches it and its reason is read;
-pressing it changes nothing (review D1-F8). Only a segment that waits for the drawing surface is
+pressing it changes nothing and its reason is spoken in the live region (reviews D1-F8, D2-F7). Only a segment that waits for the drawing surface is
 disabled, for that moment. Whether a session of an app without workspaces shows the control at all is
 a rule question to the maintainer ([PADR-0049](../adr/0049-drawio-adapter.md) decision 9.3).
 
@@ -515,12 +515,13 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
 - **The real tool's picture** ("Show in the real tool") is the app's own picture, never recoloured:
   it lies on the light picture ground in both themes (§7.2), inset in its rounded frame so the curve
   never cuts the drawing. draw.io's PNG is its export at one px per unit, so it is shown at that size
-  (its 12-unit text at 12 px) in a labelled region that scrolls sideways, with a line that says so
-  when it is wider than the panel; Excalidraw's is a screenshot of its canvas and takes the panel's
-  width. While the picture is fetched the button stays focusable and busy (§11); when it arrives the
+  (its 12-unit text at 12 px) in a labelled, unrounded region inside the rounded ground that scrolls
+  sideways, with a faded edge and a line when it is wider than the panel; Excalidraw's is a screenshot
+  of its canvas and takes the panel's width. While the picture is fetched the button stays focusable and busy (§11); when it arrives the
   focus is still on the button, the picture is brought into view and announced, and the inspector
   keeps its scroll position across redraws. In a draw.io session the interim notice (PADR-0049 9.2)
-  stands once under "Rules and origins", off the working surface.
+  stands once, last, under "Rules and origins", off the working surface; that disclosure stays as the
+  reader left it across redraws.
 - **Goal**: the world states a goal as one verdict; its sentences are shown as separate short lines
   under one status icon (the first in primary text, the rest secondary). Before a check the ring
   is empty and there is no verdict; after a check one short verdict banner ("All conditions met." /
@@ -644,7 +645,7 @@ captioned with which one it is; the pair shares one viewBox (one scale), its tex
 draw.io's own export, whose text is 12 units, is drawn at exactly one px per unit at any width), and in dark mode
 Excalidraw's export gets Excalidraw's own dark-mode filter so the pair shows one palette. draw.io's
 export is shown as draw.io drew it: its own font and colours on the light picture ground in both
-themes, no filter; the note under the pair says how the target, Practonaut's schematic, differs from
+themes, no filter, the frame itself that ground with `space-2` around the centred picture; the note under the pair says how the target, Practonaut's schematic, differs from
 it (larger labels and lines, frames as named boxes, Practonaut's shades, the page's colours in dark
 mode). A page that names draw.io carries the interim notice once in its closing notes. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
@@ -802,6 +803,18 @@ The task-limit states of 0.2.0 (changes and checks left, a failed check used, ev
 used) were looked at on captures, light and dark, at 1280 and 390 px with German, on 2026-10-15: one
 must-fix (with every change used, the refused "New variant" was still the primary button) was fixed
 and checked on new captures ([pull request #32](https://github.com/godarg/practonaut/pull/32)).
+
+The draw.io surfaces of 0.3.0 ([PADR-0049](../adr/0049-drawio-adapter.md): the Player in a draw.io
+session with its model-only notices and its constraint refusal, the draw.io bench report, the compare
+page across both apps) were reviewed by an independent reviewer on captures of every registered
+state, light and dark, EN and DE, at 1280 and 320 px. Round D1 (2026-10-20, commit 93e629e) failed:
+one blocker (the real tool's picture could not be read in dark mode), five majors (that picture drawn
+below one px per unit; focus and scroll lost after "Show in the real tool"; the interim trademark
+notice missing; draw.io's picture altered in the report; captures that ignored a state's anchor) and
+seven minors. All were fixed and checked on new captures. Round D2 (2026-10-20, commit 1cb8ff3) was
+conditional: no blocker, two majors (a refusal whose advice did not work in this Player; a hard white
+slab for a narrow draw.io picture in a dark report card) and seven minors, all fixed; a short round
+D3 on the touched states follows ([pull request #70](https://github.com/godarg/practonaut/pull/70)).
 
 Round R1 of the bench report v3 pages of 0.3.0 (the artifact-judged report, a report whose client
 values were not re-derived, the compare pages across worlds and the refusals of the regression gate
