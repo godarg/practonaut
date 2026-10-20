@@ -9,14 +9,16 @@
 //   PN_CHALLENGE_ROUND=1 node --import ./tests/support/test-home.ts --test --test-timeout=3600000 tests/integration/challenge-round.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { fakeClaude } from '../support/fake-claude.ts';
 import { countLedger, headerLine, nextLine, parseLedger, type LedgerRecord, type StartBody } from '../../src/challenge/ledger.ts';
+import { releaseLedgerPath, repositoryIdentity } from '../../src/challenge/repository.ts';
 import { readGateReport } from '../../src/challenge/files.ts';
 import { attests, exemptRun } from '../../src/challenge/gate.ts';
 
@@ -58,58 +60,108 @@ async function project(dir: string) {
   };
   const setArgs = (set: string, tasks?: string): string[] => ok(['args', set, ...(tasks ? ['--tasks', tasks] : [])]).stdout.trim().split(' ');
   const started = async (): Promise<string[]> => existsSync(join(state, 'started.log')) ? (await readFile(join(state, 'started.log'), 'utf8')).split('\n').filter(Boolean) : [];
-  // One local ledger per repository, in its git common directory (shared by every worktree).
-  const ledgerPath = join(repo, '.git', 'practonaut', 'release-ledger-0.3.0.jsonl');
+  // One local ledger per user and repository, under PRACTONAUT_HOME (shared by every clone and worktree).
+  const ledgerPath = releaseLedgerPath(home, repositoryIdentity(repo)!.key);
   const folder = join(repo, RELEASE_FOLDER);
   const commit = (message: string) => { git('add', '-A'); git('commit', '-m', message); git('push'); };
-  return { env, git, tool, ok, bench, setArgs, started, ledgerPath, folder, commit, repo, benchRoot, state };
+  /** A guarded bench started in the background (to act while it runs), and its exit. */
+  const background = (args: string[], extra: Record<string, string> = {}) => {
+    const child = spawn(process.execPath, [TOOL, 'bench', ...args], { cwd: repo, env: { ...env, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = ''; child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
+    const exited = once(child, 'exit').then(([code]) => ({ status: code as number | null, stdout, stderr }));
+    return { child, exited };
+  };
+  return { env, git, tool, ok, bench, background, setArgs, started, ledgerPath, folder, commit, repo, remote, home, benchRoot, state };
 }
 
+/** Waits until `condition` holds (polling), at most `ms`. */
+async function until(condition: () => boolean | Promise<boolean>, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { if (await condition()) return true; await new Promise(resolve => setTimeout(resolve, 100)); }
+  return condition();
+}
+const records = async (path: string): Promise<number> => existsSync(path) ? (await readFile(path, 'utf8')).split('\n').filter(Boolean).length : 0;
 /** A ledger of `n` counted development starts, built line by line, each chained to the one before. */
 function counted(n: number): string {
   const state = { text: headerLine(), records: [parseLedger(headerLine()).header] as LedgerRecord[] };
   for (let index = 0; index < n; index++) {
-    const body: StartBody = { kind: 'start', purpose: 'development', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: OPUS, agent: 'claude-code', bench: '20261101T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64) };
+    const body: StartBody = { kind: 'start', purpose: 'development', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: OPUS, agent: 'claude-code', bench: '20261101T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64) };
     const { record, line } = nextLine(state, body); state.text += line; state.records.push(record);
   }
   return state.text;
 }
 
-test('one release ledger for every worktree of the repository: the second start at 799 is refused (review: budget-checkout-local-ledger)', { timeout: 300_000 }, async () => {
-  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-worktrees-'));
+test('one release ledger for every clone and worktree of a repository on this machine: the second start at 799 is refused (review: budget-checkout-local-ledger)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-clones-'));
   try {
-    const p = await project(dir), wt = join(dir, 'wt');
+    const p = await project(dir), wt = join(dir, 'wt'), clone = join(dir, 'clone');
+    // The committed ledger holds 799 counted starts, pushed.
+    await mkdir(p.folder, { recursive: true }); await writeFile(join(p.folder, 'release-ledger.jsonl'), counted(799)); p.commit('ledger at 799');
     p.git('worktree', 'add', wt, '-b', 'second');
-    const inWorktree = (args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [TOOL, ...args], { cwd: wt, encoding: 'utf8', env: { ...p.env, ...extra } });
-    p.ok(['ledger', 'init']);
-    // The worktree finds the same ledger: no second one is started there.
-    let result = inWorktree(['ledger', 'init']);
-    assert.equal(result.status, 2); assert.match(result.stderr, /ledger_exists/);
-    await writeFile(p.ledgerPath, counted(799));
-    assert.match(inWorktree(['ledger', 'show']).stdout, /799 of 800 model runs counted/);
+    assert.equal(spawnSync('git', ['clone', '--quiet', p.remote, clone], { encoding: 'utf8' }).status, 0);
+    const inside = (cwd: string, args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [TOOL, ...args], { cwd, encoding: 'utf8', env: { ...p.env, ...extra } });
+    assert.match(p.ok(['ledger', 'init']).stdout, /a copy of the longest pushed ledger \(800 records\); every clone and worktree of this repository on this machine uses it/);
+    // The worktree and the second clone find the same ledger: no second count is started there.
+    for (const cwd of [wt, clone]) { const result = inside(cwd, ['ledger', 'init']); assert.equal(result.status, 2); assert.match(result.stderr, /ledger_exists: .* exists: this repository's local release ledger/); }
+    assert.match(inside(clone, ['ledger', 'show']).stdout, /799 of 800 model runs counted/);
+    // No option names another ledger.
+    const named = p.tool(['ledger', 'init', '--ledger', join(dir, 'other.jsonl')]);
+    assert.equal(named.status, 1); assert.match(named.stderr, /unknown or repeated option --ledger/);
     const model = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS };
-    // The worktree takes the 800th start; the main checkout's next start is refused before its client starts.
-    result = inWorktree(['bench', '--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], model);
+    // The worktree takes the 800th start; the clone's and the main checkout's next starts are refused before their clients start.
+    let result = inside(wt, ['bench', '--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], model);
     assert.equal(result.status, 0, result.stderr);
+    result = inside(clone, ['bench', '--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'decision', '--mirror', 'off', '--timeout', '60'], model);
+    assert.equal(result.status, 2); assert.match(result.stderr, /release_budget_exhausted: release 0\.3\.0 has 800 of its 800 model runs counted/);
     const second = await p.bench(['--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'decision', '--mirror', 'off', '--timeout', '60'], model);
-    assert.equal(second.status, 2); assert.match(second.stderr, /release_budget_exhausted: release 0\.3\.0 has 800 of its 800 model runs counted/);
+    assert.equal(second.status, 2); assert.match(second.stderr, /release_budget_exhausted/);
     assert.deepEqual(await p.started(), [OPUS]);
     assert.equal(countLedger(parseLedger(await readFile(p.ledgerPath, 'utf8'))).counted, 800);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('ledger init refuses while model-run folders exist that no start entry names', { timeout: 300_000 }, async () => {
+test('ledger init refuses where an earlier Practonaut kept this repository\'s ledger, and in a shallow clone (review: budget-checkout-local-ledger, r2-ledger-history-local-refs)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-elsewhere-'));
+  try {
+    const p = await project(dir);
+    const earlier = join(p.repo, '.git', 'practonaut', 'release-ledger-0.3.0.jsonl');
+    await mkdir(join(earlier, '..'), { recursive: true }); await writeFile(earlier, counted(3));
+    let refused = p.tool(['ledger', 'init']);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_elsewhere: a release ledger of this repository exists at .*release-ledger-0\.3\.0\.jsonl, where an earlier Practonaut kept it; move it to /);
+    assert.equal(existsSync(p.ledgerPath), false);
+    await rm(earlier);
+    await writeFile(join(p.repo, 'second.txt'), 'a second commit, so that a clone of depth 1 cuts history off\n'); p.commit('second');
+    const shallow = join(dir, 'shallow');
+    assert.equal(spawnSync('git', ['clone', '--quiet', '--depth', '1', pathToFileURL(p.remote).href, shallow], { encoding: 'utf8' }).status, 0);
+    refused = spawnSync(process.execPath, [TOOL, 'ledger', 'init'], { cwd: shallow, encoding: 'utf8', env: p.env });
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /shallow_clone: this repository is a shallow clone/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('ledger init refuses while model-run folders exist that no pushed version of the ledger names; an existing ledger first; a run ledgered on another pushed branch is no stranger (review: r2-ledger-init-scan-misreports)', { timeout: 300_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-init-'));
   try {
     const p = await project(dir);
     const plain = await p.bench(['--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS }, true);
     assert.equal(plain.status, 0, plain.stderr);
-    const refused = p.tool(['ledger', 'init']);
-    assert.equal(refused.status, 2); assert.match(refused.stderr, /runs_outside_ledger: 1 model run folder \(first: connect-s1-r1 in bench folder \d{8}T\d{6}Z-[0-9a-f]{4}\) holds no start entry of the committed release ledger/);
+    let refused = p.tool(['ledger', 'init']);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /runs_outside_ledger: 1 model run folder \(first: connect-s1-r1 in bench folder \d{8}T\d{6}Z-[0-9a-f]{4}\) holds no start entry of any pushed version of the release ledger/);
     assert.equal(existsSync(p.ledgerPath), false);
     // Moved out of the bench roots, the ledger starts.
     await rm(join(plain.path, '..'), { recursive: true });
     p.ok(['ledger', 'init']);
+    // A guarded run, in the local ledger only: init again says the ledger exists, never that the run was made outside it.
+    const guarded = await p.bench(['--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS });
+    assert.equal(guarded.status, 0, guarded.stderr);
+    refused = p.tool(['ledger', 'init']);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /^challenge: ledger_exists: /);
+    // Another branch pushed the ledger with that run; this branch has none. A new machine (another
+    // PRACTONAUT_HOME, the same bench folders) starts from the longest pushed version, which names it.
+    p.ok(['ledger', 'write']); p.git('switch', '-c', 'other'); p.git('add', '-A'); p.git('commit', '-m', 'ledger on another branch'); p.git('push', '-u', 'origin', 'other'); p.git('switch', 'main');
+    assert.equal(existsSync(join(p.folder, 'release-ledger.jsonl')), false);
+    const home = join(dir, 'home2'); await cp(p.benchRoot, join(home, 'bench'), { recursive: true });
+    const made = p.tool(['ledger', 'init'], { PRACTONAUT_HOME: home });
+    assert.equal(made.status, 0, made.stderr); assert.match(made.stdout, /a copy of the longest pushed ledger \(3 records\)/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -138,6 +190,20 @@ test('probe and declare refuse runs of the pre-probe outside the ledger and hold
     let refused = p.tool(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]);
     assert.equal(refused.status, 2); assert.match(refused.stderr, /run_outside_ledger: 1 model run folder of this round's tasks holds no start entry in the release ledger \(first: repair-4-s1-r1/);
     await rm(join(peek.path, '..'), { recursive: true });
+    // The same instance on another world — a tuning set of the plan's seeds and difficulty — is found by
+    // its task identity (review: r2-round-instances-by-world-hash), and the guard takes no pre-probe start
+    // on it (review: r2-round-world-closure-from-stray-start).
+    const devSet = join(dir, 'dev');
+    p.ok(['generate', 'repair', '--set', 'dev', '--seed', '1', '--count', '7', '--difficulty', '1', '--out', devSet]);
+    const startsBefore = (await p.started()).length;
+    const stray = await p.bench(['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...p.setArgs(devSet, 'repair-6')], model);
+    assert.equal(stray.status, 2); assert.match(stray.stderr, /round_instance_refused: this pre-probe run benches repair-6 on world [0-9a-f]{12}…, not an instance of the round's own set/);
+    assert.equal((await p.started()).length, startsBefore);
+    const devPeek = await p.bench(['--agent', 'claude-code', ...p.setArgs(devSet, 'repair-6')], model, true);
+    assert.equal(devPeek.status, 0, devPeek.stderr);
+    refused = p.tool(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]);
+    assert.equal(refused.status, 2); assert.match(refused.stderr, /run_outside_ledger: 1 model run folder of this round's tasks holds no start entry in the release ledger \(first: repair-6-s1-r1/);
+    await rm(join(devPeek.path, '..'), { recursive: true });
     assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]).stdout, /Opus passed 3 of 7; admitted/);
     p.ok(['ledger', 'write']); p.commit('record');
     // A look after the record: the declaration scans as well.
@@ -164,6 +230,98 @@ test('probe and declare refuse runs of the pre-probe outside the ledger and hold
       assert.equal(refused.status, 2, refused.stderr); assert.match(refused.stderr, /practonaut_version: the round's plan pins Practonaut 0\.0\.1/);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a run-end the guard cannot append stops the bench without a report; --recover through the guard writes it from the run folder, a run whose verdict files are gone stays void, and probe records the pre-probe as not admitted (review: r2-killed-bench-dead-end, gate-run-end-lock-window)', { timeout: 600_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-recover-'));
+  try {
+    const p = await project(dir);
+    const plan = join(RELEASE_FOLDER, 'repair.practonaut-round-1.probe-1.plan.json'), record = join(RELEASE_FOLDER, 'repair.practonaut-round-1.probe-1.json');
+    p.ok(['ledger', 'init']);
+    p.ok(['plan', '--unit', 'repair.practonaut', '--maintainer-approved-unit', 'repair.practonaut', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', plan]);
+    p.commit('plan');
+    const probeSet = join(dir, 'probe');
+    p.ok(['generate', 'repair.practonaut', '--set', 'probe', '--plan', plan, '--out', probeSet]);
+    const solve = join(dir, 'solve.json'), hold = join(dir, 'hold');
+    await writeFile(solve, JSON.stringify({ oracles: join(probeSet, 'oracles'), tasks: { [OPUS]: ['repair-1', 'repair-2', 'repair-3'] } }));
+    const model = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS, PN_FAKE_SOLVE: solve, PN_FAKE_HOLD: hold };
+    const guarded = (tasks?: string) => ['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...(tasks ? p.setArgs(probeSet, tasks) : p.setArgs(probeSet))];
+    /** A pre-probe bench whose first run cannot append its run-end: the ledger file is gone at that
+     * moment. `at`: the ledger's record count once that run's start entry is appended. */
+    const cut = async (tasks: string | undefined, at: number): Promise<string> => {
+      await writeFile(hold, '');
+      const before = new Set(await readdir(p.benchRoot).catch(() => [] as string[]));
+      const running = p.background(guarded(tasks), model);
+      assert.ok(await until(async () => await records(p.ledgerPath) === at, 120_000), 'the start entry was appended');
+      const text = await readFile(p.ledgerPath, 'utf8');
+      await rm(p.ledgerPath); await rm(hold);
+      const ended = await running.exited;
+      assert.equal(ended.status, 2, ended.stderr);
+      assert.match(ended.stderr, /ledger_missing: the run-end record of repair-\d-s1-r1 could not be appended \(there is no local release ledger .*\); the bench stopped without a report\. Recover its folder through the same guard: the same command with --recover /);
+      await writeFile(p.ledgerPath, text);
+      const folder = join(p.benchRoot, (await readdir(p.benchRoot)).find(name => !before.has(name))!);
+      assert.equal(existsSync(join(folder, 'report.json')), false, 'no report');
+      return folder;
+    };
+    // 1. repair-1 is judged (its verdict files are in its folder) but its run-end is not appended.
+    const first = await cut(undefined, 2);
+    assert.ok(existsSync(join(first, 'repair-1-s1-r1', 'checker.json')));
+    const recovered = p.ok(['bench', ...guarded(), '--recover', first]);
+    assert.match(recovered.stdout, /Release ledger: 1 run-end records written from the run folders; 0 starts without a provable outcome stay void/);
+    let ledger = parseLedger(await readFile(p.ledgerPath, 'utf8'));
+    assert.deepEqual([...ledger.ends.values()].map(end => [end.start, end.status, end.recovered]), [[1, 'completed', true]]);
+    // 2. repair-2 is cut the same way, and its verdict files are deleted before the recovery: void.
+    const second = await cut('repair-2,repair-3,repair-4,repair-5,repair-6,repair-7', 4);
+    await rm(join(second, 'repair-2-s1-r1', 'checker.json')); await rm(join(second, 'repair-2-s1-r1', 'session.json'));
+    const voided = p.ok(['bench', ...guarded('repair-2,repair-3,repair-4,repair-5,repair-6,repair-7'), '--recover', second]);
+    assert.match(voided.stdout, /Release ledger: 0 run-end records written from the run folders; 1 starts without a provable outcome stay void \(counted, and not benched again for the round\): repair-2-s1-r1/);
+    ledger = parseLedger(await readFile(p.ledgerPath, 'utf8'));
+    assert.deepEqual([ledger.ends.size, countLedger(ledger).open, countLedger(ledger).counted], [1, 1, 2]);
+    // 3. The rest, then the record: both recovered reports are taken (the model from their start entries).
+    const rest = await p.bench(guarded('repair-3,repair-4,repair-5,repair-6,repair-7'), { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS, PN_FAKE_SOLVE: solve });
+    assert.equal(rest.status, 0, rest.stderr);
+    p.ok(['ledger', 'write']); p.commit('ledger');
+    const reports = [join(first, 'report.json'), join(second, 'report.json'), rest.path].join(',');
+    assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', reports, '--out', record]).stdout, /Opus passed 2 of 7; not admitted: 1 void pre-probe run \(no run-end record: repair-2\); a refused unit may be retuned once/);
+    const value = await json(join(p.repo, record));
+    assert.deepEqual([value.admitted, value.void, value.passed, value.runs.length], [false, ['repair-2'], 2, 6]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a guarded bench killed with kill -9 is recovered through the guard: its judged run binds to the run-end the runner wrote, the run the kill cut short stays void, and probe takes the recovered report (review: r2-killed-bench-dead-end)', { timeout: 600_000, skip: process.platform === 'win32' ? 'kill -9 of a process group is POSIX' : false }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-killed-'));
+  let sleeper: number | undefined;
+  try {
+    const p = await project(dir);
+    const plan = join(RELEASE_FOLDER, 'repair.practonaut-round-1.probe-1.plan.json'), record = join(RELEASE_FOLDER, 'repair.practonaut-round-1.probe-1.json');
+    p.ok(['ledger', 'init']);
+    p.ok(['plan', '--unit', 'repair.practonaut', '--maintainer-approved-unit', 'repair.practonaut', '--round', '1', '--difficulty', '1', '--seed', '1', '--model', OPUS, '--mirror', 'off', '--timeout', '600', '--max-actions', '50', '--out', plan]);
+    p.commit('plan');
+    const probeSet = join(dir, 'probe');
+    p.ok(['generate', 'repair.practonaut', '--set', 'probe', '--plan', plan, '--out', probeSet]);
+    const solve = join(dir, 'solve.json');
+    await writeFile(solve, JSON.stringify({ oracles: join(probeSet, 'oracles'), tasks: { [OPUS]: ['repair-1', 'repair-2', 'repair-3'] } }));
+    const model = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS, PN_FAKE_SOLVE: solve };
+    const guarded = (tasks?: string) => ['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...(tasks ? p.setArgs(probeSet, tasks) : p.setArgs(probeSet))];
+    // repair-1 is judged and recorded; repair-2's agent never ends: kill -9 the bench, then the agent.
+    const running = p.background(guarded(), { ...model, PN_FAKE_SLEEP_AFTER: '1' });
+    assert.ok(await until(() => existsSync(join(p.state, 'sleeper.pid')), 120_000), 'the second run started');
+    sleeper = Number(await readFile(join(p.state, 'sleeper.pid'), 'utf8'));
+    running.child.kill('SIGKILL'); await running.exited;
+    process.kill(-sleeper, 'SIGKILL');
+    assert.ok(await until(() => { try { process.kill(-sleeper!, 0); return false; } catch { return true; } }, 5_000), 'the agent is gone');
+    const folder = join(p.benchRoot, (await readdir(p.benchRoot))[0]!);
+    assert.equal(existsSync(join(folder, 'report.json')), false);
+    const recovered = p.ok(['bench', ...guarded(), '--recover', folder]);
+    assert.match(recovered.stdout, /Release ledger: 0 run-end records written from the run folders; 1 starts without a provable outcome stay void \(counted, and not benched again for the round\): repair-2-s1-r1/);
+    const rest = await p.bench(guarded('repair-3,repair-4,repair-5,repair-6,repair-7'), model);
+    assert.equal(rest.status, 0, rest.stderr);
+    p.ok(['ledger', 'write']); p.commit('ledger');
+    assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', [join(folder, 'report.json'), rest.path].join(','), '--out', record]).stdout, /Opus passed 2 of 7; not admitted: 1 void pre-probe run \(no run-end record: repair-2\)/);
+  } finally {
+    if (sleeper) try { process.kill(-sleeper, 'SIGKILL'); } catch { /* gone */ }
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('the file side reads a real bench through the shipped parser: a judged run attests its model, a usage-limit run is exempt from its own stdout (review: gate-file-wiring-untested-by-default)', { timeout: 300_000 }, async () => {

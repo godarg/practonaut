@@ -22,14 +22,15 @@ import { clientFailure, hashFile, MAX_LOG_BYTES, readLogHead, wholeLog } from '.
 import { SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { ReferencesFileSchema, TaskOracleSchema, readRegularFile, worldFromPackage } from '../bench/world.ts';
 import { RUN_ARTIFACTS, libraryWorld } from '../bench/run.ts';
+import { identityCache } from '../bench/identity.ts';
 import { safeText } from '../cli/output.ts';
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, generateSet, taskIdOf, type ChallengeSet } from './build.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
 import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, fundingAt, heldOutRuns, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
-import { checkOutside, computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type Folders, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
-import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
-import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, type Ledger, type RoundBody } from './ledger.ts';
+import { checkOutside, computeGate, GATE_SEEDS, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
+import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError, isShallowRepository } from './git.ts';
+import { isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, roundEvents, type Ledger, type RoundBody } from './ledger.ts';
 import { readLedger, type LedgerPaths } from './ledger-file.ts';
 import { parseUnit, unitSlug } from './units.ts';
 
@@ -215,6 +216,8 @@ export const roundFiles = Object.freeze({
  */
 export async function pushedLedger(paths: LedgerPaths): Promise<LedgerInput> {
   const text = await readFile(paths.committed, 'utf8').catch(() => refuse('ledger_not_committed', `there is no committed release ledger at ${paths.committed}; write it (ledger write), commit and push it`));
+  // A shallow clone has cut its history off: the versions the prefix check must see are not there.
+  if (isShallowRepository(dirname(resolve(paths.committed)))) refuse('shallow_clone', 'this repository is a shallow clone; the release ledger\'s every committed version cannot be checked (git fetch --unshallow)');
   let committed: Ledger;
   try { committed = parseLedger(text); } catch (error) { return refuse((error as { code?: string }).code ?? 'ledger_invalid', (error as Error).message); }
   committedFile(paths.committed);
@@ -232,6 +235,12 @@ export async function pushedLedger(paths: LedgerPaths): Promise<LedgerInput> {
   return { ledger: committed, versions };
 }
 
+/** The task identities of a round's set (PADR-0044 decision 3), in the order of `tasks`, at the round's
+ * one seed: what start entries, round records and the outside scan key a round's instances on. */
+export function setIdentities(set: ChallengeSet, tasks: readonly string[]): string[] {
+  const identityOf = identityCache(set.world);
+  return tasks.map(task => identityOf(task, GATE_SEEDS[0]!));
+}
 /** The pre-probe set a plan names (`generate <unit> --set probe --plan`). */
 export function probeSet(plan: Plan): ChallengeSet {
   const family = asGate(() => familyOf(plan.unit, plan.maintainerApprovedUnit));
@@ -278,49 +287,42 @@ async function setBasisCommit(directory: string): Promise<string> {
 }
 
 /**
- * Model-run folders of a round's tasks that hold no start entry in the ledger (PADR-0042 amended,
+ * Model-run folders of a round's instances that hold no start entry in the ledger (PADR-0042 amended,
  * 3.1): every run folder under the bench roots with the agent's own output (`agent.stdout`; built-in
- * agents have none) of one of the tasks, in a bench of one of the round's sets or without a report.
+ * agents have none) whose instance is one of the round's by task identity (PADR-0044 decision 3) — on
+ * whatever world: the identity is computed from the world package the bench stored beside its report,
+ * not taken from the report. A bench folder without a readable report and world (a killed bench keeps
+ * its world out until every agent ended) is matched by the round's task ids instead.
  */
-export async function scanOutside(roots: readonly string[], sets: { worlds: readonly string[]; tasks: readonly string[] }, ledger: Ledger): Promise<Array<{ bench: string; run: string }>> {
+export async function scanOutside(roots: readonly string[], round: { identities: ReadonlySet<string>; tasks: ReadonlySet<string> }, ledger: Ledger): Promise<Array<{ bench: string; run: string }>> {
   const started = new Set(ledger.records.flatMap(record => record.kind === 'start' ? [`${record.bench}\u0000${record.run}`] : []));
   const outside: Array<{ bench: string; run: string }> = [];
   for (const root of [...new Set(roots.map(value => resolve(value)))]) {
     for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
-      const folder = join(root, bench);
-      const bytes = await readRegularFile(join(folder, 'report.json'), 64 * 1024 * 1024);
-      let world: unknown = null;
-      if (bytes) try { world = (JSON.parse(bytes.toString('utf8')) as { environment?: { world?: { contentHash?: unknown } } }).environment?.world?.contentHash; } catch { world = null; }
-      if (bytes && !sets.worlds.includes(world as string)) continue;
+      const folder = join(root, bench), identityOf = await benchIdentities(folder);
       for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
-        const match = /^(.+)-s\d+-r\d+$/.exec(entry.name);
-        if (!entry.isDirectory() || !match || !sets.tasks.includes(match[1]!) || !(await exists(join(folder, entry.name, 'agent.stdout')))) continue;
-        if (!started.has(`${bench}\u0000${entry.name}`)) outside.push({ bench, run: entry.name });
+        const match = /^(.+)-s(\d+)-r\d+$/.exec(entry.name);
+        if (!entry.isDirectory() || !match || started.has(`${bench}\u0000${entry.name}`) || !(await exists(join(folder, entry.name, 'agent.stdout')))) continue;
+        const ours = identityOf ? round.identities.has(identityOf(match[1]!, Number(match[2])) ?? '') : round.tasks.has(match[1]!);
+        if (ours) outside.push({ bench, run: entry.name });
       }
     }
   }
   return outside;
 }
-
-/**
- * The run folders of a round's start entries without a run-end record (PADR-0042 amended: a lost record
- * voids a judged run): `judged` when the folder holds `checker.json` or `session.json`, `unjudged` when it
- * exists without them, `missing` when no bench root holds it.
- */
-export async function roundFolders(roots: readonly string[], ledger: Ledger, unit: string, round: number): Promise<Folders> {
-  const folders = new Map<string, 'judged' | 'unjudged' | 'missing'>();
-  for (const start of roundStarts(ledger, unit, round)) {
-    if (ledger.ends.has(start.seq)) continue;
-    let state: 'judged' | 'unjudged' | 'missing' = 'missing';
-    for (const root of [...new Set(roots.map(value => resolve(value)))]) {
-      const folder = join(root, start.bench, start.run);
-      if (!(await exists(folder))) continue;
-      state = (await exists(join(folder, RUN_ARTIFACTS.checker))) || (await exists(join(folder, RUN_ARTIFACTS.session))) ? 'judged' : 'unjudged';
-      break;
-    }
-    folders.set(`${start.bench}\u0000${start.run}`, state);
-  }
-  return folders;
+/** A bench folder's instance identities, from the world package its report binds (read and checked
+ * against the bound SHA-256); null when the folder has no readable report and world. */
+async function benchIdentities(folder: string): Promise<((taskId: string, seed: number) => string | null) | null> {
+  try {
+    const bytes = await readRegularFile(join(folder, 'report.json'), 64 * 1024 * 1024);
+    if (!bytes) return null;
+    const bound = (JSON.parse(bytes.toString('utf8')) as { environment?: { world?: { package?: { path?: unknown; sha256?: unknown } } } }).environment?.world?.package;
+    if (typeof bound?.path !== 'string' || basename(bound.path) !== bound.path) return null;
+    const packaged = await readRegularFile(join(folder, bound.path), 64 * 1024 * 1024);
+    if (!packaged || sha256Hex(packaged) !== bound.sha256) return null;
+    const world = await worldFromPackage(packaged), identityOf = identityCache(world), ids = new Set(world.tasks.map(task => task.id));
+    return (taskId, seed) => ids.has(taskId) ? identityOf(taskId, seed) : null;
+  } catch { return null; }
 }
 /**
  * Model-run folders under the bench roots that no start entry of `ledger` names (`ledger init` refuses
@@ -391,25 +393,25 @@ export async function probeFromFiles(files: ProbeFiles): Promise<{ record: Probe
   const plan = await readPlan(files.plan), planCommit = committedFile(files.plan), planHash = fileHash(plan);
   pinned(plan);
   const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world)), tasks = plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed));
+  const identities = setIdentities(set, tasks);
   await checkSetFolder(files.set, set, { unit: plan.unit, round: plan.round, seeds: plan.seeds, basis: { kind: 'plan', sha256: planHash, commit: planCommit } });
   const folder = dirname(resolve(files.plan));
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
   // A pre-probe is recorded once; runs of its instances outside the ledger refuse it.
   asGate(() => refuseRecordedProbe(ledger.ledger, plan));
   const roots = rootsOf(files.reports, files.benchRoots);
-  checkOutside(await scanOutside(roots, { worlds: [world], tasks }, ledger.ledger));
+  checkOutside(await scanOutside(roots, { identities: new Set(identities), tasks: new Set(tasks) }, ledger.ledger));
   const reports: GateReport[] = [];
   for (const path of files.reports) reports.push(await readGateReport(path, true));
-  const folders = await roundFolders(roots, ledger.ledger, plan.unit, plan.round);
-  const result = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, reports, ledger: ledger.ledger, folders }));
+  const result = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, identities, reports, ledger: ledger.ledger }));
   const record = asGate(() => validateProbe({
     schema: PROBE_SCHEMA, release: RELEASE, unit: plan.unit, round: plan.round, probe: plan.probe, plan: { sha256: planHash, commit: planCommit },
     world: { id: set.world.id, contentHash: sha256Hex(canonicalJson(set.world)) }, agent: { preset: plan.agent.preset, model: plan.agent.model },
-    outcomes: result.outcomes, passed: result.passed, admitted: admits(result.passed), rule: { low: SHAPE_B.admitLow, high: SHAPE_B.admitHigh, of: result.outcomes.length },
+    outcomes: result.outcomes, passed: result.passed, admitted: result.void.length === 0 && admits(result.passed), void: result.void, rule: { low: SHAPE_B.admitLow, high: SHAPE_B.admitHigh, of: result.outcomes.length },
     digest: result.digest, runs: result.runs, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) },
   }));
   // Registered in the ledger, which orders admissions across every branch (decision 8 as amended).
-  const round: RoundBody = { kind: 'round', event: record.admitted ? 'admitted' : 'refused', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(record), declaration: null, world, heldOutRuns: 0 };
+  const round: RoundBody = { kind: 'round', event: record.admitted ? 'admitted' : 'refused', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(record), declaration: null, world, heldOutRuns: 0, instances: identities };
   return { record, text: JSON.stringify(record, null, 2) + '\n', round };
 }
 
@@ -434,14 +436,14 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
   if (!admission) refuse('probe_unrecorded', 'the release ledger holds no admission of this pre-probe record; `probe` registers it (write and push the ledger after it)');
   // A round is declared again only while none of its held-out runs has started.
   asGate(() => refuseRedeclaration(ledger.ledger, plan.unit, plan.round));
-  const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world));
+  const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world)), tasks = plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed));
+  const identities = setIdentities(set, tasks);
   const roots = rootsOf(files.reports, files.benchRoots);
-  checkOutside(await scanOutside(roots, { worlds: [world], tasks: plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed)) }, ledger.ledger));
+  checkOutside(await scanOutside(roots, { identities: new Set(identities), tasks: new Set(tasks) }, ledger.ledger));
   const reports: GateReport[] = [];
   for (const path of files.reports) reports.push(await readGateReport(path, true));
-  const folders = await roundFolders(roots, ledger.ledger, plan.unit, plan.round);
-  const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, reports, ledger: ledger.ledger, folders }));
-  if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes)) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
+  const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, identities, reports, ledger: ledger.ledger }));
+  if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes) || again.void.length) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
   // The ladder: as declared; billing as the pre-probe's preset was set up; Claude Code attests its model.
   const billing = reports[0]!.report.agent.billing.class;
   const ladder = files.ladder.map(agent => ({ preset: agent.preset, client: agent.preset, model: agent.model, attestation: agent.preset === GATE_PRESET ? 'client-attested' as const : 'not-attested' as const, billing }));
@@ -472,9 +474,11 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
   };
   const declaration = asGate(() => validateDeclaration(raw));
   if (probe.world.contentHash !== world) refuse('round_files_mismatch', 'the pre-probe record names another pre-probe world than the plan makes');
-  // Registered in the ledger with its held-out world: every later run on it belongs to this round.
-  const heldOutWorld = sha256Hex(canonicalJson(heldOutSet(declaration).set.world));
-  const round: RoundBody = { kind: 'round', event: 'declared', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(probe), declaration: declarationHash(declaration), world: heldOutWorld, heldOutRuns: heldOutRuns(declaration) };
+  // Registered in the ledger with its held-out world and instances: every later run on them, on any
+  // world, belongs to this round.
+  const held = heldOutSet(declaration), heldOutWorld = sha256Hex(canonicalJson(held.set.world));
+  const heldInstances = setIdentities(held.set, held.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed)));
+  const round: RoundBody = { kind: 'round', event: 'declared', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(probe), declaration: declarationHash(declaration), world: heldOutWorld, heldOutRuns: heldOutRuns(declaration), instances: heldInstances };
   return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration), round };
 }
 export interface GateFiles {
@@ -503,18 +507,18 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   // The gate runs with the Practonaut the plan pins (PADR-0042 amended, 3.11).
   if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
   // The pre-probe world regenerated from the plan, never taken from the declaration or the record.
-  const probeWorld = sha256Hex(canonicalJson(probeSet(plan).world));
+  const probeGenerated = probeSet(plan), probeWorld = sha256Hex(canonicalJson(probeGenerated.world));
   if (declaration.development.world.contentHash !== probeWorld || probe.world.contentHash !== probeWorld) refuse('round_files_mismatch', 'the declaration or the pre-probe record names another pre-probe world than the plan makes');
   const { set, seeds } = heldOutSet(declaration);
   await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
   // The cheap refusals first: the pushed ledger and runs outside it, before any report is re-verified.
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
   const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));
+  const identities = { probe: setIdentities(probeGenerated, plan.seeds.map(seed => taskIdOf(family, seed))), heldOut: setIdentities(set, seeds.map(seed => taskIdOf(family, seed))) };
   const given = [...files.development, ...files.oracle, ...files.random, ...(files.ladder ?? [])];
   const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
-  const outside = await scanOutside(roots, { worlds: [probeWorld, worldContentHash], tasks: [...plan.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
+  const outside = await scanOutside(roots, { identities: new Set([...identities.probe, ...identities.heldOut]), tasks: new Set([...plan.seeds, ...seeds].map(seed => taskIdOf(family, seed))) }, ledger.ledger);
   checkOutside(outside);
-  const folders = await roundFolders(roots, ledger.ledger, declaration.unit, declaration.round);
   const read = async (paths: readonly string[], sessions = false): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await readGateReport(path, sessions)); return out; };
   const development = await read(files.development, true), oracle = await read(files.oracle), random = await read(files.random);
   if (!oracle.length) refuse('baseline_missing', 'name the oracle report(s) (--oracle)');
@@ -540,7 +544,7 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
     plan, probe, declaration, git: { declaration: commit, versions: declarationVersions(files.declaration) },
     probeWorld, tasks: seeds.map(seed => taskIdOf(family, seed)), seeds, worldContentHash,
     development, oracle, random, nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
-    ledger, outside, folders, ...(previousSeeds ? { previousSeeds } : {}),
+    ledger, outside, identities, ...(previousSeeds ? { previousSeeds } : {}),
   };
 }
 

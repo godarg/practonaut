@@ -1,14 +1,15 @@
 /**
  * The file side of the release ledger (PADR-0042 decision 4, PADR-0044 decision 8): the local
- * ledger under `.local/`, which only `ledger init` creates (a copy of the committed one), every start
- * and run-end record appended under a lock; the committed copy written from it; and the start guard
- * the bench runner consults before every client start.
+ * ledger (one per user and repository under PRACTONAUT_HOME, repository.ts), which only `ledger init`
+ * creates (a copy of the longest pushed one), every start and run-end record appended under a lock;
+ * the committed copy written from it; the start guard the bench runner consults before every client
+ * start; and the recovery that appends the run-end records a killed bench's folders prove.
  */
 import { appendFile, mkdir, open, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { StartGuard, StartRequest } from '../bench/run.ts';
 import type { SessionRunV3 } from '../bench/report.ts';
-import { countLedger, headerLine, isPrefix, LedgerError, nextLine, parseLedger, RELEASE, RELEASE_CAP, type Ledger, type Purpose, type RoundBody, type RunEndBody, type StartBody } from './ledger.ts';
+import { countLedger, headerLine, isPrefix, LedgerError, nextLine, parseLedger, RELEASE, RELEASE_CAP, type Ledger, type Purpose, type RoundBody, type RunEndBody, type StartBody, type StartRecord } from './ledger.ts';
 
 /** The local ledger and the committed copy beside the release's round files. */
 export interface LedgerPaths { local: string; committed: string }
@@ -56,11 +57,13 @@ async function current(paths: LedgerPaths): Promise<Ledger> {
   return local;
 }
 
-/** `ledger init`: the local ledger as a copy of the committed one, or a new ledger when none is
- * committed; refuses to replace an existing local ledger. */
-export async function initLedger(paths: LedgerPaths): Promise<{ records: number; from: 'committed' | 'new' }> {
+/** Whether a local ledger exists at `path` (`ledger init` refuses first when one does). */
+export const ledgerExists = async (path: string): Promise<boolean> => await readText(path) !== null;
+/** `ledger init`: the local ledger as a copy of `from` (the longest pushed version), else of the
+ * committed one, or a new ledger when none is committed; refuses to replace an existing local ledger. */
+export async function initLedger(paths: LedgerPaths, from: string | null = null): Promise<{ records: number; from: 'committed' | 'new' }> {
   if (await readText(paths.local) !== null) throw new LedgerError('ledger_exists', `${paths.local} exists; a local ledger is never replaced`);
-  const committed = await readText(paths.committed);
+  const committed = from ?? await readText(paths.committed);
   const text = committed ?? headerLine();
   const ledger = parseLedger(text);
   await mkdir(dirname(paths.local), { recursive: true });
@@ -87,6 +90,17 @@ async function append(paths: LedgerPaths, body: (ledger: Ledger) => StartBody | 
     return record.seq;
   });
 }
+/** Appends records under one lock, in one write; `bodies` sees the ledger as it is and may refuse. */
+async function appendAll(paths: LedgerPaths, bodies: (ledger: Ledger) => RunEndBody[]): Promise<void> {
+  return locked(paths.local, async () => {
+    let ledger = await current(paths), text = '';
+    for (const body of bodies(ledger)) {
+      const { line } = nextLine(ledger, body);
+      ledger = parseLedger(ledger.text + line); text += line;
+    }
+    if (text) await appendFile(paths.local, text, { mode: 0o600 });
+  });
+}
 
 export interface GuardOptions {
   paths: LedgerPaths; purpose: Purpose;
@@ -94,25 +108,55 @@ export interface GuardOptions {
   toolchain: string; rules: string | null;
   /** The models a start may request (a round's declared agents); null: any. */
   models?: readonly string[] | null;
+  /** A round's set: the world its plan or declaration makes and the task identities of its instances;
+   * a start on another world or instance is refused (`round_instance_refused`). */
+  set?: { world: string; instances: ReadonlySet<string> } | null;
 }
 /**
  * The start guard (PADR-0042 decision 4): before a client starts, it takes a start entry when the
  * ledger's count stays within the cap with it, and refuses otherwise (`release_budget_exhausted`) — a
- * reservation every start holds until its run-end record releases it (PADR-0044 decision 5). When the
- * run ends it appends the run-end record with the hashes the report binds.
+ * reservation every start holds until its run-end record releases it (PADR-0044 decision 5). A round's
+ * run must bench the round's own world and instances. When the run ends it appends the run-end record
+ * with the hashes the report binds. `recover` (`bench --recover` through the guard) appends the run-end
+ * records a killed bench's re-verified folders prove: a judged run, or an infra_error its client's own
+ * output reports (a parser re-derived it); every other start of the bench without a run-end record
+ * stays void — counted, never benched again (PADR-0042 amended).
  */
 export function ledgerGuard(options: GuardOptions): StartGuard {
   return {
     start: (request: StartRequest) => append(options.paths, ledger => {
       if (options.models && (request.model === null || !options.models.includes(request.model)))
         throw new LedgerError('ledger_model_refused', `this ${options.purpose} run requests ${request.model ?? 'no model'}; the round names ${options.models.join(', ')} (set ANTHROPIC_MODEL)`);
+      if (options.set && (request.world !== options.set.world || !options.set.instances.has(request.instance)))
+        throw new LedgerError('round_instance_refused', `this ${options.purpose} run benches ${request.taskId} on world ${request.world.slice(0, 12)}…, not an instance of the round's own set (world ${options.set.world.slice(0, 12)}…, made from its ${options.purpose === 'pre-probe' ? 'plan' : 'declaration'}); bench the round's set`);
       // The cap is the release's (D4), never a value the ledger file names.
       const counted = countLedger(ledger).counted;
       if (counted + 1 > RELEASE_CAP) throw new LedgerError('release_budget_exhausted', `release ${RELEASE} has ${counted} of its ${RELEASE_CAP} model runs counted; this start would pass ${RELEASE_CAP} and is refused before the client starts — a maintainer decides`);
       return { kind: 'start', purpose: options.purpose, unit: options.unit, round: options.round, basis: options.basis, toolchain: options.toolchain, rules: options.rules,
-        requested: request.requested, model: request.model, agent: request.agent.kind === 'preset' ? request.agent.name : 'command', bench: request.bench, run: request.run, world: request.world };
+        requested: request.requested, model: request.model, agent: request.agent.kind === 'preset' ? request.agent.name : 'command', bench: request.bench, run: request.run, world: request.world, instance: request.instance };
     }),
     end: async (handle: number, run: SessionRunV3) => { await append(options.paths, () => runEndBody(handle, options, run)); },
+    recover: async (bench: string, runs: readonly SessionRunV3[]) => {
+      const written: string[] = [], voided: string[] = [];
+      await appendAll(options.paths, ledger => {
+        written.length = 0; voided.length = 0;
+        const starts = ledger.records.filter((record): record is StartRecord => record.kind === 'start' && record.bench === bench);
+        const bodies: RunEndBody[] = [];
+        for (const run of runs) {
+          const start = starts.findLast(record => record.run === run.id);
+          if (!start) throw new LedgerError('run_outside_ledger', `run ${run.id} of bench folder ${bench} has no start entry in the release ledger; only a bench the guard started is recovered through it`);
+          if (start.purpose !== options.purpose || start.unit !== options.unit || start.round !== options.round || start.basis !== options.basis || start.toolchain !== options.toolchain || start.rules !== options.rules)
+            throw new LedgerError('ledger_mismatch', `run ${run.id}: its start entry ${start.seq} is a ${start.purpose} run of ${start.unit ?? 'no unit'} for ${start.basis === null ? 'no plan or declaration' : 'a plan or declaration'} other than these options name; recover under the purpose and the plan or declaration the bench ran with`);
+          if (ledger.ends.has(start.seq)) continue;
+          // Proven by its folder: judged and re-verified, or a failure its client's own output reports.
+          if (run.status !== 'infra_error' || (run.failure?.parser ?? null) !== null) { bodies.push({ ...runEndBody(start.seq, options, run), recovered: true }); written.push(run.id); }
+          else voided.push(run.id);
+        }
+        for (const start of starts) if (!ledger.ends.has(start.seq) && !runs.some(run => run.id === start.run)) voided.push(start.run);
+        return bodies;
+      });
+      return { written, void: voided };
+    },
   };
 }
 

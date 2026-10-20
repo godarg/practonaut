@@ -11,7 +11,11 @@ import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { commitPushed, committedFiles, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from '../../src/challenge/git.ts';
-import { pushedLedger, scanOutside } from '../../src/challenge/files.ts';
+import { pushedLedger, scanOutside, setIdentities, writeSet } from '../../src/challenge/files.ts';
+import { generateSet } from '../../src/challenge/build.ts';
+import { packWorld } from '../../src/package/index.ts';
+import { canonicalJson, sha256Hex } from '../../src/canonical/index.ts';
+import { pathToFileURL } from 'node:url';
 import { headerLine, nextLine, parseLedger, type StartBody } from '../../src/challenge/ledger.ts';
 
 test('a declaration is used only committed, unchanged and pushed; its versions are counted', { timeout: 120_000 }, async () => {
@@ -68,7 +72,7 @@ test('a declaration is used only committed, unchanged and pushed; its versions a
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('the release ledger as declare and gate read it: committed and pushed, nothing more in the local one, every committed version a prefix; runs outside it are found', { timeout: 120_000 }, async () => {
+test('the release ledger as declare and gate read it: committed and pushed, nothing more in the local one, every committed version a prefix; never in a shallow clone (review: r2-ledger-history-local-refs)', { timeout: 120_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ledger-git-'));
   try {
     const git = (cwd: string, ...args: string[]) => {
@@ -79,7 +83,7 @@ test('the release ledger as declare and gate read it: committed and pushed, noth
     const remote = join(dir, 'remote.git'), work = join(dir, 'work'), folder = join(work, 'docs', 'benchmarks', 'challenge', '0.3.0');
     await mkdir(remote); git(remote, 'init', '--bare');
     await mkdir(folder, { recursive: true }); git(work, 'init'); git(work, 'remote', 'add', 'origin', remote);
-    const start = (index: number, bench = '20261102T100000Z-0001'): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench, run: `connect-s${index}-r1`, world: 'f'.repeat(64) });
+    const start = (index: number, bench = '20261102T100000Z-0001'): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench, run: `connect-s${index}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64) });
     let ledger = parseLedger(headerLine());
     const append = (body: StartBody): string => { ledger = parseLedger(ledger.text + nextLine(ledger, body).line); return ledger.text; };
     const paths = { local: join(dir, 'local.jsonl'), committed: join(folder, 'release-ledger.jsonl') };
@@ -106,17 +110,46 @@ test('the release ledger as declare and gate read it: committed and pushed, noth
     await writeFile(paths.local, other.text); await writeFile(paths.committed, other.text);
     git(work, 'add', '.'); git(work, 'commit', '-m', 'rewrite'); git(work, 'push');
     await code('ledger_rewritten', /is not a prefix of the current one/);
+    // A shallow clone cannot show every version (review: r2-ledger-history-local-refs): refused.
+    const shallow = join(dir, 'shallow');
+    git(dir, 'clone', '--quiet', '--depth', '1', pathToFileURL(remote).href, shallow);
+    await code('ledger_rewritten');
+    await assert.rejects(pushedLedger({ local: paths.local, committed: join(shallow, 'docs', 'benchmarks', 'challenge', '0.3.0', 'release-ledger.jsonl') }), (error: Error & { code?: string }) => error.code === 'shallow_clone' && /shallow clone/.test(error.message));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
-    // Model-run folders of the round's tasks without a start entry (built-in runs have no agent.stdout).
+test('runs outside the ledger are found by task identity on any world: a dev set of the same seeds is the same instances; a bench folder without a world by task id (review: r2-round-instances-by-world-hash)', { timeout: 120_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-ledger-scan-'));
+  try {
+    // The round's pre-probe set, the same seeds generated as a tuning set (another world id), and other seeds.
+    const round = generateSet('repair', [1, 2], 1, 'practonaut-r1-probe1'), dev = generateSet('repair', [1, 2], 1, 'dev'), other = generateSet('repair', [8], 1, 'dev');
+    const tasks = ['repair-1', 'repair-2'], identities = setIdentities(round, tasks);
+    assert.deepEqual(setIdentities(dev, tasks), identities);
+    assert.notEqual(canonicalJson(dev.world), canonicalJson(round.world));
     const root = join(dir, 'bench'), bench = (name: string) => join(root, name);
-    for (const [name, run, stdout, world] of [['20261102T100000Z-0001', 'connect-s1-r1', true, 'a'], ['20261102T100000Z-0002', 'connect-s1-r1', true, 'a'], ['20261102T100000Z-0003', 'connect-s1-r1', false, 'a'], ['20261102T100000Z-0004', 'connect-s1-r1', true, 'b'], ['20261102T100000Z-0005', 'decision-s1-r1', true, null]] as const) {
+    const packed = async (set: typeof round, name: string): Promise<Buffer> => { await writeSet(set, join(dir, name), { family: 'repair', set: 'dev', difficulty: '1', seeds: set === other ? [8] : [1, 2] }); return packWorld(join(dir, name, 'world')); };
+    const worlds = { round: await packed(round, 'round'), dev: await packed(dev, 'dev'), other: await packed(other, 'other') };
+    // [bench, run, agent output, world package in the folder ('tampered': a report binding another SHA-256)]
+    for (const [name, run, stdout, world] of [
+      ['20261102T100000Z-0001', 'repair-1-s1-r1', true, 'round'], ['20261102T100000Z-0002', 'repair-1-s1-r1', true, 'round'], ['20261102T100000Z-0003', 'repair-1-s1-r1', false, 'round'],
+      ['20261102T100000Z-0004', 'repair-2-s1-r1', true, 'dev'], ['20261102T100000Z-0005', 'repair-8-s1-r1', true, 'other'], ['20261102T100000Z-0006', 'repair-2-s1-r1', true, null],
+      ['20261102T100000Z-0007', 'repair-1-s1-r1', true, 'tampered'],
+    ] as const) {
       await mkdir(join(bench(name), run), { recursive: true });
       if (stdout) await writeFile(join(bench(name), run, 'agent.stdout'), '{}\n');
-      if (world) await writeFile(join(bench(name), 'report.json'), JSON.stringify({ environment: { world: { contentHash: world.repeat(64) } } }));
+      if (world === null) continue;
+      const bytes = worlds[world === 'tampered' ? 'other' : world];
+      await writeFile(join(bench(name), 'world.pnworld'), bytes);
+      await writeFile(join(bench(name), 'report.json'), JSON.stringify({ environment: { world: { contentHash: 'a'.repeat(64), package: { path: 'world.pnworld', sha256: world === 'tampered' ? 'b'.repeat(64) : sha256Hex(bytes) } } } }));
     }
-    const listed = parseLedger(headerLine() + nextLine(parseLedger(headerLine()), start(1)).line);
-    // 0001 is in the ledger; 0003 has no agent output; 0004 is another world; 0005 has no report and counts.
-    assert.deepEqual(await scanOutside([root], { worlds: ['a'.repeat(64)], tasks: ['connect', 'decision'] }, listed), [{ bench: '20261102T100000Z-0002', run: 'connect-s1-r1' }, { bench: '20261102T100000Z-0005', run: 'decision-s1-r1' }]);
+    const body: StartBody = { kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: 'repair-1-s1-r1', world: 'f'.repeat(64), instance: identities[0]! };
+    const listed = parseLedger(headerLine() + nextLine(parseLedger(headerLine()), body).line);
+    // 0001 is in the ledger; 0003 has no agent output; 0004 runs the round's instance on the dev world;
+    // 0005 another instance; 0006 has no report (by task id); 0007's world does not match its binding (by task id).
+    assert.deepEqual(await scanOutside([root], { identities: new Set(identities), tasks: new Set(tasks) }, listed), [
+      { bench: '20261102T100000Z-0002', run: 'repair-1-s1-r1' }, { bench: '20261102T100000Z-0004', run: 'repair-2-s1-r1' },
+      { bench: '20261102T100000Z-0006', run: 'repair-2-s1-r1' }, { bench: '20261102T100000Z-0007', run: 'repair-1-s1-r1' },
+    ]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -131,7 +164,7 @@ test('a committed ledger version on a merged side branch or a pushed unmerged br
     const remote = join(dir, 'remote.git'), work = join(dir, 'work'), folder = join(work, 'docs', 'benchmarks', 'challenge', '0.3.0');
     await mkdir(remote); git(remote, 'init', '--bare');
     await mkdir(folder, { recursive: true }); git(work, 'init'); git(work, 'remote', 'add', 'origin', remote);
-    const start = (index: number): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index}-r1`, world: 'f'.repeat(64) });
+    const start = (index: number): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64) });
     const append = (text: string, index: number): string => text + nextLine(parseLedger(text), start(index)).line;
     const paths = { local: join(dir, 'local.jsonl'), committed: join(folder, 'release-ledger.jsonl') };
     const commitLedger = async (text: string, message: string): Promise<void> => { await writeFile(paths.committed, text); git(work, 'add', '.'); git(work, 'commit', '-m', message); };

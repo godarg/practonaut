@@ -1,10 +1,11 @@
 // The 0.3.0 gate (PADR-0042 as amended on acceptance): units, the probe plan, the pre-probe, the
-// declaration /2 and the gate with its ledger bindings, and the fixes of the gate tool's review (PR #71):
-// every run on a round's instances in one repeat check whatever its purpose, plan or declaration;
-// funding read from the ledger; a lost run-end record voids a judged run; a non-run counts against
-// passing. Reports, ledgers and outcomes are hand-built (tests/support/challenge-round.ts); every
-// expected number is counted by hand from the outcome tables below, and every refusal is named by its
-// code.
+// declaration /2 and the gate with its ledger bindings, and the fixes of the gate tool's reviews (PR #71):
+// every run on a round's instances (by task identity, on any world) in one repeat check whatever its
+// purpose, plan or declaration, in the preflight too; funding read from the ledger; a start without a
+// run-end record is void whatever its folder holds; a recovered report is taken; a non-run counts
+// against passing, for discrimination and the headroom ceiling. Reports, ledgers and outcomes are
+// hand-built (tests/support/challenge-round.ts); every expected number is counted by hand from the
+// outcome tables below, and every refusal is named by its code.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -12,12 +13,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { validateBenchReportV3, type SessionRunV3 } from '../../src/bench/report.ts';
-import { checkRetune, developmentDigest, fileHash, funded, fundingAt, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, validateDeclaration, RoundError, type Declaration } from '../../src/challenge/declaration.ts';
+import { checkRetune, developmentDigest, fileHash, funded, fundingAt, heldOutSeeds, refuseRecordedProbe, refuseRedeclaration, validateDeclaration, validateProbe, RoundError, type Declaration } from '../../src/challenge/declaration.ts';
 import { attests, computeGate, exemptRun, mergeAgentRuns, preflightGate, probeRuns, renderGate, GateInputError, type GateReport } from '../../src/challenge/gate.ts';
 import { checkUnit, PREREGISTERED_UNITS, UnitError } from '../../src/challenge/units.ts';
 import { heldOutSeedsV1, validateDeclarationV1, validateLedgerV1 } from '../../src/challenge/round-020.ts';
-import { parseLedger, roundStarts, type RoundBody } from '../../src/challenge/ledger.ts';
-import { HAIKU, OPUS, SONNET, UNIT, admissionOf, builtinRun, declarationOf, declaredOf, first, gateReport, hash, heldReport, inputOf, ledgerOf, planOf, presetRun, probeRecordOf, probeReport, report, roundLedger, roundOf, GENERATOR, HELD_WORLD, PROBE_WORLD } from '../support/challenge-round.ts';
+import { countLedger, parseLedger, roundStarts, type RoundBody } from '../../src/challenge/ledger.ts';
+import { HAIKU, OPUS, SONNET, UNIT, admissionOf, builtinRun, declarationOf, declaredOf, first, gateReport, hash, heldReport, identityOf, inputOf, ledgerOf, planOf, presetRun, probeIdentities, probeRecordOf, probeReport, report, roundLedger, roundOf, GENERATOR, HELD_WORLD, PROBE_WORLD } from '../support/challenge-round.ts';
 
 const round = roundOf(3);
 const ladder = (strong: boolean[], middle: boolean[], weak: boolean[], options: { opus?: Parameters<typeof heldReport>[3]; sonnet?: Parameters<typeof heldReport>[3]; haiku?: Parameters<typeof heldReport>[3] } = {}): GateReport[] =>
@@ -85,12 +86,12 @@ test('a pre-probe under another plan of the round is refused unless that plan\'s
   // again under another probe-1 plan: refused, whatever the second pre-probe gives.
   const first7 = probeReport(6), again = probeReport(3);
   const ledger = ledgerOf([{ reports: [first7], purpose: 'pre-probe', basis: fileHash(other) }, { reports: [again], purpose: 'pre-probe', basis: fileHash(plan) }]);
-  refused(() => probeRuns({ plan, planHash: fileHash(plan), worldContentHash: PROBE_WORLD, reports: [again], ledger, folders: new Map() }), 'probe_replanned', /under another plan .* not recorded as refused/);
+  refused(() => probeRuns({ plan, planHash: fileHash(plan), worldContentHash: PROBE_WORLD, identities: probeIdentities(plan), reports: [again], ledger }), 'probe_replanned', /under another plan .* not recorded as refused/);
   // A retune (probe 2 on new seeds) follows a probe 1 the ledger recorded as refused: allowed.
   const two = planOf({ probe: 2, seeds: [11, 12, 13, 14, 15, 16, 17] }), retuned = probeReport(3, { probeSeeds: two.seeds, world: hash('b') });
-  const refusedOne: RoundBody = { kind: 'round', event: 'refused', unit: UNIT, round: 1, probe: 1, plan: fileHash(other), record: hash('2'), declaration: null, world: PROBE_WORLD, heldOutRuns: 0 };
+  const refusedOne: RoundBody = { kind: 'round', event: 'refused', unit: UNIT, round: 1, probe: 1, plan: fileHash(other), record: hash('2'), declaration: null, world: PROBE_WORLD, heldOutRuns: 0, instances: probeIdentities(other) };
   const retune = ledgerOf([{ reports: [first7], purpose: 'pre-probe', basis: fileHash(other) }, { round: refusedOne }, { reports: [retuned], purpose: 'pre-probe', basis: fileHash(two) }]);
-  assert.equal(probeRuns({ plan: two, planHash: fileHash(two), worldContentHash: hash('b'), reports: [retuned], ledger: retune, folders: new Map() }).passed, 3);
+  assert.equal(probeRuns({ plan: two, planHash: fileHash(two), worldContentHash: hash('b'), identities: probeIdentities(two), reports: [retuned], ledger: retune }).passed, 3);
   // Both pre-probes count for the round: the starts of either plan belong to it.
   assert.equal(roundStarts(retune, UNIT, 1).length, 14);
 });
@@ -130,7 +131,7 @@ test('funding is read from the ledger: declared rounds keep their unstarted held
   const admission = base.records.length - 1;
   // Alone: the 7 pre-probe runs counted, two foreign rounds (2 × 99) kept.
   assert.deepEqual(fundingAt(base, UNIT, 1, admission), { before: 7, reserved: 198 });
-  const event = (unit: string, kind: RoundBody['event'], extra: Partial<RoundBody> = {}): { round: RoundBody } => ({ round: { kind: 'round', event: kind, unit, round: 1, probe: 1, plan: hash('3'), record: hash('4'), declaration: kind === 'declared' ? hash('5') : null, world: hash('6'), heldOutRuns: kind === 'declared' ? 78 : 0, ...extra } });
+  const event = (unit: string, kind: RoundBody['event'], extra: Partial<RoundBody> = {}): { round: RoundBody } => ({ round: { kind: 'round', event: kind, unit, round: 1, probe: 1, plan: hash('3'), record: hash('4'), declaration: kind === 'declared' ? hash('5') : null, world: hash('6'), heldOutRuns: kind === 'declared' ? 78 : 0, instances: kind === 'declared' ? round.tasks.map(identityOf) : [hash('6')], ...extra } });
   // Another unit declared and not started: its 78 held-out runs are kept (they were free before).
   const declaredOther = ledgerOf([...round.groups.slice(0, ours + 1), event('injection.practonaut', 'admitted'), event('injection.practonaut', 'declared')]);
   assert.deepEqual(fundingAt(declaredOther, UNIT, 1, admission), { before: 7, reserved: 198 + 78 });
@@ -138,6 +139,13 @@ test('funding is read from the ledger: declared rounds keep their unstarted held
   const started = heldReport({ ...round, heldWorld: hash('6') }, OPUS, first(round, 0));
   const partly = ledgerOf([...round.groups.slice(0, ours + 1), event('injection.practonaut', 'admitted'), event('injection.practonaut', 'declared'), { reports: [started], purpose: 'held-out', basis: hash('5'), unit: 'injection.practonaut', round: 1 }]);
   assert.deepEqual(fundingAt(partly, UNIT, 1, admission), { before: 7 + 26, reserved: 198 + 52 });
+  // Only counted, final starts use up a held-out run (review: r2-funding-reserve-counts-starts): five
+  // usage limits before model work (exempt) and five API errors (benched again) keep all 78; a start
+  // without a run-end record (void: counted, never benched again) uses one up.
+  const limited = heldReport({ ...round, heldWorld: hash('6') }, OPUS, first(round, 0), { run: (task, index) => index < 5 ? presetRun(task, null, OPUS) : index < 10 ? presetRun(task, null, OPUS, { failure: { reason: 'api_error', parser: 'claude-code-stream/1', code: '529', beforeModelWork: true } }) : index === 10 ? presetRun(task, true, OPUS) : null });
+  const unfinished = ledgerOf([...round.groups.slice(0, ours + 1), event('injection.practonaut', 'admitted'), event('injection.practonaut', 'declared'), { reports: [limited], purpose: 'held-out', basis: hash('5'), unit: 'injection.practonaut', round: 1 }], { skipEnd: [`${limited.bench}/${limited.report.runs[10]!.id}`] });
+  assert.deepEqual(countLedger(unfinished), { starts: 18, counted: 13, local: 0, exempt: 5, open: 1 });
+  assert.deepEqual(fundingAt(unfinished, UNIT, 1, admission), { before: 13, reserved: 198 + 77 });
   // A unit admitted before ours and not declared keeps 78; one admitted after ours, or refused, keeps none.
   const earlier = ledgerOf([event('layout.practonaut', 'admitted'), ...round.groups.slice(0, ours + 1)]);
   assert.deepEqual(fundingAt(earlier, UNIT, 1, earlier.records.length - 1), { before: 7, reserved: 198 + 78 });
@@ -187,6 +195,16 @@ test('a whole round: the verdict and every number, counted by hand', () => {
   // Headroom: 21 of 26 (80.8 %) is above 80 %; 20 of 26 (76.9 %) is within.
   assert.equal(computeGate(inputOf(round, ladder(first(round, 21), first(round, 10), first(round, 4)))).verdict, 'does not pass');
   assert.equal(computeGate(inputOf(round, ladder(first(round, 20), first(round, 10), first(round, 4)))).verdict, 'passes');
+  // The ceiling counts the strongest's non-runs as passes (review: r2-headroom-strongest-nonruns): Opus
+  // 22 of 26 does not pass; leaving out its runs on instances 20 and 21 (20/26 passed, 2 missing) or
+  // three usage limits there not benched again (exempt, free) does not make it pass.
+  const holes = heldReport(round, OPUS, first(round, 22), { run: (task, index) => index === 20 || index === 21 ? null : presetRun(task, index < 22, OPUS) });
+  const thinned = computeGate(inputOf(round, [holes, heldReport(round, SONNET, first(round, 10)), heldReport(round, HAIKU, first(round, 4))]));
+  assert.deepEqual([thinned.strongest.passed, thinned.strongest.missing, thinned.verdict], [20, 2, 'does not pass']);
+  assert.match(thinned.criteria.find(c => c.name === 'headroom')!.value, /^20\/26 \(76\.9 %\); 22\/26 \(84\.6 %\) with the 2 instances the strongest did not run counted as passed$/);
+  const limits = heldReport(round, OPUS, first(round, 20), { run: (task, index) => index >= 20 && index < 23 ? presetRun(task, null, OPUS) : presetRun(task, index < 20, OPUS) });
+  const free = computeGate(inputOf(round, [limits, heldReport(round, SONNET, first(round, 10)), heldReport(round, HAIKU, first(round, 4))]));
+  assert.deepEqual([free.strongest.passed, free.strongest.infraErrors, free.spend.exempt, free.verdict], [20, 3, 3, 'does not pass']);
   // Discrimination: Haiku 10 of 26 against Opus 15: 19.2 points.
   assert.equal(computeGate(inputOf(round, ladder(first(round, 15), first(round, 10), first(round, 10)))).criteria.find(c => c.name === 'difference')!.met, false);
 });
@@ -276,36 +294,79 @@ test('runs on a held-out instance under any purpose are in the repeat check and 
   // And a development run as the only judged run of an instance is not the round's run either.
   const alone = ledgerOf([...round.groups, { reports: reports.slice(0, 2), purpose: 'held-out', basis: fileHash(round.declaration) }, { reports: [heldReport(round, HAIKU, first(round, 4))], purpose: 'development', basis: null, unit: null, round: null }]);
   refused(() => computeGate({ ...inputOf(round, reports.slice(0, 2)), ledger: { ledger: alone, versions: [] } }), 'best_of_n', /is a development run on this round's instance/);
+  // The same instances benched on another world (a copy of the held-out world, a dev set) are the same
+  // tasks by identity (review: r2-round-instances-by-world-hash): best-of-N as well.
+  const elsewhere = heldReport({ ...round, heldWorld: hash('f') }, HAIKU, first(round, 26));
+  const copied = ledgerOf([...round.groups, { reports: [elsewhere], purpose: 'development', basis: null, unit: null, round: null }, { reports, purpose: 'held-out', basis: fileHash(round.declaration) }]);
+  refused(() => computeGate({ ...inputOf(round, reports), ledger: { ledger: copied, versions: [] } }), 'best_of_n', /after its judged run .* purpose development/);
+  // A pre-probe instance benched on another world before the pre-probe: refused there too.
+  const peek = probeReport(3, { world: hash('f') });
+  const peeked = ledgerOf([{ reports: [peek], purpose: 'example', basis: null, unit: null, round: null }, { reports: round.probe, purpose: 'pre-probe', basis: fileHash(round.plan) }]);
+  refused(() => probeRuns({ plan: round.plan, planHash: fileHash(round.plan), worldContentHash: PROBE_WORLD, identities: probeIdentities(round.plan), reports: round.probe, ledger: peeked }), 'best_of_n', /purpose example/);
   // Unjudged ones (infra errors) are counted for the round and named, not refused: 85 + 26.
   const failed = heldReport(round, HAIKU, first(round, 0), { run: task => presetRun(task, null, HAIKU, { failure: { reason: 'api_error', parser: 'claude-code-stream/1', code: '529', beforeModelWork: true } }) });
-  const counted = computeGate({ ...inputOf(round, reports), ledger: { ledger: ledgerOf([...round.groups, { reports: [failed], purpose: 'example', basis: null, unit: null, round: null }, { reports, purpose: 'held-out', basis: fileHash(round.declaration) }]), versions: [] } });
+  const failedElsewhere = { ...failed, report: { ...failed.report, environment: { ...failed.report.environment, world: { ...failed.report.environment.world, contentHash: hash('f') } } } };
+  const counted = computeGate({ ...inputOf(round, reports), ledger: { ledger: ledgerOf([...round.groups, { reports: [failedElsewhere], purpose: 'example', basis: null, unit: null, round: null }, { reports, purpose: 'held-out', basis: fileHash(round.declaration) }]), versions: [] } });
   assert.deepEqual(counted.spend, { preProbe: 7, heldOut: 104, total: 111, exempt: 0, planned: 85, other: 26 });
   assert.deepEqual([counted.verdict, counted.voidReason], ['void', 'budget']);
   assert.match(renderGate(counted), /111 model runs counted \(104 held-out \+ 7 pre-probe; 26 of them under another plan, declaration or purpose\)/);
 });
 
-test('a judged run whose run-end record is lost is void: never scored, never benched again; an unjudged one may be (review: gate-run-end-lock-window)', () => {
+test('a start without a run-end record is void whatever its folder holds: counted, never scored, never benched again, named in the report (review: gate-run-end-lock-window)', () => {
   const reports = passing(), opus = reports[0]!;
   // Opus's passing runs on instances 12–14 without their run-end records: Opus 12/26, b = 8, c = 0.
   const skip = opus.report.runs.slice(12, 15).map(run => `${opus.bench}/${run.id}`);
   const three = computeGate(inputOf(round, reports, { skipEnd: skip }));
   assert.deepEqual([three.strongest.passed, three.strongest.unrecorded, three.discordant.strongestOnly, three.verdict], [12, 3, 8, 'passes']);
+  assert.deepEqual(three.void.map(entry => [entry.model, entry.taskId, entry.run]), opus.report.runs.slice(12, 15).map(run => [OPUS, run.taskId, run.id]));
+  assert.match(renderGate(three), new RegExp(`Void runs \\(a start without a run-end record: counted, not scored, the instance not benched again for that model\\): \`claude-opus-5-5\` on ${round.tasks[12]} \\(held-out, run ${round.tasks[12]}-s1-r1`));
   // 4 of 78 ladder runs (5.1 %) void the round.
   const four = computeGate(inputOf(round, reports, { skipEnd: [...skip, `${opus.bench}/${opus.report.runs[11]!.id}`] }));
   assert.deepEqual([four.verdict, four.voidReason], ['void', 'infrastructure']);
-  // Benched again after the verdict was on disk: refused, whether the report or only the folder shows it.
-  const again = heldReport(round, OPUS, first(round, 15), { createdAt: '2026-11-02T11:00:00.000Z', run: (task, index) => index >= 12 && index < 15 ? presetRun(task, true, OPUS) : null });
-  refused(() => computeGate(inputOf(round, [...reports, again], { skipEnd: skip })), 'best_of_n');
+  // No report needs to list them — the verdict files deleted, the folder gone, or a recovered report
+  // listing them as interrupted: still void, never "not given" (the old folder states are gone).
   const unlisted = { ...opus, report: { ...opus.report, runs: opus.report.runs.filter((_, index) => index < 12 || index > 14) } };
-  const lostLedger = roundLedger(round, [opus, ...reports.slice(1), again], [], { skipEnd: skip });
-  const base = inputOf(round, [unlisted, ...reports.slice(1), again]);
-  refused(() => computeGate({ ...base, ledger: { ledger: lostLedger, versions: [] }, folders: new Map(skip.map(key => [key.replace('/', '\u0000'), 'judged'] as const)) }), 'best_of_n');
-  // A folder that is gone counts as judged too; only a folder without a verdict lets the task run again.
-  refused(() => computeGate({ ...base, ledger: { ledger: lostLedger, versions: [] }, folders: new Map(skip.map(key => [key.replace('/', '\u0000'), 'missing'] as const)) }), 'best_of_n');
-  const resumed = computeGate({ ...base, ledger: { ledger: lostLedger, versions: [] }, folders: new Map(skip.map(key => [key.replace('/', '\u0000'), 'unjudged'] as const)) });
-  assert.deepEqual([resumed.strongest.passed, resumed.strongest.unrecorded, resumed.strongest.reports], [15, 0, 2]);
-  // But a judged and recorded run benched again is best-of-N.
+  const lostLedger = roundLedger(round, reports, [], { skipEnd: skip });
+  const listedNot = computeGate({ ...inputOf(round, [unlisted, ...reports.slice(1)]), ledger: { ledger: lostLedger, versions: [] } });
+  assert.deepEqual([listedNot.strongest.passed, listedNot.strongest.unrecorded, listedNot.strongest.missing, listedNot.verdict], [12, 3, 0, 'passes']);
+  // Benched again — whatever the first run's folder holds now: best-of-N, by name.
+  const again = heldReport(round, OPUS, first(round, 15), { createdAt: '2026-11-02T11:00:00.000Z', run: (task, index) => index >= 12 && index < 15 ? presetRun(task, true, OPUS) : null });
+  const rerun = roundLedger(round, [opus, ...reports.slice(1), again], [], { skipEnd: skip });
+  refused(() => computeGate({ ...inputOf(round, [unlisted, ...reports.slice(1), again]), ledger: { ledger: rerun, versions: [] } }), 'best_of_n', new RegExp(`task ${round.tasks[12]} was run again for ${OPUS} after its void run`));
+  refused(() => computeGate({ ...inputOf(round, [...reports, again]), ledger: { ledger: rerun, versions: [] } }), 'best_of_n');
+  // And a judged, recorded run benched again is best-of-N.
   refused(() => computeGate(inputOf(round, [...reports, again])), 'best_of_n');
+});
+
+test('a recovered report is taken: its requested model is the one its start entries name (review: r2-killed-bench-dead-end)', () => {
+  const reports = passing(), opus = reports[0]!, basis = fileHash(round.declaration);
+  const recovered = (value: GateReport['report'], recoveredFlag: boolean): GateReport => gateReport({ ...structuredClone(value), ...(recoveredFlag ? { recovered: true as const } : {}), agent: { ...structuredClone(value.agent), requestedModel: { value: null, source: 'none' } } } as GateReport['report'], opus.bench);
+  const ledgerWith = (model: string | null) => ledgerOf([...round.groups, { reports: [recovered(opus.report, true)], purpose: 'held-out', basis, model }, { reports: reports.slice(1), purpose: 'held-out', basis }]);
+  const input = (flag: boolean, model: string | null) => ({ ...inputOf(round, [recovered(opus.report, flag), ...reports.slice(1)]), ledger: { ledger: ledgerWith(model), versions: [] } });
+  const result = computeGate(input(true, OPUS));
+  assert.deepEqual([result.strongest.passed, result.verdict], [15, 'passes']);
+  // Not recovered, or its starts naming no model: refused.
+  refused(() => computeGate(input(false, OPUS)), 'ladder_model_mismatch', /requested no model/);
+  refused(() => computeGate(input(true, null)), 'ladder_model_mismatch', /a recovered report, read from its start entries/);
+  // A recovered pre-probe report as well.
+  const probe = round.probe[0]!, pre = recovered(probe.report, true);
+  const preLedger = ledgerOf([{ reports: [pre], purpose: 'pre-probe', basis: fileHash(round.plan), model: OPUS }]);
+  assert.equal(probeRuns({ plan: round.plan, planHash: fileHash(round.plan), worldContentHash: PROBE_WORLD, identities: probeIdentities(round.plan), reports: [{ ...pre, sessions: probe.sessions! }], ledger: preLedger }).passed, 3);
+});
+
+test('a void pre-probe run refuses the pre-probe: recorded as not admitted, the void instance named (review: r2-killed-bench-dead-end, gate-run-end-lock-window)', () => {
+  const plan = round.plan, probe = probeReport(3), skip = [`${probe.bench}/${probe.report.runs[1]!.id}`];
+  const ledger = ledgerOf([{ reports: [probe], purpose: 'pre-probe', basis: fileHash(plan) }], { skipEnd: skip });
+  const result = probeRuns({ plan, planHash: fileHash(plan), worldContentHash: PROBE_WORLD, identities: probeIdentities(plan), reports: [probe], ledger });
+  // repair-2 passed, but its run-end record is lost: 2 of 7, and void.
+  assert.deepEqual([result.passed, result.void, result.runs.length], [2, ['repair-2'], 6]);
+  const record = probeRecordOf(plan, [probe], ledger);
+  assert.deepEqual([record.admitted, record.void], [false, ['repair-2']]);
+  assert.doesNotThrow(() => validateProbe(record));
+  refused(() => validateProbe({ ...record, admitted: true }), 'probe_invalid', /without a void run/);
+  // The pre-probe without that run's report: still void, not "not given".
+  const without = gateReport({ ...probe.report, runs: probe.report.runs.filter((_, index) => index !== 1) }, probe.bench);
+  assert.deepEqual(probeRuns({ plan, planHash: fileHash(plan), worldContentHash: PROBE_WORLD, identities: probeIdentities(plan), reports: [without], ledger }).void, ['repair-2']);
 });
 
 test('no best-of-N in the ledger, and the latest judged run of every agent and task is given to the gate', () => {
@@ -413,6 +474,16 @@ test('the gate holds to its files: the plan and record the declaration follows f
   refused(() => preflightGate({ ...input, oracle: [heldReport(round, 'oracle', round.tasks.map((_, index) => index > 0))] }), 'preflight_refused', /the oracle passes 25 of 26/);
   refused(() => preflightGate({ ...input, nearMisses: { ...input.nearMisses, passed: 1 } }), 'preflight_refused', /1 near misses pass the checker/);
   assert.equal(preflightGate(input).ladderRunsSpent, 78);
+});
+
+test('the preflight runs the held-out repeat check before any ladder run (review: r2-preflight-skips-heldout-repeat-check)', () => {
+  const input = inputOf(round, passing());
+  // One judged development run of the first held-out instance (any world) before the ladder: refused now.
+  const extra = heldReport({ ...round, heldWorld: hash('f') }, HAIKU, first(round, 1), { run: (task, index) => index === 0 ? presetRun(task, true, HAIKU) : null });
+  const ledger = ledgerOf([...round.groups, { reports: [extra], purpose: 'development', basis: null, unit: null, round: null }]);
+  refused(() => preflightGate({ ...input, ledger: { ledger, versions: [] } }), 'best_of_n', new RegExp(`the latest judged run of ${round.tasks[0]} for ${HAIKU} .* is a development run on this round's instance`));
+  // Without it, the preflight passes before any ladder run.
+  assert.equal(preflightGate({ ...input, ledger: { ledger: ledgerOf(round.groups), versions: [] } }).ladderRunsSpent, 0);
 });
 
 test('mergeAgentRuns: the latest report counts after an infra_error; a judged run benched again is refused', () => {

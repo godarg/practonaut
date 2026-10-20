@@ -53,9 +53,12 @@ export const StartRecordSchema = z.strictObject({
   /** The preset's name (`command` for a command template). */
   agent: identifier,
   bench: z.string().regex(BENCH_ID), run: z.string().regex(RUN_ID),
-  /** The content hash of the world the run benches: a run on a round's world belongs to that round,
-   * whatever its purpose (PADR-0042 amended). */
+  /** The content hash of the world the run benches. */
   world: sha256,
+  /** The instance's task identity (PADR-0044 decision 3, the same on any world that poses the same
+   * task): a run on a round's instance belongs to that round, whatever its purpose and world
+   * (PADR-0042 amended). */
+  instance: sha256,
 });
 export const RunEndRecordSchema = z.strictObject({
   kind: z.literal('run-end'), seq, prev: sha256,
@@ -72,16 +75,22 @@ export const RunEndRecordSchema = z.strictObject({
   hostCalls: count, reads: count,
   /** The client's own token total (input, output and cache), null when it reports none. */
   tokens: count.nullable(),
+  /** Written by `bench --recover` through the guard from the run's folder (re-verified), after the bench
+   * was killed or could not append it; absent when the runner appended it as the run ended. */
+  recovered: z.literal(true).optional(),
 });
 /** What `probe` and `declare` decided for a unit's round, registered in order: a pre-probe that
- * admitted or refused the unit (its plan, record and pre-probe world), and a declaration (its hash,
- * its held-out world and the held-out runs it plans). Never counted against the cap. */
+ * admitted or refused the unit (its plan, record, pre-probe world and the task identities of its
+ * instances), and a declaration (its hash, its held-out world and instances, and the held-out runs it
+ * plans). Never counted against the cap. */
 export const RoundRecordSchema = z.strictObject({
   kind: z.literal('round'), seq, prev: sha256,
   event: z.enum(['admitted', 'refused', 'declared']),
   unit: unitId, round: z.number().int().min(1).max(9), probe: z.number().int().min(1).max(9),
   plan: sha256, record: sha256, declaration: sha256.nullable(),
   world: sha256, heldOutRuns: count,
+  /** The task identities of the pre-probe instances (admitted, refused) or the held-out ones (declared). */
+  instances: z.array(sha256).min(1).max(40),
 });
 export type HeaderRecord = z.infer<typeof HeaderRecordSchema>;
 export type StartRecord = z.infer<typeof StartRecordSchema>;
@@ -186,17 +195,23 @@ export function countLedger(ledger: Pick<Ledger, 'records' | 'ends'>, filter: (s
 
 /**
  * The start entries that belong to a unit's round (PADR-0042 amended): every start naming the unit and
- * round, and every start on a world of the round — a world one of those starts benched, or a world a
- * round record of the unit and round names — whatever its purpose. A run on a round's instances counts
- * for that round, and appears in its repeat check, under any purpose.
+ * round, and every start on an instance of the round — by task identity (PADR-0044 decision 3), so on
+ * whatever world poses it — whatever its purpose. The round's instances are those its round records
+ * name and those the caller regenerated from the plan or declaration (`instances`); never a world or
+ * instance a start names, so a stray start cannot pull another round's runs in. A run on a round's
+ * instances counts for that round, and appears in its repeat check, under any purpose.
  */
-export function roundStarts(ledger: Pick<Ledger, 'records'>, unit: string, round: number): StartRecord[] {
-  const worlds = new Set<string>();
-  for (const record of ledger.records) {
-    if (record.kind === 'start' && record.unit === unit && record.round === round) worlds.add(record.world);
-    if (record.kind === 'round' && record.unit === unit && record.round === round) worlds.add(record.world);
-  }
-  return ledger.records.filter((record): record is StartRecord => record.kind === 'start' && ((record.unit === unit && record.round === round) || worlds.has(record.world)));
+export function roundStarts(ledger: Pick<Ledger, 'records'>, unit: string, round: number, instances: Iterable<string> = []): StartRecord[] {
+  const of = new Set(instances);
+  for (const record of ledger.records) if (record.kind === 'round' && record.unit === unit && record.round === round) for (const instance of record.instances) of.add(instance);
+  return ledger.records.filter((record): record is StartRecord => record.kind === 'start' && ((record.unit === unit && record.round === round) || of.has(record.instance)));
+}
+/** Whether a start entry's run is spent for its model and instance: judged (a run-end record that is not
+ * an infra_error) or void (no run-end record, whatever its folder holds: PADR-0042 amended). Only a run
+ * whose run-end record states an infra_error may be benched again. */
+export function spentStart(ledger: Pick<Ledger, 'ends'>, start: StartRecord): boolean {
+  const end = ledger.ends.get(start.seq);
+  return !end || end.status !== 'infra_error';
 }
 /** The round records of a unit's round, in ledger order. */
 export const roundEvents = (ledger: Pick<Ledger, 'records'>, unit?: string, round?: number): RoundRecord[] =>

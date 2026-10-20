@@ -74,6 +74,26 @@ export function commitPushed(path: string, commit: string): boolean {
   return remote.ok && remote.out.trim() !== '';
 }
 
+/** Whether the repository of `cwd` is a shallow clone: its history (and every committed version of the
+ * release ledger in it) is cut off, so the every-version-is-a-prefix check cannot be made. */
+export function isShallowRepository(cwd: string): boolean {
+  return git(cwd, ['rev-parse', '--is-shallow-repository']).out.trim() === 'true';
+}
+/** Every committed version of a file named by its path from the repository's top level (forward
+ * slashes), over HEAD and every remote-tracking branch without history simplification, newest first,
+ * with its content; whether or not the working tree holds the file. */
+export function committedVersions(cwd: string, rel: string): Array<{ commit: string; date: string; text: string }> {
+  const listed = git(cwd, ['log', '--full-history', '--format=%H %cI', 'HEAD', '--remotes', '--', `:(top,literal)${rel}`]);
+  if (!listed.ok) return [];
+  const out: Array<{ commit: string; date: string; text: string }> = [];
+  for (const line of listed.out.split('\n').filter(Boolean)) {
+    const [commit, date] = line.split(' ');
+    const shown = git(cwd, ['show', `${commit}:${rel}`]);
+    if (shown.ok) out.push({ commit: commit!, date: date ?? '', text: shown.out });
+  }
+  return out;
+}
+
 /** The committed files of a folder (names only), for counting earlier rounds. */
 export function committedFiles(folder: string): string[] {
   const listed = git(folder, ['ls-files', '--', '.']);

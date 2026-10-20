@@ -7,25 +7,30 @@
 //   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
 //   node tools/challenge.ts verify <dir>
 //   node tools/challenge.ts args <dir> [--tasks <id,…>]
-// The release ledger (local in the git common directory, shared by every worktree; committed in docs/benchmarks/challenge/0.3.0/):
-//   node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>] [--bench-root <dir,…>]
-//   node tools/challenge.ts bench --purpose <p> [--plan <file> | --declaration <file> | --unit <u>] [--ledger <file>] [--folder <dir>] -- <bench arguments>
+// The release ledger (local: one per user and repository under PRACTONAUT_HOME, shared by every clone and
+// worktree of the repository; committed in docs/benchmarks/challenge/0.3.0/):
+//   node tools/challenge.ts ledger init|write|show [--folder <dir>] [--bench-root <dir,…>]
+//   node tools/challenge.ts bench --purpose <p> [--plan <file> | --declaration <file> | --unit <u>] [--folder <dir>] -- <bench arguments> [--recover <bench folder>]
 // A round of a unit <family>.<toolchain> (shape B):
 //   node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty <d> --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit <unit>] --out <file>
 //   node tools/challenge.ts generate <unit> --set probe --plan <file> --out <dir>
-//   node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] [--ledger <file>] --out <file>
-//   node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] [--ledger <file>] --out <file>
+//   node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] --out <file>
+//   node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] --out <file>
 //   node tools/challenge.ts generate <unit> --set heldout --declaration <file> --out <dir>
-//   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--ledger <file>] [--out <file.md>]
+//   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--out <file.md>]
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash, fileHash, GATE_PRESET, heldOutSeeds } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
-import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
-import { appendRound, initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
-import { countLedger, headerLine, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
+import { committedFile, COMMITTED_LEDGER, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, setIdentities, verifySet, writeSet } from '../src/challenge/files.ts';
+import { appendRound, initLedger, ledgerExists, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
+import { countLedger, headerLine, isPrefix, LedgerError, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
+import { earlierLedgerPaths, releaseLedgerPath, repositoryIdentity } from '../src/challenge/repository.ts';
+import { committedVersions, isShallowRepository } from '../src/challenge/git.ts';
+import { taskIdOf } from '../src/challenge/build.ts';
+import { canonicalJson, sha256Hex } from '../src/canonical/index.ts';
 import { resolvedDataPaths } from '../src/platform/paths.ts';
 import { parseUnit, PRACTONAUT_TOOLCHAIN } from '../src/challenge/units.ts';
 import { commandBench } from '../src/cli/bench.ts';
@@ -37,12 +42,12 @@ const usage = `usage:
   node tools/challenge.ts generate <unit> --set heldout --declaration <file> --out <dir> [--force]
   node tools/challenge.ts verify <dir>
   node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: … bench --agent <a> $(…) in a POSIX shell)
-  node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>] [--bench-root <dir,…>]
-  node tools/challenge.ts bench --purpose ${PURPOSES.join('|')} [--plan <file> | --declaration <file> | --unit <u>] [--ledger <file>] [--folder <dir>] -- <bench arguments>
+  node tools/challenge.ts ledger init|write|show [--folder <dir>] [--bench-root <dir,…>]
+  node tools/challenge.ts bench --purpose ${PURPOSES.join('|')} [--plan <file> | --declaration <file> | --unit <u>] [--folder <dir>] -- <bench arguments> [--recover <bench folder>]
   node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty 1|2|3|mixed --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit <unit>] --out <file> [--force]
-  node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] [--ledger <file>] --out <file> [--force]
-  node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] [--ledger <file>] --out <file> [--force]
-  node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--ledger <file>] [--out <file.md>] [--force]
+  node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] --out <file> [--force]
+  node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] --out <file> [--force]
+  node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--out <file.md>] [--force]
 families: ${FAMILIES.join(', ')}; a unit is <family>.<toolchain>, for example layout.practonaut`;
 const fail = (message: string): never => { process.stderr.write(`challenge: ${message}\n${usage}\n`); process.exit(1); };
 
@@ -78,13 +83,17 @@ async function refuseExisting(out: string, force: boolean): Promise<void> {
 }
 const gitPath = (args: string[]): string => {
   try { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
-  catch { return fail('not in a git checkout: name --folder and --ledger'); }
+  catch { return fail('not in a git checkout'); }
 };
 /** The checkout's top level: the release folder of this branch's round files. */
 const defaultFolder = (): string => join(gitPath(['rev-parse', '--show-toplevel']), 'docs', 'benchmarks', 'challenge', RELEASE);
-/** One local ledger per repository, shared by every worktree and checkout of it (and its lock): in the
- * git common directory, never in a checkout (PADR-0042 amended). */
-const defaultLedger = (): string => join(resolve(gitPath(['rev-parse', '--git-common-dir'])), 'practonaut', `release-ledger-${RELEASE}.jsonl`);
+/** One local ledger per user and repository (PADR-0042 amended): under PRACTONAUT_HOME, keyed by the
+ * repository's normalised origin URL and root commit, so every clone and worktree of the repository on
+ * this machine shares it and its lock. Never a path an option names. */
+async function localLedger(): Promise<string> {
+  const identity = repositoryIdentity(process.cwd()) ?? fail('not in a git repository with a commit: the release ledger belongs to a repository');
+  return releaseLedgerPath((await resolvedDataPaths()).home, identity.key);
+}
 /** No argument but the options a command names. */
 const noPositional = (positional: string[]): void => { if (positional.length) fail(`unexpected argument ${positional[0]}`); };
 
@@ -151,19 +160,32 @@ async function benchArgs(args: string[]): Promise<void> {
 }
 
 async function ledger(args: string[]): Promise<void> {
-  const { values, positional } = options(args, ['--ledger', '--folder', '--bench-root']);
+  const { values, positional } = options(args, ['--folder', '--bench-root']);
   const action = positional[0];
   if (positional.length !== 1 || !['init', 'write', 'show'].includes(action!)) fail('ledger init, write or show');
-  const paths = ledgerPaths(values['--folder'] ?? defaultFolder(), values['--ledger'] ?? defaultLedger());
+  const folder = values['--folder'] ?? defaultFolder(), paths = ledgerPaths(folder, await localLedger());
   if (action === 'init') {
-    // A new local ledger starts from the committed one; it refuses while model-run folders exist that
-    // no start entry of it names (they were made outside the ledger: move them, or they would never count).
-    const committed = await readLedger(paths.committed);
+    // This repository's ledger exists (here, or where an earlier Practonaut kept it): never a second one.
+    if (await ledgerExists(paths.local)) throw new LedgerError('ledger_exists', `${paths.local} exists: this repository's local release ledger (shared by every clone and worktree of it); a local ledger is never replaced`);
+    for (const earlier of earlierLedgerPaths(process.cwd())) if (await ledgerExists(earlier))
+      throw new LedgerError('ledger_elsewhere', `a release ledger of this repository exists at ${earlier}, where an earlier Practonaut kept it; move it to ${paths.local} instead of starting a second count`);
+    // Every pushed version, over HEAD and every remote-tracking branch: one history, the longest its head.
+    const top = gitPath(['rev-parse', '--show-toplevel']);
+    if (isShallowRepository(top)) throw new LedgerError('shallow_clone', 'this repository is a shallow clone: the release ledger\'s pushed versions cannot all be read (git fetch --unshallow)');
+    const rel = relative(top, resolve(folder, COMMITTED_LEDGER)).split(sep).join('/');
+    const versions = committedVersions(top, rel);
+    const texts = [...versions.map(version => version.text), ...(await readLedger(paths.committed).then(value => value ? [value.text] : [], () => []))];
+    const longest = texts.reduce<string | null>((best, text) => best === null || text.length > best.length ? text : best, null);
+    const diverged = texts.find(text => !isPrefix(text, longest!));
+    if (diverged !== undefined) throw new LedgerError('ledger_diverged', 'the pushed versions of the release ledger are not one history (a branch holds records another lacks); a maintainer merges them before a ledger is started');
+    const base = longest === null ? parseLedger(headerLine()) : parseLedger(longest);
+    // It refuses while model-run folders exist that no start entry names (made outside the ledger: they
+    // would never count).
     const roots = [...list(values['--bench-root']), join((await resolvedDataPaths()).home, 'bench')];
-    const outside = await scanUnledgered(roots, committed ?? parseLedger(headerLine()));
-    if (outside.length) throw Object.assign(new Error(`${outside.length} model run folder${outside.length === 1 ? '' : 's'} (first: ${outside[0]!.run} in bench folder ${outside[0]!.bench}) hold${outside.length === 1 ? 's' : ''} no start entry of the committed release ledger; a ledger is not started while runs made outside it exist`), { code: 'runs_outside_ledger' });
-    const made = await initLedger(paths);
-    process.stdout.write(`wrote ${paths.local}: ${made.from === 'new' ? 'a new release ledger for ' + RELEASE : `a copy of the committed ledger (${made.records} records)`}\n`);
+    const outside = await scanUnledgered(roots, base);
+    if (outside.length) throw Object.assign(new Error(`${outside.length} model run folder${outside.length === 1 ? '' : 's'} (first: ${outside[0]!.run} in bench folder ${outside[0]!.bench}) hold${outside.length === 1 ? 's' : ''} no start entry of any pushed version of the release ledger; a ledger is not started while runs made outside it exist`), { code: 'runs_outside_ledger' });
+    const made = await initLedger(paths, longest);
+    process.stdout.write(`wrote ${paths.local}: ${made.from === 'new' ? 'a new release ledger for ' + RELEASE : `a copy of the longest pushed ledger (${made.records} records)`}; every clone and worktree of this repository on this machine uses it\n`);
   } else if (action === 'write') {
     const written = await writeCommittedLedger(paths);
     process.stdout.write(`wrote ${paths.committed}: ${written.records} records (${written.added} new); commit and push it before declare or gate read them\n`);
@@ -171,7 +193,7 @@ async function ledger(args: string[]): Promise<void> {
     const local = await readLedger(paths.local);
     if (!local) return void fail(`no local ledger at ${paths.local}`);
     const count = countLedger(local);
-    process.stdout.write(`release ${local.header.release}: ${count.counted} of ${local.header.cap} model runs counted; ${count.starts} starts (${count.open} without a run-end record), ${count.exempt} refused by the client before model work, ${count.local} local; ${local.records.length} records\n`);
+    process.stdout.write(`release ${local.header.release}: ${count.counted} of ${local.header.cap} model runs counted; ${count.starts} starts (${count.open} without a run-end record), ${count.exempt} refused by the client before model work, ${count.local} local; ${local.records.length} records (${paths.local})\n`);
   }
 }
 
@@ -179,11 +201,11 @@ async function ledger(args: string[]): Promise<void> {
 async function bench(args: string[]): Promise<void> {
   const split = args.indexOf('--');
   if (split < 0) fail('separate the bench arguments with --');
-  const { values, positional } = options(args.slice(0, split), ['--purpose', '--plan', '--declaration', '--unit', '--ledger', '--folder']);
+  const { values, positional } = options(args.slice(0, split), ['--purpose', '--plan', '--declaration', '--unit', '--folder']);
   if (positional.length) fail(`unexpected ${positional[0]} before --`);
   const purpose = values['--purpose'] as Purpose;
   if (!PURPOSES.includes(purpose)) fail(`--purpose is one of ${PURPOSES.join(', ')}`);
-  const local = values['--ledger'] ?? defaultLedger();
+  const local = await localLedger();
   let guard: Parameters<typeof ledgerGuard>[0];
   if (purpose === 'pre-probe' || purpose === 'held-out') {
     // A round's run serves its pushed plan or declaration (PADR-0044 decision 8: the plan before the first run).
@@ -194,7 +216,11 @@ async function bench(args: string[]): Promise<void> {
     if (value.toolchain.practonaut !== PACKAGE_VERSION) fail(`the round's plan pins Practonaut ${value.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
     const models = purpose === 'pre-probe' ? [(value as Awaited<ReturnType<typeof readPlan>>).agent.model] : (value as Awaited<ReturnType<typeof readDeclaration>>).ladder.map(agent => agent.model);
     const basis = purpose === 'pre-probe' ? fileHash(value) : declarationHash(value as Awaited<ReturnType<typeof readDeclaration>>);
-    guard = { paths: ledgerPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models };
+    // The round's own set, regenerated: a start on another world or instance is refused.
+    const made = purpose === 'pre-probe' ? { set: probeSet(value as Awaited<ReturnType<typeof readPlan>>), seeds: (value as Awaited<ReturnType<typeof readPlan>>).seeds } : heldOutSet(value as Awaited<ReturnType<typeof readDeclaration>>);
+    const family = value.unit.split('.')[0] as Family;
+    const set = { world: sha256Hex(canonicalJson(made.set.world)), instances: new Set(setIdentities(made.set, made.seeds.map(seed => taskIdOf(family, seed)))) };
+    guard = { paths: ledgerPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models, set };
   } else {
     if (values['--plan'] !== undefined || values['--declaration'] !== undefined) fail(`a ${purpose} run serves no plan or declaration`);
     const unit = values['--unit'] === undefined ? null : parseUnit(values['--unit']);
@@ -231,20 +257,21 @@ async function plan(args: string[]): Promise<void> {
 }
 
 async function probe(args: string[]): Promise<void> {
-  const { values, flags, positional } = options(args, ['--plan', '--set', '--dev', '--ledger', '--out', '--bench-root'], ['--force']);
+  const { values, flags, positional } = options(args, ['--plan', '--set', '--dev', '--out', '--bench-root'], ['--force']);
   noPositional(positional);
   const out = values['--out'] ?? fail('--out is required');
   await refuseExisting(out, flags.has('--force'));
-  const local = values['--ledger'] ?? defaultLedger(), planPath = values['--plan'] ?? fail('--plan is required');
+  const local = await localLedger(), planPath = values['--plan'] ?? fail('--plan is required');
   const { record, text, round } = await probeFromFiles({ plan: planPath, set: values['--set'] ?? fail('--set names the pre-probe set'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ledger: local, benchRoots: list(values['--bench-root']) });
   if (!out.endsWith(roundFiles.probe(record.unit, record.round, record.probe))) fail(`name the file <folder>/${roundFiles.probe(record.unit, record.round, record.probe)}`);
   await writeFile(out, text);
   await appendRound(ledgerPaths(dirname(planPath), local), round);
-  process.stdout.write(`${record.unit} round ${record.round}, probe ${record.probe}: Opus passed ${record.passed} of ${record.outcomes.length}; ${record.admitted ? 'admitted (1–5 of 7)' : 'not admitted (0 or 6–7 of 7): a refused unit may be retuned once'}. Wrote ${out} and registered it in the release ledger; write the ledger (ledger write), commit and push both either way.\n`);
+  const verdict = record.admitted ? 'admitted (1–5 of 7)' : record.void.length ? `not admitted: ${record.void.length} void pre-probe run${record.void.length === 1 ? '' : 's'} (no run-end record: ${record.void.join(', ')}); a refused unit may be retuned once` : 'not admitted (0 or 6–7 of 7): a refused unit may be retuned once';
+  process.stdout.write(`${record.unit} round ${record.round}, probe ${record.probe}: Opus passed ${record.passed} of ${record.outcomes.length}; ${verdict}. Wrote ${out} and registered it in the release ledger; write the ledger (ledger write), commit and push both either way.\n`);
 }
 
 async function declare(args: string[]): Promise<void> {
-  const { values, flags, positional } = options(args, ['--plan', '--probe', '--dev', '--ladder', '--ledger', '--out', '--bench-root'], ['--force']);
+  const { values, flags, positional } = options(args, ['--plan', '--probe', '--dev', '--ladder', '--out', '--bench-root'], ['--force']);
   noPositional(positional);
   const out = values['--out'] ?? fail('--out is required');
   await refuseExisting(out, flags.has('--force'));
@@ -252,7 +279,7 @@ async function declare(args: string[]): Promise<void> {
     const at = entry.indexOf('=');
     return at < 0 ? { preset: GATE_PRESET, model: entry } : { preset: entry.slice(0, at), model: entry.slice(at + 1) };
   });
-  const local = values['--ledger'] ?? defaultLedger();
+  const local = await localLedger();
   const { declaration, seeds, round } = await declareFromFiles({ plan: values['--plan'] ?? fail('--plan is required'), probe: values['--probe'] ?? fail('--probe names the pre-probe record'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ladder, ledger: local, out, benchRoots: list(values['--bench-root']) });
   await writeFile(out, JSON.stringify(declaration, null, 2) + '\n');
   await appendRound(ledgerPaths(dirname(out), local), round);
@@ -262,12 +289,12 @@ async function declare(args: string[]): Promise<void> {
 }
 
 async function gate(args: string[]): Promise<void> {
-  const { values, flags, positional } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--bench-root', '--ledger', '--out'], ['--force', '--preflight']);
+  const { values, flags, positional } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--bench-root', '--out'], ['--force', '--preflight']);
   noPositional(positional);
   const files = {
     declaration: values['--declaration'] ?? fail('--declaration is required'), set: values['--set'] ?? fail('--set names the generated held-out folder'),
     development: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), oracle: list(values['--oracle'] ?? fail('--oracle is required')), random: list(values['--random'] ?? fail('--random is required')),
-    benchRoots: list(values['--bench-root']), ledger: values['--ledger'] ?? defaultLedger(),
+    benchRoots: list(values['--bench-root']), ledger: await localLedger(),
   };
   if (flags.has('--preflight')) {
     if (values['--ladder'] !== undefined || values['--out'] !== undefined) fail('--preflight checks the round before any ladder run: no --ladder, no --out');

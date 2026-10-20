@@ -11,7 +11,7 @@ import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { BILLING_CLASSES, MODEL_ID } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
 import { generatorId, generatorVersion, type Family } from './families.ts';
-import { countLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, type Ledger } from './ledger.ts';
+import { countLedger, released, RELEASE, RELEASE_CAP, roundEvents, roundStarts, spentStart, type Ledger } from './ledger.ts';
 import { HELD_OUT_SPAN, tierOf } from './round-020.ts';
 import { checkUnit, parseUnit, PRACTONAUT_TOOLCHAIN, UnitError } from './units.ts';
 export { tierOf } from './round-020.ts';
@@ -120,6 +120,9 @@ export const ProbeSchema = z.strictObject({
   agent: z.strictObject({ preset: identifier, model }),
   outcomes: z.array(z.strictObject({ taskId: z.string().max(64), seed: devSeed, pass: z.boolean() })).min(1).max(40),
   passed: whole(0, 40), admitted: z.boolean(),
+  /** Pre-probe instances whose latest start has no run-end record: void, never benched again; a
+   * pre-probe with a void run does not admit (PADR-0042 amended), and a retune may follow. */
+  void: z.array(z.string().max(64)).max(40),
   rule: z.strictObject({ low: whole(0, 40), high: whole(0, 40), of: whole(1, 40) }),
   /** The digest `/2` of the pre-probe runs, which the declaration repeats. */
   digest: sha256,
@@ -129,14 +132,15 @@ export const ProbeSchema = z.strictObject({
   ledger: z.strictObject({ records: whole(1, Number.MAX_SAFE_INTEGER), head: sha256 }),
 });
 export type ProbeRecord = z.infer<typeof ProbeSchema>;
-/** Shape B's admission rule: 1–5 of 7 passes admit; 0 or 6–7 refuse (no extension). */
+/** Shape B's admission rule: 1–5 of 7 passes admit; 0 or 6–7 refuse (no extension); a void run refuses. */
 export const admits = (passed: number): boolean => passed >= SHAPE_B.admitLow && passed <= SHAPE_B.admitHigh;
 export function validateProbe(raw: unknown): ProbeRecord {
   const parsed = ProbeSchema.safeParse(raw);
   if (!parsed.success) refuse('probe_invalid', `the pre-probe record does not match ${PROBE_SCHEMA}: ${issues(parsed.error)}`);
   const record = parsed.data!;
   if (record.passed !== record.outcomes.filter(entry => entry.pass).length || record.rule.of !== record.outcomes.length) refuse('probe_invalid', 'the pre-probe record\'s passes do not add up');
-  if (record.rule.low !== SHAPE_B.admitLow || record.rule.high !== SHAPE_B.admitHigh || record.admitted !== admits(record.passed)) refuse('probe_invalid', `the pre-probe admits at ${SHAPE_B.admitLow}–${SHAPE_B.admitHigh} of ${SHAPE_B.preProbe} passes, and the record says otherwise`);
+  if (record.void.some(task => !record.outcomes.some(entry => entry.taskId === task && !entry.pass))) refuse('probe_invalid', 'a void pre-probe run is an outcome of the record, never a pass');
+  if (record.rule.low !== SHAPE_B.admitLow || record.rule.high !== SHAPE_B.admitHigh || record.admitted !== (record.void.length === 0 && admits(record.passed))) refuse('probe_invalid', `the pre-probe admits at ${SHAPE_B.admitLow}–${SHAPE_B.admitHigh} of ${SHAPE_B.preProbe} passes without a void run, and the record says otherwise`);
   return record;
 }
 
@@ -268,7 +272,9 @@ const HELD_OUT_RUNS = SHAPE_B.heldOut * SHAPE_B.agents, ROUND_RUNS = (SHAPE_B.he
 /**
  * Funding read from the release ledger as it was when a unit was declared (PADR-0042 decision 8 as
  * amended): `before`, the runs counted; `reserved`, the runs kept for others — for every other round
- * that is declared, the held-out runs it has not started yet; for every other unit admitted before this
+ * that is declared, its held-out runs less those counted and final (judged, or void: an exempt or local
+ * run is not counted and an infra_error is benched again, so neither uses up a held-out run of its
+ * instances); for every other unit admitted before this
  * one (an earlier `admitted` record) and not declared, its 78 held-out runs; and, for a unit on
  * Practonaut's own actions while artifact mode is not accepted, two rounds for foreign toolchains less
  * those declared. The ledger is shared by every checkout and branch, so no admission or declaration
@@ -282,8 +288,10 @@ export function fundingAt(ledger: Ledger, unit: string, round: number, admission
     const own = events.filter(event => event.unit === key.unit && event.round === key.round);
     const declared = own.filter(event => event.event === 'declared').at(-1);
     if (declared) {
-      const started = roundStarts(ledger, key.unit, key.round).filter(start => start.world === declared.world || (start.purpose === 'held-out' && start.basis === declared.declaration)).length;
-      reserved += Math.max(0, declared.heldOutRuns - started);
+      const held = new Set(declared.instances);
+      const final = roundStarts(ledger, key.unit, key.round).filter(start => (held.has(start.instance) || (start.purpose === 'held-out' && start.basis === declared.declaration))
+        && spentStart(ledger, start) && released(start, ledger.ends.get(start.seq)) === null).length;
+      reserved += Math.max(0, declared.heldOutRuns - final);
       if (parseUnit(key.unit).toolchain !== PRACTONAUT_TOOLCHAIN) foreignDeclared++;
       continue;
     }
@@ -301,11 +309,13 @@ export function refuseRecordedProbe(ledger: Ledger, plan: Pick<Plan, 'unit' | 'r
     refuse('probe_recorded', `${plan.unit} round ${plan.round}, probe ${plan.probe} is recorded in the release ledger already; a pre-probe record is made once`);
 }
 /** A round is declared again only while none of its held-out runs has started (`round_redeclared`):
- * no start of the round benches a held-out world an earlier declaration registered, or serves it. */
+ * no start of the round runs a held-out instance an earlier declaration registered (on any world, under
+ * any purpose), or serves that declaration. */
 export function refuseRedeclaration(ledger: Ledger, unit: string, round: number): void {
   const members = roundStarts(ledger, unit, round);
   for (const earlier of roundEvents(ledger, unit, round).filter(event => event.event === 'declared')) {
-    const started = members.find(start => start.world === earlier.world || (start.purpose === 'held-out' && start.basis === earlier.declaration));
+    const held = new Set(earlier.instances);
+    const started = members.find(start => held.has(start.instance) || (start.purpose === 'held-out' && start.basis === earlier.declaration));
     if (started) refuse('round_redeclared', `${unit} round ${round} was declared before and its held-out runs started (start entry ${started.seq}); a round is not declared again once they did`);
   }
 }
