@@ -10,7 +10,7 @@
 import { isolationOf, refusalHint, type CompareOptions, type Comparison, type Difference, type InstanceName, type InstancePair, type SideRate } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { appText, fill, sentence, TEXT, type Words } from './report-text.ts';
-import { agentIds, appName, banner, chips, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
+import { agentIds, appName, banner, chips, escapeBreakable, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
 import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
 
@@ -160,7 +160,8 @@ const outcome = (aggregate: InstancePair['baseline'], t: Words, language: Langua
 /** The same outcome as a table cell: its status mark (pass, fail, or the unknown mark) beside the words. */
 const outcomeCell = (aggregate: InstancePair['baseline'], t: Words, language: Language): string => {
   const kind = aggregate === null ? null : aggregate.judged === 0 ? 'unknown' : aggregate.outcome === 'pass' ? 'pass' : 'fail';
-  return `<span class="outcome">${kind ? statusIcon(kind) : ''}${esc(outcome(aggregate, t, language))}</span>`;
+  // The words may break before a number ("3 von" / "3 Läufen"), so the cell's text shrinks to its cell.
+  return `<span class="outcome">${kind ? statusIcon(kind) : ''}${escapeBreakable(outcome(aggregate, t, language))}</span>`;
 };
 /** A template filled with markup: its own words escaped, the values given as HTML. */
 const fillHtml = (template: string, values: Readonly<Record<string, string>>): string =>
@@ -236,7 +237,7 @@ export function renderCompareHtml(baselineInput: CompareInput, candidateInput: C
 ${noVerdictBanner(comparison, language)}${comparison.incomplete.length ? banner('warning', t.incompleteTitle, `<p>${prose(fill(language, t.incompleteBody, { n: comparison.incomplete.length }))}</p>`) : ''}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides">${side(t.baseline, baseline, candidate, comparison.baseline, comparison, t, language)}${side(t.candidate, candidate, baseline, comparison.candidate, comparison, t, language)}</dl></section>
 <section aria-labelledby="regressions"><h2 id="regressions">${esc(comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions)}</h2>${comparison.regressions.length ? htmlList(comparison.regressions.map(flipHtml), 'fail') : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
-<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, wide: true }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true }], rows)}</section>
+<section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, wide: true }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true, wide: true }], rows)}</section>
 ${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${htmlList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p></section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }

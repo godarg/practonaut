@@ -58,3 +58,4 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | proposed | 2026-10-18 |
 | [PADR-0048](0048-co-actor-scenario.md) | Co-actor scenario: a scripted colleague edits the board mid-run | proposed | 2026-10-18 |
 | [PADR-0049](0049-drawio-adapter.md) | draw.io as application #2: a verified download behind the shared shell, the embed protocol only, declared structural constraints, and an independent `.drawio` reader | proposed | 2026-10-18 |
+| [PADR-0050](0050-browser-close-is-a-bounded-request.md) | A browser close is a bounded request on top of Playwright's own forced end | accepted | 2026-10-19 |

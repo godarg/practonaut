@@ -11,7 +11,7 @@ import { parseJsonEntry } from "../package/json.ts";
 import { loadWorldPackage } from "../world/index.ts";
 import { Session, apply } from "../core/index.ts";
 import { ADAPTER_REGISTRY, resolveAdapter, type AdapterRegistry } from "../adapters/registry.ts";
-import { withClose } from "../adapters/browser/bounded.ts";
+import { withClose } from "../adapters/browser/close.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
@@ -76,11 +76,12 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
   // A downloaded app runtime is checked first, before any browser check or start (PADR-0049 decision 1.3).
   if(registration.runtime==='downloaded'){const status=await registration.runtimeStatus!((await resolvedDataPaths()).home);if(!status.ok)throw new RuntimeError(status.code,appRuntimeMessage(registration,status));}
   if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', { ...headlessShellDownload(), app: appDisplayName(registration.id, getCliLanguage()) }));
-  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{app:appDisplayName(registration.id,getCliLanguage()),detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
+  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok&&started.budget)throw started.budget;if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{app:appDisplayName(registration.id,getCliLanguage()),detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
- // A close that fails or outlives its bound never replaces the run's own failure (issue #64).
+ // The close runs under the close contract (PADR-0050): an abandoned close does not fail a run that
+ // succeeded, and a close that fails or is abandoned never replaces the run's own failure (issue #64).
  return withClose(async()=>{
   // The adapter's own start checks the runtime again; a runtime changed since is reported by its code.
   if(mirror==="required")adapter=await registration.create(session.state).catch((error:unknown)=>{const runtime=appRuntimeFailure(error,registry);throw runtime?new RuntimeError(runtime.code,runtime.message):error;});
@@ -100,7 +101,7 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
    await atomicFile(prefix+extension,artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
    exported={native:prefix+extension,svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
   process.stdout.write(safeJson({ok:true,world:{id:world.id,version:world.version},taskId,seed,mode:mirror==="required"?"real-engine":"model-only",initialHash,steps,endHash:session.hash,state:data,...(exported?{exported}:{})})+"\n");return 0;
- },()=>adapter?.close());
+ },deadline=>adapter?.close(deadline));
 }
 export async function commandCheck(args:string[]):Promise<number>{
  const {path,flags}=options(args,["--world","--bundle","--seed","--task","--pair"]);

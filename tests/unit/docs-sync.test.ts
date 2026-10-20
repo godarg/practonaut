@@ -24,3 +24,12 @@ test("docs/world-format.md lists exactly the world-content error codes in code o
   const listed = [...doc.slice(start, end).matchAll(/^\| `(E_[A-Z0-9_]+)` \|/gm)].map((m) => m[1]);
   assert.deepEqual(listed, [...WORLD_ERROR_CODES]);
 });
+
+// Review of PR #69 (effects-10): the index still called an accepted record proposed.
+test("docs/index.md names the same status as docs/adr/README.md for every record it gives one", () => {
+  const index = readFileSync(new URL("docs/index.md", root), "utf8"), table = readFileSync(new URL("docs/adr/README.md", root), "utf8");
+  const statuses = new Map([...table.matchAll(/^\| \[PADR-(\d{4})\]\([^)]+\) \| [^|]+ \| ([^|]+) \| /gm)].map((match) => [match[1]!, match[2]!.trim()]));
+  const named = [...index.matchAll(/\[(\d{4})\]\(adr\/\d{4}-[^)]+\)[^\n]*?\((proposed|accepted|superseded|rejected)\)\.?\s*$/gm)];
+  assert.ok(named.length > 0);
+  for (const [, id, status] of named) assert.ok(statuses.get(id!)?.startsWith(status!), `PADR-${id}: docs/index.md says ${status}, docs/adr/README.md ${statuses.get(id!)}`);
+});

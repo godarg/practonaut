@@ -7,9 +7,8 @@
  * Chromium's screenshot of it; on one machine the same SVG gives the same bytes
  * (tests/integration/bench-card.test.ts), across machines the system font can differ.
  */
-import type { Browser, LaunchOptions } from 'playwright-core';
-import { launchChromium } from '../adapters/browser/chromium.ts';
-import { closeAfterFailure, withClose } from '../adapters/browser/bounded.ts';
+import { closeAfterFailure, closeStep, withClose } from '../adapters/browser/close.ts';
+import { startBrowser, type BrowserLedger, type ChromiumLauncher } from '../adapters/browser/ledger.ts';
 import { CARD_SIZE } from './card.ts';
 
 /** Never resolved: the request is answered by the route below before anything reaches a network. */
@@ -18,18 +17,21 @@ export const CARD_URL = 'https://card.invalid/card.svg';
 export interface CardPngOptions {
   timeoutMs?: number;
   /** The browser type to launch (default: Playwright's Chromium); tests pass one that observes requests. */
-  chromium?: { launch(options?: LaunchOptions): Promise<Browser> };
+  chromium?: ChromiumLauncher;
+  /** Test seam: a ledger of the test's own (default: the process's, PADR-0050). */
+  ledger?: BrowserLedger;
 }
 
 export async function renderCardPngs(svgs: readonly string[], options: CardPngOptions = {}): Promise<{ pngs: Buffer[]; sandbox: boolean }> {
   const timeoutMs = options.timeoutMs ?? 30_000;
   const chromium = options.chromium ?? (await import('playwright-core')).chromium;
-  const { browser, sandbox } = await launchChromium(chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }));
-  // After a failure each close has the close bound, never replaces that failure and is kept next to it
-  // (issue #64); after the pictures, the browser's close runs as before and its failure is ignored.
-  let pictures: { pngs: Buffer[]; sandbox: boolean };
+  const { browser, sandbox, lease } = await startBrowser('report-card', chromium, () => ({ headless: true, timeout: timeoutMs, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }), { ledger: options.ledger });
+  // Every close runs under the close contract (PADR-0050). Each picture's context closes within its
+  // deadline: one that is abandoned neither holds the command nor discards the pictures already taken,
+  // and the browser's one close ends it. After a failure each close is kept next to that failure and
+  // never replaces it (issue #64); after the pictures, the browser's close does not discard them.
+  const pngs: Buffer[] = [];
   try {
-    const pngs: Buffer[] = [];
     for (const svg of svgs) {
       const context = await browser.newContext({ viewport: { ...CARD_SIZE }, deviceScaleFactor: 1, javaScriptEnabled: false, serviceWorkers: 'block', reducedMotion: 'reduce' });
       await withClose(async () => {
@@ -37,10 +39,9 @@ export async function renderCardPngs(svgs: readonly string[], options: CardPngOp
         const page = await context.newPage();
         await page.goto(CARD_URL, { waitUntil: 'load', timeout: timeoutMs });
         pngs.push(await page.screenshot({ type: 'png', clip: { x: 0, y: 0, ...CARD_SIZE }, animations: 'disabled', caret: 'hide', timeout: timeoutMs }));
-      }, () => context.close());
+      }, deadline => closeStep(() => context.close(), deadline));
     }
-    pictures = { pngs, sandbox };
-  } catch (failure) { throw await closeAfterFailure(failure, () => browser.close()); }
-  await browser.close().catch(() => {});
-  return pictures;
+  } catch (failure) { throw await closeAfterFailure(failure, deadline => lease.close(deadline)); }
+  await lease.close();
+  return { pngs, sandbox };
 }

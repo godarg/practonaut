@@ -12,6 +12,8 @@ import { HOST_LIMITS } from '../host/limits.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import type { HostView, RunningHost } from '../host/protocol.ts';
 import { inlineOptionValues } from './options.ts';
+import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
+import { deferCommandEnd } from './browser-exit.ts';
 
 /** Self-start: `--task` (with optional `--task-id`, `--seed`, `--mirror`, `--open`). Attach: `--host` + `--token-file`. */
 export interface McpArguments {
@@ -47,6 +49,21 @@ export function parseMcpArguments(given: string[], env: NodeJS.ProcessEnv = proc
   const host = flags['--host'] ?? env.PRACTONAUT_HOST, tokenFile = flags['--token-file'] ?? env.PRACTONAUT_TOKEN_FILE;
   if (!host) throw new RuntimeError('usage', cliText('mcpUsage'));
   return { attach: { host, ...(tokenFile === undefined ? {} : { tokenFile }) }, ...callLog };
+}
+
+/** The end of an MCP session, once: the stdio server, the launcher, then the host, whose close removes
+ * its token file. Each step is tried on its own, so one that fails (a launcher file that cannot be
+ * removed) never skips the host's close. Only then has the command's shutdown finished, and `finish`
+ * reports the browser ledger and arms the 35 s rule (PADR-0050, decision 9) — with `hostClosed` false
+ * when the host's close failed: then it reports, says so, and arms nothing that could exit past it. */
+export function mcpShutdown(steps: { handle: { close(): Promise<unknown> }; launcher: () => { remove(): Promise<unknown> } | undefined; host: Pick<RunningHost, 'close'> | undefined; finish: (hostClosed: boolean) => Promise<unknown> }): () => Promise<void> {
+  let stopping: Promise<void> | undefined;
+  return () => stopping ??= (async () => {
+    for (const step of [() => steps.handle.close(), () => steps.launcher()?.remove()]) { try { await step(); } catch { process.exitCode = 3; } }
+    let hostClosed = true;
+    try { await steps.host?.close(); } catch { process.exitCode = 3; hostClosed = false; }
+    await steps.finish(hostClosed);
+  })();
 }
 
 /** stdout is exclusively JSON-RPC. Credentials may be inherited, never supplied in argv. In
@@ -88,15 +105,13 @@ export async function commandMcp(args: string[]): Promise<number> {
         process.stderr.write(await openInBrowser(launcher.path) ? cliText('openStarted', { url: host.url }) : cliText('openFailed', { url: host.url }));
       } catch { process.stderr.write(cliText('openFailed', { url: host.url })); }
     }
-    let stopped = false;
-    const owned = host;
-    const stop = (): void => {
-      if (stopped) return; stopped = true;
-      void (async () => {
-        try { await handle.close(); await launcher?.remove(); await owned?.close(); }
-        catch { process.exitCode = 3; }
-      })();
-    };
+    const end = deferCommandEnd();
+    const shutDown = mcpShutdown({ handle, launcher: () => launcher, host, finish: async hostClosed => {
+      if (hostClosed) return end();
+      process.stderr.write(cliText('closeFailed'));
+      return end({ armExit: false });
+    } });
+    const stop = (): void => { void shutDown(); };
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, stop);
     // When the client goes away the bridge stops; a self-started session's host and mirror close with it.
     process.stdin.once('end', stop); process.stdin.once('close', stop);
@@ -106,7 +121,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     if (error instanceof McpConfigurationError) process.stderr.write(cliText("mcpRefused", { code: error.code }));
     // A refused world (an application this Practonaut does not have, PADR-0045) keeps its named code
     // and exit 2, as with play and serve; stdout stays clean for JSON-RPC.
-    else if (error instanceof RuntimeError || error instanceof WorldError) throw error;
+    else if (error instanceof RuntimeError || error instanceof WorldError || error instanceof BrowserBudgetError) throw error;
     else process.stderr.write(cliText("mcpStart"));
     return 3;
   }

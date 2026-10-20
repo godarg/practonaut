@@ -89,7 +89,7 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
     describe: () => ({ id: 'excalidraw', appVersion: EXCALIDRAW_APP_VERSION, adapterVersion: '1.0.0', capabilities: ['describe','snapshot','apply','exportArtifact','importArtifact'], fontFamilies: [3], excludedAttributes: EXCLUDED_ATTRIBUTES }),
     snapshot: () => serial(async () => project(await raw())),
     networkAttempts: () => ready.networkAttempts(),
-    terminate: () => ready.close(),
+    terminate: deadline => ready.close(deadline),
     restoreState: (state, opts) => serial(() => transaction(async () => {
       checkState(state);
       const elements = await write(toRaw(state));
@@ -155,6 +155,6 @@ export async function createExcalidrawAdapter(initialState: State, options: Adap
       if (!isDeepStrictEqual(actual, expected)) return failure('real_tool_disagrees', 'Import differs after real engine restoration');
       return { ok: true, state: actual, warnings: report.warnings };
     }, opts)),
-    close: () => ready.close()
+    close: deadline => ready.close(deadline)
   };
 }

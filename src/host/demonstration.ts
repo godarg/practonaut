@@ -225,7 +225,7 @@ export function withDemonstration(inner: PracticeController, world: World, optio
     },
     ...(inner.editor ? { editor: async (request, context) => owned() ?? inner.editor!(request, context) } satisfies Pick<PracticeController, 'editor'> : {}),
     ...(inner.scene ? { scene: () => inner.scene!() } : {}),
-    close: async () => { closed = true; running?.abort(); listeners.clear(); await inner.close(); },
+    close: async deadline => { closed = true; running?.abort(); listeners.clear(); return inner.close(deadline); },
   };
   return { controller, demonstration };
 }

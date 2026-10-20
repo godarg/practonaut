@@ -1,4 +1,5 @@
 import type { Action, AdapterId, AppVersion, Failure, State } from "../world/types.ts";
+import type { Closing } from "./browser/close.ts";
 export interface AdapterDescription {
   id: AdapterId; appVersion: AppVersion; adapterVersion: string;
   capabilities: Array<"describe" | "snapshot" | "apply" | "exportArtifact" | "importArtifact">;
@@ -14,7 +15,9 @@ export interface ApplicationAdapter {
   apply(transition: Transition, options?: AdapterOptions): Promise<AdapterResult>;
   exportArtifact(options?: AdapterOptions): Promise<Artifact>;
   importArtifact(native: string, options?: AdapterOptions): Promise<AdapterResult>;
-  close(): Promise<void>;
+  /** Closes the app's browser under the close contract (PADR-0050): settles by `deadline` (default: now
+   * plus 8 s) as closed, failed or abandoned; nothing returned counts as closed. */
+  close(deadline?: number): Closing;
 }
 /** What the host-side live mirror needs beyond PADR-0007 (PADR-0011, PADR-0045); every adapter in
  * the registry provides it. */
@@ -26,5 +29,5 @@ export interface MirrorAdapter extends ApplicationAdapter {
   /** The current scene as PNG, rendered by the real app. */
   renderPng(): Promise<Uint8Array>;
   /** Cancel pending browser work before recovery; deliberately bypasses the write queue. */
-  terminate(): Promise<void>;
+  terminate(deadline?: number): Closing;
 }

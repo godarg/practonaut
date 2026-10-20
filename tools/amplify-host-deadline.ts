@@ -79,6 +79,28 @@ export function requireAllPassed(reports: Record<TestKey, string[]>, runs: numbe
   }
   return reasons.length ? reasons.join('\n') : null;
 }
+/** The browser ledger's statements the preload wrote at the test process's exit (PADR-0050), counted:
+ * how the callers' closes settled; of the entries with an abandoned close, how many ended (proven by
+ * Playwright's close) and how many were still pending at the exit; launches rejected; and how each
+ * slot was released, or held at the exit. Forced ends are Playwright's `<will force kill>` log lines. */
+export interface LedgerCounts {
+  entries: number; callers: Record<'closed' | 'failed' | 'abandoned' | 'cancelled', number>;
+  abandonedEnded: number; abandonedPendingAtExit: number; launchesRejected: number;
+  released: Record<'proof' | 'launch-wait' | 'unused' | 'heldAtExit', number>; forcedEnds: number;
+}
+export function ledgerCounts(closes: readonly CloseRow[], log = ''): LedgerCounts {
+  const counts: LedgerCounts = { entries: 0, callers: { closed: 0, failed: 0, abandoned: 0, cancelled: 0 }, abandonedEnded: 0, abandonedPendingAtExit: 0, launchesRejected: 0, released: { proof: 0, 'launch-wait': 0, unused: 0, heldAtExit: 0 }, forcedEnds: 0 };
+  for (const row of closes as ReadonlyArray<CloseRow & { callers?: Record<string, number>; launch?: string; end?: string; slot?: string }>) {
+    if (row.event !== 'ledger') continue;
+    counts.entries++;
+    for (const key of Object.keys(counts.callers) as Array<keyof LedgerCounts['callers']>) counts.callers[key] += row.callers?.[key] ?? 0;
+    if ((row.callers?.abandoned ?? 0) > 0) { if (row.end === 'proven') counts.abandonedEnded++; if (row.slot === 'held') counts.abandonedPendingAtExit++; }
+    if (row.launch === 'rejected') counts.launchesRejected++;
+    if (row.slot === 'held') counts.released.heldAtExit++; else if (row.slot === 'proof' || row.slot === 'launch-wait' || row.slot === 'unused') counts.released[row.slot]++;
+  }
+  counts.forcedEnds = log.split('\n').filter(line => /pw:browser \[pid=\d+\] <will force kill>/.test(line)).length;
+  return counts;
+}
 /** One attempt's outcome from its test result and the closes the preload recorded. */
 export function classify(result: TapResult | null, closes: CloseRow[], closeBoundMs: number): string {
   if (!result) return 'not-run';
@@ -132,7 +154,7 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
     partner = new Promise(done => child.once('close', code => { partnerRuns.push({ run, exitCode: code, ms: Math.round(performance.now() - started) }); runPartner(run + 1); done(); }));
   };
   runPartner(1);
-  type Row = { attempt: number; test: TestKey; outcome: string; ms: number; testMs: number | null; error: string | null; closes: CloseRow[]; phases: ClosePhases[] };
+  type Row = { attempt: number; test: TestKey; outcome: string; ms: number; testMs: number | null; error: string | null; closes: CloseRow[]; phases: ClosePhases[]; ledger: LedgerCounts };
   const rows: Row[] = [], reports: Record<TestKey, string[]> = { 'late-write': [], 'core-serialization': [] };
   try {
     for (let attempt = 1; attempt <= runs; attempt++) {
@@ -151,11 +173,12 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
         reports[test].push(report);
         const closes = (await readFile(record, 'utf8').catch(() => '')).split('\n').filter(Boolean).map(line => JSON.parse(line) as CloseRow);
         const phases = closePhases(report);
-        const row: Row = { attempt, test, outcome: classify(result, closes, closeBoundMs), ms: Math.round(performance.now() - start), testMs: result?.durationMs ?? null, error: result?.ok ? null : `${result?.errorName ?? ''}: ${result?.error ?? ''}`, closes, phases };
+        const row: Row = { attempt, test, outcome: classify(result, closes, closeBoundMs), ms: Math.round(performance.now() - start), testMs: result?.durationMs ?? null, error: result?.ok ? null : `${result?.errorName ?? ''}: ${result?.error ?? ''}`, closes, phases, ledger: ledgerCounts(closes, report) };
         rows.push(row);
         const closeMs = closes.filter(entry => entry.event === 'close-end').map(entry => entry.ms);
         const split = phases.map(phase => `exit ${phase.exitMs ?? '-'} + profile ${phase.cleanupMs ?? '-'}${phase.removalError ? ' (removal failed)' : ''}`).join('; ');
-        console.log(`${String(attempt).padStart(2)}/${runs} ${test} ${row.outcome} test ${row.testMs} ms, close ${closeMs.join('/') || '-'} ms${split ? ` (${split})` : ''}${row.error ? ` — ${row.error}` : ''}`);
+        const settled = row.ledger.entries ? `, closes ${row.ledger.callers.closed} closed/${row.ledger.callers.abandoned} abandoned/${row.ledger.callers.failed} failed${row.ledger.forcedEnds ? `, ${row.ledger.forcedEnds} forced end` : ''}` : '';
+        console.log(`${String(attempt).padStart(2)}/${runs} ${test} ${row.outcome} test ${row.testMs} ms, close ${closeMs.join('/') || '-'} ms${split ? ` (${split})` : ''}${settled}${row.error ? ` — ${row.error}` : ''}`);
       }
     }
   } finally {
@@ -177,15 +200,22 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
   // Closes of a second or more, with where Playwright's log says the time went.
   const slowCloses = rows.flatMap(row => row.closes.filter(entry => entry.event === 'close-end' && (entry.ms ?? 0) >= 1000)
     .map(entry => ({ attempt: row.attempt, test: row.test, outcome: row.outcome, closeMs: entry.ms, phases: row.phases })));
+  // The ledger's statements over every attempt (absent before PADR-0050: no entries).
+  const totalLedger = rows.reduce<LedgerCounts>((sum, row) => {
+    const add = (a: Record<string, number>, b: Record<string, number>): void => { for (const key of Object.keys(a)) a[key] = (a[key] ?? 0) + (b[key] ?? 0); };
+    add(sum.callers, row.ledger.callers); add(sum.released, row.ledger.released);
+    sum.entries += row.ledger.entries; sum.abandonedEnded += row.ledger.abandonedEnded; sum.abandonedPendingAtExit += row.ledger.abandonedPendingAtExit; sum.launchesRejected += row.ledger.launchesRejected; sum.forcedEnds += row.ledger.forcedEnds;
+    return sum;
+  }, ledgerCounts([]));
   const summary = { tool: 'amplify-host-deadline/1', commit, dirty, srcChanged, platform: process.platform, node: process.version, cpus: availableParallelism(),
     runs, cpuThrottlingRate: cpu, eventLoopBlockMs: block, loadWorkers: load, closeHoldMs: hold, beside: beside ?? null, partnerRuns, closeBoundMs,
     // Attempts whose renderer accepted the throttling command (0 when --cpu is 1).
     throttledAttempts: rows.filter(row => row.closes.some(entry => entry.event === 'throttled')).length,
     failures: rows.filter(row => row.outcome !== 'passed').length, outcomes: count(), byTest: { 'late-write': count('late-write'), 'core-serialization': count('core-serialization') },
-    closeDurationsMs, slowCloses, evidence: root, rows };
+    closeDurationsMs, slowCloses, ledger: totalLedger, evidence: root, rows };
   const file = `${root}.json`;
   await writeFile(file, JSON.stringify(summary, null, 2) + '\n', { flag: 'wx' });
-  console.log(JSON.stringify({ commit, dirty, srcChanged, runs, cpuThrottlingRate: cpu, eventLoopBlockMs: block, loadWorkers: load, closeHoldMs: hold, beside: beside ?? null, partnerRuns: partnerRuns.length, failures: summary.failures, outcomes: summary.outcomes, closeDurationsMs, slowCloses: slowCloses.length, file }));
+  console.log(JSON.stringify({ commit, dirty, srcChanged, runs, cpuThrottlingRate: cpu, eventLoopBlockMs: block, loadWorkers: load, closeHoldMs: hold, beside: beside ?? null, partnerRuns: partnerRuns.length, failures: summary.failures, outcomes: summary.outcomes, closeDurationsMs, slowCloses: slowCloses.length, ledger: totalLedger, file }));
   if (requirePass) {
     const reason = requireAllPassed(reports, runs);
     if (reason) { console.error(`amplify-host-deadline: not every attempt ran and passed\n${reason}`); process.exitCode = 1; }

@@ -1,12 +1,15 @@
 import type { Artifact } from '../types.ts';
 import type { RawElement } from './raw.ts';
-import { BROWSER_BOUNDS, bounded, withClose } from '../browser/bounded.ts';
-import { launchChromium } from '../browser/chromium.ts';
+import { BROWSER_BOUNDS, bounded } from '../browser/bounded.ts';
+import { withClose } from '../browser/close.ts';
+import { startBrowser, type BrowserLedger, type ChromiumLauncher } from '../browser/ledger.ts';
 /** Step containers of world/1 (rectangle) and world/2 (also ellipse, diamond); checked by their box. */
 const STEP_SHAPES = ['rectangle', 'ellipse', 'diamond'];
 export interface RenderReport { ok: boolean; arrows: Array<{ id: string; end: string; gap: number | null; ok: boolean }>; labels: Array<{ text: string; overflow: number | null; ok: boolean }> }
+/** Test seams: a fake Playwright `chromium`, a ledger of the test's own (default: the process's). */
+export interface RenderCheckSeams { chromium?: ChromiumLauncher; ledger?: BrowserLedger }
 /** Independent Chromium SVG layout and native coordinate checks. No Excalidraw imports. */
-export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, screenshotPath?: string): Promise<RenderReport> {
+export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, screenshotPath?: string, seams: RenderCheckSeams = {}): Promise<RenderReport> {
   const data = JSON.parse(artifact.native) as { elements: RawElement[] };
   const live = data.elements.filter(e => !e.isDeleted), arrows: RenderReport['arrows'] = [];
   for (const arrow of live.filter(e => e.type === 'arrow')) {
@@ -22,10 +25,10 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
       arrows.push({ id: arrow.id, end, gap, ok: gap <= 12 });
     }
   }
-  const { chromium } = await bounded(import('playwright-core'), BROWSER_BOUNDS.launch, 'launch');
-  const { browser } = await launchChromium(chromium, () => ({ headless: true }));
-  // After a failure the close has the close bound, and a failed close never replaces the check's own
-  // failure (issue #64); after a result it runs as before.
+  const chromium = seams.chromium ?? (await bounded(import('playwright-core'), BROWSER_BOUNDS.launch, 'launch')).chromium;
+  const { browser, lease } = await startBrowser('render-check', chromium, () => ({ headless: true }), { ledger: seams.ledger });
+  // The close runs under the close contract (PADR-0050): after a result, an abandoned close does not
+  // fail the check; after a failure, the failure stays the error with the close next to it (issue #64).
   return withClose(async (): Promise<RenderReport> => {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', route => route.abort());
@@ -85,5 +88,5 @@ export async function renderCheck(artifact: Pick<Artifact, 'native' | 'svg'>, sc
     }
     if (screenshotPath) await page.locator('svg').first().screenshot({ path: screenshotPath });
     return { ok: arrows.every(a => a.ok) && labels.every(l => l.ok) && labels.length > 0, arrows, labels };
-  }, () => browser.close());
+  }, deadline => lease.close(deadline));
 }

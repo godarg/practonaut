@@ -30,6 +30,8 @@ import { worldContentHash } from '../bench/world.ts';
 import { commandSetup } from './setup.ts';
 import { commandTasks } from './tasks.ts';
 import {PACKAGE_VERSION} from '../version.ts';
+import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
+import { afterMain } from './browser-exit.ts';
 
 export const EXIT = Object.freeze({ OK: 0, USAGE: 1, REJECTED: 2, ENVIRONMENT: 3 });
 
@@ -268,12 +270,18 @@ export async function main(argv: string[]): Promise<number> {
         throw new UsageError(cliText("commandUnknown", { command: safeText(cmd) }));
     }
   } catch (e) {
+    // A full browser budget (PADR-0050) is an environment failure named by its code, with the counts
+    // and the remedy in the CLI's language.
+    if (e instanceof BrowserBudgetError) {
+      reportError(e.code, cliText('browserBudgetExhausted', { running: e.running, closing: e.closing, budget: e.budget }));
+      return EXIT.ENVIRONMENT;
+    }
     // A refused world (including one naming an application this Practonaut does not have) is a
     // rejection, exit 2, never an environment failure.
     if (e instanceof RuntimeError || e instanceof AuthoringError || e instanceof CheckerError || e instanceof WorldError || (e instanceof Error && "code" in e && (WORLD_ERROR_CODES as readonly unknown[]).includes(e.code))) {
       const code = String((e as Error & { code: string }).code);
       reportError(code, e.message);
-      return ['browser_runtime_missing', 'browser_start_failed', 'app_runtime_missing', 'app_runtime_unverified', 'app_download_failed', 'app_download_mismatch', 'app_install_busy'].includes(code) ? EXIT.ENVIRONMENT : code === "usage" ? EXIT.USAGE : EXIT.REJECTED;
+      return ['browser_runtime_missing', 'browser_start_failed', 'browser_budget_exhausted', 'app_runtime_missing', 'app_runtime_unverified', 'app_download_failed', 'app_download_mismatch', 'app_install_busy'].includes(code) ? EXIT.ENVIRONMENT : code === "usage" ? EXIT.USAGE : EXIT.REJECTED;
     }
     if (e instanceof Error && /^(recording_|replay_mismatch:)/.test(e.message)) {
       reportError(e.message.split(':')[0]!, e.message);
@@ -296,3 +304,6 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 process.exitCode = await main(process.argv.slice(2));
+// The command's shutdown has finished (`practonaut mcp` finishes its own later): report the browser
+// ledger and arm the 35 s rule (PADR-0050).
+await afterMain();
