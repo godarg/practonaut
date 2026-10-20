@@ -10,11 +10,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { countLedger, exemptEnd, headerLine, isPrefix, nextLine, parseLedger, roundEvents, roundStarts, type LedgerRecord, type RoundBody, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
 import { initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../../src/challenge/ledger-file.ts';
 import { presetRun } from '../support/challenge-round.ts';
-import { normaliseRemote, releaseLedgerPath } from '../../src/challenge/repository.ts';
 
 const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
 const start = (index: number, extra: Partial<StartBody> = {}): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64), ...extra });
@@ -202,15 +201,4 @@ test('recovery through the guard (review: r2-killed-bench-dead-end): the run-end
     const other = ledgerGuard({ paths, purpose: 'pre-probe', unit: 'repair.practonaut', round: 1, basis: 'b'.repeat(64), toolchain: 'practonaut', rules: null });
     await assert.rejects(other.recover!(bench, runs), (error: Error & { code?: string }) => error.code === 'ledger_mismatch');
   } finally { await rm(dir, { recursive: true, force: true }); }
-});
-
-test('one local ledger per user and repository: every spelling of the origin names one repository, and the ledger lives under PRACTONAUT_HOME (review: budget-checkout-local-ledger)', () => {
-  // Written by hand: the forms the version-control tool accepts for one GitHub repository, and a local remote.
-  for (const url of ['https://github.com/Example/Practonaut.git', 'https://user:secret@GitHub.com/Example/Practonaut/', 'git@github.com:Example/Practonaut.git', 'ssh://git@github.com/Example/Practonaut', 'git://github.com/Example/Practonaut.git'])
-    assert.equal(normaliseRemote(url), 'github.com/Example/Practonaut', url);
-  const local = (path: string): string => resolve(path).replaceAll('\\', '/');
-  assert.equal(normaliseRemote('/srv/repos/practonaut.git/'), local('/srv/repos/practonaut'));
-  assert.equal(normaliseRemote('file:///srv/repos/practonaut.git'), local('/srv/repos/practonaut'));
-  assert.equal(normaliseRemote('../practonaut.git', local('/srv/work/clone')), local('/srv/work/practonaut'));
-  assert.equal(releaseLedgerPath(join('home', 'pn'), 'k'.repeat(24)), join('home', 'pn', 'release-ledgers', 'k'.repeat(24), 'release-ledger-0.3.0.jsonl'));
 });

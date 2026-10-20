@@ -237,7 +237,9 @@ async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepare
   if (existsSync(join(folder, 'report.json'))) throw new RuntimeError('usage', cliText('benchRecoverReport', { folder: safeText(displayPath(folder)) }));
   let recovered: Awaited<ReturnType<typeof recoverBench>>;
   try {
-    recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder);
+    // Through a start guard, a run whose run-end record exists keeps the outcome that record states.
+    const recorded = guard?.recorded && agent.kind !== 'builtin' ? await guard.recorded(basename(resolve(folder))) : undefined;
+    recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder, recorded);
     await verifyBenchV3(recovered.report, folder, libraryWorld);
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, cliText('benchRecoverRefused', { folder: safeText(displayPath(folder)), reason: error.message })); throw error; }
   const { report, remaining } = recovered;

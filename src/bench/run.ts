@@ -92,8 +92,12 @@ export interface StartRequest {
 export interface StartGuard {
   start(request: StartRequest): Promise<number>;
   end(handle: number, run: SessionRunV3): Promise<void>;
+  /** The outcomes the run-end records of a bench folder's runs state, by run id (for `--recover`). */
+  recorded?(bench: string): Promise<ReadonlyMap<string, RecordedOutcome>>;
   recover?(bench: string, runs: readonly SessionRunV3[]): Promise<{ written: string[]; void: string[] }>;
 }
+/** How a run ended, as its run-end record states it. */
+export interface RecordedOutcome { status: SessionRunV3['status']; failure: NonNullable<SessionRunV3['failure']> | null }
 export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
 
 /** Counts every host operation and refuses mutations beyond the action budget with a named error.
@@ -589,8 +593,13 @@ async function assembleReport(input: {
  * such: a folder whose mutation log predates /3 (records without an actor), a run with a co-actor
  * record, and an artifact-level run (a proxy log). The requested model is not known afterwards (the
  * environment the client started with is gone), so it is recorded as not known.
+ *
+ * `recorded` (through a start guard: the run-end records of the bench's runs) keeps the outcome a
+ * record states: a run whose record states an infra_error is listed with that record's failure,
+ * whatever its folder holds; a run whose record states a judged run is rebuilt from its folder as
+ * above, and a folder that no longer holds that verdict is refused by the run's name.
  */
-export async function recoverBench(options: BenchOptions, directory: string): Promise<{ report: SessionReportV3; remaining: string[] }> {
+export async function recoverBench(options: BenchOptions, directory: string, recorded?: ReadonlyMap<string, RecordedOutcome>): Promise<{ report: SessionReportV3; remaining: string[] }> {
   const prepared = options.world ?? await libraryBenchWorld();
   const references: ReadonlyMap<string, BenchReference> = options.references ?? (prepared.source === 'library' ? libraryReferences(options.tasks) : new Map());
   const referencesFile = references.size ? referencesText(references, options.tasks) : null;
@@ -639,6 +648,14 @@ export async function recoverBench(options: BenchOptions, directory: string): Pr
       const sessionText = await file(home, RUN_ARTIFACTS.session), checkerText = await file(home, RUN_ARTIFACTS.checker), nativeText = await file(home, nativeName);
       const ended = (await stat(join(home, external ? 'agent.stdout' : RUN_ARTIFACTS.checker)).catch(() => null))?.mtimeMs ?? started.birthtimeMs;
       const wallMs = Math.max(0, Math.round(ended - started.birthtimeMs)), reference = references.get(item.taskId)?.steps.length ?? null;
+      // A run-end record appended as the run ended states how it ended; the folder does not change that.
+      const known = recorded?.get(runId);
+      if (known?.status === 'infra_error') {
+        const failure = known.failure ?? runnerFailure('runner');
+        runs.push(sessionRun({ runId, item, outcome: { status: 'infra_error', exitCode: null, note: `${failure.reason} (as its run-end record states)`, failure }, finalActions: 0, counters, wallMs, reference, checker: null, artifacts: undefined, logs, evidence, kind: options.agent.kind }));
+        continue;
+      }
+      if (known && (sessionText === null || checkerText === null)) throw new BenchReportError(`run ${runId}: its run-end record states a judged run (${known.status}), and its folder no longer holds that verdict (${RUN_ARTIFACTS.session}, ${RUN_ARTIFACTS.checker}); restore the folder as it was`);
       if (sessionText === null || checkerText === null) {
         // The world and the references enter the bench folder only once every agent of the bench has
         // ended: an agent the kill left running (its own process group) is ended first.

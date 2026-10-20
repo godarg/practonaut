@@ -19,7 +19,8 @@
 // With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
 // one hits the usage limit. With PN_FAKE_SLEEP_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts
 // observe and the next one observes and then never ends (its pid in <dir>/sleeper.pid): a bench to
-// kill mid-run. With PN_FAKE_HOLD=<file>, after its observe (and solve) it waits while <file> exists
+// kill mid-run. With PN_FAKE_CRASH_FIRST=<n> and PN_FAKE_STATE=<dir>, the first n starts end at once
+// without output and without a tool call (silent-crash). With PN_FAKE_HOLD=<file>, after its observe (and solve) it waits while <file> exists
 // (at most two minutes) before it ends: a test acts while the run is under way.
 // Its init event lists the tools and MCP servers Claude Code offers the model, as Claude Code 2.1.299–2.1.301
 // do for the preset (the seven mcp__practonaut__ tools, the one server practonaut); PN_FAKE_TOOLS (comma-separated)
@@ -51,6 +52,12 @@ if (process.env.PN_FAKE_SLEEP_AFTER !== undefined && process.env.PN_FAKE_STATE) 
   const starts = (existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0) + 1;
   writeFileSync(counter, String(starts));
   if (starts > Number(process.env.PN_FAKE_SLEEP_AFTER)) { sleep = true; writeFileSync(join(process.env.PN_FAKE_STATE, 'sleeper.pid'), String(process.pid)); }
+}
+if (process.env.PN_FAKE_CRASH_FIRST !== undefined && process.env.PN_FAKE_STATE) {
+  const counter = join(process.env.PN_FAKE_STATE, 'crash-starts');
+  const starts = (existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0) + 1;
+  writeFileSync(counter, String(starts));
+  if (starts <= Number(process.env.PN_FAKE_CRASH_FIRST)) mode = 'silent-crash';
 }
 if (mode === 'silent-crash') process.exit(1);
 const tools = process.env.PN_FAKE_TOOLS !== undefined ? process.env.PN_FAKE_TOOLS.split(',') : ['act', 'check_result', 'explain_result', 'list_actions', 'observe', 'reset', 'undo'].map(tool => 'mcp__practonaut__' + tool);

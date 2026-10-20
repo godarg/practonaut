@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -117,6 +117,29 @@ test('one release ledger for every clone and worktree of a repository on this ma
     assert.equal(second.status, 2); assert.match(second.stderr, /release_budget_exhausted/);
     assert.deepEqual(await p.started(), [OPUS]);
     assert.equal(countLedger(parseLedger(await readFile(p.ledgerPath, 'utf8'))).counted, 800);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('one release ledger whatever directory a command runs in and however the origin is written: keyed on the root commit, a relative origin and a fork included (review: relative origin URLs)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-origin-'));
+  try {
+    const p = await project(dir), docs = join(p.repo, 'docs');
+    // A relative origin, as `git remote add origin ../remote.git` writes it.
+    p.git('remote', 'set-url', 'origin', '../remote.git');
+    const inside = (cwd: string, args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [TOOL, ...args], { cwd, encoding: 'utf8', env: { ...p.env, ...extra } });
+    // From a subdirectory first, then from the top level: the same ledger, so the second init is refused.
+    const first = inside(docs, ['ledger', 'init']);
+    assert.equal(first.status, 0, first.stderr);
+    assert.ok(first.stdout.includes(p.ledgerPath), 'the ledger the top level names');
+    const again = p.tool(['ledger', 'init']);
+    assert.equal(again.status, 2); assert.match(again.stderr, /ledger_exists: /);
+    assert.match(inside(docs, ['ledger', 'show']).stdout, new RegExp(`0 of 800 model runs counted.*\\(${p.ledgerPath.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\)`));
+    // A clone whose origin is another repository with the same root (a fork) shares it: one budget.
+    const fork = join(dir, 'fork');
+    assert.equal(spawnSync('git', ['clone', '--quiet', p.remote, fork], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['remote', 'set-url', 'origin', 'https://example.invalid/someone/practonaut-fork.git'], { cwd: fork, encoding: 'utf8' }).status, 0);
+    const forked = inside(fork, ['ledger', 'init']);
+    assert.equal(forked.status, 2); assert.match(forked.stderr, /ledger_exists: /);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -293,7 +316,7 @@ test('a run-end the guard cannot append stops the bench without a report; --reco
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('a guarded bench killed with kill -9 is recovered through the guard: its judged run binds to the run-end the runner wrote, the run the kill cut short stays void, and probe takes the recovered report (review: r2-killed-bench-dead-end)', { timeout: 600_000, skip: process.platform === 'win32' ? 'kill -9 of a process group is POSIX' : false }, async () => {
+test('a guarded bench killed with kill -9 is recovered through the guard: a run whose run-end record states an infra_error keeps it, a judged run binds to the run-end the runner wrote, the run the kill cut short stays void, and probe takes the recovered report (review: r2-killed-bench-dead-end; recovery ignores existing run-end records)', { timeout: 600_000, skip: process.platform === 'win32' ? 'kill -9 of a process group is POSIX' : false }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-killed-'));
   let sleeper: number | undefined;
   try {
@@ -307,22 +330,36 @@ test('a guarded bench killed with kill -9 is recovered through the guard: its ju
     const solve = join(dir, 'solve.json');
     await writeFile(solve, JSON.stringify({ oracles: join(probeSet, 'oracles'), tasks: { [OPUS]: ['repair-1', 'repair-2', 'repair-3'] } }));
     const model = { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS, PN_FAKE_SOLVE: solve };
-    const guarded = (tasks?: string) => ['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...(tasks ? p.setArgs(probeSet, tasks) : p.setArgs(probeSet))];
-    // repair-1 is judged and recorded; repair-2's agent never ends: kill -9 the bench, then the agent.
-    const running = p.background(guarded(), { ...model, PN_FAKE_SLEEP_AFTER: '1' });
-    assert.ok(await until(() => existsSync(join(p.state, 'sleeper.pid')), 120_000), 'the second run started');
+    // Without --stop-on-infra, so that the bench goes on after an infra_error.
+    const guarded = (tasks?: string) => ['--purpose', 'pre-probe', '--plan', plan, '--', '--agent', 'claude-code', ...(tasks ? p.setArgs(probeSet, tasks) : p.setArgs(probeSet)).filter(arg => arg !== '--stop-on-infra')];
+    // repair-1's agent ends without a tool call (infra_error, no_tool_call, recorded); repair-2 is judged
+    // and recorded; repair-3's agent never ends: kill -9 the bench, then the agent.
+    const running = p.background(guarded(), { ...model, PN_FAKE_CRASH_FIRST: '1', PN_FAKE_SLEEP_AFTER: '2' });
+    assert.ok(await until(() => existsSync(join(p.state, 'sleeper.pid')), 120_000), 'the third run started');
     sleeper = Number(await readFile(join(p.state, 'sleeper.pid'), 'utf8'));
     running.child.kill('SIGKILL'); await running.exited;
     process.kill(-sleeper, 'SIGKILL');
     assert.ok(await until(() => { try { process.kill(-sleeper!, 0); return false; } catch { return true; } }, 5_000), 'the agent is gone');
     const folder = join(p.benchRoot, (await readdir(p.benchRoot))[0]!);
     assert.equal(existsSync(join(folder, 'report.json')), false);
+    const ledger = parseLedger(await readFile(p.ledgerPath, 'utf8'));
+    assert.deepEqual([...ledger.ends.values()].map(end => [end.status, end.failure?.reason ?? null]), [['infra_error', 'no_tool_call'], ['completed', null]]);
+    // A judged, recorded run whose verdict left its folder is refused by its name; restored, it recovers.
+    const verdict = join(folder, 'repair-2-s1-r1', 'checker.json');
+    await rename(verdict, `${verdict}.aside`);
+    const lost = p.tool(['bench', ...guarded(), '--recover', folder]);
+    assert.equal(lost.status, 2); assert.match(lost.stderr, /run repair-2-s1-r1: its run-end record states a judged run \(completed\), and its folder no longer holds that verdict/);
+    await rename(`${verdict}.aside`, verdict);
     const recovered = p.ok(['bench', ...guarded(), '--recover', folder]);
-    assert.match(recovered.stdout, /Release ledger: 0 run-end records written from the run folders; 1 starts without a provable outcome stay void \(counted, and not benched again for the round\): repair-2-s1-r1/);
-    const rest = await p.bench(guarded('repair-3,repair-4,repair-5,repair-6,repair-7'), model);
+    assert.match(recovered.stdout, /Release ledger: 0 run-end records written from the run folders; 1 starts without a provable outcome stay void \(counted, and not benched again for the round\): repair-3-s1-r1/);
+    // The run whose record states no_tool_call keeps that outcome (its folder alone would read "interrupted").
+    const report = await json(join(folder, 'report.json'));
+    assert.deepEqual(report.runs.map((run: Json) => [run.id, run.status, run.failure?.reason ?? null]), [['repair-1-s1-r1', 'infra_error', 'no_tool_call'], ['repair-2-s1-r1', 'completed', null], ['repair-3-s1-r1', 'infra_error', 'interrupted']]);
+    // repair-1 (an infra_error) is benched again with the rest; repair-3 (void) is not.
+    const rest = await p.bench(guarded('repair-1,repair-4,repair-5,repair-6,repair-7'), model);
     assert.equal(rest.status, 0, rest.stderr);
     p.ok(['ledger', 'write']); p.commit('ledger');
-    assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', [join(folder, 'report.json'), rest.path].join(','), '--out', record]).stdout, /Opus passed 2 of 7; not admitted: 1 void pre-probe run \(no run-end record: repair-2\)/);
+    assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', [join(folder, 'report.json'), rest.path].join(','), '--out', record]).stdout, /Opus passed 2 of 7; not admitted: 1 void pre-probe run \(no run-end record: repair-3\)/);
   } finally {
     if (sleeper) try { process.kill(-sleeper, 'SIGKILL'); } catch { /* gone */ }
     await rm(dir, { recursive: true, force: true });

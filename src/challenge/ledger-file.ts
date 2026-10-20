@@ -7,7 +7,7 @@
  */
 import { appendFile, mkdir, open, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { StartGuard, StartRequest } from '../bench/run.ts';
+import type { RecordedOutcome, StartGuard, StartRequest } from '../bench/run.ts';
 import type { SessionRunV3 } from '../bench/report.ts';
 import { countLedger, headerLine, isPrefix, LedgerError, nextLine, parseLedger, RELEASE, RELEASE_CAP, type Ledger, type Purpose, type RoundBody, type RunEndBody, type StartBody, type StartRecord } from './ledger.ts';
 
@@ -136,6 +136,15 @@ export function ledgerGuard(options: GuardOptions): StartGuard {
         requested: request.requested, model: request.model, agent: request.agent.kind === 'preset' ? request.agent.name : 'command', bench: request.bench, run: request.run, world: request.world, instance: request.instance };
     }),
     end: async (handle: number, run: SessionRunV3) => { await append(options.paths, () => runEndBody(handle, options, run)); },
+    recorded: async (bench: string) => {
+      const ledger = await current(options.paths), out = new Map<string, RecordedOutcome>();
+      for (const record of ledger.records) {
+        if (record.kind !== 'start' || record.bench !== bench) continue;
+        const end = ledger.ends.get(record.seq);
+        if (end) out.set(record.run, { status: end.status, failure: end.failure }); else out.delete(record.run);
+      }
+      return out;
+    },
     recover: async (bench: string, runs: readonly SessionRunV3[]) => {
       const written: string[] = [], voided: string[] = [];
       await appendAll(options.paths, ledger => {
