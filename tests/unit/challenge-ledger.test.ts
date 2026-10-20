@@ -9,15 +9,15 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { countLedger, exemptEnd, headerLine, isPrefix, nextLine, parseLedger, type LedgerRecord, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
+import { countLedger, exemptEnd, headerLine, isPrefix, nextLine, parseLedger, roundEvents, roundStarts, type LedgerRecord, type RoundBody, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
 import { initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../../src/challenge/ledger-file.ts';
 import { presetRun } from '../support/challenge-round.ts';
 
 const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
-const start = (index: number, extra: Partial<StartBody> = {}): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index + 1}-r1`, ...extra });
+const start = (index: number, extra: Partial<StartBody> = {}): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64), ...extra });
 const end = (startSeq: number, extra: Partial<RunEndBody> = {}): RunEndBody => ({ kind: 'run-end', start: startSeq, toolchain: 'practonaut', rules: null, status: 'completed', judged: 'a'.repeat(64), stdout: 'b'.repeat(64), checker: 'c'.repeat(64), observed: { class: 'api-key', source: 'client-attested' }, failure: null, hostCalls: 3, reads: 1, tokens: 15, ...extra });
 /** A ledger text from bodies, appended in order (O(n): the records are kept, not re-parsed). */
-function build(bodies: Array<StartBody | RunEndBody | ((records: LedgerRecord[]) => StartBody | RunEndBody)>): string {
+function build(bodies: Array<StartBody | RunEndBody | RoundBody | ((records: LedgerRecord[]) => StartBody | RunEndBody)>): string {
   const state = { text: headerLine(), records: [parseLedger(headerLine()).header] as LedgerRecord[] };
   for (const value of bodies) {
     const { record, line } = nextLine(state, typeof value === 'function' ? value(state.records) : value);
@@ -44,7 +44,29 @@ test('the ledger is a hash chain of canonical lines: the header first, seq the l
   invalid(build([start(0), end(1), end(1)]), /start entry 1 has a run-end record already/);
   invalid(build([end(0)]), /its start entry 0 is not an earlier start entry/);
   invalid(build([start(0), end(1, { toolchain: 'excalidraw-mcp-0.3.2' })]), /its toolchain or rules version differs from start entry 1/);
-  assert.throws(() => parseLedger(text, '0.4.0'), /counts release 0\.3\.0, not 0\.4\.0/);
+  assert.throws(() => parseLedger(text, '0.4.0'), /counts release 0\.3\.0 with a cap of 800; release 0\.4\.0 has 800/);
+});
+
+test('the cap is the release\'s 800, never a value the ledger file names (review: budget-cap-from-header)', () => {
+  // Written by hand: a self-consistent ledger whose header names a cap of 5000.
+  const header = `{"cap":5000,"kind":"release","prev":"${'0'.repeat(64)}","release":"0.3.0","schema":"practonaut.release-ledger/1","seq":0}`;
+  assert.throws(() => parseLedger(header + '\n'), (error: unknown) => (error as { code?: string }).code === 'ledger_invalid' && /a cap of 5000; release 0\.3\.0 has 800/.test((error as Error).message));
+  assert.throws(() => parseLedger(header.replace('"0.3.0"', '"0.3.1"').replace('5000', '800') + '\n'), /counts release 0\.3\.1/);
+});
+
+test('round records register admissions and declarations; a start on a round\'s world belongs to that round whatever its purpose', () => {
+  const round = (event: RoundBody['event'], world: string): RoundBody => ({ kind: 'round', event, unit: 'repair.practonaut', round: 1, probe: 1, plan: 'a'.repeat(64), record: 'b'.repeat(64), declaration: event === 'declared' ? 'c'.repeat(64) : null, world, heldOutRuns: event === 'declared' ? 78 : 0 });
+  const ledger = parseLedger(build([
+    start(0, { purpose: 'pre-probe', unit: 'repair.practonaut', round: 1, basis: 'a'.repeat(64), world: '1'.repeat(64) }), round('admitted', '1'.repeat(64)), round('declared', '2'.repeat(64)),
+    start(1, { world: '2'.repeat(64) }),            // a development run on the declared held-out world
+    start(2, { world: '1'.repeat(64) }),            // an example run on the pre-probe world
+    start(3, { world: '3'.repeat(64) }),            // another world: not the round's
+    start(4, { purpose: 'pre-probe', unit: 'injection.practonaut', round: 1, basis: 'a'.repeat(64), world: '4'.repeat(64) }),
+  ]));
+  assert.deepEqual(roundStarts(ledger, 'repair.practonaut', 1).map(record => record.seq), [1, 4, 5]);
+  assert.deepEqual(roundEvents(ledger, 'repair.practonaut', 1).map(record => record.event), ['admitted', 'declared']);
+  // Round records are not starts: they count nothing.
+  assert.equal(countLedger(ledger).starts, 5);
 });
 
 test('the count: every start entry until its run-end releases it — a local run attested local, or a run the client refused before model work', () => {
@@ -81,7 +103,7 @@ test('the start guard on the file: a missing or diverged local ledger refuses, a
   const dir = await mkdtemp(join(tmpdir(), 'pn-ledger-'));
   try {
     const paths = { local: join(dir, 'local', 'ledger.jsonl'), committed: join(dir, 'release-ledger.jsonl') };
-    const request = (run: string, extra: Partial<{ model: string | null; requested: 'api-key' | 'local' }> = {}) => ({ bench: '20261102T100000Z-0001', run, taskId: 'connect', seed: 1, repeat: 1, agent: { kind: 'preset' as const, name: 'claude-code', command: [] }, requested: 'api-key' as const, model: 'claude-opus-5-5', ...extra });
+    const request = (run: string, extra: Partial<{ model: string | null; requested: 'api-key' | 'local' }> = {}) => ({ bench: '20261102T100000Z-0001', run, taskId: 'connect', seed: 1, repeat: 1, agent: { kind: 'preset' as const, name: 'claude-code', command: [] }, requested: 'api-key' as const, model: 'claude-opus-5-5', world: 'f'.repeat(64), ...extra });
     const guard = ledgerGuard({ paths, purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null });
     await assert.rejects(guard.start(request('connect-s1-r1')), (error: Error & { code?: string }) => error.code === 'ledger_missing' && /ledger init/.test(error.message));
     assert.deepEqual(await initLedger(paths), { records: 1, from: 'new' });
@@ -119,7 +141,7 @@ test('a start that would pass 800 is refused before anything is appended; a star
     bodies.push(start(798, { requested: 'local' }));
     await writeFile(paths.local, build(bodies));
     const guard = ledgerGuard({ paths, purpose: 'acceptance', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null });
-    const request = (run: string) => ({ bench: '20261102T100000Z-0002', run, taskId: 'connect', seed: 1, repeat: 1, agent: { kind: 'preset' as const, name: 'claude-code', command: [] }, requested: 'api-key' as const, model: 'claude-opus-5-5' });
+    const request = (run: string) => ({ bench: '20261102T100000Z-0002', run, taskId: 'connect', seed: 1, repeat: 1, agent: { kind: 'preset' as const, name: 'claude-code', command: [] }, requested: 'api-key' as const, model: 'claude-opus-5-5', world: 'f'.repeat(64) });
     const eight = await guard.start(request('connect-s800-r1'));
     assert.equal(eight, 800);
     const before = await readFile(paths.local, 'utf8');

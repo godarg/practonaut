@@ -49,11 +49,14 @@ export function declarationCommit(path: string): { commit: string; versions: num
   if (!remote.ok || !remote.out.trim()) throw new DeclarationGitError(`${name} is committed in ${commit.slice(0, 12)}, which no remote-tracking branch contains; push it first`);
   return { commit, versions: commits.length };
 }
-/** Every committed version of the declaration file, newest first: commit and committer date. */
+/** Every committed version of a round file or the release ledger, newest first: commit and committer
+ * date. Without history simplification (`--full-history`: a merge resolved to one side keeps the other
+ * side's versions) and over every remote-tracking branch as well as HEAD (a version pushed on a branch
+ * that is not merged, or reached main only through a squash, is still a version). */
 export function declarationVersions(path: string): Array<{ commit: string; date: string }> {
   const at = located(path);
   if (!at) return [];
-  const listed = git(at.folder, ['log', '--format=%H %cI', '--', at.spec]);
+  const listed = git(at.folder, ['log', '--full-history', '--format=%H %cI', 'HEAD', '--remotes', '--', at.spec]);
   return listed.ok ? listed.out.split('\n').filter(Boolean).map(line => { const [commit, date] = line.split(' '); return { commit: commit!, date: date ?? '' }; }) : [];
 }
 /** The declaration file's content in a commit, or null when the commit or the file is not there. */

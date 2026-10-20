@@ -79,7 +79,7 @@ test('the release ledger as declare and gate read it: committed and pushed, noth
     const remote = join(dir, 'remote.git'), work = join(dir, 'work'), folder = join(work, 'docs', 'benchmarks', 'challenge', '0.3.0');
     await mkdir(remote); git(remote, 'init', '--bare');
     await mkdir(folder, { recursive: true }); git(work, 'init'); git(work, 'remote', 'add', 'origin', remote);
-    const start = (index: number, bench = '20261102T100000Z-0001'): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench, run: `connect-s${index}-r1` });
+    const start = (index: number, bench = '20261102T100000Z-0001'): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench, run: `connect-s${index}-r1`, world: 'f'.repeat(64) });
     let ledger = parseLedger(headerLine());
     const append = (body: StartBody): string => { ledger = parseLedger(ledger.text + nextLine(ledger, body).line); return ledger.text; };
     const paths = { local: join(dir, 'local.jsonl'), committed: join(folder, 'release-ledger.jsonl') };

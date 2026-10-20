@@ -26,10 +26,10 @@ import { safeText } from '../cli/output.ts';
 import type { SessionData, World } from '../world/types.ts';
 import { FAMILY_BENCH, generateSet, taskIdOf, type ChallengeSet } from './build.ts';
 import { generatorId, generatorVersion, type Difficulty, type Family } from './families.ts';
-import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, heldOutSeeds, reservedRuns, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
-import { checkOutside, computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
+import { DECLARATION_SCHEMA, GATE_PRESET, PLAN_SCHEMA, PROBE_SCHEMA, RoundError, SHAPE_B, ALPHA, ROUND_RULES, admits, checkRetune, declarationHash, familyOf, fileHash, fundingAt, heldOutRuns, heldOutSeeds, subscriptionAgents, validateDeclaration, validatePlan, validateProbe, type Declaration, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
+import { checkOutside, computeGate, preflightGate, probeRuns, renderGate, renderPreflight, GateInputError, type Folders, type GateReport, type GateResult, type LedgerInput, type PreflightResult, type RederivedFailure } from './gate.ts';
 import { commitPushed, declarationAtCommit, declarationCommit, declarationVersions, DeclarationGitError } from './git.ts';
-import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, type Ledger } from './ledger.ts';
+import { countLedger, isPrefix, ledgerHead, parseLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, type Ledger, type RoundBody } from './ledger.ts';
 import { readLedger, type LedgerPaths } from './ledger-file.ts';
 import { parseUnit, unitSlug } from './units.ts';
 
@@ -302,12 +302,56 @@ export async function scanOutside(roots: readonly string[], sets: { worlds: read
   return outside;
 }
 
+/**
+ * The run folders of a round's start entries without a run-end record (PADR-0042 amended: a lost record
+ * voids a judged run): `judged` when the folder holds `checker.json` or `session.json`, `unjudged` when it
+ * exists without them, `missing` when no bench root holds it.
+ */
+export async function roundFolders(roots: readonly string[], ledger: Ledger, unit: string, round: number): Promise<Folders> {
+  const folders = new Map<string, 'judged' | 'unjudged' | 'missing'>();
+  for (const start of roundStarts(ledger, unit, round)) {
+    if (ledger.ends.has(start.seq)) continue;
+    let state: 'judged' | 'unjudged' | 'missing' = 'missing';
+    for (const root of [...new Set(roots.map(value => resolve(value)))]) {
+      const folder = join(root, start.bench, start.run);
+      if (!(await exists(folder))) continue;
+      state = (await exists(join(folder, RUN_ARTIFACTS.checker))) || (await exists(join(folder, RUN_ARTIFACTS.session))) ? 'judged' : 'unjudged';
+      break;
+    }
+    folders.set(`${start.bench}\u0000${start.run}`, state);
+  }
+  return folders;
+}
+/**
+ * Model-run folders under the bench roots that no start entry of `ledger` names (`ledger init` refuses
+ * while there are any, PADR-0042 amended): every run folder with the agent's own output in a bench
+ * folder without a report or with a `practonaut.bench/3` report (0.2.0's /1 and /2 benches predate the
+ * release ledger and are left out).
+ */
+export async function scanUnledgered(roots: readonly string[], ledger: Ledger): Promise<Array<{ bench: string; run: string }>> {
+  const started = new Set(ledger.records.flatMap(record => record.kind === 'start' ? [`${record.bench}\u0000${record.run}`] : []));
+  const found: Array<{ bench: string; run: string }> = [];
+  for (const root of [...new Set(roots.map(value => resolve(value)))]) {
+    for (const bench of (await readdir(root, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
+      const bytes = await readRegularFile(join(root, bench, 'report.json'), 64 * 1024 * 1024);
+      let schema: unknown = null;
+      if (bytes) try { schema = (JSON.parse(bytes.toString('utf8')) as { schema?: unknown }).schema; } catch { schema = null; }
+      if (bytes && schema !== BENCH_SCHEMA_V3) continue;
+      for (const entry of await readdir(join(root, bench), { withFileTypes: true }).catch(() => [])) {
+        if (!entry.isDirectory() || !/-s\d+-r\d+$/.test(entry.name) || !(await exists(join(root, bench, entry.name, 'agent.stdout')))) continue;
+        if (!started.has(`${bench}\u0000${entry.name}`)) found.push({ bench, run: entry.name });
+      }
+    }
+  }
+  return found;
+}
+
 /** The local ledger and the committed copy of a release folder. */
 export const ledgerPaths = (folder: string, local: string): LedgerPaths => ({ local, committed: join(folder, COMMITTED_LEDGER) });
 
 export interface PlanOptions {
   unit: string; round: number; probe: number; difficulty: Difficulty | 'mixed'; seeds: number[]; model: string;
-  bench: { mirror: 'off' | 'required'; timeoutSeconds: number; maxActions: number; checks: number | null }; maintainerApprovedUnit: boolean; shape: 'A' | 'B';
+  bench: { mirror: 'off' | 'required'; timeoutSeconds: number; maxActions: number; checks: number | null }; maintainerApprovedUnit: string | null; shape: 'A' | 'B';
 }
 /** A probe plan from the tool's options (PADR-0044 decision 8), validated; a retune is checked against
  * the committed record of the probe before it in the same folder. */
@@ -333,54 +377,81 @@ async function earlierProbe(folder: string, plan: Plan): Promise<{ plan: Plan; a
   return { plan: await readPlan(planPath), admitted: (await readProbe(recordPath)).admitted };
 }
 
-export interface ProbeFiles { plan: string; set: string; reports: string[]; ledger: string }
+export interface ProbeFiles { plan: string; set: string; reports: string[]; ledger: string; benchRoots?: string[] }
+/** The bench roots a command scans: the given ones and the parents of the given reports' folders. */
+const rootsOf = (reports: readonly string[], extra: readonly string[] = []): string[] => [...extra, ...reports.map(path => dirname(dirname(resolve(path))))];
+/** The round files are made with the Practonaut the plan pins (PADR-0042 amended, 3.11). */
+function pinned(plan: Plan): void {
+  if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
+}
 /** The pre-probe record (PADR-0042 decision 7, committed whether the unit is admitted or not): the
  * committed and pushed plan, the pre-probe set checked against its regeneration, the pre-probe reports
  * re-verified and bound to the pushed ledger, Opus's passes and the rule's answer. */
-export async function probeFromFiles(files: ProbeFiles): Promise<{ record: ProbeRecord; text: string }> {
+export async function probeFromFiles(files: ProbeFiles): Promise<{ record: ProbeRecord; text: string; round: RoundBody }> {
   const plan = await readPlan(files.plan), planCommit = committedFile(files.plan), planHash = fileHash(plan);
-  const set = probeSet(plan);
+  pinned(plan);
+  const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world)), tasks = plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed));
   await checkSetFolder(files.set, set, { unit: plan.unit, round: plan.round, seeds: plan.seeds, basis: { kind: 'plan', sha256: planHash, commit: planCommit } });
-  const reports: GateReport[] = [];
-  for (const path of files.reports) reports.push(await readGateReport(path, true));
   const folder = dirname(resolve(files.plan));
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
-  const result = asGate(() => probeRuns({ plan, planHash, worldContentHash: sha256Hex(canonicalJson(set.world)), reports, ledger: ledger.ledger }));
+  // A pre-probe is recorded once; runs of its instances outside the ledger refuse it.
+  if (roundEvents(ledger.ledger, plan.unit, plan.round).some(event => event.event !== 'declared' && event.probe === plan.probe)) refuse('probe_recorded', `${plan.unit} round ${plan.round}, probe ${plan.probe} is recorded in the release ledger already; a pre-probe record is made once`);
+  const roots = rootsOf(files.reports, files.benchRoots);
+  checkOutside(await scanOutside(roots, { worlds: [world], tasks }, ledger.ledger));
+  const reports: GateReport[] = [];
+  for (const path of files.reports) reports.push(await readGateReport(path, true));
+  const folders = await roundFolders(roots, ledger.ledger, plan.unit, plan.round);
+  const result = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, reports, ledger: ledger.ledger, folders }));
   const record = asGate(() => validateProbe({
     schema: PROBE_SCHEMA, release: RELEASE, unit: plan.unit, round: plan.round, probe: plan.probe, plan: { sha256: planHash, commit: planCommit },
     world: { id: set.world.id, contentHash: sha256Hex(canonicalJson(set.world)) }, agent: { preset: plan.agent.preset, model: plan.agent.model },
     outcomes: result.outcomes, passed: result.passed, admitted: admits(result.passed), rule: { low: SHAPE_B.admitLow, high: SHAPE_B.admitHigh, of: result.outcomes.length },
     digest: result.digest, runs: result.runs, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) },
   }));
-  return { record, text: JSON.stringify(record, null, 2) + '\n' };
+  // Registered in the ledger, which orders admissions across every branch (decision 8 as amended).
+  const round: RoundBody = { kind: 'round', event: record.admitted ? 'admitted' : 'refused', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(record), declaration: null, world, heldOutRuns: 0 };
+  return { record, text: JSON.stringify(record, null, 2) + '\n', round };
 }
 
-export interface DeclareFiles { plan: string; probe: string; reports: string[]; ladder: Array<{ preset: string; model: string }>; ledger: string; out: string }
+export interface DeclareFiles { plan: string; probe: string; reports: string[]; ladder: Array<{ preset: string; model: string }>; ledger: string; out: string; benchRoots?: string[] }
 /**
  * A round's declaration `/2` (PADR-0042 as amended): the committed and pushed plan and pre-probe
  * record, the pre-probe runs again (the same digest and outcomes), the ladder as declared, the
  * previous round's seeds for a round 2, and the funding from the pushed ledger's count.
  */
-export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[] }> {
+export async function declareFromFiles(files: DeclareFiles): Promise<{ declaration: Declaration; text: string; seeds: number[]; round: RoundBody }> {
   const plan = await readPlan(files.plan), probe = await readProbe(files.probe);
   const planCommit = committedFile(files.plan), probeCommit = committedFile(files.probe), planHash = fileHash(plan);
+  pinned(plan);
   if (probe.plan.sha256 !== planHash || probe.plan.commit !== planCommit) refuse('round_files_mismatch', 'the pre-probe record was not made from this plan');
   if (!probe.admitted) refuse('unit_not_admitted', `${plan.unit}: the pre-probe passed ${probe.passed} of ${probe.outcomes.length}, outside ${SHAPE_B.admitLow}–${SHAPE_B.admitHigh}; the unit is not admitted (PADR-0042 decision 7)`);
   const folder = dirname(resolve(files.out));
   if (folder !== dirname(resolve(files.plan))) refuse('round_files_mismatch', 'the declaration goes into the release folder of its plan');
   if (basename(files.out) !== roundFiles.declaration(plan.unit, plan.round)) refuse('round_files_mismatch', `name the file ${roundFiles.declaration(plan.unit, plan.round)}`);
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
+  const events = roundEvents(ledger.ledger, plan.unit, plan.round);
+  const admission = events.find(event => event.event === 'admitted' && event.record === fileHash(probe) && event.plan === planHash);
+  if (!admission) refuse('probe_unrecorded', 'the release ledger holds no admission of this pre-probe record; `probe` registers it (write and push the ledger after it)');
+  // A round is declared again only while none of its held-out runs has started.
+  const members = roundStarts(ledger.ledger, plan.unit, plan.round);
+  for (const earlier of events.filter(event => event.event === 'declared')) {
+    const started = members.find(start => start.world === earlier.world || (start.purpose === 'held-out' && start.basis === earlier.declaration));
+    if (started) refuse('round_redeclared', `${plan.unit} round ${plan.round} was declared before and its held-out runs started (start entry ${started.seq}); a round is not declared again once they did`);
+  }
+  const set = probeSet(plan), world = sha256Hex(canonicalJson(set.world));
+  const roots = rootsOf(files.reports, files.benchRoots);
+  checkOutside(await scanOutside(roots, { worlds: [world], tasks: plan.seeds.map(seed => taskIdOf(familyOf(plan.unit, plan.maintainerApprovedUnit), seed)) }, ledger.ledger));
   const reports: GateReport[] = [];
   for (const path of files.reports) reports.push(await readGateReport(path, true));
-  const set = probeSet(plan);
-  const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: sha256Hex(canonicalJson(set.world)), reports, ledger: ledger.ledger }));
+  const folders = await roundFolders(roots, ledger.ledger, plan.unit, plan.round);
+  const again = asGate(() => probeRuns({ plan, planHash, worldContentHash: world, reports, ledger: ledger.ledger, folders }));
   if (again.digest !== probe.digest || !isDeepStrictEqual(again.outcomes, probe.outcomes)) refuse('development_mismatch', 'the pre-probe reports are not the ones the pre-probe record digests');
   // The ladder: as declared; billing as the pre-probe's preset was set up; Claude Code attests its model.
   const billing = reports[0]!.report.agent.billing.class;
   const ladder = files.ladder.map(agent => ({ preset: agent.preset, client: agent.preset, model: agent.model, attestation: agent.preset === GATE_PRESET ? 'client-attested' as const : 'not-attested' as const, billing }));
   if (ladder[0] && ladder[0].model !== plan.agent.model && ladder[0].preset === GATE_PRESET) refuse('ladder_model_mismatch', `the strongest ladder agent is the pre-probe's ${plan.agent.model}, not ${ladder[0].model}`);
   // Round 2: the first round's declaration and gate report, committed; its held-out seeds.
-  let previous: Declaration['previous'] = null, foreignRounds = 0;
+  let previous: Declaration['previous'] = null;
   if (plan.round > 1) {
     const firstPath = join(folder, roundFiles.declaration(plan.unit, 1)), gatePath = join(folder, roundFiles.gateJson(plan.unit, 1));
     if (!(await exists(firstPath)) || !(await exists(gatePath))) refuse('previous_round', `round ${plan.round} of ${plan.unit} follows its gated first round (${roundFiles.declaration(plan.unit, 1)} and ${roundFiles.gateJson(plan.unit, 1)})`);
@@ -389,13 +460,9 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
     if (gated.verdict === 'passes') refuse('previous_round', `${plan.unit} passed its first round; a second round is for a unit that did not`);
     previous = { declaration: declarationHash(first), low: seeds[0]!, high: seeds.at(-1)! };
   }
-  // Funding: the units admitted before this one and not declared yet keep their rounds; the foreign reserve.
-  const admittedBefore = (await earlierUndeclaredAdmissions(folder, plan.unit, plan.round, probe)).length;
-  for (const name of await readdir(folder).catch(() => [] as string[])) if (/\.declaration\.json$/.test(name) && !name.startsWith(`${plan.unit}-`)) {
-    const other = await readDeclaration(join(folder, name)).catch(() => null);
-    if (other && other.toolchain.level === 'artifact') foreignRounds++;
-  }
-  const before = countLedger(ledger.ledger).counted, unit = parseUnit(plan.unit);
+  // Funding from the ledger: other declared rounds' unstarted held-out runs, units admitted earlier and
+  // not declared, the foreign reserve (decision 8 as amended); the gate re-derives it.
+  const funding = fundingAt(ledger.ledger, plan.unit, plan.round, admission!.seq);
   const heldOut = { instances: SHAPE_B.heldOut }, subscription = subscriptionAgents(ladder);
   const raw = {
     schema: DECLARATION_SCHEMA, release: RELEASE, unit: plan.unit, round: plan.round, alpha: ALPHA[plan.round] ?? 0.025, toolchain: plan.toolchain, generator: plan.generator, difficulty: plan.difficulty, shape: plan.shape,
@@ -405,25 +472,15 @@ export async function declareFromFiles(files: DeclareFiles): Promise<{ declarati
     development: { seeds: plan.seeds, world: { id: probe.world.id, contentHash: probe.world.contentHash }, digest: probe.digest, passed: probe.outcomes.map(entry => entry.pass) },
     heldOut, previous,
     budget: { subscriptionAgents: subscription, formula: (heldOut.instances + probe.outcomes.length) * subscription, roundRuns: probe.outcomes.length + heldOut.instances * subscription, cap: RELEASE_CAP,
-      before, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) }, reserved: reservedRuns(unit.toolchain, admittedBefore, foreignRounds), leave: ROUND_RULES.leave },
+      before: funding.before, ledger: { records: ledger.ledger.records.length, head: ledgerHead(ledger.ledger) }, reserved: funding.reserved, leave: ROUND_RULES.leave },
   };
   const declaration = asGate(() => validateDeclaration(raw));
-  return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration) };
+  if (probe.world.contentHash !== world) refuse('round_files_mismatch', 'the pre-probe record names another pre-probe world than the plan makes');
+  // Registered in the ledger with its held-out world: every later run on it belongs to this round.
+  const heldOutWorld = sha256Hex(canonicalJson(heldOutSet(declaration).set.world));
+  const round: RoundBody = { kind: 'round', event: 'declared', unit: plan.unit, round: plan.round, probe: plan.probe, plan: planHash, record: fileHash(probe), declaration: declarationHash(declaration), world: heldOutWorld, heldOutRuns: heldOutRuns(declaration) };
+  return { declaration, text: JSON.stringify(declaration, null, 2) + '\n', seeds: heldOutSeeds(declaration), round };
 }
-/** Units admitted before `probe` (an earlier ledger position) whose round is not declared yet. */
-async function earlierUndeclaredAdmissions(folder: string, unit: string, round: number, probe: ProbeRecord): Promise<string[]> {
-  const names = await readdir(folder).catch(() => [] as string[]), found: string[] = [];
-  for (const name of names) {
-    const match = /^(.+)-round-(\d+)\.probe-(\d+)\.json$/.exec(name);
-    if (!match || (match[1] === unit && Number(match[2]) === round)) continue;
-    const other = await readProbe(join(folder, name)).catch(() => null);
-    if (!other?.admitted || other.ledger.records >= probe.ledger.records) continue;
-    if (names.includes(roundFiles.declaration(other.unit, other.round))) continue;
-    found.push(`${other.unit} round ${other.round}`);
-  }
-  return found;
-}
-
 export interface GateFiles {
   declaration: string; set: string;
   development: string[]; oracle: string[]; random: string[];
@@ -451,13 +508,16 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   if (plan.toolchain.practonaut !== PACKAGE_VERSION) refuse('practonaut_version', `the round's plan pins Practonaut ${plan.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
   const { set, seeds } = heldOutSet(declaration);
   await checkSetFolder(files.set, set, { unit: declaration.unit, round: declaration.round, seeds, basis: { kind: 'declaration', sha256: declarationHash(declaration), commit } });
+  // The pre-probe world regenerated from the plan, never taken from the declaration or the record.
+  const probeWorld = sha256Hex(canonicalJson(probeSet(plan).world));
   // The cheap refusals first: the pushed ledger and runs outside it, before any report is re-verified.
   const ledger = await pushedLedger(ledgerPaths(folder, files.ledger));
   const family = declaration.unit.split('.')[0] as Family, worldContentHash = sha256Hex(canonicalJson(set.world));
   const given = [...files.development, ...files.oracle, ...files.random, ...(files.ladder ?? [])];
   const roots = [...(files.benchRoots ?? []), ...given.map(path => dirname(dirname(resolve(path))))];
-  const outside = await scanOutside(roots, { worlds: [declaration.development.world.contentHash, worldContentHash], tasks: [...declaration.development.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
+  const outside = await scanOutside(roots, { worlds: [probeWorld, worldContentHash], tasks: [...plan.seeds, ...seeds].map(seed => taskIdOf(family, seed)) }, ledger.ledger);
   checkOutside(outside);
+  const folders = await roundFolders(roots, ledger.ledger, declaration.unit, declaration.round);
   const read = async (paths: readonly string[], sessions = false): Promise<GateReport[]> => { const out: GateReport[] = []; for (const path of paths) out.push(await readGateReport(path, sessions)); return out; };
   const development = await read(files.development, true), oracle = await read(files.oracle), random = await read(files.random);
   if (!oracle.length) refuse('baseline_missing', 'name the oracle report(s) (--oracle)');
@@ -481,9 +541,9 @@ async function roundData(files: GateFiles, ladder: readonly GateReport[] | null)
   }
   return {
     plan, probe, declaration, git: { declaration: commit, versions: declarationVersions(files.declaration) },
-    probeWorld: declaration.development.world.contentHash, tasks: seeds.map(seed => taskIdOf(family, seed)), seeds, worldContentHash,
+    probeWorld, tasks: seeds.map(seed => taskIdOf(family, seed)), seeds, worldContentHash,
     development, oracle, random, nearMisses: { total: nearMisses.total, passed: nearMisses.passed, perInstance: set.oracles.map(value => value.nearMisses.length) },
-    ledger, outside, ...(previousSeeds ? { previousSeeds } : {}),
+    ledger, outside, folders, ...(previousSeeds ? { previousSeeds } : {}),
   };
 }
 

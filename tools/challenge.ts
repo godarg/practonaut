@@ -7,25 +7,26 @@
 //   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
 //   node tools/challenge.ts verify <dir>
 //   node tools/challenge.ts args <dir> [--tasks <id,…>]
-// The release ledger (local under .local/, committed in docs/benchmarks/challenge/0.3.0/):
-//   node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>]
+// The release ledger (local in the git common directory, shared by every worktree; committed in docs/benchmarks/challenge/0.3.0/):
+//   node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>] [--bench-root <dir,…>]
 //   node tools/challenge.ts bench --purpose <p> [--plan <file> | --declaration <file> | --unit <u>] [--ledger <file>] [--folder <dir>] -- <bench arguments>
 // A round of a unit <family>.<toolchain> (shape B):
-//   node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty <d> --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit] --out <file>
+//   node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty <d> --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit <unit>] --out <file>
 //   node tools/challenge.ts generate <unit> --set probe --plan <file> --out <dir>
-//   node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--ledger <file>] --out <file>
-//   node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--ledger <file>] --out <file>
+//   node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] [--ledger <file>] --out <file>
+//   node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] [--ledger <file>] --out <file>
 //   node tools/challenge.ts generate <unit> --set heldout --declaration <file> --out <dir>
 //   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--ledger <file>] [--out <file.md>]
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash, fileHash, GATE_PRESET, heldOutSeeds } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
-import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
-import { initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
-import { countLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
+import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
+import { appendRound, initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
+import { countLedger, headerLine, parseLedger, PURPOSES, RELEASE, roundEvents, type Purpose } from '../src/challenge/ledger.ts';
+import { resolvedDataPaths } from '../src/platform/paths.ts';
 import { parseUnit, PRACTONAUT_TOOLCHAIN } from '../src/challenge/units.ts';
 import { commandBench } from '../src/cli/bench.ts';
 import { PACKAGE_VERSION } from '../src/version.ts';
@@ -36,11 +37,11 @@ const usage = `usage:
   node tools/challenge.ts generate <unit> --set heldout --declaration <file> --out <dir> [--force]
   node tools/challenge.ts verify <dir>
   node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: … bench --agent <a> $(…) in a POSIX shell)
-  node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>]
+  node tools/challenge.ts ledger init|write|show [--ledger <file>] [--folder <dir>] [--bench-root <dir,…>]
   node tools/challenge.ts bench --purpose ${PURPOSES.join('|')} [--plan <file> | --declaration <file> | --unit <u>] [--ledger <file>] [--folder <dir>] -- <bench arguments>
-  node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty 1|2|3|mixed --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit] --out <file> [--force]
-  node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--ledger <file>] --out <file> [--force]
-  node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--ledger <file>] --out <file> [--force]
+  node tools/challenge.ts plan --unit <u> --round <k> [--probe <p>] --difficulty 1|2|3|mixed --seed <first> --model <opus id> --mirror off|required --timeout <s> --max-actions <n> [--checks <n>] [--maintainer-approved-unit <unit>] --out <file> [--force]
+  node tools/challenge.ts probe --plan <file> --set <dir> --dev <report.json,…> [--bench-root <dir,…>] [--ledger <file>] --out <file> [--force]
+  node tools/challenge.ts declare --plan <file> --probe <file> --dev <report.json,…> --ladder <preset=model,…> [--bench-root <dir,…>] [--ledger <file>] --out <file> [--force]
   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--ledger <file>] [--out <file.md>] [--force]
 families: ${FAMILIES.join(', ')}; a unit is <family>.<toolchain>, for example layout.practonaut`;
 const fail = (message: string): never => { process.stderr.write(`challenge: ${message}\n${usage}\n`); process.exit(1); };
@@ -75,13 +76,17 @@ async function refuseExisting(out: string, force: boolean): Promise<void> {
   try { await lstat(out); } catch { return; }
   fail(`${out} exists; add --force to replace it`);
 }
-/** The checkout's top level (the defaults of the release folder and the local ledger live there). */
-function topLevel(): string {
-  try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+const gitPath = (args: string[]): string => {
+  try { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch { return fail('not in a git checkout: name --folder and --ledger'); }
-}
-const defaultFolder = (): string => join(topLevel(), 'docs', 'benchmarks', 'challenge', RELEASE);
-const defaultLedger = (): string => join(topLevel(), '.local', `release-ledger-${RELEASE}.jsonl`);
+};
+/** The checkout's top level: the release folder of this branch's round files. */
+const defaultFolder = (): string => join(gitPath(['rev-parse', '--show-toplevel']), 'docs', 'benchmarks', 'challenge', RELEASE);
+/** One local ledger per repository, shared by every worktree and checkout of it (and its lock): in the
+ * git common directory, never in a checkout (PADR-0042 amended). */
+const defaultLedger = (): string => join(resolve(gitPath(['rev-parse', '--git-common-dir'])), 'practonaut', `release-ledger-${RELEASE}.jsonl`);
+/** No argument but the options a command names. */
+const noPositional = (positional: string[]): void => { if (positional.length) fail(`unexpected argument ${positional[0]}`); };
 
 async function generate(args: string[]): Promise<void> {
   const { values, flags, positional } = options(args, ['--set', '--seed', '--count', '--difficulty', '--out', '--declaration', '--plan'], ['--force']);
@@ -146,11 +151,17 @@ async function benchArgs(args: string[]): Promise<void> {
 }
 
 async function ledger(args: string[]): Promise<void> {
-  const { values, positional } = options(args, ['--ledger', '--folder']);
+  const { values, positional } = options(args, ['--ledger', '--folder', '--bench-root']);
   const action = positional[0];
   if (positional.length !== 1 || !['init', 'write', 'show'].includes(action!)) fail('ledger init, write or show');
   const paths = ledgerPaths(values['--folder'] ?? defaultFolder(), values['--ledger'] ?? defaultLedger());
   if (action === 'init') {
+    // A new local ledger starts from the committed one; it refuses while model-run folders exist that
+    // no start entry of it names (they were made outside the ledger: move them, or they would never count).
+    const committed = await readLedger(paths.committed);
+    const roots = [...list(values['--bench-root']), join((await resolvedDataPaths()).home, 'bench')];
+    const outside = await scanUnledgered(roots, committed ?? parseLedger(headerLine()));
+    if (outside.length) throw Object.assign(new Error(`${outside.length} model run folder${outside.length === 1 ? '' : 's'} (first: ${outside[0]!.run} in bench folder ${outside[0]!.bench}) hold${outside.length === 1 ? 's' : ''} no start entry of the committed release ledger; a ledger is not started while runs made outside it exist`), { code: 'runs_outside_ledger' });
     const made = await initLedger(paths);
     process.stdout.write(`wrote ${paths.local}: ${made.from === 'new' ? 'a new release ledger for ' + RELEASE : `a copy of the committed ledger (${made.records} records)`}\n`);
   } else if (action === 'write') {
@@ -183,6 +194,9 @@ async function bench(args: string[]): Promise<void> {
     if (value.toolchain.practonaut !== PACKAGE_VERSION) fail(`the round's plan pins Practonaut ${value.toolchain.practonaut}; this is ${PACKAGE_VERSION}`);
     const models = purpose === 'pre-probe' ? [(value as Awaited<ReturnType<typeof readPlan>>).agent.model] : (value as Awaited<ReturnType<typeof readDeclaration>>).ladder.map(agent => agent.model);
     const basis = purpose === 'pre-probe' ? fileHash(value) : declarationHash(value as Awaited<ReturnType<typeof readDeclaration>>);
+    // A held-out run serves a declaration `declare` registered in the ledger (with its held-out world).
+    if (purpose === 'held-out' && !roundEvents((await readLedger(local)) ?? parseLedger(headerLine()), value.unit, value.round).some(event => event.event === 'declared' && event.declaration === basis))
+      throw Object.assign(new Error(`${value.unit} round ${value.round}: the release ledger holds no registration of this declaration (declare registers it)`), { code: 'declaration_unrecorded' });
     guard = { paths: ledgerPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models };
   } else {
     if (values['--plan'] !== undefined || values['--declaration'] !== undefined) fail(`a ${purpose} run serves no plan or declaration`);
@@ -194,8 +208,12 @@ async function bench(args: string[]): Promise<void> {
 }
 
 async function plan(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--unit', '--round', '--probe', '--difficulty', '--seed', '--model', '--mirror', '--timeout', '--max-actions', '--checks', '--shape', '--out'], ['--force', '--maintainer-approved-unit']);
+  const { values, flags, positional } = options(args, ['--unit', '--round', '--probe', '--difficulty', '--seed', '--model', '--mirror', '--timeout', '--max-actions', '--checks', '--shape', '--out', '--maintainer-approved-unit'], ['--force']);
+  noPositional(positional);
   const unit = values['--unit'] ?? fail('--unit names the unit, <family>.<toolchain>');
+  // The maintainer's approval names its unit (PADR-0042 decision 2).
+  const approved = values['--maintainer-approved-unit'] ?? null;
+  if (approved !== null && approved !== unit) fail(`--maintainer-approved-unit names ${approved}, not the planned unit ${unit}`);
   const round = whole(values['--round'], '--round'), probe = whole(values['--probe'], '--probe', 1);
   const out = values['--out'] ?? fail('--out is required');
   if (!out.endsWith(roundFiles.plan(unit, round, probe))) fail(`name the file <folder>/${roundFiles.plan(unit, round, probe)}`);
@@ -208,7 +226,7 @@ async function plan(args: string[]): Promise<void> {
     unit, round, probe, difficulty: difficultyOf(values['--difficulty'] ?? fail('--difficulty is required')), seeds: Array.from({ length: 7 }, (_, index) => first + index),
     model: values['--model'] ?? fail('--model names the Opus model of the pre-probe (as ANTHROPIC_MODEL)'),
     bench: { mirror: mirror as 'off' | 'required', timeoutSeconds: whole(values['--timeout'], '--timeout'), maxActions: whole(values['--max-actions'], '--max-actions'), checks: values['--checks'] === undefined ? null : whole(values['--checks'], '--checks') },
-    maintainerApprovedUnit: flags.has('--maintainer-approved-unit'), shape,
+    maintainerApprovedUnit: approved, shape,
   }, dirname(out));
   await mkdir(dirname(out), { recursive: true });
   await writeFile(out, JSON.stringify(made, null, 2) + '\n');
@@ -216,32 +234,39 @@ async function plan(args: string[]): Promise<void> {
 }
 
 async function probe(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--plan', '--set', '--dev', '--ledger', '--out'], ['--force']);
+  const { values, flags, positional } = options(args, ['--plan', '--set', '--dev', '--ledger', '--out', '--bench-root'], ['--force']);
+  noPositional(positional);
   const out = values['--out'] ?? fail('--out is required');
   await refuseExisting(out, flags.has('--force'));
-  const { record, text } = await probeFromFiles({ plan: values['--plan'] ?? fail('--plan is required'), set: values['--set'] ?? fail('--set names the pre-probe set'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ledger: values['--ledger'] ?? defaultLedger() });
+  const local = values['--ledger'] ?? defaultLedger(), planPath = values['--plan'] ?? fail('--plan is required');
+  const { record, text, round } = await probeFromFiles({ plan: planPath, set: values['--set'] ?? fail('--set names the pre-probe set'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ledger: local, benchRoots: list(values['--bench-root']) });
   if (!out.endsWith(roundFiles.probe(record.unit, record.round, record.probe))) fail(`name the file <folder>/${roundFiles.probe(record.unit, record.round, record.probe)}`);
   await writeFile(out, text);
-  process.stdout.write(`${record.unit} round ${record.round}, probe ${record.probe}: Opus passed ${record.passed} of ${record.outcomes.length}; ${record.admitted ? 'admitted (1–5 of 7)' : 'not admitted (0 or 6–7 of 7): a refused unit may be retuned once'}. Wrote ${out}; commit and push it either way.\n`);
+  await appendRound(ledgerPaths(dirname(planPath), local), round);
+  process.stdout.write(`${record.unit} round ${record.round}, probe ${record.probe}: Opus passed ${record.passed} of ${record.outcomes.length}; ${record.admitted ? 'admitted (1–5 of 7)' : 'not admitted (0 or 6–7 of 7): a refused unit may be retuned once'}. Wrote ${out} and registered it in the release ledger; write the ledger (ledger write), commit and push both either way.\n`);
 }
 
 async function declare(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--plan', '--probe', '--dev', '--ladder', '--ledger', '--out'], ['--force']);
+  const { values, flags, positional } = options(args, ['--plan', '--probe', '--dev', '--ladder', '--ledger', '--out', '--bench-root'], ['--force']);
+  noPositional(positional);
   const out = values['--out'] ?? fail('--out is required');
   await refuseExisting(out, flags.has('--force'));
   const ladder = list(values['--ladder'] ?? fail('--ladder names the agents, most capable first: <preset>=<model>,… (a bare model runs through claude-code)')).map(entry => {
     const at = entry.indexOf('=');
     return at < 0 ? { preset: GATE_PRESET, model: entry } : { preset: entry.slice(0, at), model: entry.slice(at + 1) };
   });
-  const { declaration, seeds } = await declareFromFiles({ plan: values['--plan'] ?? fail('--plan is required'), probe: values['--probe'] ?? fail('--probe names the pre-probe record'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ladder, ledger: values['--ledger'] ?? defaultLedger(), out });
+  const local = values['--ledger'] ?? defaultLedger();
+  const { declaration, seeds, round } = await declareFromFiles({ plan: values['--plan'] ?? fail('--plan is required'), probe: values['--probe'] ?? fail('--probe names the pre-probe record'), reports: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), ladder, ledger: local, out, benchRoots: list(values['--bench-root']) });
   await writeFile(out, JSON.stringify(declaration, null, 2) + '\n');
+  await appendRound(ledgerPaths(dirname(out), local), round);
   process.stdout.write(`${declaration.unit} round ${declaration.round}: shape B, ladder ${declaration.ladder.map(agent => agent.model).join(', ')}; gate pair ${declaration.pair.strongest} (strongest) vs ${declaration.pair.weakest} (weakest), fixed by the capability order; α = ${declaration.alpha}\n`);
   process.stdout.write(`release runs counted before this round: ${declaration.budget.before} of ${declaration.budget.cap} (0.3.0 counts from zero); the round plans ${declaration.budget.roundRuns} (formula ${declaration.budget.formula} ≤ 100); ${declaration.budget.reserved} kept for other units; funded\n`);
-  process.stdout.write(`held-out seeds ${seeds[0]}…${seeds.at(-1)} follow from the pre-probe runs; wrote ${out}. Commit and push it, then generate the held-out set.\n`);
+  process.stdout.write(`held-out seeds ${seeds[0]}…${seeds.at(-1)} follow from the pre-probe runs; wrote ${out} and registered it in the release ledger. Write the ledger (ledger write), commit and push both, then generate the held-out set.\n`);
 }
 
 async function gate(args: string[]): Promise<void> {
-  const { values, flags } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--bench-root', '--ledger', '--out'], ['--force', '--preflight']);
+  const { values, flags, positional } = options(args, ['--declaration', '--set', '--dev', '--oracle', '--random', '--ladder', '--bench-root', '--ledger', '--out'], ['--force', '--preflight']);
+  noPositional(positional);
   const files = {
     declaration: values['--declaration'] ?? fail('--declaration is required'), set: values['--set'] ?? fail('--set names the generated held-out folder'),
     development: list(values['--dev'] ?? fail('--dev names the pre-probe reports')), oracle: list(values['--oracle'] ?? fail('--oracle is required')), random: list(values['--random'] ?? fail('--random is required')),

@@ -11,9 +11,9 @@ import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { BILLING_CLASSES, MODEL_ID } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
 import { generatorId, generatorVersion, type Family } from './families.ts';
-import { RELEASE, RELEASE_CAP } from './ledger.ts';
+import { countLedger, RELEASE, RELEASE_CAP, roundEvents, roundStarts, type Ledger } from './ledger.ts';
 import { HELD_OUT_SPAN, tierOf } from './round-020.ts';
-import { checkUnit, PRACTONAUT_TOOLCHAIN, UnitError } from './units.ts';
+import { checkUnit, parseUnit, PRACTONAUT_TOOLCHAIN, UnitError } from './units.ts';
 export { tierOf } from './round-020.ts';
 
 export const PLAN_SCHEMA = 'practonaut.challenge-probe-plan/1';
@@ -25,7 +25,9 @@ export const DECLARATION_SCHEMA = 'practonaut.challenge-declaration/2';
 export const SHAPE_B = Object.freeze({ preProbe: 7, admitLow: 1, admitHigh: 5, heldOut: 26, agents: 3 });
 /** The rules every round follows whatever its shape (PADR-0042 decisions 8, 9 and 11). */
 export const ROUND_RULES = Object.freeze({ minHeldOut: 24, minAgents: 3, maxSubscriptionAgents: 3, maxFormula: 100, maxRounds: 2, maxProbes: 2, leave: 40, foreignReserveRounds: 2 });
-/** The decision level of each round: a second round decides at α = 0.025 (Bonferroni, decision 11). */
+/** The decision level of each round (decision 11): the first at α = 0.05, a second at 0.025. Over both
+ * rounds the family-wise false-pass bound is 0.05 + 0.025 = 0.075 (a union bound, not a Bonferroni
+ * split of 0.05). */
 export const ALPHA: Readonly<Record<number, number>> = Object.freeze({ 1: 0.05, 2: 0.025 });
 /** The only gate-eligible preset in 0.3.0 (PADR-0046 decision 7): Claude through Claude Code. */
 export const GATE_PRESET = 'claude-code';
@@ -39,8 +41,9 @@ export class RoundError extends Error {
 }
 const refuse = (code: string, message: string): never => { throw new RoundError(code, message); };
 /** A unit refusal as a round refusal (same code). */
-function unitOf(id: string, approved: boolean): ReturnType<typeof checkUnit> {
-  try { return checkUnit(id, approved); } catch (error) { if (error instanceof UnitError) refuse(error.code, error.message); throw error; }
+function unitOf(id: string, approved: string | null): ReturnType<typeof checkUnit> {
+  if (approved !== null && approved !== id) refuse('unit_approval_mismatch', `the maintainer approved ${approved}, not ${id}; an approval names its unit (PADR-0042 decision 2)`);
+  try { return checkUnit(id, approved === id); } catch (error) { if (error instanceof UnitError) refuse(error.code, error.message); throw error; }
 }
 
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
@@ -71,8 +74,8 @@ export const PlanSchema = z.strictObject({
   agent: z.strictObject({ preset: identifier, model }),
   seeds: z.array(devSeed).min(1).max(40),
   bench: BenchSchema,
-  /** A unit outside the preregistered list, approved by the maintainer by name (decision 2). */
-  maintainerApprovedUnit: z.boolean(),
+  /** A unit outside the preregistered list, approved by the maintainer by name (decision 2): that unit's id. */
+  maintainerApprovedUnit: unitId.nullable(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
@@ -180,7 +183,7 @@ export const DeclarationSchema = z.strictObject({
   generator: z.strictObject({ id: z.string().max(64), version: z.string().regex(/^\d+\.\d+\.\d+$/) }),
   difficulty: z.enum(['1', '2', '3', 'mixed']),
   shape: z.enum(['A', 'B']),
-  maintainerApprovedUnit: z.boolean(),
+  maintainerApprovedUnit: unitId.nullable(),
   /** The pre-probe the round follows from: its plan and record (committed, pushed) and its passes. */
   probe: z.strictObject({ probe: whole(1, 99), plan: z.strictObject({ sha256, commit }), record: z.strictObject({ sha256, commit }), passed: whole(0, 40), instances: whole(1, 40) }),
   /** The ladder, most capable first; the gate pair is its first and last agent. */
@@ -260,18 +263,40 @@ export function validateDeclaration(raw: unknown): Declaration {
 }
 export const declarationHash = (declaration: Declaration): string => fileHash(declaration);
 
-/** Runs kept for other units at a unit's declaration (PADR-0042 decision 8): the held-out runs of
- * every unit admitted before it and not declared yet, and — for a unit on Practonaut's own actions
- * while artifact mode is not accepted — two rounds for foreign toolchains, less those declared. */
-export function reservedRuns(unitToolchain: string, admittedBefore: number, foreignRoundsDeclared: number): number {
-  const round = (SHAPE_B.heldOut + SHAPE_B.preProbe) * SHAPE_B.agents;
-  const foreign = unitToolchain === PRACTONAUT_TOOLCHAIN && ARTIFACT_MODE_ACCEPTED === null ? Math.max(0, ROUND_RULES.foreignReserveRounds - foreignRoundsDeclared) * round : 0;
-  return admittedBefore * SHAPE_B.heldOut * SHAPE_B.agents + foreign;
+/** The runs a shape-B round plans: its held-out runs, and the whole round. */
+const HELD_OUT_RUNS = SHAPE_B.heldOut * SHAPE_B.agents, ROUND_RUNS = (SHAPE_B.heldOut + SHAPE_B.preProbe) * SHAPE_B.agents;
+/**
+ * Funding read from the release ledger as it was when a unit was declared (PADR-0042 decision 8 as
+ * amended): `before`, the runs counted; `reserved`, the runs kept for others — for every other round
+ * that is declared, the held-out runs it has not started yet; for every other unit admitted before this
+ * one (an earlier `admitted` record) and not declared, its 78 held-out runs; and, for a unit on
+ * Practonaut's own actions while artifact mode is not accepted, two rounds for foreign toolchains less
+ * those declared. The ledger is shared by every checkout and branch, so no admission or declaration
+ * of another branch is missed.
+ */
+export function fundingAt(ledger: Ledger, unit: string, round: number, admission: number): { before: number; reserved: number } {
+  const events = roundEvents(ledger), keys = new Map<string, { unit: string; round: number }>();
+  for (const event of events) if (!(event.unit === unit && event.round === round)) keys.set(`${event.unit}\u0000${event.round}`, { unit: event.unit, round: event.round });
+  let reserved = 0, foreignDeclared = 0;
+  for (const key of keys.values()) {
+    const own = events.filter(event => event.unit === key.unit && event.round === key.round);
+    const declared = own.filter(event => event.event === 'declared').at(-1);
+    if (declared) {
+      const started = roundStarts(ledger, key.unit, key.round).filter(start => start.world === declared.world || (start.purpose === 'held-out' && start.basis === declared.declaration)).length;
+      reserved += Math.max(0, declared.heldOutRuns - started);
+      if (parseUnit(key.unit).toolchain !== PRACTONAUT_TOOLCHAIN) foreignDeclared++;
+      continue;
+    }
+    const admitted = own.filter(event => event.event !== 'declared').at(-1);
+    if (admitted?.event === 'admitted' && admitted.seq < admission) reserved += HELD_OUT_RUNS;
+  }
+  if (parseUnit(unit).toolchain === PRACTONAUT_TOOLCHAIN && ARTIFACT_MODE_ACCEPTED === null) reserved += Math.max(0, ROUND_RULES.foreignReserveRounds - foreignDeclared) * ROUND_RUNS;
+  return { before: countLedger(ledger).counted, reserved };
 }
 
 /** The family a validated unit names (for the generator). */
-export const familyOf = (unit: string, approved: boolean): Family => unitOf(unit, approved).family;
+export const familyOf = (unit: string, approved: string | null): Family => unitOf(unit, approved).family;
 /** The generator version this checkout has for a unit's family. */
-export const checkoutGenerator = (unit: string, approved: boolean): { id: string; version: string } => { const family = familyOf(unit, approved); return { id: generatorId(family), version: generatorVersion(family) }; };
+export const checkoutGenerator = (unit: string, approved: string | null): { id: string; version: string } => { const family = familyOf(unit, approved); return { id: generatorId(family), version: generatorVersion(family) }; };
 
 function issues(error: z.ZodError): string { return error.issues.slice(0, 3).map(issue => `${issue.path.join('.') || '(root)'} ${issue.message}`).join('; '); }

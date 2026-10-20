@@ -8,7 +8,7 @@ import { appendFile, mkdir, open, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { StartGuard, StartRequest } from '../bench/run.ts';
 import type { SessionRunV3 } from '../bench/report.ts';
-import { countLedger, headerLine, isPrefix, LedgerError, nextLine, parseLedger, RELEASE, type Ledger, type Purpose, type RunEndBody, type StartBody } from './ledger.ts';
+import { countLedger, headerLine, isPrefix, LedgerError, nextLine, parseLedger, RELEASE, RELEASE_CAP, type Ledger, type Purpose, type RoundBody, type RunEndBody, type StartBody } from './ledger.ts';
 
 /** The local ledger and the committed copy beside the release's round files. */
 export interface LedgerPaths { local: string; committed: string }
@@ -79,7 +79,7 @@ export async function writeCommittedLedger(paths: LedgerPaths): Promise<{ record
 }
 
 /** Appends one record under the lock; `body` sees the ledger as it is and may refuse. */
-async function append(paths: LedgerPaths, body: (ledger: Ledger) => StartBody | RunEndBody): Promise<number> {
+async function append(paths: LedgerPaths, body: (ledger: Ledger) => StartBody | RunEndBody | RoundBody): Promise<number> {
   return locked(paths.local, async () => {
     const ledger = await current(paths);
     const { record, line } = nextLine(ledger, body(ledger));
@@ -106,13 +106,20 @@ export function ledgerGuard(options: GuardOptions): StartGuard {
     start: (request: StartRequest) => append(options.paths, ledger => {
       if (options.models && (request.model === null || !options.models.includes(request.model)))
         throw new LedgerError('ledger_model_refused', `this ${options.purpose} run requests ${request.model ?? 'no model'}; the round names ${options.models.join(', ')} (set ANTHROPIC_MODEL)`);
+      // The cap is the release's (D4), never a value the ledger file names.
       const counted = countLedger(ledger).counted;
-      if (counted + 1 > ledger.header.cap) throw new LedgerError('release_budget_exhausted', `release ${ledger.header.release} has ${counted} of its ${ledger.header.cap} model runs counted; this start would pass ${ledger.header.cap} and is refused before the client starts — a maintainer decides`);
+      if (counted + 1 > RELEASE_CAP) throw new LedgerError('release_budget_exhausted', `release ${RELEASE} has ${counted} of its ${RELEASE_CAP} model runs counted; this start would pass ${RELEASE_CAP} and is refused before the client starts — a maintainer decides`);
       return { kind: 'start', purpose: options.purpose, unit: options.unit, round: options.round, basis: options.basis, toolchain: options.toolchain, rules: options.rules,
-        requested: request.requested, model: request.model, agent: request.agent.kind === 'preset' ? request.agent.name : 'command', bench: request.bench, run: request.run };
+        requested: request.requested, model: request.model, agent: request.agent.kind === 'preset' ? request.agent.name : 'command', bench: request.bench, run: request.run, world: request.world };
     }),
     end: async (handle: number, run: SessionRunV3) => { await append(options.paths, () => runEndBody(handle, options, run)); },
   };
+}
+
+/** Registers what `probe` or `declare` decided for a unit's round (an admission, a refusal, a
+ * declaration) in the local ledger, under the lock, once the committed ledger is its prefix. */
+export async function appendRound(paths: LedgerPaths, body: RoundBody): Promise<number> {
+  return append(paths, () => body);
 }
 
 /** The run-end record of a run as its report holds it. */

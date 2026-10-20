@@ -22,8 +22,8 @@ import { sha256Hex } from '../canonical/index.ts';
 import type { SessionReportV3, SessionRunV3 } from '../bench/report.ts';
 import { SHIPPED_PARSERS } from '../bench/parsers.ts';
 import { safeText } from '../cli/output.ts';
-import { ALPHA, GATE_PRESET, SHAPE_B, declarationHash, developmentDigest, digestRunOf, fileHash, heldOutRuns, type Declaration, type DigestRun, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
-import { countLedger, released, type Ledger, type RunEndRecord, type StartRecord } from './ledger.ts';
+import { ALPHA, GATE_PRESET, SHAPE_B, declarationHash, developmentDigest, digestRunOf, fileHash, fundingAt, heldOutRuns, type Declaration, type DigestRun, type DigestSession, type Plan, type ProbeRecord } from './declaration.ts';
+import { countLedger, prefixOf, released, RELEASE_CAP, roundEvents, roundStarts, type Ledger, type RunEndRecord, type StartRecord } from './ledger.ts';
 import { generatorId, type Family } from './families.ts';
 import { taskIdOf } from './build.ts';
 
@@ -81,6 +81,10 @@ export function exemptRun(run: Pick<SessionRunV3, 'id' | 'status' | 'failure' | 
 
 /** The ledger as the gate reads it: verified, with every committed version a prefix of it. */
 export interface LedgerInput { ledger: Ledger; versions: ReadonlyArray<{ commit: string; date: string; records: number }> }
+/** The run folders of a round's start entries that have no run-end record, as the bench roots hold them:
+ * `unjudged` (the folder exists and holds no verdict), `judged` (it holds `checker.json` or
+ * `session.json`) or `missing`. Only an unjudged one may be benched again. */
+export type Folders = ReadonlyMap<string, 'judged' | 'unjudged' | 'missing'>;
 interface Bound { start: StartRecord; end: RunEndRecord | null }
 const runKey = (bench: string, run: string): string => `${bench}\u0000${run}`;
 const taskOfRun = (run: string): string => run.replace(/-s\d+-r\d+$/, '');
@@ -91,7 +95,8 @@ interface Expect { purpose: 'pre-probe' | 'held-out'; unit: string; round: numbe
  * (`run_outside_ledger`); a start entry of another purpose, unit, round, plan or declaration, toolchain
  * or rules version refuses; a run-end record whose hashes, status, failure or counters are not the
  * report's refuses (`ledger_hash_mismatch`). A run without its run-end record is returned with
- * `end: null`: it counts, is never digested or scored, and may be benched again.
+ * `end: null`: it counts and is never digested or scored; it may be benched again only when its folder
+ * holds no verdict (PADR-0042 amended: a lost record voids a judged run).
  */
 export function bindRun(ledger: Ledger, source: Pick<GateReport, 'bench'>, run: SessionRunV3, expect: Expect): Bound {
   const start = ledger.records.find((record): record is StartRecord => record.kind === 'start' && record.bench === source.bench && record.run === run.id);
@@ -111,15 +116,15 @@ export function bindRun(ledger: Ledger, source: Pick<GateReport, 'bench'>, run: 
 }
 
 /** One agent's runs over its reports (a resumed bench has several): per task the latest run; a task
- * benched again only after an infra_error or a run without its run-end record (both are spent), any
- * other repeat refuses (no best-of-N). */
+ * benched again only after an infra_error (spent), any other repeat refuses (no best-of-N) — also after
+ * a judged run whose run-end record is missing. */
 type RunOf<S extends { report: { runs: readonly unknown[] } }> = S['report']['runs'][number];
-export function mergeAgentRuns<S extends { report: { createdAt: string; runs: ReadonlyArray<{ id: string; taskId: string; status: string }> }; bench: string }>(reports: readonly S[], label: string, recorded: (source: S, run: RunOf<S>) => boolean = () => true): Map<string, { run: RunOf<S>; bench: string; source: S }> {
+export function mergeAgentRuns<S extends { report: { createdAt: string; runs: ReadonlyArray<{ id: string; taskId: string; status: string }> }; bench: string }>(reports: readonly S[], label: string): Map<string, { run: RunOf<S>; bench: string; source: S }> {
   const ordered = [...reports].sort((a, b) => a.report.createdAt.localeCompare(b.report.createdAt) || a.bench.localeCompare(b.bench));
   const merged = new Map<string, { run: RunOf<S>; bench: string; source: S }>();
   for (const source of ordered) for (const run of source.report.runs) {
     const earlier = merged.get(run.taskId);
-    if (earlier && earlier.run.status !== 'infra_error' && recorded(earlier.source, earlier.run)) fail('best_of_n', `${label}: task ${run.taskId} was benched again although its run in ${earlier.bench} was judged and recorded (no best-of-N)`);
+    if (earlier && earlier.run.status !== 'infra_error') fail('best_of_n', `${label}: task ${run.taskId} was benched again although its run in ${earlier.bench} was judged (no best-of-N)`);
     merged.set(run.taskId, { run, bench: source.bench, source });
   }
   return merged;
@@ -181,10 +186,12 @@ export interface ProbeResult { model: string; outcomes: Array<{ taskId: string; 
 /**
  * The pre-probe from its reports (PADR-0042 decision 7, PADR-0044 decision 8): the plan's agent on the
  * plan's set and settings, one judged, attested and recorded run per instance (a task benched again
- * only after an infra_error or a run without its run-end record), each bound to its pushed ledger
- * records under the plan; the digest `/2` of their canonical content.
+ * only after an infra_error or an unjudged run), each bound to its pushed ledger records under the plan;
+ * the digest `/2` of their canonical content. Every start of the unit's round on these instances, under
+ * any purpose, is in the repeat check, and a pre-probe under another plan is refused unless that plan's
+ * pre-probe was recorded as refused before (a retune).
  */
-export function probeRuns(input: { plan: Plan; planHash: string; worldContentHash: string; reports: readonly GateReport[]; ledger: Ledger }): ProbeResult {
+export function probeRuns(input: { plan: Plan; planHash: string; worldContentHash: string; reports: readonly GateReport[]; ledger: Ledger; folders: Folders }): ProbeResult {
   const { plan, planHash } = input, family = plan.unit.split('.')[0] as Family;
   const tasks = plan.seeds.map(seed => taskIdOf(family, seed));
   if (!input.reports.length) fail('probe_missing', 'name the pre-probe reports');
@@ -195,14 +202,19 @@ export function probeRuns(input: { plan: Plan; planHash: string; worldContentHas
   }
   const bound = new Map<string, Bound>();
   for (const source of input.reports) for (const run of source.report.runs) bound.set(runKey(source.bench, run.id), bindRun(input.ledger, source, run, expect));
-  bestOfN(input.ledger, expect, input.reports, 'pre-probe');
-  const merged = mergeAgentRuns(input.reports, 'pre-probe', (source, run) => bound.get(runKey(source.bench, run.id))!.end !== null);
+  const members = roundStarts(input.ledger, plan.unit, plan.round);
+  // A pre-probe of this round under another plan: only the refused probe a retune follows (decision 7).
+  const refusedPlans = new Set(roundEvents(input.ledger, plan.unit, plan.round).filter(event => event.event === 'refused' && event.probe < plan.probe).map(event => event.plan));
+  const replanned = members.find(start => start.purpose === 'pre-probe' && start.basis !== planHash && !refusedPlans.has(start.basis ?? ''));
+  if (replanned) fail('probe_replanned', `${plan.unit} round ${plan.round} has a pre-probe run under another plan (start entry ${replanned.seq}, ${replanned.run}) whose pre-probe was not recorded as refused; a unit is pre-probed again only as a retune (PADR-0042 decision 7)`);
+  repeatCheck(input.ledger, members, new Set(tasks), expect, input.reports, input.folders, 'pre-probe');
+  const merged = mergeAgentRuns(input.reports, 'pre-probe');
   const outcomes: ProbeResult['outcomes'] = [], digestRuns: DigestRun[] = [], runs: ProbeResult['runs'] = [];
   for (const [index, task] of tasks.entries()) {
     const entry = merged.get(task);
     if (!entry || entry.run.status === 'infra_error') fail('probe_incomplete', `the pre-probe run of ${task} is ${entry ? 'an infra_error' : 'missing'}; bench it again (after the limit window)`);
     const { run, source } = entry!, binding = bound.get(runKey(source.bench, run.id))!;
-    if (binding.end === null) fail('probe_incomplete', `the pre-probe run ${run.id} (bench folder ${source.bench}) has no run-end record: it counts, is never digested, and its task is benched again`);
+    if (binding.end === null) fail('probe_incomplete', `the pre-probe run ${run.id} (bench folder ${source.bench}) was judged without its run-end record: it counts, is never digested, and its instance is not benched again; this pre-probe cannot admit the unit`);
     if (!attests(source, run, plan.agent.model)) fail('probe_unattested', `the pre-probe run ${run.id} does not attest ${plan.agent.model} by its client's own re-derived output`);
     const session = source.sessions?.get(run.id) ?? fail('probe_incomplete', `the pre-probe run ${run.id} has no judged session to digest`);
     digestRuns.push(digestRunOf(run, plan.agent.model, session));
@@ -212,23 +224,34 @@ export function probeRuns(input: { plan: Plan; planHash: string; worldContentHas
   return { model: plan.agent.model, outcomes, passed: outcomes.filter(entry => entry.pass).length, digest: developmentDigest(digestRuns), runs };
 }
 
-/** No best-of-N in the ledger: for every model and task of the round's runs under `expect`, every
- * start entry but the last ended as an infra_error or without a run-end record; the last one, when it
- * was judged, is the run the gate counts (it was given to the gate). */
-function bestOfN(ledger: Ledger, expect: Expect, given: readonly GateReport[], label: string): void {
+/** Whether a start entry's run was judged: by its run-end record, or — without one — unless its folder
+ * exists and holds no verdict (a lost record voids a judged run; a missing folder counts as judged). */
+function judgedStart(ledger: Ledger, start: StartRecord, folders: Folders): boolean {
+  const end = ledger.ends.get(start.seq);
+  return end ? end.status !== 'infra_error' : folders.get(runKey(start.bench, start.run)) !== 'unjudged';
+}
+/**
+ * No best-of-N over every run of the round's instances (PADR-0040, as PADR-0042 amended): the round's
+ * start entries on `tasks`, whatever their purpose, plan or declaration, grouped by model and task. Every
+ * start but the last ended as an infra_error or unjudged; the last, when judged, is a run of the
+ * expected purpose and basis (`round_redeclared` for a held-out run of another declaration,
+ * `best_of_n` for a run of another purpose) and was given to the gate (`run_not_given`).
+ */
+function repeatCheck(ledger: Ledger, members: readonly StartRecord[], tasks: ReadonlySet<string>, expect: Pick<Expect, 'purpose' | 'basis'>, given: readonly GateReport[], folders: Folders, label: string): void {
   const groups = new Map<string, StartRecord[]>();
-  for (const record of ledger.records) {
-    if (record.kind !== 'start' || record.purpose !== expect.purpose || record.unit !== expect.unit || record.round !== expect.round || record.basis !== expect.basis) continue;
-    const key = `${record.model ?? '?'}\u0000${taskOfRun(record.run)}`;
-    groups.set(key, [...(groups.get(key) ?? []), record]);
+  for (const start of members) {
+    if (!tasks.has(taskOfRun(start.run))) continue;
+    const key = `${start.model ?? '?'}\u0000${taskOfRun(start.run)}`;
+    groups.set(key, [...(groups.get(key) ?? []), start]);
   }
   for (const starts of groups.values()) {
-    for (const start of starts.slice(0, -1)) {
-      const end = ledger.ends.get(start.seq);
-      if (end && end.status !== 'infra_error') fail('best_of_n', `${label}: task ${taskOfRun(start.run)} was run again for ${start.model ?? 'an unknown model'} after its judged run ${start.run} (bench folder ${start.bench}); no best-of-N`);
-    }
-    const latest = starts.at(-1)!, end = ledger.ends.get(latest.seq);
-    if (end && end.status !== 'infra_error' && !given.some(source => source.bench === latest.bench && source.report.runs.some(run => run.id === latest.run)))
+    for (const start of starts.slice(0, -1)) if (judgedStart(ledger, start, folders))
+      fail('best_of_n', `${label}: task ${taskOfRun(start.run)} was run again for ${start.model ?? 'an unknown model'} after its judged run ${start.run} (bench folder ${start.bench}, purpose ${start.purpose}); no best-of-N`);
+    const latest = starts.at(-1)!;
+    if (!judgedStart(ledger, latest, folders)) continue;
+    if (latest.purpose !== expect.purpose || latest.basis !== expect.basis)
+      fail(latest.purpose === 'held-out' ? 'round_redeclared' : 'best_of_n', `${label}: the latest judged run of ${taskOfRun(latest.run)} for ${latest.model ?? 'an unknown model'} (bench folder ${latest.bench}) is a ${latest.purpose} run ${latest.purpose === 'held-out' ? 'of another declaration' : 'on this round\'s instance'}, not one of this round's`);
+    if (!given.some(source => source.bench === latest.bench && source.report.runs.some(run => run.id === latest.run)))
       fail('run_not_given', `${label}: the latest run of ${taskOfRun(latest.run)} for ${latest.model ?? 'an unknown model'} (bench folder ${latest.bench}) was judged but not given to the gate`);
   }
 }
@@ -250,6 +273,8 @@ export interface RoundInput {
   ledger: LedgerInput;
   /** Model-run folders of the round's tasks in the bench roots that hold no start entry. */
   outside: ReadonlyArray<{ bench: string; run: string }>;
+  /** The run folders of the round's start entries without a run-end record (judged, unjudged, missing). */
+  folders: Folders;
   /** Round 2: the first round's held-out seeds. */
   previousSeeds?: readonly number[];
 }
@@ -263,8 +288,10 @@ interface RoundFacts {
   world: { id: string; version: string; contentHash: string }; instances: number;
   settings: Plan['bench']; dates: string[];
   ladder: Array<{ preset: string; model: string; billing: string }>; pair: { strongest: string; weakest: string };
-  /** Model runs of the round from the ledger: counted against its 100, and those exempt (listed, not counted). */
-  spend: { preProbe: number; heldOut: number; total: number; exempt: number; planned: number };
+  /** Model runs of the round from the ledger — every start on its instances, whatever its purpose,
+   * plan or declaration: counted against its 100, those exempt (listed, not counted), and how many of
+   * the counted ones were made under another plan, declaration or purpose. */
+  spend: { preProbe: number; heldOut: number; total: number; exempt: number; planned: number; other: number };
   /** The release ledger: its count against the cap, and every committed version of it. */
   ledger: { counted: number; cap: number; records: number; versions: Array<{ commit: string; date: string; records: number }> };
   /** Built-in runs of the round: listed, never counted. */
@@ -291,10 +318,25 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     || !isDeepStrictEqual(declaration.generator, probePlan.generator) || declaration.difficulty !== probePlan.difficulty || !isDeepStrictEqual(declaration.development.seeds, probePlan.seeds) || declaration.development.world.contentHash !== input.probeWorld)
     fail('round_files_mismatch', 'the declaration does not repeat its probe plan (unit, round, toolchain, generator, difficulty, seeds, settings, pre-probe world)');
   if (declaration.alpha !== ALPHA[declaration.round]) fail('alpha_invalid', `round ${declaration.round} decides at α = ${ALPHA[declaration.round]}`);
+  if (probe.world.contentHash !== input.probeWorld) fail('round_files_mismatch', 'the pre-probe record names another pre-probe world than the plan makes');
   // The ledger the pre-probe record and the declaration counted is a prefix of the one gated now.
   const lines = ledger.text.slice(0, -1).split('\n');
   for (const [label, at] of [['pre-probe record', probe.ledger], ['declaration', declaration.budget.ledger]] as const)
     if (at.records > lines.length || sha256Hex(lines[at.records - 1]!) !== at.head) fail('ledger_rewritten', `the release ledger the ${label} counted (${at.records} records) is not a prefix of the pushed one`);
+  // The ledger registered the admission and the declaration; a held-out run of another declaration of
+  // this round refuses it (a re-declaration after held-out runs started, PADR-0042 amended).
+  const events = roundEvents(ledger, declaration.unit, declaration.round);
+  const admission = events.find(event => event.event === 'admitted' && event.record === fileHash(probe) && event.plan === planHash);
+  if (!admission) fail('probe_unrecorded', 'the release ledger holds no admission of this pre-probe record (`probe` registers it)');
+  if (!events.some(event => event.event === 'declared' && event.declaration === declHash && event.world === input.worldContentHash)) fail('declaration_unrecorded', 'the release ledger holds no registration of this declaration and its held-out world (`declare` registers it)');
+  const members = roundStarts(ledger, declaration.unit, declaration.round);
+  const redeclared = members.find(start => start.purpose === 'held-out' && start.basis !== declHash);
+  if (redeclared) fail('round_redeclared', `${declaration.unit} round ${declaration.round} has a held-out run under another declaration (start entry ${redeclared.seq}, ${redeclared.run}); a round is not declared again once its held-out runs started`);
+  // Funding, re-derived from the ledger as the declaration counted it (PADR-0042 decision 8 as amended).
+  const counted = prefixOf(ledger, declaration.budget.ledger.records);
+  const funding = counted ? fundingAt(counted, declaration.unit, declaration.round, admission!.seq) : null;
+  if (!funding || funding.before !== declaration.budget.before || funding.reserved !== declaration.budget.reserved)
+    fail('budget_mismatch', `the declaration's budget (${declaration.budget.before} counted, ${declaration.budget.reserved} reserved) is not what the release ledger it counted gives (${funding ? `${funding.before}, ${funding.reserved}` : 'no such prefix'})`);
   // Every earlier round's held-out instances are other instances (PADR-0042 decision 11).
   if (declaration.round > 1 && !input.previousSeeds?.length) fail('previous_round', `round ${declaration.round} needs the first round's declaration`);
   if (input.previousSeeds?.some(seed => input.seeds.includes(seed))) fail('heldout_overlap', 'this round reuses held-out instances of the first round');
@@ -304,7 +346,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     fail('set_mismatch', `the held-out set is not the ${declaration.heldOut.instances} distinct instances the declaration derives`);
   checkOutside(input.outside);
   // The pre-probe: the declared one, from the pushed ledger.
-  const pre = probeRuns({ plan: probePlan, planHash, worldContentHash: input.probeWorld, reports: input.development, ledger });
+  const pre = probeRuns({ plan: probePlan, planHash, worldContentHash: input.probeWorld, reports: input.development, ledger, folders: input.folders });
   if (pre.digest !== declaration.development.digest || pre.digest !== probe.digest) fail('development_mismatch', 'the pre-probe runs are not the ones the declaration digests');
   if (!isDeepStrictEqual(pre.outcomes.map(entry => entry.pass), declaration.development.passed)) fail('development_mismatch', 'the pre-probe outcomes differ from the declaration');
   // Baselines: free, so an infra_error or a missing run is rerun, never counted.
@@ -338,7 +380,8 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     checkAgent(agent!.model, source, agent!);
     for (const run of source.report.runs) bound.set(runKey(source.bench, run.id), bindRun(ledger, source, run, heldOut));
   }
-  if (ladder) bestOfN(ledger, heldOut, ladder, 'held-out');
+  // Every run of the round on a held-out instance, under any purpose or declaration, in one repeat check.
+  if (ladder) repeatCheck(ledger, members, new Set(plan), heldOut, ladder, input.folders, 'held-out');
   // One prompt per unit; per client one key source, one kept environment and one release line.
   const external = [...input.development, ...(ladder ?? [])];
   if (new Set(external.map(source => source.report.settings.prompt)).size > 1) fail('prompt_differs', 'the pre-probe and ladder reports differ in their prompt (one prompt per unit, PADR-0042 decision 12)');
@@ -357,21 +400,21 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   const clientVersions = [...new Set(clientRuns.flatMap(entry => entry.version === null ? [] : [`${entry.client}\u0000${entry.version}`]))].map(key => key.split('\u0000') as [string, string])
     .sort((a, b) => a[0].localeCompare(b[0]) || compareVersions(a[1], b[1]))
     .map(([client, version]) => ({ client, version, agents: [...new Set(clientRuns.filter(entry => entry.client === client && entry.version === version).map(entry => entry.agent))] }));
-  // Spend from the ledger: the round's starts (its own pre-probe and held-out runs), less released ones;
-  // an exemption the ledger states is taken for a run the gate was given only when the gate re-derives it.
+  // Spend from the ledger: every start of the round — its pre-probes (also under an earlier plan) and
+  // every run on its held-out instances, whatever the purpose or declaration — less released ones; an
+  // exemption the ledger states is taken for a run the gate was given only when the gate re-derives it.
   const given = new Map<string, { run: SessionRunV3; source: GateReport }>();
   for (const source of [...input.development, ...(ladder ?? [])]) for (const run of source.report.runs) given.set(runKey(source.bench, run.id), { run, source });
-  const spend = { preProbe: 0, heldOut: 0, total: 0, exempt: 0, planned: SHAPE_B.preProbe + heldOutRuns(declaration) };
-  for (const record of ledger.records) {
-    if (record.kind !== 'start' || record.unit !== declaration.unit || record.round !== declaration.round) continue;
-    const preProbe = record.purpose === 'pre-probe' && record.basis === planHash, held = record.purpose === 'held-out' && record.basis === declHash;
-    if (!preProbe && !held) continue;
+  const spend = { preProbe: 0, heldOut: 0, total: 0, exempt: 0, planned: SHAPE_B.preProbe + heldOutRuns(declaration), other: 0 };
+  const heldTasks = new Set(plan);
+  for (const record of members) {
     const why = released(record, ledger.ends.get(record.seq)), seen = given.get(runKey(record.bench, record.run));
     if (why === 'local' || (why === 'exempt' && (!seen || exemptRun(seen.run, seen.source)))) { spend.exempt++; continue; }
-    if (preProbe) spend.preProbe++; else spend.heldOut++;
+    if (heldTasks.has(taskOfRun(record.run))) spend.heldOut++; else spend.preProbe++;
+    if (!((record.purpose === 'pre-probe' && record.basis === planHash) || (record.purpose === 'held-out' && record.basis === declHash))) spend.other++;
   }
   spend.total = spend.preProbe + spend.heldOut;
-  const counted = countLedger(ledger).counted;
+  const releaseCount = countLedger(ledger).counted;
   const reports = [...input.development, ...input.oracle, ...input.random, ...(ladder ?? [])].map(source => source.report), first = input.oracle[0]!.report;
   const facts: RoundFacts = {
     schema: GATE_SCHEMA, release: declaration.release, unit: declaration.unit, family, toolchain: declaration.toolchain, round: declaration.round, alpha: declaration.alpha, shape: 'B',
@@ -381,10 +424,11 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     world: { id: first.environment.world.worldId, version: first.environment.world.version, contentHash: first.environment.world.contentHash }, instances: plan.length,
     settings: declaration.bench, dates: [...new Set(reports.map(report => report.createdAt.slice(0, 10)))].sort(),
     ladder: declaration.ladder.map(agent => ({ preset: agent.preset, model: agent.model, billing: agent.billing })), pair: { ...declaration.pair },
-    spend, ledger: { counted, cap: ledger.header.cap, records: ledger.records.length, versions: [...input.ledger.versions] },
+    spend, ledger: { counted: releaseCount, cap: RELEASE_CAP, records: ledger.records.length, versions: [...input.ledger.versions] },
     builtin: { oracle: input.oracle.reduce((total, source) => total + source.report.runs.length, 0), random: input.random.reduce((total, source) => total + source.report.runs.length, 0) },
     clientVersions, previous: input.previousSeeds?.length ? { round: 1, low: Math.min(...input.previousSeeds), high: Math.max(...input.previousSeeds) } : null,
   };
+  void bound;
   return { facts, plan, oracle, random, bound };
 }
 
@@ -410,7 +454,7 @@ export function computeGate(input: GateInput): GateResult {
     const group = input.ladder.filter(source => source.report.agent.requestedModel.value === agent.model);
     if (!group.length) fail('ladder_missing', `no held-out report of ${agent.model}`);
     const recorded = (source: GateReport, run: SessionRunV3): boolean => bound.get(runKey(source.bench, run.id))!.end !== null;
-    const merged = mergeAgentRuns(group, agent.model, recorded);
+    const merged = mergeAgentRuns(group, agent.model);
     for (const { run, source } of merged.values()) {
       // A run whose re-derived client names another model refuses the round (PADR-0040, review S3).
       if (source.rederived.has(run.id) && run.client?.model && run.client.model !== agent.model) fail('run_on_other_model', `run ${run.id} of ${agent.model} ran on ${run.client.model}`);
@@ -425,23 +469,28 @@ export function computeGate(input: GateInput): GateResult {
     }, group.length);
   });
   const strongest = ladder[0]!, weakest = ladder.at(-1)!;
-  const passedBy = (agent: AgentResult): Set<string> => new Set(agent.outcomes.filter(entry => entry.outcome === 'passed').map(entry => entry.taskId));
-  const s = passedBy(strongest), w = passedBy(weakest);
+  // Discrimination counts a non-run against passing (PADR-0042 amended): an instance the weakest did not
+  // run, or ran without an attested, recorded verdict, counts as passed by the weakest; such an
+  // instance of the strongest as failed. Leaving out a weakest run never makes a discordant pair.
+  const nonRun = (outcome: Outcome): boolean => outcome !== 'passed' && outcome !== 'failed';
+  const s = new Set(strongest.outcomes.filter(entry => entry.outcome === 'passed').map(entry => entry.taskId));
+  const w = new Set(weakest.outcomes.filter(entry => entry.outcome === 'passed' || nonRun(entry.outcome)).map(entry => entry.taskId));
   const strongestOnly = plan.filter(task => s.has(task) && !w.has(task)).length, weakestOnly = plan.filter(task => w.has(task) && !s.has(task)).length;
   const { p } = mcnemarExact(strongestOnly, weakestOnly);
   // The void rule over the gate pair and the declared ladder agents (PADR-0042 decision 10).
   const ladderRuns = ladder.length * plan.length;
   const infraShare = ladder.reduce((total, agent) => total + agent.infraErrors + agent.missing + agent.unattested + agent.unrecorded, 0) / ladderRuns;
-  const difference = strongest.rate - weakest.rate, share = (value: number): string => `${(value * 100).toFixed(1)} %`;
+  const weakNonRuns = weakest.outcomes.filter(entry => nonRun(entry.outcome)).length;
+  const difference = (s.size - w.size) / plan.length, share = (value: number): string => `${(value * 100).toFixed(1)} %`;
   const criteria: Criterion[] = [
     { name: 'headroom', value: `${strongest.passed}/${plan.length} (${share(strongest.rate)})`, rule: 'strongest passes 10 %–80 % of the instances', met: strongest.rate >= GATE.headroomLow && strongest.rate <= GATE.headroomHigh },
-    { name: 'difference', value: `${(difference * 100).toFixed(1)} points`, rule: 'strongest − weakest ≥ 20 points', met: difference >= GATE.minDifference - 1e-12 },
+    { name: 'difference', value: `${(difference * 100).toFixed(1)} points${weakNonRuns ? ` (${weakNonRuns} instance${weakNonRuns === 1 ? '' : 's'} the weakest did not run counted as passed)` : ''}`, rule: 'strongest − weakest ≥ 20 points; a non-run counts against passing', met: difference >= GATE.minDifference - 1e-12 },
     { name: 'mcnemar', value: `b = ${strongestOnly}, c = ${weakestOnly}, p = ${p.toFixed(4)}`, rule: `exact McNemar on discordant instances, p < ${declaration.alpha}${declaration.round > 1 ? ' (second round)' : ''}`, met: p < declaration.alpha },
     { name: 'oracle', value: `${oracle.passed}/${plan.length}`, rule: 'oracle passes 100 %', met: oracle.passed === plan.length },
     { name: 'random', value: `${random.passed}/${plan.length} (${share(random.rate)})`, rule: 'random passes ≤ 5 %', met: random.rate <= GATE.maxRandom },
     { name: 'near-misses', value: `${input.nearMisses.total - input.nearMisses.passed}/${input.nearMisses.total} fail`, rule: 'every near miss fails', met: input.nearMisses.total > 0 && input.nearMisses.passed === 0 },
     { name: 'infrastructure', value: `${share(infraShare)} of ${ladderRuns} ladder runs`, rule: 'infra_error, missing, unattested or unrecorded runs of the pair and the ladder ≤ 5 %, else the round is void', met: infraShare <= GATE.maxInfraShare },
-    { name: 'budget', value: `${facts.spend.total} model runs counted (${facts.spend.heldOut} held-out + ${facts.spend.preProbe} pre-probe)${facts.spend.exempt ? `, ${facts.spend.exempt} refused by the client before model work not counted` : ''}; release ${facts.ledger.counted} of ${facts.ledger.cap}`, rule: '≤ 100 model runs per unit and round, else the round is void; ≤ the release cap', met: facts.spend.total <= GATE.maxRunsPerRound && facts.ledger.counted <= facts.ledger.cap },
+    { name: 'budget', value: `${facts.spend.total} model runs counted (${facts.spend.heldOut} held-out + ${facts.spend.preProbe} pre-probe${facts.spend.other ? `; ${facts.spend.other} of them under another plan, declaration or purpose` : ''})${facts.spend.exempt ? `, ${facts.spend.exempt} refused by the client before model work not counted` : ''}; release ${facts.ledger.counted} of ${facts.ledger.cap}`, rule: '≤ 100 model runs per unit and round, else the round is void; ≤ the release cap', met: facts.spend.total <= GATE.maxRunsPerRound && facts.ledger.counted <= facts.ledger.cap },
   ];
   // A round is void, never "does not pass", when its infrastructure or its spend failed it.
   const voidReason = !criteria.find(c => c.name === 'infrastructure')!.met ? 'infrastructure' as const : !criteria.find(c => c.name === 'budget')!.met ? 'budget' as const : null;
@@ -474,7 +523,7 @@ export function renderGate(result: GateResult): string {
   if (result.clientVersions.length) lines.push(`| Clients | ${result.clientVersions.map(entry => `${cell(entry.client)} ${cell(entry.version)} (${entry.agents.map(cell).join(', ')})`).join('; ')}${result.clientVersions.length > 1 ? ' — a patch update during the round is listed, not refused' : ''} |`);
   lines.push(`| Ladder | ${result.ladder.map(agent => `\`${cell(agent.model)}\` through ${cell(agent.preset)} (billing ${cell(agent.billing)})`).join(', ')}; shape B |`);
   lines.push(`| Gate pair | strongest \`${cell(result.pair.strongest)}\`, weakest \`${cell(result.pair.weakest)}\` (fixed by the capability order, models attested by the client) |`);
-  lines.push(`| Decision level | α = ${result.alpha}${result.round > 1 ? ' (second round, Bonferroni)' : ''} |`, '');
+  lines.push(`| Decision level | α = ${result.alpha}${result.round > 1 ? ' (second round: with the first at 0.05, the false-pass bound over both rounds is 0.075)' : ''} |`, '');
   if (result.declaration.versions.length) {
     lines.push('## Declaration history', '', 'Every version of the declaration file in git, newest first; the gated declaration is the one the held-out set was generated from.', '');
     for (const version of result.declaration.versions) lines.push(`- \`${version.commit.slice(0, 12)}\` ${cell(version.date)}${version.commit === result.declaration.commit ? ' — the held-out set was generated from this version' : ''}`);
@@ -492,7 +541,7 @@ export function renderGate(result: GateResult): string {
   for (const criterion of result.criteria) lines.push(`| ${criterion.name} | ${cell(criterion.value)} | ${cell(criterion.rule)} | ${criterion.met ? 'yes' : 'no'} |`);
   lines.push('');
   lines.push(`Discordant instances: the strongest passed and the weakest failed on ${result.discordant.strongestOnly}, the reverse on ${result.discordant.weakestOnly}; two-sided exact McNemar p = ${result.discordant.p.toFixed(4)}.`);
-  lines.push(`Model runs of this round, from the release ledger: ${result.spend.preProbe} pre-probe and ${result.spend.heldOut} held-out runs counted (${result.spend.planned} planned)${result.spend.exempt ? `; ${result.spend.exempt} runs the client refused before any model work (a usage limit, a login) are listed and not counted` : ''}. Built-in runs, listed and not counted: oracle ${result.builtin.oracle}, random ${result.builtin.random}.`);
+  lines.push(`Model runs of this round, from the release ledger (every start on its instances, whatever its purpose, plan or declaration): ${result.spend.preProbe} pre-probe and ${result.spend.heldOut} held-out runs counted (${result.spend.planned} planned)${result.spend.other ? `, ${result.spend.other} of them under another plan, declaration or purpose` : ''}${result.spend.exempt ? `; ${result.spend.exempt} runs the client refused before any model work (a usage limit, a login) are listed and not counted` : ''}. Built-in runs, listed and not counted: oracle ${result.builtin.oracle}, random ${result.builtin.random}.`);
   lines.push(`Power at this size: if the two agents disagreed on 20 % of the instances, all in the stronger one's favour, the exact McNemar test would reach p < ${result.alpha} with probability ${result.power.toFixed(2)}; "does not pass" on discrimination is not evidence that the agents are equal.`);
   if (result.verdict !== 'passes') lines.push(result.round < 2 ? 'A second round, if the budget funds it, uses new held-out instances and decides at α = 0.025.' : 'This was the unit\'s second round; a unit has at most two.');
   lines.push('');

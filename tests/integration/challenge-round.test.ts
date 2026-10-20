@@ -70,7 +70,7 @@ test('a start that would pass 800 is refused before the client starts; built-in 
     // 799 model runs counted (built line by line, each chained to the one before).
     const state = { text: headerLine(), records: [parseLedger(headerLine()).header] as LedgerRecord[] };
     for (let index = 0; index < 799; index++) {
-      const body: StartBody = { kind: 'start', purpose: 'development', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: OPUS, agent: 'claude-code', bench: '20261101T100000Z-0001', run: `connect-s${index + 1}-r1` };
+      const body: StartBody = { kind: 'start', purpose: 'development', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: OPUS, agent: 'claude-code', bench: '20261101T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64) };
       const { record, line } = nextLine(state, body); state.text += line; state.records.push(record);
     }
     await writeFile(p.ledgerPath, state.text);

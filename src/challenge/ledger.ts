@@ -8,6 +8,9 @@
  * The count: every start entry counts against the cap until its run-end record releases it — a run
  * whose requested and observed billing class are both `local` with a client-attested source, or a run
  * the client refused before any model work, decided from the record's structure (PADR-0044 decision 9).
+ * The cap is the release's (RELEASE_CAP), never a value a file names. `round` records register what
+ * `probe` and `declare` decided (admitted, refused, declared), so that funding and earlier declarations
+ * are read from the one shared ledger, not from a branch's working tree (PADR-0042 amended).
  * Pure: the file side is ledger-file.ts.
  */
 import { z } from 'zod';
@@ -34,7 +37,7 @@ export const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}-s\d{1,9}-r\d{1,4}$/;
 const unitId = z.string().regex(/^[a-z][a-z-]{0,31}\.[a-z0-9][a-z0-9.-]{0,63}$/);
 const semver = z.string().regex(/^\d{1,6}\.\d{1,6}\.\d{1,6}$/);
 
-export const HeaderRecordSchema = z.strictObject({ kind: z.literal('release'), seq: z.literal(0), prev: z.literal(ZERO), schema: z.literal(LEDGER_SCHEMA), release: z.string().regex(/^\d+\.\d+\.\d+$/), cap: z.number().int().min(1).max(100_000) });
+export const HeaderRecordSchema = z.strictObject({ kind: z.literal('release'), seq: z.literal(0), prev: z.literal(ZERO), schema: z.literal(LEDGER_SCHEMA), release: z.literal(RELEASE), cap: z.literal(RELEASE_CAP) });
 export const StartRecordSchema = z.strictObject({
   kind: z.literal('start'), seq, prev: sha256,
   purpose: z.enum(PURPOSES),
@@ -50,6 +53,9 @@ export const StartRecordSchema = z.strictObject({
   /** The preset's name (`command` for a command template). */
   agent: identifier,
   bench: z.string().regex(BENCH_ID), run: z.string().regex(RUN_ID),
+  /** The content hash of the world the run benches: a run on a round's world belongs to that round,
+   * whatever its purpose (PADR-0042 amended). */
+  world: sha256,
 });
 export const RunEndRecordSchema = z.strictObject({
   kind: z.literal('run-end'), seq, prev: sha256,
@@ -67,13 +73,25 @@ export const RunEndRecordSchema = z.strictObject({
   /** The client's own token total (input, output and cache), null when it reports none. */
   tokens: count.nullable(),
 });
+/** What `probe` and `declare` decided for a unit's round, registered in order: a pre-probe that
+ * admitted or refused the unit (its plan, record and pre-probe world), and a declaration (its hash,
+ * its held-out world and the held-out runs it plans). Never counted against the cap. */
+export const RoundRecordSchema = z.strictObject({
+  kind: z.literal('round'), seq, prev: sha256,
+  event: z.enum(['admitted', 'refused', 'declared']),
+  unit: unitId, round: z.number().int().min(1).max(9), probe: z.number().int().min(1).max(9),
+  plan: sha256, record: sha256, declaration: sha256.nullable(),
+  world: sha256, heldOutRuns: count,
+});
 export type HeaderRecord = z.infer<typeof HeaderRecordSchema>;
 export type StartRecord = z.infer<typeof StartRecordSchema>;
 export type RunEndRecord = z.infer<typeof RunEndRecordSchema>;
-export type LedgerRecord = HeaderRecord | StartRecord | RunEndRecord;
+export type RoundRecord = z.infer<typeof RoundRecordSchema>;
+export type LedgerRecord = HeaderRecord | StartRecord | RunEndRecord | RoundRecord;
 type Body<T> = Omit<T, 'seq' | 'prev'>;
 export type StartBody = Body<StartRecord>;
 export type RunEndBody = Body<RunEndRecord>;
+export type RoundBody = Body<RoundRecord>;
 
 export class LedgerError extends Error {
   readonly code: string;
@@ -95,15 +113,17 @@ export function parseLedger(text: string, release = RELEASE): Ledger {
     let raw: unknown;
     try { raw = JSON.parse(line); } catch { fail(index, 'not JSON'); }
     const kind = (raw as { kind?: unknown } | null)?.kind;
-    const schema = index === 0 ? HeaderRecordSchema : kind === 'start' ? StartRecordSchema : kind === 'run-end' ? RunEndRecordSchema : null;
-    if (schema === null) fail(index, index === 0 ? 'the first record names the release' : 'not a start or run-end record');
+    const schema = index === 0 ? HeaderRecordSchema : kind === 'start' ? StartRecordSchema : kind === 'run-end' ? RunEndRecordSchema : kind === 'round' ? RoundRecordSchema : null;
+    if (schema === null) fail(index, index === 0 ? 'the first record names the release' : 'not a start, run-end or round record');
+    // The header's release and cap are the release's own (D4), never a value the file chooses.
+    if (index === 0 && ((raw as { release?: unknown }).release !== release || (raw as { cap?: unknown }).cap !== RELEASE_CAP))
+      fail(index, `the ledger counts release ${String((raw as { release?: unknown }).release).slice(0, 20)} with a cap of ${String((raw as { cap?: unknown }).cap).slice(0, 20)}; release ${release} has ${RELEASE_CAP}`);
     const parsed = schema!.safeParse(raw);
     if (!parsed.success) fail(index, `${parsed.error.issues[0]?.path.join('.') || 'record'} ${parsed.error.issues[0]?.message ?? 'invalid'}`);
     const record = parsed.data as LedgerRecord;
     if (canonicalJson(record) !== line) fail(index, 'not in canonical form');
     if (record.seq !== index) fail(index, `seq ${record.seq}, expected ${index}`);
     if (record.prev !== previous) fail(index, 'its prev is not the SHA-256 of the line before (the chain is broken)');
-    if (record.kind === 'release' && record.release !== release) fail(index, `the ledger counts release ${record.release}, not ${release}`);
     if (record.kind === 'run-end') {
       const start = records[record.start];
       if (start?.kind !== 'start') fail(index, `its start entry ${record.start} is not an earlier start entry`);
@@ -117,14 +137,20 @@ export function parseLedger(text: string, release = RELEASE): Ledger {
 }
 
 /** The first line of a new ledger. */
-export const headerLine = (release = RELEASE, cap = RELEASE_CAP): string => canonicalJson({ kind: 'release', seq: 0, prev: ZERO, schema: LEDGER_SCHEMA, release, cap } satisfies HeaderRecord) + '\n';
+export const headerLine = (): string => canonicalJson({ kind: 'release', seq: 0, prev: ZERO, schema: LEDGER_SCHEMA, release: RELEASE, cap: RELEASE_CAP } satisfies HeaderRecord) + '\n';
 /** The line that appends `body` to the ledger. */
-export function nextLine(ledger: Pick<Ledger, 'text' | 'records'>, body: StartBody | RunEndBody): { record: StartRecord | RunEndRecord; line: string } {
+export function nextLine(ledger: Pick<Ledger, 'text' | 'records'>, body: StartBody | RunEndBody | RoundBody): { record: StartRecord | RunEndRecord | RoundRecord; line: string } {
   const lines = ledger.text.slice(0, -1).split('\n');
-  const record = { ...body, seq: ledger.records.length, prev: sha256Hex(lines.at(-1)!) } as StartRecord | RunEndRecord;
-  const parsed = (record.kind === 'start' ? StartRecordSchema : RunEndRecordSchema).safeParse(record);
+  const record = { ...body, seq: ledger.records.length, prev: sha256Hex(lines.at(-1)!) } as StartRecord | RunEndRecord | RoundRecord;
+  const parsed = (record.kind === 'start' ? StartRecordSchema : record.kind === 'run-end' ? RunEndRecordSchema : RoundRecordSchema).safeParse(record);
   if (!parsed.success) throw new LedgerError('ledger_invalid', `a ${record.kind} record does not fit the ledger's format: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}`);
-  return { record: parsed.data as StartRecord | RunEndRecord, line: canonicalJson(parsed.data) + '\n' };
+  return { record: parsed.data as StartRecord | RunEndRecord | RoundRecord, line: canonicalJson(parsed.data) + '\n' };
+}
+/** The ledger as it was after its first `records` records (a committed or counted prefix). */
+export function prefixOf(ledger: Ledger, records: number): Ledger | null {
+  if (records < 1 || records > ledger.records.length) return null;
+  const lines = ledger.text.slice(0, -1).split('\n').slice(0, records);
+  return parseLedger(lines.join('\n') + '\n', ledger.header.release);
 }
 
 /** A run the client refused before any model work, exempt from every budget (PADR-0044 decision 9),
@@ -157,6 +183,24 @@ export function countLedger(ledger: Pick<Ledger, 'records' | 'ends'>, filter: (s
   }
   return result;
 }
+
+/**
+ * The start entries that belong to a unit's round (PADR-0042 amended): every start naming the unit and
+ * round, and every start on a world of the round — a world one of those starts benched, or a world a
+ * round record of the unit and round names — whatever its purpose. A run on a round's instances counts
+ * for that round, and appears in its repeat check, under any purpose.
+ */
+export function roundStarts(ledger: Pick<Ledger, 'records'>, unit: string, round: number): StartRecord[] {
+  const worlds = new Set<string>();
+  for (const record of ledger.records) {
+    if (record.kind === 'start' && record.unit === unit && record.round === round) worlds.add(record.world);
+    if (record.kind === 'round' && record.unit === unit && record.round === round) worlds.add(record.world);
+  }
+  return ledger.records.filter((record): record is StartRecord => record.kind === 'start' && ((record.unit === unit && record.round === round) || worlds.has(record.world)));
+}
+/** The round records of a unit's round, in ledger order. */
+export const roundEvents = (ledger: Pick<Ledger, 'records'>, unit?: string, round?: number): RoundRecord[] =>
+  ledger.records.filter((record): record is RoundRecord => record.kind === 'round' && (unit === undefined || record.unit === unit) && (round === undefined || record.round === round));
 
 /** Whether `older` is a prefix of `current` on whole lines (a committed version of an append-only file). */
 export const isPrefix = (older: string, current: string): boolean => current.startsWith(older) && (older === '' || older.endsWith('\n'));

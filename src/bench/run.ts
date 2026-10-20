@@ -74,6 +74,8 @@ export interface BenchOptions {
 /** What a start guard is told before a client starts. */
 export interface StartRequest {
   bench: string; run: string; taskId: string; seed: number; repeat: number; agent: AgentSpec;
+  /** The content hash of the benched world. */
+  world: string;
   /** The billing class the preset was set up for and the model its variable requests (PADR-0044 decision 5). */
   requested: BillingClass; model: string | null;
 }
@@ -378,7 +380,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     // bench here, with the runs that finished (PADR-0042 decision 4: refused before the client starts).
     let handle: number | undefined;
     if (options.guard && external) {
-      try { handle = await options.guard.start({ bench: id, run: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, agent: options.agent, ...requested }); }
+      try { handle = await options.guard.start({ bench: id, run: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, agent: options.agent, world: prepared.contentHash, ...requested }); }
       catch (error) { refused = error instanceof Error ? error : new Error(String(error)); interrupted = true; break; }
     }
     const home = join(directory, runId), agentDirectory = join(home, 'agent');

@@ -5,8 +5,8 @@
 // gate derives from them is counted by hand in the tests.
 import { BENCH_SCHEMA_V3, summarize, type SessionReportV3, type SessionRunV3 } from '../../src/bench/report.ts';
 import { DECLARATION_SCHEMA, PLAN_SCHEMA, fileHash, heldOutSeeds, validateDeclaration, validatePlan, type Declaration, type DigestSession, type Plan, type ProbeRecord } from '../../src/challenge/declaration.ts';
-import { probeRuns, type GateInput, type GateReport, type RederivedFailure } from '../../src/challenge/gate.ts';
-import { headerLine, ledgerHead, nextLine, parseLedger, type Ledger, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
+import { probeRuns, type Folders, type GateInput, type GateReport, type RederivedFailure } from '../../src/challenge/gate.ts';
+import { headerLine, ledgerHead, nextLine, parseLedger, type Ledger, type Purpose, type RoundBody, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
 
 export const hash = (c: string): string => c.repeat(64);
 export const OPUS = 'claude-opus-5-5', SONNET = 'claude-sonnet-5-5', HAIKU = 'claude-haiku-5-5';
@@ -84,21 +84,26 @@ export function gateReport(value: SessionReportV3, bench = benchName(), options:
   return { report: value, bench, rederived, failures, sessions: new Map(value.runs.filter(run => run.artifacts).map(run => [run.id, sessionFor(run)])) };
 }
 
+/** A group of the ledger: the model runs of these reports under one purpose and basis, or a round record. */
+export type LedgerGroup = { reports: GateReport[]; purpose: Purpose; basis: string | null; round?: number | null; unit?: string | null; toolchain?: string; world?: string } | { round: RoundBody };
 /** A ledger with a start entry and a run-end record for every model run of these reports (in order),
- * under the purpose and basis each group names; `skipEnd` leaves a run's run-end record out. */
-export function ledgerOf(groups: Array<{ reports: GateReport[]; purpose: 'pre-probe' | 'held-out'; basis: string; round?: number; unit?: string; toolchain?: string }>, options: { skipEnd?: string[]; extra?: (ledger: Ledger) => StartBody | RunEndBody | null } = {}): Ledger {
+ * under the purpose and basis each group names, and the round records given; `skipEnd` leaves a run's
+ * run-end record out. Starts bench the world of their report. */
+export function ledgerOf(groups: LedgerGroup[], options: { skipEnd?: string[] } = {}): Ledger {
   let ledger = parseLedger(headerLine());
-  const add = (body: StartBody | RunEndBody): number => { const { record, line } = nextLine(ledger, body); ledger = parseLedger(ledger.text + line); return record.seq; };
-  for (const group of groups) for (const source of group.reports) for (const run of source.report.runs) {
-    const start = add({ kind: 'start', purpose: group.purpose, unit: group.unit ?? UNIT, round: group.round ?? 1, basis: group.basis, toolchain: group.toolchain ?? 'practonaut', rules: null, requested: 'subscription', model: source.report.agent.requestedModel.value, agent: 'claude-code', bench: source.bench, run: run.id });
-    if (options.skipEnd?.includes(`${source.bench}/${run.id}`)) continue;
-    const tokens = run.client?.tokens;
-    add({ kind: 'run-end', start, toolchain: group.toolchain ?? 'practonaut', rules: null, status: run.status, judged: run.artifacts?.session ?? null, stdout: run.stdout?.sha256 ?? null, checker: run.artifacts?.checker ?? null,
-      observed: { class: 'subscription', source: 'client-attested' }, failure: run.failure ?? null, hostCalls: run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check, reads: run.toolCalls.observe,
-      tokens: tokens ? tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation : null });
+  const add = (body: StartBody | RunEndBody | RoundBody): number => { const { record, line } = nextLine(ledger, body); ledger = parseLedger(ledger.text + line); return record.seq; };
+  for (const group of groups) {
+    if ('round' in group && typeof group.round === 'object' && group.round !== null) { add(group.round); continue; }
+    const runs = group as Extract<LedgerGroup, { reports: GateReport[] }>;
+    for (const source of runs.reports) for (const run of source.report.runs) {
+      const start = add({ kind: 'start', purpose: runs.purpose, unit: runs.unit === undefined ? UNIT : runs.unit, round: runs.round === undefined ? 1 : runs.round, basis: runs.basis, toolchain: runs.toolchain ?? 'practonaut', rules: null, requested: 'subscription', model: source.report.agent.requestedModel.value, agent: 'claude-code', bench: source.bench, run: run.id, world: runs.world ?? source.report.environment.world.contentHash });
+      if (options.skipEnd?.includes(`${source.bench}/${run.id}`)) continue;
+      const tokens = run.client?.tokens;
+      add({ kind: 'run-end', start, toolchain: runs.toolchain ?? 'practonaut', rules: null, status: run.status, judged: run.artifacts?.session ?? null, stdout: run.stdout?.sha256 ?? null, checker: run.artifacts?.checker ?? null,
+        observed: { class: 'subscription', source: 'client-attested' }, failure: run.failure ?? null, hostCalls: run.toolCalls.act + run.toolCalls.undo + run.toolCalls.reset + run.toolCalls.check, reads: run.toolCalls.observe,
+        tokens: tokens ? tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation : null });
+    }
   }
-  const extra = options.extra?.(ledger);
-  if (extra) add(extra);
   return ledger;
 }
 
@@ -107,42 +112,48 @@ export const PROBE_WORLD = hash('9'), HELD_WORLD = hash('d');
 export function planOf(extra: Partial<Plan> = {}): Plan {
   return validatePlan({
     schema: PLAN_SCHEMA, release: '0.3.0', unit: UNIT, round: 1, probe: 1, toolchain: { id: 'practonaut', level: 'session', practonaut: PRACTONAUT, server: null, rules: null },
-    generator: GENERATOR, difficulty: '1', shape: 'B', agent: { preset: 'claude-code', model: OPUS }, seeds: [1, 2, 3, 4, 5, 6, 7], bench: { mirror: 'off', timeoutSeconds: 600, maxActions: 50, checks: null }, maintainerApprovedUnit: true, ...extra,
+    generator: GENERATOR, difficulty: '1', shape: 'B', agent: { preset: 'claude-code', model: OPUS }, seeds: [1, 2, 3, 4, 5, 6, 7], bench: { mirror: 'off', timeoutSeconds: 600, maxActions: 50, checks: null }, maintainerApprovedUnit: UNIT, ...extra,
   });
 }
 /** Opus's pre-probe: the first `passes` of the seven instances pass. */
-export function probeReport(passes = 3, options: ReportOptions & { runs?: (task: string, pass: boolean) => SessionRunV3 } = {}): GateReport {
-  const runs = [1, 2, 3, 4, 5, 6, 7].map((seed, index) => options.runs ? options.runs(`repair-${seed}`, index < passes) : presetRun(`repair-${seed}`, index < passes, OPUS));
-  return gateReport(report(OPUS, runs, PROBE_WORLD, GENERATOR, options));
+export function probeReport(passes = 3, options: ReportOptions & { runs?: (task: string, pass: boolean) => SessionRunV3; probeSeeds?: number[]; world?: string } = {}): GateReport {
+  const runs = (options.probeSeeds ?? [1, 2, 3, 4, 5, 6, 7]).map((seed, index) => options.runs ? options.runs(`repair-${seed}`, index < passes) : presetRun(`repair-${seed}`, index < passes, OPUS));
+  return gateReport(report(OPUS, runs, options.world ?? PROBE_WORLD, GENERATOR, options));
 }
-export function probeRecordOf(plan: Plan, probe: GateReport[], ledger: Ledger): ProbeRecord {
-  const result = probeRuns({ plan, planHash: fileHash(plan), worldContentHash: PROBE_WORLD, reports: probe, ledger });
+export function probeRecordOf(plan: Plan, probe: GateReport[], ledger: Ledger, folders: Folders = new Map(), world = PROBE_WORLD): ProbeRecord {
+  const result = probeRuns({ plan, planHash: fileHash(plan), worldContentHash: world, reports: probe, ledger, folders });
   return {
     schema: 'practonaut.challenge-probe/1', release: '0.3.0', unit: plan.unit, round: plan.round, probe: plan.probe, plan: { sha256: fileHash(plan), commit: 'a'.repeat(40) },
-    world: { id: 'challenge-repair-practonaut-r1-probe1', contentHash: PROBE_WORLD }, agent: { preset: 'claude-code', model: OPUS }, outcomes: result.outcomes, passed: result.passed,
+    world: { id: 'challenge-repair-practonaut-r1-probe1', contentHash: world }, agent: { preset: 'claude-code', model: OPUS }, outcomes: result.outcomes, passed: result.passed,
     admitted: result.passed >= 1 && result.passed <= 5, rule: { low: 1, high: 5, of: 7 }, digest: result.digest, runs: result.runs, ledger: { records: ledger.records.length, head: ledgerHead(ledger) },
   };
 }
-export function declarationOf(plan: Plan, record: ProbeRecord, extra: Partial<Declaration> = {}, budget: Partial<Declaration['budget']> = {}): Declaration {
+/** The round records `probe` and `declare` register. */
+export const admissionOf = (plan: Plan, record: ProbeRecord): RoundBody => ({ kind: 'round', event: record.admitted ? 'admitted' : 'refused', unit: plan.unit, round: plan.round, probe: plan.probe, plan: fileHash(plan), record: fileHash(record), declaration: null, world: record.world.contentHash, heldOutRuns: 0 });
+export const declaredOf = (round: Pick<Round, 'plan' | 'record' | 'declaration'>, world: string): RoundBody => ({ kind: 'round', event: 'declared', unit: round.plan.unit, round: round.plan.round, probe: round.plan.probe, plan: fileHash(round.plan), record: fileHash(round.record), declaration: fileHash(round.declaration), world, heldOutRuns: 78 });
+export function declarationOf(plan: Plan, record: ProbeRecord, extra: Partial<Declaration> = {}, budget: Partial<Declaration['budget']> = {}, counted?: Ledger): Declaration {
   const ladder = [OPUS, SONNET, HAIKU].map(model => ({ preset: 'claude-code', client: 'claude-code', model, attestation: 'client-attested' as const, billing: 'subscription' as const }));
   return {
-    schema: DECLARATION_SCHEMA, release: '0.3.0', unit: plan.unit, round: 1, alpha: 0.05, toolchain: plan.toolchain, generator: plan.generator, difficulty: plan.difficulty, shape: 'B', maintainerApprovedUnit: true,
-    probe: { probe: 1, plan: { sha256: fileHash(plan), commit: 'a'.repeat(40) }, record: { sha256: fileHash(record), commit: 'b'.repeat(40) }, passed: record.passed, instances: 7 },
+    schema: DECLARATION_SCHEMA, release: '0.3.0', unit: plan.unit, round: plan.round, alpha: plan.round === 1 ? 0.05 : 0.025, toolchain: plan.toolchain, generator: plan.generator, difficulty: plan.difficulty, shape: 'B', maintainerApprovedUnit: UNIT,
+    probe: { probe: plan.probe, plan: { sha256: fileHash(plan), commit: 'a'.repeat(40) }, record: { sha256: fileHash(record), commit: 'b'.repeat(40) }, passed: record.passed, instances: 7 },
     ladder, pair: { strongest: OPUS, weakest: HAIKU }, bench: plan.bench,
-    development: { seeds: plan.seeds, world: { id: record.world.id, contentHash: PROBE_WORLD }, digest: record.digest, passed: record.outcomes.map(entry => entry.pass) },
+    development: { seeds: plan.seeds, world: { id: record.world.id, contentHash: record.world.contentHash }, digest: record.digest, passed: record.outcomes.map(entry => entry.pass) },
     heldOut: { instances: 26 }, previous: null,
-    budget: { subscriptionAgents: 3, formula: 99, roundRuns: 85, cap: 800, before: 7, ledger: { ...record.ledger }, reserved: 198, leave: 40, ...budget }, ...extra,
+    budget: { subscriptionAgents: 3, formula: 99, roundRuns: 85, cap: 800, before: 7, ledger: counted ? { records: counted.records.length, head: ledgerHead(counted) } : { records: record.ledger.records + 1, head: hash('0') }, reserved: 198, leave: 40, ...budget }, ...extra,
   } as Declaration;
 }
 
-export interface Round { plan: Plan; probe: GateReport[]; record: ProbeRecord; declaration: Declaration; tasks: string[]; seeds: number[] }
-/** The round up to its declaration: plan, Opus's pre-probe (3 of 7), its ledger, record and declaration. */
-export function roundOf(passes = 3): Round {
-  const plan = planOf(), probe = [probeReport(passes)];
-  const record = probeRecordOf(plan, probe, ledgerOf([{ reports: probe, purpose: 'pre-probe', basis: fileHash(plan) }]));
-  const declaration = validateDeclaration(declarationOf(plan, record));
+export interface Round { plan: Plan; probe: GateReport[]; record: ProbeRecord; declaration: Declaration; tasks: string[]; seeds: number[]; groups: LedgerGroup[]; probeWorld: string; heldWorld: string }
+/** The round up to its declaration: plan, Opus's pre-probe (3 of 7) and its ledger, the record and its
+ * admission, the declaration (its budget from the ledger as it then was) and its registration. */
+export function roundOf(passes = 3, plan = planOf(), extra: Partial<Declaration> = {}, budget: Partial<Declaration['budget']> = {}, worlds = { probe: PROBE_WORLD, held: HELD_WORLD }, before: LedgerGroup[] = []): Round {
+  const probe = [probeReport(passes, { probeSeeds: plan.seeds, world: worlds.probe })];
+  const pre: LedgerGroup[] = [...before, { reports: probe, purpose: 'pre-probe', basis: fileHash(plan), round: plan.round }];
+  const record = probeRecordOf(plan, probe, ledgerOf(pre), new Map(), worlds.probe);
+  const counted = ledgerOf([...pre, { round: admissionOf(plan, record) }]);
+  const declaration = validateDeclaration(declarationOf(plan, record, extra, budget, counted));
   const seeds = heldOutSeeds(declaration);
-  return { plan, probe, record, declaration, seeds, tasks: seeds.map(seed => `repair-${seed}`) };
+  return { plan, probe, record, declaration, seeds, tasks: seeds.map(seed => `repair-${seed}`), groups: [...pre, { round: admissionOf(plan, record) }, { round: declaredOf({ plan, record, declaration }, worlds.held) }], probeWorld: worlds.probe, heldWorld: worlds.held };
 }
 /** The first `k` held-out instances pass. */
 export const first = (round: Round, k: number): boolean[] => round.tasks.map((_, index) => index < k);
@@ -152,15 +163,18 @@ export function heldReport(round: Round, agent: string, passes: boolean[], optio
     if (options.run) { const value = options.run(task, index); return value ? [value] : []; }
     return [builtin ? builtinRun(task, passes[index]!) : presetRun(task, passes[index]!, agent)];
   });
-  return gateReport(report(agent, runs, HELD_WORLD, GENERATOR, { generated: task => round.seeds[round.tasks.indexOf(task)]!, ...options }));
+  return gateReport(report(agent, runs, round.heldWorld, GENERATOR, { generated: task => round.seeds[round.tasks.indexOf(task)]!, ...options }));
 }
+/** The round's ledger: its pre-probe, admission and declaration, then these held-out reports (and more groups). */
+export const roundLedger = (round: Round, ladder: GateReport[], more: LedgerGroup[] = [], options: { skipEnd?: string[] } = {}): Ledger =>
+  ledgerOf([...round.groups, { reports: ladder, purpose: 'held-out', basis: fileHash(round.declaration), round: round.plan.round }, ...more], options);
 /** A gate input for a round: ladder outcomes for Opus, Sonnet and Haiku; the ledger holds every model run. */
 export function inputOf(round: Round, ladder: GateReport[], extra: Partial<GateInput> & { skipEnd?: string[] } = {}): GateInput {
-  const ledger = ledgerOf([{ reports: round.probe, purpose: 'pre-probe', basis: fileHash(round.plan) }, { reports: ladder, purpose: 'held-out', basis: fileHash(round.declaration) }], { ...(extra.skipEnd ? { skipEnd: extra.skipEnd } : {}) });
+  const ledger = roundLedger(round, ladder, [], { ...(extra.skipEnd ? { skipEnd: extra.skipEnd } : {}) });
   return {
-    plan: round.plan, probe: round.record, declaration: round.declaration, probeWorld: PROBE_WORLD, tasks: round.tasks, seeds: round.seeds, worldContentHash: HELD_WORLD,
+    plan: round.plan, probe: round.record, declaration: round.declaration, probeWorld: round.probeWorld, tasks: round.tasks, seeds: round.seeds, worldContentHash: round.heldWorld,
     development: round.probe, oracle: [heldReport(round, 'oracle', round.tasks.map(() => true))], random: [heldReport(round, 'random', round.tasks.map(() => false))],
-    nearMisses: { total: 104, passed: 0, perInstance: round.tasks.map(() => 4) }, ledger: { ledger, versions: [{ commit: 'c'.repeat(40), date: '2026-11-02T12:00:00Z', records: ledger.records.length }] }, outside: [],
+    nearMisses: { total: 104, passed: 0, perInstance: round.tasks.map(() => 4) }, ledger: { ledger, versions: [{ commit: 'c'.repeat(40), date: '2026-11-02T12:00:00Z', records: ledger.records.length }] }, outside: [], folders: new Map(),
     ladder, ...extra,
   };
 }
