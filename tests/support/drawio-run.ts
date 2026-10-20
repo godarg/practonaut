@@ -93,6 +93,20 @@ export function descendantCommands(): string[] | null {
     return out;
   } catch { return null; }
 }
+/** The checkout as git reports it: `HEAD` and `git status --porcelain`, null where git cannot tell. */
+export interface CheckoutSample { commit: string | null; status: string | null }
+/**
+ * The checkout the runs were made on (review m2d, r2-runtime-4), from a sample before the first run and
+ * one after the last: the commit before, dirty when either sample holds changes (null when git could not
+ * tell), and a problem when the two samples differ (another commit, or changed files, during the runs).
+ */
+export function checkoutOf(before: CheckoutSample, after: CheckoutSample): { commit: string | null; dirty: boolean | null; problem: string | null } {
+  const short = (commit: string | null): string => commit?.slice(0, 12) ?? 'no commit';
+  const problem = before.commit !== after.commit ? `the checkout moved from ${short(before.commit)} to ${short(after.commit)} during the runs`
+    : before.status !== after.status ? 'the checkout\'s files changed during the runs' : null;
+  const dirty = before.status === null || after.status === null ? null : before.status.trim() !== '' || after.status.trim() !== '';
+  return { commit: before.commit, dirty, problem };
+}
 /** One sample folded into an observation: the most processes seen, and the most carrying `--no-sandbox`. */
 export function observeSandbox(previous: SandboxObservation | null, commands: string[] | null): SandboxObservation | null {
   if (commands === null) return previous;

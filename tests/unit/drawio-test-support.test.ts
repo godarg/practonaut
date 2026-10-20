@@ -6,6 +6,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_DRAWIO_HOME, drawioAvailability, drawioTestRuntime } from '../support/drawio.ts';
+import { checkoutOf } from '../support/drawio-run.ts';
 
 test('PN_DRAWIO_REQUIRED is 1 or 0 (unset is 0); anything else stops the run; PN_DRAWIO_HOME is absolute', () => {
   const home = realpathSync(tmpdir());
@@ -15,6 +16,17 @@ test('PN_DRAWIO_REQUIRED is 1 or 0 (unset is 0); anything else stops the run; PN
   for (const value of ['', 'true', 'yes', '01', ' 1']) assert.throws(() => drawioTestRuntime({ PN_DRAWIO_REQUIRED: value }), /PN_DRAWIO_REQUIRED must be 1 or 0/, JSON.stringify(value));
   assert.throws(() => drawioTestRuntime({ PN_DRAWIO_HOME: 'relative/home' }), /absolute/);
   assert.equal(drawioTestRuntime({ PN_DRAWIO_HOME: home }).runtimePath, join(home, 'apps', 'drawio', '32.4.1', 'draw.war'));
+});
+
+test('the checkout of the runs is sampled before and after: another commit or changed files in between is a problem (review m2d, r2-runtime-4)', () => {
+  const a = 'a'.repeat(40), b = 'b'.repeat(40);
+  assert.deepEqual(checkoutOf({ commit: a, status: '' }, { commit: a, status: '' }), { commit: a, dirty: false, problem: null });
+  // Committed or checked out during the runs: the runs span two commits.
+  assert.deepEqual(checkoutOf({ commit: a, status: '' }, { commit: b, status: '' }), { commit: a, dirty: false, problem: 'the checkout moved from aaaaaaaaaaaa to bbbbbbbbbbbb during the runs' });
+  // Uncommitted changes stashed during the runs: clean after, dirty before.
+  assert.deepEqual(checkoutOf({ commit: a, status: ' M src/x.ts\n' }, { commit: a, status: '' }), { commit: a, dirty: true, problem: 'the checkout\'s files changed during the runs' });
+  assert.deepEqual(checkoutOf({ commit: a, status: '' }, { commit: a, status: '?? new.ts\n' }).dirty, true);
+  assert.deepEqual(checkoutOf({ commit: null, status: null }, { commit: null, status: null }), { commit: null, dirty: null, problem: null });
 });
 
 test('availability: an absent runtime and a refused sandboxed start skip by name, or fail when required', async () => {

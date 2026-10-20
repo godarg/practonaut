@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { DRAWIO_PIN } from '../../../src/adapters/drawio/pin.ts';
 import { ADAPTER_REGISTRY } from '../../../src/adapters/registry.ts';
 import { drawioAvailability } from '../../support/drawio.ts';
-import { plannedSequences, type Order, type RunRecord } from '../../support/drawio-run.ts';
+import { checkoutOf, plannedSequences, type CheckoutSample, type Order, type RunRecord } from '../../support/drawio-run.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const OUT = join(root, '.local/drawio-conformance');
@@ -48,9 +48,14 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
   mkdirSync(OUT, { recursive: true }); rmSync(join(OUT, 'summary.json'), { force: true });
   const shuffleSeed = randomInt(1, 2 ** 31);
   const orders: Array<[Order, number]> = [['forward', 0], ['reverse', 0], ['shuffle', shuffleSeed]];
+  // The checkout before the first run and after the last (review m2d): the runs must not span two.
+  const git = (...args: string[]): string | null => { const out = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); return out.status === 0 ? out.stdout : null; };
+  const sample = (): CheckoutSample => ({ commit: git('rev-parse', 'HEAD')?.trim() || null, status: git('status', '--porcelain') });
+  const before = sample();
   const runs = orders.map(([order, seed], index) => run(order, seed, index + 1));
+  const checkout = checkoutOf(before, sample());
   const planned = plannedSequences().map(sequence => sequence.key);
-  const problems: string[] = [];
+  const problems: string[] = checkout.problem ? [checkout.problem] : [];
   for (const record of runs) {
     const where = `${record.order} (seed ${record.seed})`;
     assert.deepEqual([...record.keys].sort(), [...planned].sort(), `${where}: every planned sequence, once`);
@@ -81,13 +86,12 @@ test('the library on draw.io: three fresh runs in three orders meet every expect
       }
     }
   }
-  const git = (...args: string[]): string | null => { const out = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); return out.status === 0 ? out.stdout : null; };
-  const status = git('status', '--porcelain');
   const summary = {
     schema: 'practonaut.drawio-conformance/2',
-    // The commit the runs were made on (CI names it; a checkout asks git), never a path, and whether
-    // the checkout held changes not in that commit (review m2c: the evidence binds to a clean commit).
-    commit: process.env.GITHUB_SHA ?? (git('rev-parse', 'HEAD')?.trim() || null), dirty: status === null ? null : status.trim() !== '',
+    // The commit the runs were made on (CI names it; a checkout asks git, before the first run), never a
+    // path, and whether the checkout held changes not in that commit before or after the runs (reviews
+    // m2c and m2d: the evidence binds to one clean commit).
+    commit: process.env.GITHUB_SHA ?? checkout.commit, dirty: checkout.dirty,
     platform: `${process.platform}-${process.arch}`, node: process.version,
     playwright: (JSON.parse(readFileSync(join(root, 'node_modules/playwright-core/package.json'), 'utf8')) as { version: string }).version,
     chromium: chromiumVersions.length === 1 ? chromiumVersions[0] : null,
