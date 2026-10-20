@@ -466,7 +466,13 @@ through a test seam, so the product reads no new variable.
    evolves only with the applied transitions. The same state therefore gives the same file whatever
    ran before (the precursor reset it per sequence too). A conformance case runs the `two-frames`
    task, whose start holds two empty frames, after two different sequences and requires identical
-   exports and PNGs.
+   exports and PNGs. draw.io's PNG export also depended on the diagram loaded before: a shuffled run
+   drew one start 2,129 px wide after another sequence's state and 2,130 px wide in every other
+   order, with identical native files. Every write therefore loads the empty model (the root and the
+   layer) before the diagram, and a conformance case renders that state fresh, after the other state
+   and after itself, and requires the same PNG bytes. Measured with the change: a forward run and the
+   shuffle that showed the difference agree on all 303 sequences, and the forward run's PNGs are the
+   same as before the change.
 2. **Declared constraints, refused by name** (option A.5). For a world whose application declares a
    constraint (decision 1.2):
    - **the core** checks every declared constraint on the successor of every world/2 transition; a
@@ -1005,3 +1011,4 @@ disposition:
 | acceptance-evidence-home-path (minor) | Adopted | 8.6: the bench folder is the one entry added under `PRACTONAUT_HOME/bench/`; unit test |
 | acceptance-pr-rerun-claim (minor) | Adopted | The evidence is rebuilt with the tool on the final commit of this round and committed; its README names that commit, and a test checks that the summary's commit is the README's |
 | acceptance-summary-chromium-version (minor) | Adopted | 8.6: each run's browser version recorded; the runs must agree; the summary names it |
+| Found while running the layers for this round: a shuffled run disagreed with the forward run on one PNG (one pixel wider), with identical native files | Fixed | 5.1: every write loads the empty model first, so the PNG depends on the state alone; `tests/adapter/drawio/cases.test.ts` fails without it |

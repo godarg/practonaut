@@ -160,6 +160,8 @@ All notable changes are recorded here. The format follows
   instead of ending the process with exit 13; a setup that has created its lock but not yet written
   it is no longer taken over by a second setup; `app_runtime_unverified` names the exact download
   size.
+- draw.io mirror: the PNG of a state no longer depends by a pixel on the diagram the browser showed
+  before (every write starts from the empty model).
 - A browser close after a failure no longer replaces that failure (issue #64). When a session or
   host fails to start (admission, author store, listener, editor listener), a mirror recovery fails,
   an author practice host's reply is over budget, `practonaut run` or a native transfer export fails,
