@@ -359,6 +359,10 @@ export const CLI_CATALOG = {
     "en": "Recovered {runs} runs from the run folders ({judged} judged and re-verified, {unjudged} not judged, listed as infra_error “interrupted”); wrote {path}. To resume, bench the remaining tasks: --tasks {tasks}\n",
     "de": "{runs} Läufe aus den Laufordnern wiederhergestellt ({judged} bewertet und nachgeprüft, {unjudged} nicht bewertet, als infra_error „interrupted“ geführt); {path} geschrieben. Zum Fortsetzen die übrigen Aufgaben benchen: --tasks {tasks}\n"
   },
+  "benchRecoveredLedger": {
+    "en": "Release ledger: {written} run-end records written from the run folders; {void} starts without a provable outcome stay void (counted, and not benched again for the round): {runs}\n",
+    "de": "Release-Ledger: {written} Laufende-Einträge aus den Laufordnern geschrieben; {void} Starts ohne belegbares Ergebnis bleiben ungültig (gezählt und für die Runde nicht erneut gebencht): {runs}\n"
+  },
   "benchRecoverOut": {
     "en": "--recover writes the report into the bench folder; leave out --out",
     "de": "--recover schreibt den Bericht in den Bench-Ordner; --out weglassen"

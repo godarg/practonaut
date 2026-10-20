@@ -1,5 +1,5 @@
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
 import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
@@ -162,7 +162,7 @@ export async function commandBench(args: string[], extra: { guard?: StartGuard }
   if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.map(safeText).join(', ') }));
   // World, tasks and references are settled (and an own oracle checked) before anything starts.
   const prepared = await prepareBench(options, agent);
-  if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
+  if (options.recover !== undefined) return recoverCommand(options, agent, prepared, extra.guard);
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
   // Seeds that pick the same variant would inflate n without a board of their own: said, not refused.
@@ -227,9 +227,10 @@ export async function commandBench(args: string[], extra: { guard?: StartGuard }
 /**
  * `bench … --recover <bench folder>`: the report of a bench that was killed, rebuilt from its run
  * folders with the bench's own arguments, and verified like `report --verify` before it is written;
- * a folder whose artifacts do not re-judge to what they hold is refused by name.
+ * a folder whose artifacts do not re-judge to what they hold is refused by name. Through a start guard
+ * (the project's release ledger), the guard first records the run-end records the folders prove.
  */
-async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepared: Awaited<ReturnType<typeof prepareBench>>): Promise<number> {
+async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepared: Awaited<ReturnType<typeof prepareBench>>, guard?: StartGuard): Promise<number> {
   const folder = options.recover!;
   // The report goes into the bench folder, where the challenge gate's spend scan reads it.
   if (options.out !== undefined) throw new RuntimeError('usage', cliText('benchRecoverOut'));
@@ -240,9 +241,12 @@ async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepare
     await verifyBenchV3(recovered.report, folder, libraryWorld);
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, cliText('benchRecoverRefused', { folder: safeText(displayPath(folder)), reason: error.message })); throw error; }
   const { report, remaining } = recovered;
+  // The ledger first: a recovery whose records cannot be appended writes no report and can be repeated.
+  const ledgered = guard?.recover && agent.kind !== 'builtin' ? await guard.recover(basename(resolve(folder)), report.runs) : null;
   await writeAtomic(join(folder, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   const judged = report.runs.filter(run => run.status !== 'infra_error').length;
   process.stdout.write(cliText('benchRecovered', { runs: report.runs.length, judged, unjudged: report.runs.length - judged, path: safeText(displayPath(join(folder, 'report.json'))), tasks: remaining.length ? remaining.join(',') : '—' }));
+  if (ledgered) process.stdout.write(cliText('benchRecoveredLedger', { written: ledgered.written.length, void: ledgered.void.length, runs: ledgered.void.length ? ledgered.void.map(safeText).join(', ') : '—' }));
   return 0;
 }
 /** EX_TEMPFAIL: the bench stopped at an infra_error run (`--stop-on-infra`); resume later. */

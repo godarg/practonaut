@@ -39,7 +39,7 @@ import { runOracle, runRandom } from './baselines.ts';
 import { agentArguments, agentEnvironment, BENCH_PROMPT, clientOf, displayCommand, requestedBilling, requestedModelOf, vendorOf, type AgentSpec } from './agents.ts';
 import { readClientEvidence, stdoutTail, type ClientEvidence } from './client-evidence.ts';
 import { apiKeySourceValue } from './parsers.ts';
-import { instanceIdentities } from './identity.ts';
+import { identityCache, instanceIdentities } from './identity.ts';
 import { MCP_TOOL_NAMES } from '../mcp/contracts.ts';
 import { spawnable } from '../platform/spawnable.ts';
 import { processLedger, type BrowserLedger } from '../adapters/browser/ledger.ts';
@@ -74,8 +74,9 @@ export interface BenchOptions {
 /** What a start guard is told before a client starts. */
 export interface StartRequest {
   bench: string; run: string; taskId: string; seed: number; repeat: number; agent: AgentSpec;
-  /** The content hash of the benched world. */
-  world: string;
+  /** The content hash of the benched world, and the task identity of the run's instance (PADR-0044
+   * decision 3: the same on any world that poses the same task). */
+  world: string; instance: string;
   /** The billing class the preset was set up for and the model its variable requests (PADR-0044 decision 5). */
   requested: BillingClass; model: string | null;
 }
@@ -83,12 +84,15 @@ export interface StartRequest {
  * The seam for the release ledger (PADR-0042 decision 4, PADR-0044 decision 8): `start` is awaited
  * before an external agent's client starts and before its run folder exists; when it throws, no client
  * starts and the bench stops there (the error is the bench's). `end` is awaited once that run has its
- * record, judged or not; a run cut short by a kill never reaches it. Built-in agents start no client
- * and are never passed to it.
+ * record, judged or not; a run cut short by a kill never reaches it, and when `end` throws the bench
+ * stops at once without a report, its folder left for `--recover`. `recover` is told the runs a
+ * recovered bench's folders prove (re-verified), before its report is written, and says which run-end
+ * records it wrote and which starts stay void. Built-in agents start no client and are never passed to it.
  */
 export interface StartGuard {
   start(request: StartRequest): Promise<number>;
   end(handle: number, run: SessionRunV3): Promise<void>;
+  recover?(bench: string, runs: readonly SessionRunV3[]): Promise<{ written: string[]; void: string[] }>;
 }
 export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
 
@@ -373,6 +377,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
   const agentEnv = agentEnvironment(options.agent, process.env, options.keepEnv).env;
   const requested = { requested: requestedBilling(options.agent, options.keepEnv).class, model: requestedModelOf(options.agent, agentEnv).value };
   let refused: Error | undefined;
+  const identityOf = identityCache(world);
   for (const [index, item] of plan.entries()) {
     if (interrupted || options.signal?.aborted) { interrupted = true; break; }
     const reference = references.get(item.taskId), runId = `${item.taskId}-s${item.seed}-r${item.repeat}`;
@@ -380,7 +385,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     // bench here, with the runs that finished (PADR-0042 decision 4: refused before the client starts).
     let handle: number | undefined;
     if (options.guard && external) {
-      try { handle = await options.guard.start({ bench: id, run: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, agent: options.agent, world: prepared.contentHash, ...requested }); }
+      try { handle = await options.guard.start({ bench: id, run: runId, taskId: item.taskId, seed: item.seed, repeat: item.repeat, agent: options.agent, world: prepared.contentHash, instance: identityOf(item.taskId, item.seed), ...requested }); }
       catch (error) { refused = error instanceof Error ? error : new Error(String(error)); interrupted = true; break; }
     }
     const home = join(directory, runId), agentDirectory = join(home, 'agent');
@@ -468,8 +473,16 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     const run = sessionRun({ runId, item, outcome, finalActions, counters, wallMs, reference: reference ? reference.steps.length : null, checker, artifacts, logs, evidence, kind: options.agent.kind });
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);
-    // The run's end, judged or not, with the hashes its record binds (PADR-0044 decision 8).
-    if (handle !== undefined) await options.guard!.end(handle, run);
+    // The run's end, judged or not, with the hashes its record binds (PADR-0044 decision 8). A run-end
+    // that cannot be recorded stops the bench without a report: the folder is recovered through the
+    // guard (`--recover`), which records what the folder proves and leaves the rest void.
+    if (handle !== undefined) {
+      try { await options.guard!.end(handle, run); }
+      catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        throw Object.assign(new Error(`the run-end record of ${runId} could not be appended (${cause.message}); the bench stopped without a report. Recover its folder through the same guard: the same command with --recover ${directory.replaceAll(homedir(), '~')}`), { code: (cause as { code?: unknown }).code ?? 'guard_end_failed' });
+      }
+    }
     if (interrupted) break;
     // --stop-on-infra: a usage limit or an API error affects every later run as well; stop here and
     // write the partial report so the operator can resume with the remaining tasks.

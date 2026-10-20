@@ -19,7 +19,8 @@
 // With PN_FAKE_LIMIT_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts observe and every later
 // one hits the usage limit. With PN_FAKE_SLEEP_AFTER=<n> and PN_FAKE_STATE=<dir>, the first n starts
 // observe and the next one observes and then never ends (its pid in <dir>/sleeper.pid): a bench to
-// kill mid-run.
+// kill mid-run. With PN_FAKE_HOLD=<file>, after its observe (and solve) it waits while <file> exists
+// (at most two minutes) before it ends: a test acts while the run is under way.
 // Its init event lists the tools and MCP servers Claude Code offers the model, as Claude Code 2.1.299–2.1.301
 // do for the preset (the seven mcp__practonaut__ tools, the one server practonaut); PN_FAKE_TOOLS (comma-separated)
 // lists others instead, for example a shell tool.
@@ -88,6 +89,10 @@ if (process.env.PN_FAKE_SOLVE && view.ok) {
   }
 }
 if (sleep) await new Promise(() => {});
+if (process.env.PN_FAKE_HOLD) {
+  const until = Date.now() + 120000;
+  while (existsSync(process.env.PN_FAKE_HOLD) && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
+}
 await client.close();
 if (mode === 'max-turns') { out({ type: 'result', subtype: 'error_max_turns', is_error: true, num_turns: 30, total_cost_usd: 0 }); process.exit(1); }
 if (mode === 'too-long') { out({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}', num_turns: 9, total_cost_usd: 0 }); process.exit(1); }
