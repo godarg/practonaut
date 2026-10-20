@@ -328,7 +328,7 @@ export interface GateResult extends RoundFacts {
 export interface PreflightResult extends RoundFacts { oracle: AgentResult; random: AgentResult; nearMisses: { total: number; passed: number }; ladderRunsSpent: number }
 
 /** Everything the preflight and the gate check, and the facts they report. */
-function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { facts: RoundFacts; plan: string[]; oracle: AgentResult; random: AgentResult; bound: Map<string, Bound>; heldVoid: Map<string, StartRecord>; heldInstances: Map<string, string> } {
+function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { facts: RoundFacts; plan: string[]; oracle: AgentResult; random: AgentResult; heldVoid: Map<string, StartRecord>; heldInstances: Map<string, string> } {
   const { declaration, plan: probePlan, probe } = input, family = declaration.unit.split('.')[0]!;
   const planHash = fileHash(probePlan), declHash = declarationHash(declaration), ledger = input.ledger.ledger;
   // The declaration follows from this plan and record, and repeats the plan's values.
@@ -391,13 +391,12 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
   if (input.nearMisses.perInstance.length !== plan.length || input.nearMisses.perInstance.some(count => count < 1)) fail('near_misses_missing', 'every held-out instance needs its near misses (at least one each)');
   // The ladder's reports: declared agents on the declared set and settings, bound to the ledger.
   const heldOut: Expect = { purpose: 'held-out', unit: declaration.unit, round: declaration.round, basis: declHash, toolchain: declaration.toolchain.id, rules: declaration.toolchain.rules };
-  const bound = new Map<string, Bound>();
   for (const source of ladder ?? []) {
     const requested = requestedModelOf(source, ledger), agent = declaration.ladder.find(entry => entry.model === requested);
     if (!agent) fail('ladder_model_mismatch', `a held-out report requested ${requested ?? 'no model'}${source.report.recovered === true ? ' (a recovered report, read from its start entries)' : ''}, which is not a declared ladder model`);
     checkSettings(agent!.model, source.report, input.worldContentHash, tasks, base, declaration.toolchain);
     checkAgent(agent!.model, source, agent!, ledger);
-    for (const run of source.report.runs) bound.set(runKey(source.bench, run.id), bindRun(ledger, source, run, heldOut));
+    for (const run of source.report.runs) bindRun(ledger, source, run, heldOut);
   }
   // Every run of the round on a held-out instance, under any purpose, declaration or world, in one
   // repeat check — in the preflight too, before any ladder run (a judged or void run of another purpose
@@ -451,7 +450,7 @@ function checkRound(input: RoundInput, ladder: readonly GateReport[] | null): { 
     void: [...heldVoid.values()].map(start => ({ model: start.model, taskId: heldInstances.get(start.instance)!, purpose: start.purpose, bench: start.bench, run: start.run })),
     recovered: members.filter(record => ledger.ends.get(record.seq)?.recovered === true).length,
   };
-  return { facts, plan, oracle, random, bound, heldVoid, heldInstances };
+  return { facts, plan, oracle, random, heldVoid, heldInstances };
 }
 
 /** Before any ladder run: the declaration's set, the pre-probe runs, both baselines, the near misses,
@@ -468,7 +467,7 @@ export function preflightGate(input: RoundInput): PreflightResult {
 }
 
 export function computeGate(input: GateInput): GateResult {
-  const { facts, plan, oracle, random, bound, heldVoid } = checkRound(input, input.ladder);
+  const { facts, plan, oracle, random, heldVoid } = checkRound(input, input.ladder);
   const declaration = input.declaration, identityOf = new Map(plan.map((task, index) => [task, input.identities.heldOut[index]!]));
   // Each declared agent's held-out runs, resumed reports merged; a void run (its latest start has no
   // run-end record, whether or not a report lists it), an infra_error, a missing run and a run whose
@@ -476,7 +475,6 @@ export function computeGate(input: GateInput): GateResult {
   const ladder = declaration.ladder.map(agent => {
     const group = input.ladder.filter(source => requestedModelOf(source, input.ledger.ledger) === agent.model);
     if (!group.length) fail('ladder_missing', `no held-out report of ${agent.model}`);
-    const recorded = (source: GateReport, run: SessionRunV3): boolean => bound.get(runKey(source.bench, run.id))!.end !== null;
     const merged = mergeAgentRuns(group, agent.model);
     for (const { run, source } of merged.values()) {
       // A run whose re-derived client names another model refuses the round (PADR-0040, review S3).
@@ -486,7 +484,6 @@ export function computeGate(input: GateInput): GateResult {
       if (heldVoid.has(`${agent.model}\u0000${identityOf.get(task)!}`)) return 'unrecorded';
       const entry = merged.get(task);
       if (!entry) return 'missing';
-      if (!recorded(entry.source, entry.run)) return 'unrecorded';
       if (entry.run.status === 'infra_error') return 'infra_error';
       if (!attests(entry.source, entry.run, agent.model)) return 'unattested';
       return entry.run.pass ? 'passed' : 'failed';
