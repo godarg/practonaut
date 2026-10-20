@@ -2,7 +2,7 @@
 // oracle reports are bench/3 at the session level with the real mirror, every run judged on the session
 // and on the native export; compare pairs 48 of 48 task identities with equal run counts and no
 // difference; the three-run summary is complete and agrees; and no file holds a local path or a draw.io
-// release. The re-verification from the stored folders is in tests/integration/drawio-evidence.test.ts.
+// release. The re-verification from the stored folders is in tests/integration/drawio-evidence-*.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
