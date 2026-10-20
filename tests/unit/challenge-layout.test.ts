@@ -1,16 +1,19 @@
 // The spatial-layout family `challenge-layout` 1.0.0 (PADR-0047 decision 9): the reference holds every
 // layout clause and the start violates every stated one by the second implementation
 // (tests/support/layout-oracle.ts); every layout clause has a single-fault near miss; the size pin
-// holds; branch, fork and loop arrows join the two lanes; the recorded structure is the built one; the
-// fuel stays within half the budget on stress and adversarial boards, whatever the placement; the
-// distribution self-check holds its 10 % floor over 100 development seeds.
+// holds; branch, fork and loop arrows join the two lanes; the recorded structure is the built one and
+// the fixed texts name only what is stated; the recorded fuel covers the stress, adversarial and
+// searched boards and the reviewers' compositions; the distribution self-check holds its 10 % floor
+// over 100 development seeds at every difficulty.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { runOracle } from '../../src/authoring/from-scenes.ts';
 import { checkState } from '../../src/checker/index.ts';
-import { buildDraft, ChallengeError, draftFor, generateInstance, stressBoards, verdictFuel, worldIdOf, worldOf, FAMILY_BENCH, type Instance } from '../../src/challenge/build.ts';
-import { LAYOUT, adversarialStates, layoutStressState } from '../../src/challenge/layout.ts';
-import { layoutSelfCheck } from '../../src/challenge/self-check.ts';
+import { buildDraft, ChallengeError, draftFor, generateInstance, stressBoards, verdictFuel, verdictFuels, worldIdOf, worldOf, FAMILY_BENCH, LAYOUT_SEARCH_MARGIN, type Instance } from '../../src/challenge/build.ts';
+import { LAYOUT, adversarialStates, layoutStressState, withAdditions, type Addition } from '../../src/challenge/layout.ts';
+import { createRandom } from '../../src/challenge/random.ts';
+import { DeclarationSchema } from '../../src/challenge/declaration.ts';
+import { layoutSelfCheck, PLANNED_CLAUSES } from '../../src/challenge/self-check.ts';
 import { GENERATED_BY_LIMITS } from '../../src/world/schema.ts';
 import { isLayoutPredicate, type State, type StepV2, type World } from '../../src/world/types.ts';
 import type { Difficulty } from '../../src/challenge/families.ts';
@@ -65,6 +68,22 @@ describe('challenge-layout 1.0.0', () => {
     }
   });
 
+  it('a branch or a loop instance states arrowsClearOfSteps: its near miss is single-fault against the stated clauses only (review generator-single-fault-overstrict)', () => {
+    // Seed 1 at difficulty 1 is a chain with a loop, seed 15 a chain with a branch (drawn, not chosen by
+    // the code: the first seeds of each with C stated). Before the fix C was never stated with either.
+    for (const [seed, difficulty, part] of [[1, 1, 'loop'], [15, 1, 'branch']] as const) {
+      const value = instance(seed, difficulty), p = value.task.generatedBy!.parameters;
+      assert.ok(String(p.topology).split('+').includes(part), `${seed}: ${p.topology}`);
+      const clear = layoutClauses(value).find(({ clause }) => clause.op === 'arrowsClearOfSteps');
+      assert.ok(clear, `${seed}: C stated (${p.clauses})`);
+      const miss = value.oracle.nearMisses.find(entry => entry.kind === 'layout-arrowsClearOfSteps' && entry.violates.length === 1 && entry.violates[0] === clear.index);
+      assert.ok(miss);
+      const state = finalState(value, miss.steps);
+      for (const other of layoutClauses(value)) if (isLayoutPredicate(other.clause)) assert.equal(oracleHolds(other.clause, state), other.index !== clear.index, `${seed}: C near miss vs ${other.clause.op}`);
+      assert.equal(checkState(worldFor(value), state, { seed: 1, taskId: value.taskId }).passed, false);
+    }
+  });
+
   it('the build refuses a layout instance whose stated clause has no single-fault near miss of its kind', () => {
     const draft = draftFor('layout', 1, 1, 0);
     assert.ok(draft.nearMissCandidates?.length);
@@ -103,10 +122,23 @@ describe('challenge-layout 1.0.0', () => {
       const crossing = arrows.filter(a => a.type === 'arrow' && (start.objects[a.from!] as StepV2).frameId !== (start.objects[a.to!] as StepV2).frameId).length;
       assert.equal(crossing, p.lanes === 2 ? 1 + extras : 0, `${seed}: the chain crosses once, every extra arrow crosses`);
       for (const part of String(p.topology).split('+')) parts.add(part);
-      // Board text is data: no label or frame name in title, prompt or hints; the prompt names the canvas only when within is stated.
+      // Board text is data: no label or frame name in title, prompt or hints.
       const ours = JSON.stringify([value.task.title, value.task.prompt, value.task.hints]);
       for (const text of [...steps.map(s => s.label), ...frames.map(f => (f as { name: string }).name)]) assert.equal(ours.includes(text), false, text);
-      assert.equal(/The canvas runs from/.test(value.task.prompt.en), layoutClauses(value).some(({ clause }) => clause.op === 'within'));
+      // The fixed texts name only what is stated (review fixed-narration-claims): the layout area and its
+      // corners with within, arrows as straight lines with an arrow clause, a tolerance with a lane clause.
+      const ops = new Set(layoutClauses(value).map(({ clause }) => clause.op));
+      const hint = value.task.hints!.map(h => h.en).join(' '), hintDe = value.task.hints!.map(h => h.de).join(' ');
+      assert.equal(/The layout area runs from \(-?\d+, -?\d+\) to \(-?\d+, -?\d+\)\./.test(value.task.prompt.en), ops.has('within'), `${seed}: area in the prompt`);
+      assert.equal(/Der Layoutbereich reicht von/.test(value.task.prompt.de), ops.has('within'));
+      assert.equal(hint.includes('corners of the layout area'), ops.has('within'), `${seed}: corners in the hint`);
+      assert.equal(hintDe.includes('Ecken des Layoutbereichs'), ops.has('within'));
+      assert.equal(/Arrows are judged as straight lines/.test(value.task.prompt.en), ops.has('arrowsNoCrossing') || ops.has('arrowsClearOfSteps'), `${seed}: arrow rule`);
+      assert.equal(/Pfeile zählen als gerade Linien/.test(value.task.prompt.de), ops.has('arrowsNoCrossing') || ops.has('arrowsClearOfSteps'));
+      assert.equal(hint.includes('the tolerance in px'), ops.has('aligned') || ops.has('evenlySpaced'), `${seed}: tolerance in the hint`);
+      assert.ok(/Every arrow must stay attached to a step at both ends\./.test(value.task.prompt.en));
+      // The board is never called a canvas or "Arbeitsfläche" (design review F1: one term, the layout area).
+      assert.equal(/canvas|Arbeitsfläche/i.test(JSON.stringify([value.task.prompt, value.task.hints])), false);
     }
     assert.deepEqual([...parts].sort(), ['branch', 'chain', 'fork', 'loop']);
   });
@@ -129,15 +161,62 @@ describe('challenge-layout 1.0.0', () => {
     }
   });
 
-  it('the distribution self-check: over 100 development seeds every planned topology part and clause kind reaches 10 %, and a missing one fails it', () => {
-    const result = layoutSelfCheck(Array.from({ length: 100 }, (_, i) => i + 1), 'mixed', 'draft');
-    assert.equal(result.instances, 100);
-    assert.deepEqual(result.failed, []);
-    assert.deepEqual(result.belowFloor, [], JSON.stringify(result));
+  it('records a fuel at least as high as the costliest compositions of 60 objects the reviewers found, and random ones stay within the search margin (review geometry-3)', () => {
+    for (const [seed, difficulty] of [[1, 1], [3, 3]] as const) {
+      const value = instance(seed, difficulty);
+      const steps = Object.values(value.goal.objects).filter(o => o.type === 'step').map(o => o.id).sort();
+      const frames: Array<string | null> = [...Object.values(value.goal.objects).filter(o => o.type === 'frame').map(o => o.id), null];
+      // The reviewers' shape: 20 look-alikes of the first step in a frame (or none) and 40 arrows from a
+      // goal step into it, ids sorting before the goal's. Built here, not by the search.
+      const reviewers: Addition[][] = frames.flatMap(frame => steps.map((from): Addition[] => [
+        { kind: 'look-alike', source: steps[0]!, frame, count: 20, prefix: '0-' }, { kind: 'arrow', from, to: steps[0]!, count: 40, prefix: '0-' }]));
+      const worst = Math.max(...verdictFuels(value.task, reviewers.map(additions => withAdditions(value.goal, additions))));
+      assert.ok(worst <= value.fuel, `${seed}/${difficulty}: the reviewers' compositions cost ${worst}, recorded ${value.fuel}`);
+      // Random compositions of 60 objects: any source, frame, ends and id order.
+      const random = createRandom(seed * 7919 + difficulty), compositions: Addition[][] = [];
+      for (let i = 0; i < 60; i++) {
+        const k = random.int(1, 60);
+        compositions.push([{ kind: 'look-alike', source: random.pick(steps), frame: random.pick(frames), count: k, prefix: random.pick(['0-', 'z-']) },
+          { kind: 'arrow', from: random.pick([...steps, 'look-alike']), to: random.pick(steps), count: 60 - k, prefix: random.pick(['0-', 'z-']) }]);
+      }
+      const most = Math.max(...verdictFuels(value.task, compositions.map(additions => withAdditions(value.goal, additions))));
+      assert.ok(most <= value.fuel * LAYOUT_SEARCH_MARGIN, `${seed}/${difficulty}: ${most} vs ${value.fuel}`);
+      assert.ok(value.fuel * LAYOUT_SEARCH_MARGIN <= 500_000);
+    }
+  });
+
+  it('the distribution self-check: at every declarable difficulty, over 100 development seeds, every planned part, lane count, clause per lane and combination reaches 10 %, and a missing one fails it', () => {
+    const seeds = Array.from({ length: 100 }, (_, i) => i + 1);
+    for (const difficulty of [1, 2, 3, 'mixed'] as const) {
+      const result = layoutSelfCheck(seeds, difficulty, 'draft');
+      assert.equal(result.instances, 100);
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(result.belowFloor, [], JSON.stringify(result));
+      // One lane only at difficulty 1 (and so in a mixed set); every clause is counted per lane.
+      assert.deepEqual(Object.keys(result.lanes).sort(), difficulty === 1 || difficulty === 'mixed' ? ['1', '2'] : ['2']);
+      assert.deepEqual(Object.keys(result.clauses).sort(), [...PLANNED_CLAUSES].sort());
+      for (const key of ['branch × C', 'loop × C', 'fork × C', 'branch × X', 'loop × X', 'fork × X']) {
+        const entry = result.combinations[key]!;
+        assert.ok(entry.of > 0 && entry.with >= 0.1 * entry.of, `${difficulty} ${key}: ${entry.with}/${entry.of}`);
+      }
+    }
     // The floor bites: at 50 % some planned part is missing.
-    assert.ok(layoutSelfCheck(Array.from({ length: 100 }, (_, i) => i + 1), 'mixed', 'draft', 0.5).belowFloor.length > 0);
+    assert.ok(layoutSelfCheck(seeds, 'mixed', 'draft', 0.5).belowFloor.length > 0);
+    // A generator that collapses to one instance fails it by name: its topology, lanes and clauses repeat.
+    const collapsed = layoutSelfCheck(seeds.slice(0, 20), 1, 'draft', 0.1, (_seed, level, tryIndex) => draftFor('layout', 1, level, tryIndex));
+    assert.equal(collapsed.instances, 20);
+    for (const item of ['part branch', 'part fork', 'part plain chain', 'lanes 1', 'clause W', 'branch × C']) assert.ok(collapsed.belowFloor.some(entry => entry.startsWith(item)), `${item}: ${collapsed.belowFloor.join('; ')}`);
     // The draft-level count is the built one: building changes nothing on a sample.
     const built = layoutSelfCheck([1, 2, 3, 4, 5, 6], 'mixed', 'build'), drafted = layoutSelfCheck([1, 2, 3, 4, 5, 6], 'mixed', 'draft');
     assert.deepEqual({ ...built, mode: 'draft' }, drafted);
+  });
+
+  it('the 0.2.0 round declaration names the five 0.2.0 families only; layout is not one of them (review family-enum-020)', () => {
+    const familyIssue = (family: string): boolean => {
+      const parsed = DeclarationSchema.safeParse({ schema: 'practonaut.challenge-declaration/1', family });
+      return !parsed.success && parsed.error.issues.some(issue => issue.path[0] === 'family');
+    };
+    for (const family of ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget']) assert.equal(familyIssue(family), false, family);
+    assert.equal(familyIssue('layout'), true);
   });
 });

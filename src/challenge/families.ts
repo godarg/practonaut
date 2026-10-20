@@ -12,7 +12,9 @@ import type { Random } from './random.ts';
 import { DOMAINS, similarLabels, type Domain } from './vocabulary.ts';
 
 /** The five families of 0.2.0 in roadmap order, then the spatial-layout family of 0.3.0 (PADR-0047). */
-export const FAMILIES = ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget', 'layout'] as const;
+/** The five families of the 0.2.0 rounds, frozen: their declaration and ledger schemas name only these. */
+export const FAMILIES_020 = ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget'] as const;
+export const FAMILIES = [...FAMILIES_020, 'layout'] as const;
 export type Family = typeof FAMILIES[number];
 export type Difficulty = 1 | 2 | 3;
 /** Each family's generator version: part of every seed derivation and of `generatedBy`. A change to

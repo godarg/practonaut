@@ -185,13 +185,17 @@ export function layout(random: Random, difficulty: Difficulty, seed: number): Dr
       add(swapped);
     }
   }
+  // A near miss is single-fault against the goal's clauses (decision 9.5): noOverlap and the clauses the
+  // start violates, the only ones that can be stated. A clause the start already holds is never stated,
+  // so a candidate that also breaks it is still single-fault.
+  const candidates = clauses.filter(clause => clause.key === 'O' || startViolates.has(clause.key));
   const single = new Map<string, Positions>();
   for (const family of families) {
-    const keys = violated(placed(goal, family.positions), clauses);
+    const keys = violated(placed(goal, family.positions), candidates);
     if (keys.length === 1 && !single.has(keys[0]!)) single.set(keys[0]!, family.positions);
   }
   if (!single.has('O')) throw new ChallengeError('layout_no_overlap_near_miss', 'no single-fault near miss for noOverlap');
-  const stated = clauses.filter(clause => clause.key === 'O' || (startViolates.has(clause.key) && single.has(clause.key)));
+  const stated = candidates.filter(clause => single.has(clause.key));
 
   // ---- The task ----
   const sizePin: Predicate = { op: 'every', type: 'step', as: 'z', where: { op: 'all', args: [
@@ -201,20 +205,26 @@ export function layout(random: Random, difficulty: Difficulty, seed: number): Dr
     ...stated.map(clause => ({ predicate: clause.predicate as Predicate, text: layoutSentence(clause.predicate) })),
   ];
   const nearMissCandidates: NearMissCandidate[] = stated.map(clause => ({ kind: `layout-${clause.predicate.op}`, steps: movesFrom(start, single.get(clause.key)!) }));
-  const withinStated = stated.some(clause => clause.key === 'W');
+  // Fixed texts name only what the instance states: the layout area with `within`, arrows as straight
+  // lines with an arrow clause, tolerances with a lane clause.
+  const has = (key: string): boolean => stated.some(clause => clause.key === key || clause.key.startsWith(key));
   const corner = `(${canvas.x}, ${canvas.y})`, far = `(${canvas.x + canvas.width}, ${canvas.y + canvas.height})`;
   const code = stated.map(clause => clause.key === 'O' ? `O${gap}` : clause.key).join(' ');
+  const arrowRule = has('X') || has('C');
+  const numbers = { en: ['the gap', ...(has('A') || has('E') ? ['the tolerance'] : [])], de: ['den Abstand', ...(has('A') || has('E') ? ['die Toleranz'] : [])] };
+  const listed = (parts: string[], and: string): string => parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ${and} ${parts.at(-1)}` : parts[0]!;
   return {
     family: 'layout', seed, difficulty, start: startDiagram, goal, expectedLength: moved.size,
     boardText: [...new Set([...steps.map(step => step.label), ...frames.map(frame => frame.name)])],
     title: words('Tidy the layout', 'Das Layout aufräumen'),
     prompt: words(
-      `Tidy the layout of this process diagram so that every listed condition holds. Move steps only: every step, arrow and frame stays, and every step keeps its size (${width} × ${height} px).${withinStated ? ` The canvas runs from ${corner} to ${far}.` : ''} Arrows are judged as straight lines between the centres of the two steps they join, however they are routed or drawn, and every arrow must stay attached to a step at both ends. Positions are judged in whole pixels.`,
-      `Räume das Layout dieses Ablaufdiagramms auf, sodass jede aufgeführte Bedingung erfüllt ist. Verschiebe nur Schritte: Alle Schritte, Pfeile und Rahmen bleiben, und jeder Schritt behält seine Größe (${width} × ${height} px).${withinStated ? ` Die Arbeitsfläche reicht von ${corner} bis ${far}.` : ''} Pfeile zählen als gerade Linien zwischen den Mittelpunkten der beiden Schritte, die sie verbinden, wie auch immer sie geführt oder gezeichnet sind, und jeder Pfeil muss an beiden Enden an einem Schritt angebunden bleiben. Positionen werden in ganzen Pixeln beurteilt.`),
+      `Tidy the layout of this process diagram so that every listed condition holds. Move steps only: every step, arrow and frame stays, and every step keeps its size (${width} × ${height} px).${has('W') ? ` The layout area runs from ${corner} to ${far}.` : ''}${arrowRule ? ' Arrows are judged as straight lines between the centres of the two steps they join, however they are routed or drawn.' : ''} Every arrow must stay attached to a step at both ends. Positions are judged in whole pixels.`,
+      `Räume das Layout dieses Ablaufdiagramms auf, sodass jede aufgeführte Bedingung erfüllt ist. Verschiebe nur Schritte: Alle Schritte, Pfeile und Rahmen bleiben, und jeder Schritt behält seine Größe (${width} × ${height} px).${has('W') ? ` Der Layoutbereich reicht von ${corner} bis ${far}.` : ''}${arrowRule ? ' Pfeile zählen als gerade Linien zwischen den Mittelpunkten der beiden Schritte, die sie verbinden, wie auch immer sie geführt oder gezeichnet sind.' : ''} Jeder Pfeil muss an beiden Enden an einem Schritt angebunden bleiben. Positionen werden in ganzen Pixeln beurteilt.`),
     hints: [
       words('Every condition in the goal list must hold at the end. The order of your actions does not matter.', 'Am Ende muss jede Bedingung der Zielliste erfüllt sein. Die Reihenfolge deiner Aktionen ist egal.'),
       words(`The goal has ${n} steps and ${arrows.length} arrows.`, `Das Ziel hat ${n} Schritte und ${arrows.length} Pfeile.`),
-      words('Each condition names its numbers: the gap and the tolerance in px and the corners of the canvas. A box is a step\'s position and size, also for an ellipse or a diamond.', 'Jede Bedingung nennt ihre Zahlen: den Abstand und die Toleranz in px und die Ecken der Arbeitsfläche. Eine Box ist Position und Größe eines Schritts, auch bei einer Ellipse oder Raute.'),
+      words(`Each condition names its numbers: ${listed([...numbers.en.map(part => `${part} in px`), ...(has('W') ? ['the corners of the layout area'] : [])], 'and')}. A box is a step's position and size, also for an ellipse or a diamond.`,
+        `Jede Bedingung nennt ihre Zahlen: ${listed([...numbers.de.map(part => `${part} in px`), ...(has('W') ? ['die Ecken des Layoutbereichs'] : [])], 'und')}. Eine Box ist Position und Größe eines Schritts, auch bei einer Ellipse oder Raute.`),
     ],
     parameters: { difficulty, domain: domain.id, topology, lanes, steps: n, arrows: arrows.length, displaced: moved.size, margin, size: `${width}x${height}`, gap, clauses: code.slice(0, 64) },
     extraClauses, nearMissCandidates,
@@ -244,6 +254,32 @@ export function layoutStressState(goal: State, steps: number, arrows: number, pl
   }
   const nodes = [...added, ...existing.map(s => s.id)];
   for (let i = 0; i < arrows; i++) state.objects[`stress-a${i}`] = arrowIn(state, `stress-a${i}`, nodes[i % nodes.length] ?? null, nodes[(i + 1) % nodes.length] ?? null);
+  return state;
+}
+/** One kind of extra object an agent can add (PADR-0047 decision 5.4): look-alike steps (a goal step's
+ * label, shape, colours and size, in a frame of the goal or outside every frame) or arrows between two
+ * steps (goal steps, or the first look-alike as an end). `prefix` sorts the new ids before ("0-") or
+ * after ("z-") the goal's, since an `exists` stops at its first witness in id order. */
+export type Addition =
+  | { kind: 'look-alike'; source: string; frame: string | null; count: number; prefix: string }
+  | { kind: 'arrow'; from: string; to: string; count: number; prefix: string };
+/** The goal with additions, in order; an arrow end "look-alike" names the first look-alike added. */
+export function withAdditions(goal: State, additions: readonly Addition[]): State {
+  const state = structuredClone(goal);
+  let firstLookAlike: string | undefined;
+  for (const [index, addition] of additions.entries()) {
+    if (addition.kind === 'look-alike') {
+      const source = state.objects[addition.source] as StepV2;
+      for (let i = 0; i < addition.count; i++) {
+        const id = `${addition.prefix}l${index}-${i}`;
+        state.objects[id] = { ...structuredClone(source), id, frameId: addition.frame, x: source.x + (i % 10) * 250, y: source.y + 600 + Math.floor(i / 10) * 150 };
+        firstLookAlike ??= id;
+      }
+      continue;
+    }
+    const end = (id: string): string => id === 'look-alike' ? firstLookAlike ?? '' : id;
+    for (let i = 0; i < addition.count; i++) state.objects[`${addition.prefix}a${index}-${i}`] = arrowIn(state, `${addition.prefix}a${index}-${i}`, end(addition.from), end(addition.to));
+  }
   return state;
 }
 /**

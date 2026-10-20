@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { MODEL_ID, type GateBenchReport, type GateBenchRun } from '../bench/report.ts';
 import { FAMILY_BENCH, SEED_RANGES } from './build.ts';
-import { FAMILIES, generatorId, type Family } from './families.ts';
+import { FAMILIES_020, generatorId, type Family } from './families.ts';
 
 export const DECLARATION_SCHEMA = 'practonaut.challenge-declaration/1';
 /** The preregistered round (PADR-0040): 3 development instances × 3 agents and 26 held-out
@@ -37,7 +37,8 @@ const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const whole = (low: number, high: number) => z.number().int().min(low).max(high);
 export const DeclarationSchema = z.strictObject({
   schema: z.literal(DECLARATION_SCHEMA),
-  family: z.enum(FAMILIES),
+  // The 0.2.0 rounds: their five families only (layout is a 0.3.0 family, gated under PADR-0042).
+  family: z.enum(FAMILIES_020),
   round: whole(1, ROUND.maxRounds),
   generator: z.strictObject({ id: z.string().max(64), version: z.string().regex(/^\d+\.\d+\.\d+$/) }),
   difficulty: z.enum(['1', '2', '3', 'mixed']),

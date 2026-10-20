@@ -11,7 +11,7 @@ import { fromStates, verifyTask, type TaskOracle } from '../authoring/from-scene
 import { AuthoringError } from '../authoring/project.ts';
 import { analyseLength } from '../authoring/minimal-length.ts';
 import { taskWorld } from '../library/index.ts';
-import { evaluate } from '../predicate/index.ts';
+import { evaluateEach, type Evaluation } from '../predicate/index.ts';
 import { validateWorld } from '../world/schema.ts';
 import { RUNTIME_LIMITS } from '../world/limits.ts';
 import type { State, Task, TaskLimits, World } from '../world/types.ts';
@@ -19,7 +19,7 @@ import { toState, type Diagram } from './diagram.ts';
 import { FAMILIES, MAKERS, generatorId, generatorVersion, type Difficulty, type Draft, type Family } from './families.ts';
 import { createRandom, deriveSeed } from './random.ts';
 import { ChallengeError } from './errors.ts';
-import { adversarialStates, layoutStressState } from './layout.ts';
+import { adversarialStates, layoutStressState, withAdditions, type Addition } from './layout.ts';
 import { isLayoutPredicate } from '../world/types.ts';
 
 /** Seed ranges (PADR-0040): development, throwaway self-checks, held-out gate sets. */
@@ -29,6 +29,10 @@ export type SeedSet = keyof typeof SEED_RANGES;
 export const MAX_LIVE_OBJECTS = 56;
 /** The checker's budget per verdict and the share a generated goal may use on a stress board. */
 export const FUEL_SHARE = 0.5;
+/** The layout family's searched maximum (`layoutSearch`) is a search, not a proof: compositions outside it
+ * cost at most 0.1 % more in 3,400 random ones over eight instances (review geometry-3). Its verdict
+ * must stay within half the budget with this margin on top. */
+export const LAYOUT_SEARCH_MARGIN = 1.05;
 /** Recommended bench settings per family (the gate preregistration may tighten them on development
  * runs before a round). */
 export const FAMILY_BENCH: Readonly<Record<Family, { maxActions: number; timeoutSeconds: number }>> = Object.freeze({
@@ -78,22 +82,53 @@ export function stressBoards(goal: State, family: Family, limits?: TaskLimits): 
   const split = (make: (steps: number, arrows: number) => State) => STRESS_SPLITS.map(share => { const steps = Math.round(objects * share); return { name: `stress ${steps}/${objects - steps}`, state: make(steps, objects - steps) }; });
   return family === 'layout' ? [...split((steps, arrows) => layoutStressState(goal, steps, arrows)), ...adversarialStates(goal, objects)] : split((steps, arrows) => stressState(goal, steps, arrows));
 }
-/** The most expensive verdict over the family's stress boards. */
+/** The most expensive verdict over the family's stress boards and, for the layout family, the searched
+ * compositions of PADR-0047 decision 5.4 (`layoutSearch`). */
 export function stressFuel(task: Task, goal: State, family: Family): number {
-  return Math.max(...stressBoards(goal, family, task.limits).map(board => verdictFuel(task, board.state)));
+  const boards = [...stressBoards(goal, family, task.limits), ...(family === 'layout' ? layoutSearch(task, goal, stressObjects(family, task.limits)) : [])];
+  return Math.max(...verdictFuels(task, boards.map(board => board.state)));
 }
 /** Steps the checker spends on one verdict at most: every goal clause and every error class costed
  * separately (as if none short-circuited) on each counter-probe and on the judged board. */
-export function verdictFuel(task: Task, judged: State): number {
+export function verdictFuel(task: Task, judged: State): number { return verdictFuels(task, [judged])[0]!; }
+/** `verdictFuel` for many judged boards: the counter-probes are costed once. */
+export function verdictFuels(task: Task, boards: readonly State[]): number[] {
   const clauses = task.goal.op === 'all' ? task.goal.args : [task.goal];
-  const cost = (state: State): number => clauses.reduce((total, clause) => total + stepsOf(clause, state), 0);
   const wrong: State = { objects: { wrong: { id: 'wrong', type: 'frame', name: 'unrelated', deleted: false } } };
-  return cost({ objects: {} }) + cost(task.initialState!) + cost(wrong) + cost(judged) + task.errorClasses.reduce((total, error) => total + stepsOf(error.when, judged), 0);
+  const sum = (results: Evaluation[]): number => results.reduce((total, result) => {
+    if (!result.ok) throw new ChallengeError('fuel', `a goal clause does not evaluate within the budget (${result.error.code})`);
+    return total + result.steps;
+  }, 0);
+  const probes = evaluateEach(clauses, [{ objects: {} }, task.initialState!, wrong]).reduce((total, results) => total + sum(results), 0);
+  return evaluateEach([...clauses, ...task.errorClasses.map(error => error.when)], boards).map(results => probes + sum(results));
 }
-function stepsOf(predicate: Task['goal'], state: State): number {
-  const result = evaluate(predicate, state);
-  if (!result.ok) throw new ChallengeError('fuel', `a goal clause does not evaluate within the budget (${result.error.code})`);
-  return result.steps;
+/**
+ * The costliest compositions of `objects` extra objects an agent can reach on a layout board (PADR-0047
+ * decision 5.4, review geometry-3): look-alikes of every goal step in every frame and outside frames,
+ * arrows on every ordered pair of goal steps (self-loops included) and between a look-alike and every
+ * goal step, each with new ids sorting before and after the goal's. One object of each kind is costed
+ * first; the two costliest look-alikes and arrows are then combined in splits of 0, 5, … `objects`.
+ */
+export function layoutSearch(task: Task, goal: State, objects: number): Array<{ name: string; state: State }> {
+  const steps = Object.values(goal.objects).filter(o => o.type === 'step' && !o.deleted).map(o => o.id).sort();
+  const frames: Array<string | null> = [...Object.values(goal.objects).filter(o => o.type === 'frame' && !o.deleted).map(o => o.id).sort(), null];
+  const best = (candidates: Addition[][], take: number): Addition[][] => {
+    const costs = verdictFuels(task, candidates.map(additions => withAdditions(goal, additions)));
+    return candidates.map((additions, index) => ({ additions, cost: costs[index]! })).sort((a, b) => b.cost - a.cost).slice(0, take).map(entry => entry.additions);
+  };
+  const prefixes = ['0-', 'z-'];
+  const lookAlikes = best(steps.flatMap(source => frames.flatMap(frame => prefixes.map((prefix): Addition[] => [{ kind: 'look-alike', source, frame, count: 1, prefix }]))), 2);
+  const pairs = [...steps.flatMap(from => steps.map(to => [from, to] as const)), ...steps.flatMap(step => [['look-alike', step], [step, 'look-alike']] as const)];
+  const arrows = best(pairs.flatMap(([from, to]) => prefixes.map((prefix): Addition[] => [...(from === 'look-alike' || to === 'look-alike' ? lookAlikes[0]! : []), { kind: 'arrow', from, to, count: 1, prefix }])), 2);
+  const out: Array<{ name: string; state: State }> = [];
+  for (const look of lookAlikes) for (const arrow of arrows) for (let k = 0; k <= objects; k += 5) {
+    const lookAlike = look[0] as Extract<Addition, { kind: 'look-alike' }>, link = arrow.at(-1) as Extract<Addition, { kind: 'arrow' }>;
+    const additions: Addition[] = [{ ...lookAlike, count: k }, { ...link, count: objects - k }];
+    // An arrow from or to a look-alike needs one; it counts among the k (or replaces one arrow).
+    if ((link.from === 'look-alike' || link.to === 'look-alike') && k === 0) { additions[0] = { ...lookAlike, count: 1 }; additions[1] = { ...link, count: objects - 1 }; }
+    out.push({ name: `searched ${additions[0]!.count} × ${lookAlike.source}${lookAlike.prefix} in ${lookAlike.frame ?? 'no frame'} + ${additions[1]!.count} × ${link.from}→${link.to}`, state: withAdditions(goal, additions) });
+  }
+  return out;
 }
 
 /** The family's draft for this seed, difficulty and attempt (its own seeded randomness). */
@@ -131,7 +166,8 @@ export function buildDraft(draft: Draft, worldId: string, fuelBudget = RUNTIME_L
   const ours = JSON.stringify([result.task.title, result.task.prompt, result.task.hints]);
   for (const text of draft.boardText) if (ours.includes(text)) throw new ChallengeError('board_text_leak', `${taskId}: board text reached the task text`);
   const fuel = stressFuel(result.task, result.goal, family);
-  if (fuel > fuelBudget) throw new ChallengeError('fuel', `${taskId}: a verdict on a stress board needs ${fuel} steps, more than ${fuelBudget}`);
+  const margin = family === 'layout' ? LAYOUT_SEARCH_MARGIN : 1;
+  if (fuel * margin > fuelBudget) throw new ChallengeError('fuel', `${taskId}: a verdict on a stress board needs ${fuel} steps${margin > 1 ? ` (× ${margin} for the search)` : ''}, more than ${fuelBudget}`);
   const length = analyseLength(result.world, taskId, 0, result.oracle.steps.length);
   if (family === 'tight-budget' && (length.kind !== 'minimal' || draft.limits?.actions !== length.length)) throw new ChallengeError('not_minimal', `${taskId}: the budget is not a proven minimal length (${length.kind === 'minimal' ? 'mismatch' : length.reason})`);
   return { taskId, task: result.task, oracle: result.oracle, goal: result.goal, draft, fuel, minimal: length.kind === 'minimal' };
