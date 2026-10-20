@@ -1,8 +1,9 @@
 /**
  * The browser shell every browser-based adapter shares (PADR-0045): what is not about the app.
  *
- * - **Start** Chromium the one way (PADR-0032) within a launch deadline the shell enforces itself; a
- *   browser that arrives after the deadline or after an abort is closed. Then, within the same
+ * - **Start** Chromium the one way (PADR-0032) on a slot of the process's browser budget, within a
+ *   launch deadline the shell enforces itself; a browser that arrives after the deadline or after an
+ *   abort goes to its one close (PADR-0050). Then, within the same
  *   deadline, a private context with fail-closed routing and a page, then the adapter's own start
  *   (open the app, first scene, probe) within its own deadline. While the shell starts, an abort
  *   settles every pending browser call at once; any start failure closes the browser and is
@@ -38,20 +39,28 @@ import type { Browser, BrowserContext, LaunchOptions, Page, Route, WebSocketRout
 import { sha256Hex } from '../../canonical/index.ts';
 import type { Failure } from '../../world/types.ts';
 import type { AdapterResult, Artifact } from '../types.ts';
-import { BROWSER_BOUNDS, BrowserDeadlineError, bounded, closeBrowser } from './bounded.ts';
-import { launchChromium, type LaunchContext } from './chromium.ts';
+import { BROWSER_BOUNDS, BrowserDeadlineError, bounded } from './bounded.ts';
+import { chromiumSandboxPolicy, launchChromium, type LaunchContext } from './chromium.ts';
+import { closeDeadline, closeErrorOf, deadlineOf, type CloseResult } from './close.ts';
+import { processLedger, type BrowserLease, type BrowserLedger } from './ledger.ts';
 
 /** The longest single adapter operation; a caller's timeout can only shorten it. */
 export const MAX_ADAPTER_MS = 10_000;
+/** What a mirror start that waited for a browser slot keeps of its launch bound for the launch itself
+ * (PADR-0050): its slot wait ends when only this much is left. */
+export const LAUNCH_AFTER_WAIT_MS = 5_000;
 export class AdapterError extends Error { readonly code: Failure['code']; constructor(code: Failure['code'], message: string) { super(message); this.code = code; } }
 /** Preserve startup failure separately from disposal failure for the owning attempt. */
 export class AdapterInitializationError extends AdapterError {
   readonly primaryError: unknown; readonly cleanupError: unknown; readonly networkAttempts: string[];
   readonly pendingInitializationOperations: number;
-  constructor(primaryError: unknown, cleanupError: unknown, networkAttempts: string[], pendingInitializationOperations = 0) {
+  /** How the browser's close after the failure settled (PADR-0050); absent when the browser never arrived. */
+  readonly closeResult: CloseResult | undefined;
+  constructor(primaryError: unknown, cleanupError: unknown, networkAttempts: string[], pendingInitializationOperations = 0, closeResult?: CloseResult) {
     super(primaryError instanceof AdapterError ? primaryError.code : String(primaryError).includes('cancelled') ? 'cancelled' : 'mirror_unavailable', 'Engine initialization failed');
     this.primaryError = primaryError; this.cleanupError = cleanupError; this.networkAttempts = [...networkAttempts];
     this.pendingInitializationOperations = pendingInitializationOperations;
+    this.closeResult = closeResult;
     this.cause = primaryError;
   }
 }
@@ -83,8 +92,9 @@ export interface ShellOptions {
   signal?: AbortSignal | undefined;
   origins: ShellOrigins;
   viewport?: { width: number; height: number };
-  /** Test seams: a fake Playwright, shorter launch and start deadlines, a launch context (platform, env). */
-  chromium?: ChromiumLike; launchMs?: number; initializeMs?: number; launchContext?: LaunchContext;
+  /** Test seams: a fake Playwright, shorter launch and start deadlines, a launch context (platform, env),
+   * a ledger of the test's own (default: the process's, PADR-0050). */
+  chromium?: ChromiumLike; launchMs?: number; initializeMs?: number; launchContext?: LaunchContext; ledger?: BrowserLedger;
 }
 /** How the adapter reads and writes its committed scene, for rollback. */
 export interface SceneIO<S> {
@@ -115,8 +125,10 @@ export interface BrowserShell {
   /** A read-only operation under one deadline and abort; on any failure it ends, the page is
    * replaced and the scene read before it rebuilt (or the shell closes), then the error is rethrown. */
   guarded<S, T>(work: () => Promise<T>, scene: SceneIO<S>, limits: OperationLimits, errors: { timeout(): Error; cancel(): Error }): Promise<T>;
-  /** Closes the browser and the sink proxy; the shell answers nothing afterwards. */
-  close(): Promise<void>;
+  /** Closes the browser under the close contract (PADR-0050): settles by `deadline` (default: now plus
+   * 8 s) as closed, failed or abandoned, and never throws. The sink proxy closes when the browser's
+   * slot is released, not before. The shell answers nothing afterwards. */
+  close(deadline?: number): Promise<CloseResult>;
 }
 
 /** The operation a piece of adapter work belongs to; it follows the work across every await, so a
@@ -193,13 +205,15 @@ async function startSink(): Promise<Sink> {
  * resolves — the app's own content is routed and never resolved, so nothing it needs is lost. */
 const LAUNCH_ARGS = ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1'];
 /** Chromium within the deadline, every connection it opens itself sent to the sink (the loopback
- * interface included); a browser that arrives after the deadline or an abort is closed. */
-async function launchWithin(chromium: ChromiumLike, remaining: () => number, signal: AbortSignal | undefined, context: LaunchContext | undefined, sink: Sink): Promise<Browser> {
-  const launching = launchChromium(chromium, () => ({ headless: true, timeout: remaining(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: [...LAUNCH_ARGS], proxy: { server: sink.server, bypass: '<-loopback>' } }), context);
+ * interface included), on the lease's slot. When the caller's race is lost (deadline or abort), the
+ * lease stays *launching* until Playwright's promise settles: a browser that arrives late goes to its
+ * one close, a launch that rejects holds its slot (and so the sink) for the launch wait (PADR-0050). */
+async function launchWithin(chromium: ChromiumLike, remaining: () => number, signal: AbortSignal | undefined, context: LaunchContext | undefined, sink: Sink, lease: BrowserLease): Promise<Browser> {
+  const launching = lease.launch(() => launchChromium(chromium, () => ({ headless: true, timeout: remaining(), handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false, args: [...LAUNCH_ARGS], proxy: { server: sink.server, bypass: '<-loopback>' } }), context));
   try {
     return (await within(() => launching, { timeoutMs: remaining(), signal }, { timeout: () => new BrowserDeadlineError('launch'), cancel: () => new AdapterError('cancelled', 'Engine initialization cancelled during launch') })).browser;
   } catch (error) {
-    void launching.then(({ browser }) => closeBrowser(browser)).catch(() => undefined);
+    void lease.close(deadlineOf(signal));
     throw error;
   }
 }
@@ -226,19 +240,29 @@ function reportedTarget(body: string | null): string {
 /**
  * Starts the shell, then runs the adapter's `initialize` (open the app, write the first scene, probe)
  * inside the same start phase, within its own deadline. Returns only a ready shell; on any failure
- * the browser and the sink are closed.
+ * the browser is closed under the close contract, and the sink closes when its slot is released
+ * (PADR-0050). A full browser budget is refused by name (`BrowserBudgetError`) before anything starts.
  */
 export async function startShell(options: ShellOptions, initialize: (shell: BrowserShell) => Promise<void>): Promise<BrowserShell> {
   const deadline = performance.now() + (options.launchMs ?? BROWSER_BOUNDS.launch);
   const remaining = (): number => Math.max(1, deadline - performance.now());
   const startMs = Math.max(1, options.initializeMs ?? BROWSER_BOUNDS.initialize);
   const chromium = options.chromium ?? (await bounded(import('playwright-core'), remaining(), 'launch')).chromium;
-  if (options.signal?.aborted) throw new AdapterError('cancelled', 'Engine initialization cancelled before launch');
+  const beforeLaunch = (): AdapterError => new AdapterError('cancelled', 'Engine initialization cancelled before launch');
+  if (options.signal?.aborted) throw beforeLaunch();
   const denied: string[] = [];
-  const sink = await startSink();
-  let browser: Browser;
-  try { browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink); }
-  catch (error) { await sink.close(); throw error; }
+  // A sandbox setting that is refused launches nothing, so it takes no slot.
+  chromiumSandboxPolicy(options.launchContext?.env ?? process.env);
+  // The slot first, within the launch bound (a full budget is refused by name, PADR-0050); the sink
+  // belongs to it and closes only when the slot is released. The wait ends while the launch still has
+  // LAUNCH_AFTER_WAIT_MS of its bound: a slot granted later would launch with too little time, fail as
+  // a launch timeout and hold the slot for the launch wait.
+  const lease = await (options.ledger ?? processLedger).reserve('mirror', { waitMs: Math.max(0, remaining() - LAUNCH_AFTER_WAIT_MS), signal: options.signal, cancelled: beforeLaunch });
+  let sink: Sink;
+  try { sink = await startSink(); } catch (error) { await lease.close(); throw error; }
+  lease.onRelease(() => sink.close());
+  if (options.signal?.aborted) { await lease.close(); throw beforeLaunch(); }
+  const browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink, lease);
   const named = Object.keys(options.origins), policy = shellPolicy(named);
   // The browser belongs to the shell before a ready adapter exists.
   let initializing = true, pendingInitializationOperations = 0, closed = false;
@@ -283,11 +307,23 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   // A WebSocket never connects: the shell answers it, records it and closes it.
   const socket = async (connection: WebSocketRoute): Promise<void> => { denied.push(connection.url()); await connection.close().catch(() => undefined); };
   let context: BrowserContext | undefined, page: Page | undefined;
-  const shutDown = async (): Promise<void> => { closed = true; try { await closeBrowser(browser); } finally { await sink.close(); } };
+  /** The browser's one close under the contract; the sink stays until the slot is released. */
+  const shutDown = (deadline: number = closeDeadline()): Promise<CloseResult> => { closed = true; return lease.close(deadline); };
+  // A start stopped by a close settles its browser's close by that close's deadline (decision 8).
   const closeOwned = async (primaryError: unknown): Promise<never> => {
-    let cleanupError: unknown; try { await shutDown(); } catch (error) { cleanupError = error; }
+    const requested = performance.now(), own = deadlineOf(options.signal) ?? closeDeadline(requested);
+    // A close that stops this start while it is already closing after its own failure hands down its
+    // deadline through the abort: the browser's one close then settles by the earlier one.
+    let detach = (): void => {};
+    const sooner = new Promise<{ result: CloseResult; deadline: number }>(resolve => {
+      const handed = (): void => { const later = deadlineOf(options.signal); if (later !== undefined && later < own) void lease.close(later).then(result => resolve({ result, deadline: later })); };
+      options.signal?.addEventListener('abort', handed, { once: true });
+      detach = () => options.signal?.removeEventListener('abort', handed);
+    });
+    const { result: closeResult, deadline } = await Promise.race([shutDown(own).then(result => ({ result, deadline: own })), sooner]);
+    detach();
     initializing = false;
-    throw new AdapterInitializationError(primaryError, cleanupError, denied, pendingInitializationOperations);
+    throw new AdapterInitializationError(primaryError, closeErrorOf(closeResult, deadline - requested), denied, pendingInitializationOperations, closeResult);
   };
   try {
     requireStart(); // Includes abort while the launch was pending.
@@ -322,7 +358,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   const rebuild = async <S>(scene: SceneIO<S>, before: S): Promise<boolean> => {
     const rebuilding = asOperation(async () => { await replacePage(requireLive); await scene.load(before); });
     try { await within(rebuilding.run, { timeoutMs: startMs }, shellStop); return true; }
-    catch { rebuilding.end(); await shutDown().catch(() => undefined); return false; }
+    catch { rebuilding.end(); await shutDown(); return false; }
     finally { rebuilding.end(); }
   };
   const lost = (cause: unknown): string => `The committed scene could not be rebuilt after ${String(cause)}; the browser shell closed`;
@@ -375,7 +411,7 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
       catch (error) { operation.end(); if (!await rebuild(scene, before)) throw new AdapterError('mirror_unavailable', lost(error)); throw error; }
       finally { operation.end(); }
     },
-    close: async () => { requireLive(); await shutDown(); },
+    close: async deadline => { requireLive(); return shutDown(deadline); },
   };
   const start = asOperation(() => initialize(shell));
   try {

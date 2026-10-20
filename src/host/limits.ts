@@ -5,6 +5,9 @@ export const HOST_LIMITS = Object.freeze({
   ratePerSecond: 50, rateBurst: 200, replyBytes: 4 * 1024 * 1024,
   sseClients: 8, sseQueuedBytes: 4 * 1024 * 1024, heartbeatMs: 15_000,
   networkProbeMs: 3_000,
+  // Browsers running and closing at once in this process (PADR-0050): five mirrors (an author host and
+  // four practice hosts), two overlapping recovery replacements and the start check's browser.
+  browsers: 8,
 });
 /** Each principal class has one host-wide bucket; claiming another surface adds no budget. */
 export class RequestBudget {

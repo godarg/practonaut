@@ -42,6 +42,7 @@ import { apiKeySourceValue } from './parsers.ts';
 import { instanceIdentities } from './identity.ts';
 import { MCP_TOOL_NAMES } from '../mcp/contracts.ts';
 import { spawnable } from '../platform/spawnable.ts';
+import { processLedger, type BrowserLedger } from '../adapters/browser/ledger.ts';
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA, BENCH_WORLD_FILE, BenchReportError, derivedPass, nativeFileName, presetIsolation, summarize, validateBenchReportV3, type AgentV3, type BenchReportV3, type BillingClass, type RunFailure, type SessionReportV3, type SessionRunV3 } from './report.ts';
 import { assertReferencesFit, libraryBenchWorld, libraryReferences, referencesText, worldContentHash, worldFromPackage, type BenchReference, type BenchWorld } from './world.ts';
 export { worldContentHash } from './world.ts';
@@ -142,7 +143,7 @@ export function countingController(inner: PracticeController, counters: RunCount
     png: context => inner.png(context),
     export: (request, context, options) => inner.export(request, context, options),
     subscribe: listener => inner.subscribe(listener),
-    close: () => inner.close(),
+    close: deadline => inner.close(deadline),
   };
   return controller;
 }
@@ -197,6 +198,19 @@ export function scrubPaths(text: string): string {
 export function infraNote(error: unknown): string {
   if (!(error instanceof Error)) return 'infrastructure failure';
   return scrubPaths(`${(error as Error & { code?: string }).code ?? 'error'}: ${error.message}`).slice(0, 256);
+}
+
+/** The note of a run that could not be judged while the process's browser budget refused a start
+ * during it — its host's mirror, or a recovery's replacement that left the session without one
+ * (PADR-0050): it names `browser_budget_exhausted`, so the bench counts the run as lost to the budget. */
+export function budgetNote(note: string | undefined): string {
+  if (note?.startsWith('browser_budget_exhausted')) return note;
+  return `browser_budget_exhausted: a browser start was refused during the run; ${note ?? 'infra_error'}`.slice(0, 256);
+}
+
+/** A run that could not be judged while the ledger refused a start names the budget in its note. */
+export function budgetOutcome<O extends { status: string; note?: string }>(outcome: O, refusedBefore: number, ledger: Pick<BrowserLedger, 'refusals'> = processLedger): O {
+  return outcome.status === 'infra_error' && ledger.refusals > refusedBefore ? { ...outcome, note: budgetNote(outcome.note) } : outcome;
 }
 
 /** Agent processes that are running now; a forced stop (second Ctrl+C) ends their groups at once. */
@@ -375,6 +389,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions, recorder); };
     let outcome: AgentOutcome; let checker: SessionRunV3['checker'] = null; let artifacts: SessionRunV3['artifacts']; let wallMs = 0; let finalActions = 0;
     let evidence: ClientEvidence | undefined; let logs: SessionRunV3['logs']; let logsTried = false;
+    const refusedBefore = processLedger.refusals;
     try {
       // A bench host publishes only the run's own task (and refuses every task or variant change, so
       // the judged session keeps the run's seed, and every hint, which nothing here would count),
@@ -447,6 +462,7 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     // Every external run binds its stdout, also one that ended before its agent ran (then null).
     if (external && !evidence) evidence = await readClientEvidence(options.agent, join(home, 'agent.stdout'), BRIDGE_TOOLS);
     if (evidence) noteReported(reported, evidence);
+    outcome = budgetOutcome(outcome, refusedBefore);
     const run = sessionRun({ runId, item, outcome, finalActions, counters, wallMs, reference: reference ? reference.steps.length : null, checker, artifacts, logs, evidence, kind: options.agent.kind });
     run.pass = derivedPass(run, options.mirror);
     runs.push(run);

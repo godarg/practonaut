@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classify, closePhases, requireAllPassed, tapResult } from '../../tools/amplify-host-deadline.ts';
+import { classify, closePhases, ledgerCounts, requireAllPassed, tapResult } from '../../tools/amplify-host-deadline.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'pn-amplify-tap-'));
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -81,4 +81,18 @@ test('--require-pass holds only when each test ran and passed in every attempt',
   assert.equal(requireAllPassed({ 'late-write': [late], 'core-serialization': [core, core] }, 2), 'late-write: expected 2 reports, found 1');
   assert.match(requireAllPassed({ 'late-write': [late, named('^nothing matches', 'none')], 'core-serialization': [core, core] }, 2) ?? '', /^late-write attempt 2: expected exactly one test named/);
   assert.match(requireAllPassed({ 'late-write': [late, late], 'core-serialization': [core, named('^(deadline expiration|fails beside)', 'failing')] }, 2) ?? '', /^core-serialization attempt 2: failed: fails beside them/);
+});
+
+test('the ledger rows the preload writes at exit are counted by statement, and forced ends from Playwright\'s log', () => {
+  const rows = [
+    { event: 'close-start', browser: 1 },
+    { event: 'ledger', launch: 'resolved', callers: { closed: 0, failed: 0, abandoned: 1, cancelled: 0 }, end: 'proven', slot: 'proof' },
+    { event: 'ledger', launch: 'resolved', callers: { closed: 0, failed: 0, abandoned: 2, cancelled: 0 }, end: 'pending', slot: 'held' },
+    { event: 'ledger', launch: 'resolved', callers: { closed: 1, failed: 0, abandoned: 0, cancelled: 0 }, end: 'proven', slot: 'proof' },
+    { event: 'ledger', launch: 'rejected', callers: { closed: 0, failed: 0, abandoned: 0, cancelled: 1 }, end: 'launch-rejected', slot: 'launch-wait' },
+  ];
+  const log = '# 2026-10-19T05:00:30.000Z pw:browser [pid=7] <will force kill>\n# 2026-10-19T05:00:30.001Z pw:browser [pid=7] <kill>\n';
+  assert.deepEqual(ledgerCounts(rows, log), { entries: 4, callers: { closed: 1, failed: 0, abandoned: 3, cancelled: 1 }, abandonedEnded: 1, abandonedPendingAtExit: 1, launchesRejected: 1,
+    released: { proof: 2, 'launch-wait': 1, unused: 0, heldAtExit: 1 }, forcedEnds: 1 });
+  assert.equal(ledgerCounts([{ event: 'close-end', ms: 40 }]).entries, 0, 'a run before PADR-0050 has no ledger rows');
 });

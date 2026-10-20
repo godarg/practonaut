@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { fixtureBenches, reportStates } from "../tests/support/report-states.ts";
 import { brokenIdentifiers } from "../tests/support/identifier-lines.ts";
+import { layoutDefects } from "../tests/support/report-layout.ts";
 
 // Writes screenshots and results to the ignored .local/player-a11y/; never into the source tree.
 const output = ".local/player-a11y";
@@ -206,7 +207,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
         const split = [...await page.evaluate(() => [
           ...[...document.querySelectorAll(".chip, .result, .outcome")].filter(element => (element as HTMLElement).innerText.includes("\n")).map(element => `"${element.textContent}" falls apart into pieces`),
           ...[...document.querySelectorAll(".data, .id, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
-        ]), ...(await page.evaluate(brokenIdentifiers)).map(word => `${word} breaks across lines`)];
+        ]), ...(await page.evaluate(brokenIdentifiers)).map(word => `${word} breaks across lines`), ...await page.evaluate(layoutDefects)];
         if (split.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: ${split.slice(0, 3).join("; ")}`);
         await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
       }

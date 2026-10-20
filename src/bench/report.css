@@ -144,6 +144,9 @@ td.text code{overflow-wrap:anywhere}
 .condition-status.pass{color:var(--pn-color-success-fg)}
 .condition-status.fail{color:var(--pn-color-danger-fg)}
 .condition-status.unknown{color:var(--pn-color-unknown-fg)}
+/* An operator and its operand move together (an atomic box, never wider than the line); only a pair
+   wider than a line wraps inside it, after the operator, and a word longer than a line breaks. */
+.formal .op{display:inline-block;max-width:100%}
 .formal{display:block;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);hyphens:none;overflow-wrap:break-word}
 .history{color:var(--pn-color-text-secondary)}
 
