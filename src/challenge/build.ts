@@ -18,6 +18,9 @@ import type { State, Task, TaskLimits, World } from '../world/types.ts';
 import { toState, type Diagram } from './diagram.ts';
 import { FAMILIES, MAKERS, generatorId, generatorVersion, type Difficulty, type Draft, type Family } from './families.ts';
 import { createRandom, deriveSeed } from './random.ts';
+import { ChallengeError } from './errors.ts';
+import { adversarialStates, layoutStressState } from './layout.ts';
+import { isLayoutPredicate } from '../world/types.ts';
 
 /** Seed ranges (PADR-0040): development, throwaway self-checks, held-out gate sets. */
 export const SEED_RANGES = Object.freeze({ dev: [1, 999], check: [10_000, 19_999], heldout: [1_000_000, 999_999_999] } as const);
@@ -31,6 +34,8 @@ export const FUEL_SHARE = 0.5;
 export const FAMILY_BENCH: Readonly<Record<Family, { maxActions: number; timeoutSeconds: number }>> = Object.freeze({
   repair: { maxActions: 50, timeoutSeconds: 600 }, injection: { maxActions: 50, timeoutSeconds: 600 }, 'long-horizon': { maxActions: 90, timeoutSeconds: 1200 },
   'limited-checks': { maxActions: 60, timeoutSeconds: 600 }, 'tight-budget': { maxActions: 50, timeoutSeconds: 600 },
+  // The cap is also the artifact-level object allowance of the layout units (PADR-0047 decision 5).
+  layout: { maxActions: 60, timeoutSeconds: 900 },
 });
 
 /** Objects an agent can add to a board within a run: one per action, up to the recommended bench
@@ -41,10 +46,7 @@ export const stressObjects = (family: Family, limits?: TaskLimits): number => Ma
 export const STRESS_SPLITS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 
 export interface Instance { taskId: string; task: Task; oracle: TaskOracle; goal: State; draft: Draft; fuel: number; minimal: boolean }
-export class ChallengeError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) { super(message); this.name = 'ChallengeError'; this.code = code; }
-}
+export { ChallengeError } from './errors.ts';
 
 export const taskIdOf = (family: Family, seed: number): string => `${family}-${seed}`;
 export const worldIdOf = (family: Family, set: string): string => `challenge-${family}-${set}`;
@@ -69,10 +71,16 @@ export function stressState(goal: State, steps: number, arrows: number): State {
   }
   return state;
 }
-/** The most expensive verdict over the family's stress boards (STRESS_SPLITS of stressObjects). */
+/** The boards a family's fuel check judges: the stress boards (STRESS_SPLITS of stressObjects) and,
+ * for the layout family, its own stress boards and the adversarial boards of PADR-0047 decision 5.4. */
+export function stressBoards(goal: State, family: Family, limits?: TaskLimits): Array<{ name: string; state: State }> {
+  const objects = stressObjects(family, limits);
+  const split = (make: (steps: number, arrows: number) => State) => STRESS_SPLITS.map(share => { const steps = Math.round(objects * share); return { name: `stress ${steps}/${objects - steps}`, state: make(steps, objects - steps) }; });
+  return family === 'layout' ? [...split((steps, arrows) => layoutStressState(goal, steps, arrows)), ...adversarialStates(goal, objects)] : split((steps, arrows) => stressState(goal, steps, arrows));
+}
+/** The most expensive verdict over the family's stress boards. */
 export function stressFuel(task: Task, goal: State, family: Family): number {
-  const objects = stressObjects(family, task.limits);
-  return Math.max(...STRESS_SPLITS.map(split => { const steps = Math.round(objects * split); return verdictFuel(task, stressState(goal, steps, objects - steps)); }));
+  return Math.max(...stressBoards(goal, family, task.limits).map(board => verdictFuel(task, board.state)));
 }
 /** Steps the checker spends on one verdict at most: every goal clause and every error class costed
  * separately (as if none short-circuited) on each counter-probe and on the judged board. */
@@ -88,10 +96,18 @@ function stepsOf(predicate: Task['goal'], state: State): number {
   return result.steps;
 }
 
+/** The family's draft for this seed, difficulty and attempt (its own seeded randomness). */
+export function draftFor(family: Family, seed: number, difficulty: Difficulty, tryIndex: number): Draft {
+  return MAKERS[family](createRandom(deriveSeed(generatorId(family), generatorVersion(family), seed, difficulty, tryIndex)), difficulty, seed);
+}
 /** One instance: the family's draft for this seed and attempt, built and checked. */
 function attempt(family: Family, seed: number, difficulty: Difficulty, worldId: string, tryIndex: number): Instance {
-  const random = createRandom(deriveSeed(generatorId(family), generatorVersion(family), seed, difficulty, tryIndex));
-  return buildDraft(MAKERS[family](random, difficulty, seed), worldId);
+  return buildDraft(draftFor(family, seed, difficulty, tryIndex), worldId);
+}
+/** Whether `generateInstance` draws again after this error (anything else is a fault, thrown). */
+export function redraws(error: unknown): boolean {
+  if (error instanceof ChallengeError) return error.code !== 'length_mismatch' && error.code !== 'board_text_leak';
+  return error instanceof AuthoringError && ['goal_too_complex', 'near_miss_unavailable', 'oracle_unavailable'].includes(error.code);
 }
 /** A draft built into an instance and checked; every check names its failure. `fuelBudget` is the
  * share of the checker's budget a verdict on a stress board may use. */
@@ -103,8 +119,14 @@ export function buildDraft(draft: Draft, worldId: string, fuelBudget = RUNTIME_L
     worldId, taskId, version: '1.0.0', title: draft.title, prompt: draft.prompt, hints: draft.hints,
     generatedBy: { id: generatorId(family), version: generatorVersion(family), seed, parameters: draft.parameters },
     ...(draft.limits ? { limits: draft.limits } : {}), ...(draft.pinUnchanged ? { pinUnchanged: true } : {}),
+    ...(draft.extraClauses ? { extraClauses: draft.extraClauses } : {}), ...(draft.nearMissCandidates ? { nearMissCandidates: draft.nearMissCandidates } : {}),
   });
   if (result.oracle.steps.length !== draft.expectedLength) throw new ChallengeError('length_mismatch', `${taskId}: the reference has ${result.oracle.steps.length} actions, the edits add up to ${draft.expectedLength}`);
+  // Every layout clause has a near miss that violates it and no other goal clause (PADR-0047 decision 9.5).
+  const clauses = result.task.goal.op === 'all' ? result.task.goal.args : [result.task.goal];
+  clauses.forEach((clause, index) => {
+    if (isLayoutPredicate(clause) && !result.oracle.nearMisses.some(miss => miss.kind === `layout-${clause.op}` && miss.violates.length === 1 && miss.violates[0] === index)) throw new ChallengeError('layout_near_miss', `${taskId}: no single-fault near miss for goal clause ${index + 1} (${clause.op})`);
+  });
   // Board text is data: it never becomes part of what we tell the agent.
   const ours = JSON.stringify([result.task.title, result.task.prompt, result.task.hints]);
   for (const text of draft.boardText) if (ours.includes(text)) throw new ChallengeError('board_text_leak', `${taskId}: board text reached the task text`);
@@ -124,8 +146,7 @@ export function generateInstance(family: Family, seed: number, difficulty: Diffi
     try { return attempt(family, seed, difficulty, worldId, tryIndex); }
     catch (error) {
       // A draft that does not fit (size, fuel, minimality, a goal the checker cannot hold) is drawn again.
-      if (error instanceof ChallengeError && error.code !== 'length_mismatch' && error.code !== 'board_text_leak') { last = error; continue; }
-      if (error instanceof AuthoringError && ['goal_too_complex', 'near_miss_unavailable', 'oracle_unavailable'].includes(error.code)) { last = error; continue; }
+      if (redraws(error)) { last = error; continue; }
       throw error;
     }
   }
@@ -152,6 +173,6 @@ export function generateSet(family: Family, seeds: readonly number[], difficulty
   const worldId = worldIdOf(family, set);
   const instances = seeds.map((seed, index) => generateInstance(family, seed, difficultyAt(difficulty, index), worldId));
   const world = worldOf(worldId, instances);
-  const oracles = instances.map(instance => verifyTask(taskWorld(world, instance.taskId), instance.taskId, instance.oracle.steps, instance.goal));
+  const oracles = instances.map(instance => verifyTask(taskWorld(world, instance.taskId), instance.taskId, instance.oracle.steps, instance.goal, instance.draft.nearMissCandidates ?? []));
   return { world, instances, oracles };
 }

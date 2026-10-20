@@ -3,19 +3,22 @@
  * diagram from a process vocabulary and derives the start by edits on distinct objects; a draft
  * names its expected reference length, which the build checks against from-scenes' plan.
  */
+import type { FromStatesOptions, NearMissCandidate } from '../authoring/from-scenes.ts';
 import type { Localized, TaskLimits } from '../world/types.ts';
+import { layout } from './layout.ts';
 import { buildProcess, cloneDiagram, labelsOf, widthFor, freeSpot, type Diagram, type DStep, type Topology } from './diagram.ts';
 import { applyEdits, applyEditsUpTo, COLOUR, duplicateStep, extraArrow, labelTypo, missingArrow, newPair, newStep, removedStep, renameTo, reversedArrow, staleStep, swappedLabels, wrongEnd, wrongFill, wrongFrame, wrongShape, wrongStroke, wrongStyle, type Edit } from './edits.ts';
 import type { Random } from './random.ts';
 import { DOMAINS, similarLabels, type Domain } from './vocabulary.ts';
 
-export const FAMILIES = ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget'] as const;
+/** The five families of 0.2.0 in roadmap order, then the spatial-layout family of 0.3.0 (PADR-0047). */
+export const FAMILIES = ['repair', 'injection', 'long-horizon', 'limited-checks', 'tight-budget', 'layout'] as const;
 export type Family = typeof FAMILIES[number];
 export type Difficulty = 1 | 2 | 3;
 /** Each family's generator version: part of every seed derivation and of `generatedBy`. A change to
  * what a family generates (its goals, prompts, limits or boards) bumps its version (PADR-0040); the
  * golden test in tests/unit/challenge.test.ts fails otherwise. */
-export const GENERATOR_VERSIONS: Readonly<Record<Family, string>> = Object.freeze({ repair: '1.0.0', injection: '1.1.0', 'long-horizon': '1.0.0', 'limited-checks': '1.0.0', 'tight-budget': '1.0.0' });
+export const GENERATOR_VERSIONS: Readonly<Record<Family, string>> = Object.freeze({ repair: '1.0.0', injection: '1.1.0', 'long-horizon': '1.0.0', 'limited-checks': '1.0.0', 'tight-budget': '1.0.0', layout: '1.0.0' });
 export const generatorVersion = (family: Family): string => GENERATOR_VERSIONS[family];
 export const generatorId = (family: Family): string => `challenge-${family}`;
 
@@ -32,6 +35,10 @@ export interface Draft {
   boardText: string[];
   /** The goal pins the place and size of every step the task leaves as it is ("change nothing else"). */
   pinUnchanged?: true;
+  /** Goal clauses after from-scenes' multiset (the layout family's size pin and layout clauses). */
+  extraClauses?: FromStatesOptions['extraClauses'];
+  /** Near misses besides from-scenes' own (the layout family's single-fault candidates). */
+  nearMissCandidates?: NearMissCandidate[];
 }
 
 const words = (en: string, de: string): Localized => ({ en, de });
@@ -213,6 +220,6 @@ export function tightBudget(random: Random, difficulty: Difficulty, seed: number
 }
 
 export const MAKERS: Readonly<Record<Family, (random: Random, difficulty: Difficulty, seed: number) => Draft>> = Object.freeze({
-  repair, injection, 'long-horizon': longHorizon, 'limited-checks': limitedChecks, 'tight-budget': tightBudget,
+  repair, injection, 'long-horizon': longHorizon, 'limited-checks': limitedChecks, 'tight-budget': tightBudget, layout,
 });
 export { cloneDiagram };
