@@ -112,7 +112,7 @@ The goal conditions — the sentence and the formal form of each — are in ever
 `check_result`, in the chosen language, exactly as the Player shows them. A layout condition
 ([PADR-0047](adr/0047-bounded-spatial-predicates.md)) also carries `layout`: its operator and
 parameters with each selection as `{ type, scope, count }` (`scope` is `{ "kind": "all" }`,
-`{ "kind": "outside" }` or `{ "kind": "frame", "name" }`) and, for `within`, the canvas — the same field
+`{ "kind": "outside" }` or `{ "kind": "frame", "name" }`) and, for `within`, the layout area (field `canvas`) — the same field
 the Player draws its judged geometry from. Layout conditions judge each step by its box and each arrow
 as the straight line between the centres of its two steps, however it is drawn. The server also offers the
 current task as the resource `practonaut://task` (title, prompt and conditions in English and

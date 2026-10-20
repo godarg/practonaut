@@ -216,9 +216,13 @@ tolerance by a public clause, as from-scenes pins resized steps (chosen for the 
   validated: `true` (every live object of `type`); `as.frameId = null` (outside every frame); or the
   multiset's own frame clause `exists frame f: f.id = as.frameId and f.name = "<name>"` (in a live
   frame with that name). `count` is the number of objects the selection must contain; a different
-  number makes the clause false. Minimum counts make every operator non-vacuous by construction:
-  `noOverlap`, `aligned` and `arrowsNoCrossing` 2, `evenlySpaced` 3, `within` 1, `arrowsClearOfSteps`
-  1 arrow and 1 step. The maximum is 256.
+  number makes the clause false. Minimum counts rule out empty selections: `noOverlap`, `aligned` and
+  `arrowsNoCrossing` 2, `evenlySpaced` 3, `within` 1, `arrowsClearOfSteps` 1 arrow and 1 step. They do
+  not make a clause about anything (corrected after the implementation review, geometry-4):
+  `arrowsNoCrossing` over A→B and B→A holds wherever the two steps lie, since arrows between the same
+  two steps are not compared. World validation therefore refuses a layout goal clause the task's start
+  already satisfies, as the generator does by construction. The maximum is 256; a frame name in a
+  selection is at most 256 characters of display text, like a state's frame name and the public overlay.
 - **Range.** Every box the clause reads — selected steps and the end steps of selected arrows — must
   have all four edges within ±1 000 000. Within that range, doubled coordinates stay within ±2·10⁶,
   differences within 4·10⁶ and every cross product below 3.2·10¹³, far inside the 2⁵³ of exact
@@ -324,7 +328,15 @@ arbitrary hand-written goals, whose cost stays their author's to check.
    the same 60 objects: new arrows on the most expensive pair of goal steps, look-alike steps with a
    goal step's label, style and frame, half of each, and for artifact units frames named like a lane
    holding look-alike steps. The measured probe (Context) peaks at 28.0 % on a stress board; the
-   adversarial boards stay below it.
+   adversarial boards stay below it. These boards are not the costliest an agent can reach (review of the
+   implementation, geometry-3: 20 look-alikes of a step in the other lane and 40 arrows into it cost
+   more), so the generator also searches: one look-alike of every goal step in every frame and outside
+   frames, and one arrow on every ordered pair of goal steps (self-loops included) and between a
+   look-alike and every goal step, each with ids sorting before and after the goal's, are costed; the
+   two costliest look-alikes and arrows are combined in splits of 0, 5, … 60. The recorded fuel is the
+   maximum over all these boards, and with a 5 % margin for compositions the search does not try
+   (`LAYOUT_SEARCH_MARGIN`; random compositions came to at most 0.1 % over the searched maximum) it
+   must stay within half the budget.
 
 If exhaustion or `checker_invalid` still occurs on a judged board, a bound was wrong: the run stays
 `infra_error`, counts toward the 5 % void rule and triggers a re-assessment. A cost bug must void a
@@ -360,9 +372,14 @@ phrase fits every sentence.
 | noOverlap, gap g | No two of the 16 steps come closer than 20 px: their boxes are at least 20 px apart horizontally or vertically. | Von den 16 Schritten kommen sich keine zwei näher als 20 px: zwischen ihren Boxen liegen waagerecht oder senkrecht mindestens 20 px. |
 | aligned (y, centre) | The 8 steps in “Lane A” sit in one row: the y-coordinates of their centres differ by at most 4 px. | Bei den 8 Schritten in „Lane A“ weichen die y-Koordinaten der Mittelpunkte höchstens 4 px voneinander ab: sie stehen in einer Zeile. |
 | evenlySpaced (x) | The 8 steps in “Lane A” stand side by side without overlapping horizontally, and the horizontal gaps between neighbouring boxes differ by at most 4 px. | Bei den 8 Schritten in „Lane A“ überlappen sich die Boxen waagerecht nicht, und die waagerechten Lücken zwischen benachbarten Boxen weichen höchstens 4 px voneinander ab. |
-| within | Every box of the 16 steps lies entirely inside the canvas from (40, 40) to (1980, 500). | Alle Boxen von den 16 Schritten liegen ganz innerhalb der Arbeitsfläche von (40, 40) bis (1980, 500). |
-| arrowsNoCrossing | No two of the 17 arrows cross or touch. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn; arrows that share a step may meet at its centre, and arrows between the same two steps are not compared. Every arrow must be attached at both ends. | Von den 17 Pfeilen kreuzen oder berühren sich keine zwei. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist; Pfeile mit einem gemeinsamen Schritt dürfen sich in dessen Mittelpunkt treffen, Pfeile zwischen denselben zwei Schritten werden nicht verglichen. Jeder Pfeil muss an beiden Enden angebunden sein. |
-| arrowsClearOfSteps | None of the 17 arrows touches the box of any of the 16 steps other than the two it joins. An arrow counts as the straight line between the centres of its two steps, however it is drawn. Every arrow must be attached at both ends. | Keiner von den 17 Pfeilen berührt die Box eines von den 16 Schritten außer den beiden, die er verbindet. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten seiner beiden Schritte, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein. |
+| within | Every box of the 16 steps lies entirely inside the layout area from (40, 40) to (1980, 500). | Alle Boxen von den 16 Schritten liegen ganz innerhalb des Layoutbereichs von (40, 40) bis (1980, 500). |
+| arrowsNoCrossing | No two of the 17 arrows cross or touch; arrows that share a step may meet at its centre, and arrows between the same two steps are not compared. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn. Every arrow must be attached at both ends. | Von den 17 Pfeilen kreuzen oder berühren sich keine zwei; Pfeile mit einem gemeinsamen Schritt dürfen sich in dessen Mittelpunkt treffen, Pfeile zwischen denselben zwei Schritten werden nicht verglichen. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein. |
+| arrowsClearOfSteps | None of the 17 arrows touches the box of any of the 16 steps other than the two it joins. An arrow counts as the straight line between the centres of the two steps it joins, however it is drawn. Every arrow must be attached at both ends. | Keiner von den 17 Pfeilen berührt die Box eines von den 16 Schritten außer den beiden, die er verbindet. Ein Pfeil zählt als gerade Linie zwischen den Mittelpunkten der beiden Schritte, die er verbindet, wie auch immer er gezeichnet ist. Jeder Pfeil muss an beiden Enden angebunden sein. |
+
+The rectangle `within` names is the **layout area** ("Layoutbereich") in every text, a term of its own in
+the design language (§3): "canvas" is Excalidraw's drawing surface and "Arbeitsfläche" the board. The two
+arrow clauses end in the same two sentences word for word, so a list of conditions (the Goal card, the
+report) shows them under the first only.
 
 Other forms: "the 2 steps outside any frame" ("den 2 Schritten außerhalb von Rahmen"); anchors "top
 edges", "bottom edges", "left edges", "right edges", "the x-coordinates of their centres"
@@ -389,11 +406,13 @@ stronger feedback channel than the others and change what the gate measures.
   (`replies.ts:36`, `bridge.ts:60`), and a test asserts that a layout task's conditions are
   deep-equal in the Player view and over MCP.
 - **Player.** From the public field and the public board, board mode draws for every layout task,
-  before and after a check: the judged segments of the selected arrows as thin dashed lines between
-  centres; a self-loop's judged point as a small ring at its step's centre, beside the curve the board
-  draws today; the box of every ellipse or diamond as a dashed outline; each `within` canvas as a
-  dashed outline labelled with its corners. The real editor is never drawn over; in editor mode a note
-  names the canvas and points to board mode by a keyboard-reachable control. The Player shows no
+  before and after a check, in thin solid neutral lines (never dashed: dashes mean uncertainty in the
+  design language, §7.4): the judged segments of the selected arrows between centres, cut around every
+  label; a self-loop's judged point as a ring at its step's centre, beside the curve the board draws
+  today, under the step's label, which keeps a halo; the box of every ellipse or diamond; each layout
+  area outlined with its corners under it; and each frame as its own outline, since the conditions are
+  about lanes. The real editor is never drawn over; in editor mode the top of the Goal card names the
+  layout area and points to board mode by a keyboard-reachable control. The Player shows no
   offending objects (decision 6), so the person and the agent get the same check. P5b designs the
   overlay under `docs/design/design-language.md` §13 and looks at it per the review protocol.
 - **Report.** The final board (engine picture or schematic) and the example target carry the same
@@ -405,9 +424,13 @@ stronger feedback channel than the others and change what the gate measures.
   multiset names them); for a loose end, the arrow; for `noOverlap`, the overlapping pairs; for
   `aligned`, the two steps with the extreme anchors; for `evenlySpaced`, a pair whose projections
   overlap, else the largest and the smallest gap; for `within`, the steps outside; for the arrow
-  clauses, the crossing pairs or the touched steps. The caption says that dashed lines, boxes and the
-  canvas are drawn from the judged state and that the checker judges straight lines between step
-  centres, not the arrows as drawn.
+  clauses, the crossing pairs or the touched steps. A mark is labelled by its condition and its place
+  ("7.1"), and its line gives the measured numbers (how far apart, by how much two anchors differ, the
+  smallest and the largest gap). Each caption names the parts its judged layer shows and their source
+  (the final board's judged state; for the target, what the checker would judge on the reference
+  board); the pair note says once that the checker judges straight lines between step centres, not the
+  arrows as drawn. Judged lines never cross a text of the picture, and the export's dark filter never
+  reaches the overlay.
 - **One geometry, one implementation.** The marks come from the same pure geometry analysis in
   `src/predicate` that decides the verdict; a clause is false exactly when the analysis returns at
   least one reason. The independent second implementation lives only in `tests/support/` as an
@@ -454,13 +477,16 @@ at artifact level, PADR-0044 decision 1; the bench's cap bounds session runs, de
 5. **Near misses.** From-scenes' near misses, plus for every layout clause at least one near miss of
    kind `layout-<operator>` that violates that clause and no other goal clause. Candidates keep the
    size pin: one step moved by tolerance + 1 across its row or along it, two steps of a lane swapped
-   (all steps share one size), a whole lane shifted towards the other lane or out of the canvas. The
-   generator keeps candidates whose violated set is exactly that clause; a clause other than
-   `noOverlap` without one is not stated, and an instance whose `noOverlap` has none is drawn again.
+   (all steps share one size), a whole lane shifted towards the other lane or out of the layout area.
+   The generator keeps candidates whose violated set, among the clauses it can state (`noOverlap` and
+   those the start violates), is exactly that clause; a clause other than `noOverlap` without one is not
+   stated, and an instance whose `noOverlap` has none is drawn again.
    Every near miss must fail in a checker process (PADR-0040 baselines).
 6. **Prompt.** States that the layout must be tidied so that every listed condition holds, names the
-   canvas, says that arrows are judged as straight lines between step centres however they are routed,
-   that every arrow must be attached to steps at both ends, and that step sizes stay as they are. The
+   layout area when `within` is stated, says that arrows are judged as straight lines between step
+   centres however they are routed when an arrow clause is stated, that every arrow must be attached to
+   steps at both ends, and that step sizes stay as they are; the hints name only the numbers the stated
+   clauses carry. The
    conditions carry the sentences of decision 6. Board text never reaches title, prompt or hints
    (PADR-0040).
 7. **Fuel.** Decision 5.4; layout stress boards place their stress steps on a free grid outside the
@@ -632,51 +658,75 @@ not world content.
 ## Implementation (P5b, 2026-10-20)
 
 **Where.** Vocabulary and validation: `src/world/types.ts`, `schema.ts`, `limits.ts`
-(`LAYOUT_LIMITS`) and `src/world/layout.ts` (the position rule and the three selection shapes, shared by
-world validation and the evaluator). Geometry and charges: `src/predicate/layout.ts` (`layoutCharge`,
-`layoutReasons`, the doubled-coordinate analysis); the evaluator's meter (`createMeter`) refuses a
-charge that is not a non-negative safe integer. Narration and overlay: `src/host/layout-text.ts`,
-`PublicCondition.layout` (`src/host/protocol.ts`), carried by `publicConditions` into the Player view,
-the check result and MCP (`CompactCondition`, the bridge's strict schema). Player:
-`src/player/ui/board-art.ts` (`JudgedLayer`) and `main.ts`. Report: `src/bench/details.ts`
-(`layoutMarks`), `schematic.ts` (`judgedOverlay`), `render.ts` and `report-text.ts`. Reader:
-`src/checker/scene.ts` (`roundedSpan`, the report's `geometry`). Authoring: `fromStates`'
-`extraClauses` and `nearMissCandidates`, `verifyTask`'s supplied candidates. Family:
-`src/challenge/layout.ts` (generator, stress and adversarial boards), `self-check.ts`,
+(`LAYOUT_LIMITS`) and `src/world/layout.ts` (the position rule, the three selection shapes and the
+frame-name limit, shared by world validation and the evaluator); `validateWorld` also refuses a start
+that a variant offset or `resize_step` takes out of range and a stated layout clause the start
+satisfies. Geometry and charges: `src/predicate/layout.ts` (`layoutCharge`, `layoutReasons`, the
+doubled-coordinate analysis); the evaluator's meter (`createMeter`) refuses a charge that is not a
+non-negative safe integer, and `evaluateEach` validates each clause once for many boards. Narration and
+overlay: `src/host/layout-text.ts` (`ARROW_RULE`), `PublicCondition.layout` (`src/host/protocol.ts`),
+carried by `publicConditions` into the Player view, the check result and MCP (`CompactCondition`, the
+bridge's strict schema). Player: `src/player/ui/board-art.ts` (`JudgedLayer`, lanes),
+`ui/rect-union.ts` (the union of label areas as disjoint rectangles, shared with the report) and
+`main.ts`. Report: `src/bench/details.ts` (`layoutMarks`, `openingSide`), `schematic.ts`
+(`judgedOverlay`, `schematicText`), `svg.ts` (the export's texts and outlines, `exportHalo`),
+`render.ts` and `report-text.ts`. Reader: `src/checker/scene.ts` (`roundedSpan`, the report's
+`geometry`). Authoring: `fromStates`' `extraClauses` and `nearMissCandidates`, `verifyTask`'s supplied
+candidates. Family: `src/challenge/layout.ts` (generator, stress and adversarial boards,
+`withAdditions`), `build.ts` (`layoutSearch`, `LAYOUT_SEARCH_MARGIN`), `self-check.ts`,
 `tools/challenge-self-check.ts`; `FAMILIES`, `GENERATOR_VERSIONS`, `FAMILY_BENCH` (cap 60) and `MAKERS`
-gain `layout`, the shape the gate tool (PR #71) reads.
+gain `layout`, the shape the gate tool (PR #71) reads; the 0.2.0 round declaration keeps
+`FAMILIES_020`.
 
 **Measured** (no language model; arm64 macOS, Node 22). A second implementation in
 `tests/support/layout-oracle.ts` (BigInt rationals, parametric intersection, Liang–Barsky clipping,
 pixel enumeration) agrees with the product on 12,000 random small boards, also with ids permuted, and
-every charge equals the formula. The self-check over development seeds 1–100 (mixed, built and checked):
-100 instances, no rejection; parts chain 100, branch 35, fork 33, loop 22; stated kinds noOverlap 100,
-evenlySpaced 100, aligned 92, within 74, arrowsNoCrossing 40, arrowsClearOfSteps 20. Development set of
-26 (seeds 1–26): references 26/26 and near misses 241/241 failing in separate checker processes;
-with the real Excalidraw mirror `oracle` 26/26, `random` 0/26, both reports re-verified. The costliest
-verdict on a stress or adversarial board: 268,721 steps (26.9 % of 10⁶) in the set; 316,801 (31.7 %)
-over the 100 self-check instances. World validation became about 10 % slower on the library world
-(30 validations: 566 ms against 511 ms without the six schema branches).
+every charge equals the formula. The self-check over development seeds 1–100 at each difficulty, after
+the review of the implementation (counts of 100; combinations as instances with the part that state the
+clause):
+
+| Difficulty | Parts (plain chain, branch, fork, loop) | Lanes 1 / 2 | Clauses O W X C A1 E1 A2 E2 | branch, fork, loop × C | branch, fork, loop × X | one lane × C |
+|---|---|---|---|---|---|---|
+| 1 | 51, 23, 23, 12 | 49 / 51 | 100 44 30 35 63 91 30 41 | 6/23, 12/23, 6/12 | 18/23, 12/23, 6/12 | 13/49 |
+| 2 | 21, 41, 37, 32 | 0 / 100 | 100 76 59 39 65 90 85 94 | 6/41, 13/37, 4/32 | 27/41, 27/37, 25/32 | — |
+| 3 | 14, 40, 46, 29 | 0 / 100 | 100 100 46 34 79 100 97 91 | 5/40, 14/46, 9/29 | 24/40, 23/46, 11/29 | — |
+| mixed | 32, 35, 33, 22 | 17 / 83 | 100 74 40 38 67 93 71 76 | 8/35, 12/33, 5/22 | 21/35, 19/33, 11/22 | 3/17 |
+
+Every difficulty passes in build mode (100 instances each, no rejection). Before the review
+`arrowsClearOfSteps` was stated in 20 of the mixed 100 and never with a branch or a loop. The recorded
+fuel (stress, adversarial and searched boards) peaks at 333,941 steps over the 100 mixed instances
+(33.4 % of 10⁶; 35.1 % with the 5 % margin) and at 286,321 in the development set of 26 (28.6 %;
+30.1 %); before the search the maxima were 316,801 and 268,721, and the reviewers' composition cost
+104,960 on instance 1/1 against its recorded 88,122. Development set of 26 (seeds 1–26): references 26/26 and near misses 246/246 failing in separate checker processes; with the real Excalidraw mirror `oracle` 26/26, `random` 0/26, both reports re-verified.
+World validation became about 10 % slower on the library world (30 validations: 566 ms against 511 ms
+without the six schema branches).
 
 **Deviations from the text, decided while building.**
 - The evaluator also refuses a layout clause in a place decision 1.2 forbids, or with another
-  selection shape, with `checker_invalid` (a predicate can be evaluated outside a world), besides world
-  validation's `E_WORLD_INVALID`.
+  selection shape or frame name, with `checker_invalid` (a predicate can be evaluated outside a world),
+  besides world validation's `E_WORLD_INVALID`.
 - Decision 5.4's "most expensive pair of goal steps" and look-alike source are the pair and the step
   whose ids sort last (where every `exists` over steps scans longest); each adversarial board comes
-  twice, with extra ids sorting before and after the goal's.
+  twice, with extra ids sorting before and after the goal's. The search of decision 5.4 was added after
+  the review of the implementation.
 - Near-miss candidates beyond decision 9.5's examples: the columns compressed below the gap
-  (noOverlap), the whole drawing past the canvas (within), a lane mirrored, a lane moved by whole
+  (noOverlap), the whole drawing past the layout area (within), a lane mirrored, a lane moved by whole
   columns and a mirrored lane moved closer (the arrow clauses).
-- The prompt names the canvas only when `within` is stated (it states nothing the goal does not hold);
-  difficulty 3's aspect change lays both lanes out as one long row.
-- The self-check counts topology parts (chain, branch, fork, loop) and clause kinds, each against the
-  10 % floor; it lives in its own tool so that PR #71's rewrite of `tools/challenge.ts` does not
-  conflict.
-- The Player draws the judged segments over the cards, clipped around each label (a line through a
-  label would read as struck through); a self-loop's ring sits under its label. The report puts the
-  canvas's corners under its outline (a frame's name sits at its top-left). `ChallengeError` moved to
-  `src/challenge/errors.ts` (re-exported from `build.ts`).
+- The prompt names the layout area only when `within` is stated and the arrow rule only with an arrow
+  clause; hint 3 lists only the numbers the stated clauses carry. Difficulty 3's aspect change lays both
+  lanes out as one long row.
+- The self-check counts topology parts (plain chain, branch, fork, loop), lanes, clauses per lane and
+  the combinations a branch, fork or loop (or one lane) has with the arrow clauses, each against the
+  10 % floor of the instances it applies to, per difficulty; it lives in its own tool so that PR #71's
+  rewrite of `tools/challenge.ts` does not conflict.
+- The Player draws the judged segments over the cards, cut around the union of the label areas (a
+  line through a label would read as struck through); a self-loop's ring, taller than the label's
+  letters, lies under the label, which keeps a halo in its card's fill; each frame of a layout task is
+  drawn as its own outline. The report cuts its judged lines around every text of the picture (for an
+  export, the texts it reads from the file), places the layout area's corners at the first of four
+  places clear of texts, outlines and steps, draws a ringed step's label again over the ring, and opens
+  each scrolling picture at the end of its own first difference when a phone shows a step there.
+  `ChallengeError` moved to `src/challenge/errors.ts` (re-exported from `build.ts`).
 
 **What remains.** The draw.io reader of PR #70 already rounds by edges in absolute page coordinates
 and refuses a collapsed step outright; once #70 lands it can use `roundedSpan` and report collapsed
@@ -684,6 +734,42 @@ and rotated cells like the Excalidraw reader. The artifact-mode reading rules (n
 a rotated or collapsed step, a box edge outside ±1,000,000 and the object allowance of decision 5.3)
 and the artifact-level schematic that draws every judged box come with artifact mode; the reader's
 `geometry` list is their seam. The pre-probe of `layout.practonaut` is a later step with a model agent.
+
+## Review of the implementation (PR #74, 2026-10-20)
+
+Three independent reviews of the implementation at `7ae1a52`: OpenAI Codex (one minor finding), a Claude
+Opus workflow with a geometry and a generator lens and a skeptic (one major and ten minor findings; no
+mismatch in 54,020 further fuzz boards, integer safety, charges and the oracle's independence
+confirmed) and a design review of the rendered states (round L1: conditional, eight majors and seven
+minors). Every finding and its disposition; each fix has a test or a rendered check that fails on
+`7ae1a52`:
+
+| # | Finding | Disposition |
+|---|---|---|
+| generator-single-fault-overstrict (major) | The single-fault check counted all eight candidate clauses, also those the start satisfies, so valid near misses were dropped and `arrowsClearOfSteps` was never stated with a branch or a loop | Adopted: counted against `noOverlap` and the clauses the start violates; C in 246 of 600 mixed drafts (was 105), chain with branch 35/125 and with loop 14/59 (were 0) (decision 9.5) |
+| geometry-1, geometry-2 | The start range ignored what `resize_step` reaches and the variant offsets | Adopted: checked in every variant case and at `resize_step`'s largest size (decision 1.5, world format) |
+| geometry-3, generator-adversarial-not-worst | The adversarial boards are not the costliest 60-object composition | Adopted: the search and the 5 % margin of decision 5.4; maximum 33.4 % of the budget (35.1 % with the margin); `FUEL_SHARE` stays 0.5 |
+| geometry-4 | "Minimum counts make every operator non-vacuous" is wrong (A→B, B→A) | Adopted: the record is corrected and `validateWorld` refuses a stated clause the start satisfies (decision 2) |
+| selfcheck-marginals, selfcheck-difficulty1 | The self-check counted marginals only and only the mixed set | Adopted: lanes, clauses per lane and planned combinations, per declarable difficulty; a collapsed generator fails it by name |
+| bridge-frame-name-256 | A world could name a frame of any length that the bridge refuses over 256 | Adopted: at most 256 characters of display text in validation and the evaluator |
+| fixed-narration-claims | Fixed hints and the prompt named a layout area and tolerances an instance may not state | Adopted: they name only what is stated (decision 9.6) |
+| family-enum-020 | The 0.2.0 round declaration admitted `layout` | Adopted: `FAMILIES_020` |
+| Codex | `evenodd` cut-outs reappear where two label areas overlap | Adopted: the union is made disjoint first (Player and report) |
+| L1-F1 | "Arbeitsfläche" is the board in German and "canvas" Excalidraw's own | Adopted: "layout area" / "Layoutbereich", a §3 term |
+| L1-F2 | The self-loop ring runs through its label and is not named | Adopted: under the label with a halo, taller than the letters, named under the board and in the captions |
+| L1-F3 | Dashes get a third meaning | Adopted: thin solid neutral lines; §7.4 unchanged in meaning (it now says judged geometry is never dashed) |
+| L1-F4 | Overlay lines cross the export's text | Adopted: cut around every text read from the export; the corner label avoids texts, outlines and steps |
+| L1-F5 | The dark filter inverts the overlay | Adopted: only the export's own content is filtered; `test:a11y` checks overlay text for a filter and its contrast |
+| L1-F6 | The target opens empty on a phone | Adopted: each picture opens at the end of its own first difference when a phone shows a step there, else at the other end (a static page has no script to scroll to an x) |
+| L1-F7 | The target caption names the wrong source; the rule is said four times | Adopted: the target names the reference board; the pair note says the rule once; the shared arrow rule shows once in the conditions |
+| L1-F8 | The editor note is below the fold at 1280 | Adopted: at the top of the Goal card, in view without scrolling |
+| L1-F9 | The layout area's label sets the board's scale | Adopted: subhead, written under the outline |
+| L1-F10 | Legend lines do not say what differs or by how much | Adopted: axis or anchor and the measured numbers |
+| L1-F11 | Mark numbers clash with condition numbers | Adopted: "7.1" labels; marks never cover each other or a label |
+| L1-F12 | "Checker" in German | Adopted: "Prüfer" |
+| L1-F13 | The editor note reads as if lines must stay inside; the button is long and names another thing in German | Adopted: the layout area in a sentence of its own; "Show on board" / "Auf Arbeitsfläche zeigen" |
+| L1-F14 | The Goal card repeats the arrow rule | Adopted: the two arrow clauses end in the same sentences, shown once |
+| L1-F15 | One frame named "Lane A · Lane B" | Adopted: each frame of a layout task is its own outline |
 
 ## Re-assessment triggers
 

@@ -474,12 +474,14 @@ normally, come first and open, each with:
   share one viewBox, so they are drawn at one scale; text in them is never smaller than 12 px (a wider
   board scrolls sideways in its frame, and the page says so); in dark mode both use Excalidraw's own
   dark-mode colours. For a task with layout conditions ([PADR-0047](../adr/0047-bounded-spatial-predicates.md))
-  both pictures carry the judged geometry, drawn from the judged state like the group outline: each
-  canvas dashed with its corners, the box of every ellipse or diamond, the arrows as dashed straight
-  lines between step centres (the checker judges those, not the arrows as drawn) and a self-loop as a
-  ring at its step's centre; for each unmet layout clause the final board carries numbered marks on up
-  to five offending objects, each explained by one legend line in words ("“Done” lies outside the
-  canvas", "the arrows … cross or touch");
+  both pictures carry the judged geometry in thin solid lines, drawn like the group outline from the
+  final board's judged state and, on the target, from the reference board: each layout area with its
+  corners, the box of every ellipse or diamond, the arrows as straight lines between step centres (the
+  checker judges those, not the arrows as drawn; the pair note says so once) and a self-loop as a ring
+  at its step's centre, its label drawn again over it; judged lines never cross the picture's text. For
+  each unmet layout clause the final board carries marks labelled by condition ("7.1") on up to five
+  offending objects, each explained by one legend line in words with its numbers ("the y-centres of
+  “Ship” and “Pack” differ by 100 px (at most 4)", "“Done” lies outside the layout area");
 - the **trajectory**: every act, undo, reset and check in order, "accepted (revision n)" or rejected with the
   reason in words, with the conditions met afterwards and which ones changed;
 - the **call log** (calls by tool, result bytes, bridge and client medians) and the client's own
@@ -837,32 +839,41 @@ under lane A from right to left), 6–9 / 9–12 / 12–16 steps of one size, a 
 and, by seed, a decision branch, a fork and merge or a loop back whose second target is in the other
 lane. The goal is from-scenes' multiset (no position pins), a size pin ("every step keeps its size:
 W × H px (± 4 px)") and layout clauses with their counts: always `noOverlap` (gap 20 / 30 / 40 px), and
-where the start violates them and a single-fault near miss exists, `within` the canvas (the
-reference's bounding box plus 120 / 60 / 20 px), `arrowsNoCrossing`, `arrowsClearOfSteps`, and per lane
+where the start violates them and a near miss violates them alone among the stated clauses, `within`
+the layout area (the reference's bounding box plus 120 / 60 / 20 px), `arrowsNoCrossing`, `arrowsClearOfSteps`, and per lane
 `aligned` (y, centre, ± 4 px) and `evenlySpaced` (x, ± 4 px) selected by the lane's frame name. The
-start displaces 3 / 5 / 7 steps (difficulty 3 also lays both lanes out as one long row, so the canvas
-does not fit the start's arrangement); the reference is one `move_step` per displaced step. Every
+start displaces 3 / 5 / 7 steps (difficulty 3 also lays both lanes out as one long row, so the layout
+area does not fit the start's arrangement); the reference is one `move_step` per displaced step. Every
 layout clause has a near miss of kind `layout-<operator>` that violates it and no other goal clause.
 No task limits; the recommended `--max-actions` is 60, which is also the family's artifact-level object
 allowance (PADR-0047 decision 5). The fuel check judges, besides the five stress boards (stress steps
 on a free grid, arrows between neighbours), the adversarial boards of decision 5.4: 60 arrows on one
 pair of goal steps, 60 look-alike steps, half of each, and 30 frames named like a lane holding 30
-look-alike steps, each with ids before and after the goal's. The distribution self-check draws
-instances exactly as a set would and fails when a planned topology part (chain, branch, fork, loop)
-or stated clause kind is under 10 % of them:
+look-alike steps, each with ids before and after the goal's, and a search over what 60 actions can
+add: one look-alike of every step in every frame (and outside frames) and one arrow on every ordered
+pair of steps are costed, then the two costliest of each are combined in splits of 0, 5, … 60. The
+recorded fuel is the most expensive of all these boards; with a 5 % margin for compositions the search
+does not try it must stay within half the checker's budget. The distribution self-check draws
+instances exactly as a set would, at each declarable difficulty, and fails when a planned topology
+part (plain chain, branch, fork, loop), a lane count, a stated clause per lane or a planned
+combination (branch, fork or loop with `arrowsClearOfSteps` or `arrowsNoCrossing`, one lane with
+`arrowsClearOfSteps`) is under 10 % of the instances it applies to:
 
 ```bash
-node tools/challenge-self-check.ts                 # 100 development seeds, built and checked
+node tools/challenge-self-check.ts                 # 100 development seeds per difficulty (1, 2, 3, mixed), built and checked
 node tools/challenge.ts generate layout --set dev --count 26 --out .local/challenge/dev/layout
 ```
 
-Measured 2026-10-20 (no language model): the self-check over seeds 1–100 (mixed difficulty, built)
-gave 100 instances and no rejection; parts chain 100, branch 35, fork 33, loop 22; stated kinds
-noOverlap 100, evenlySpaced 100, aligned 92, within 74, arrowsNoCrossing 40, arrowsClearOfSteps 20. A
-development set of 26 (seeds 1–26, mixed): `verify` passed 26/26 references and failed 241/241 near
-misses in separate checker processes; with the real Excalidraw mirror (`--mirror required`) `oracle`
-passed 26/26 and `random` 0/26 (both reports re-verified); the costliest verdict on a stress or
-adversarial board was 268,721 steps (27 % of the budget). The pre-probe of `layout.practonaut` is a
+Measured 2026-10-20 (no language model): the self-check over seeds 1–100, built, passed at difficulty
+1, 2, 3 and mixed with 100 instances each and no rejection. Mixed: parts plain chain 32, branch 35,
+fork 33, loop 22, one lane 17; stated clauses noOverlap 100, within 74, arrowsNoCrossing 40,
+arrowsClearOfSteps 38, lane 1 aligned 67 and evenlySpaced 93, lane 2 aligned 71 and evenlySpaced 76;
+`arrowsClearOfSteps` with a branch 8/35, a fork 12/33, a loop 5/22 and one lane 3/17 (PADR-0047 lists
+every difficulty). A development set of 26 (seeds 1–26, mixed): `verify` passed 26/26 references and
+failed 246/246 near misses in separate checker processes; with the real Excalidraw mirror
+(`--mirror required`) `oracle` passed 26/26 and `random` 0/26 (both reports re-verified). The
+recorded fuel peaks at 286,321 steps in the set (28.6 % of the budget, 30.1 % with the search margin)
+and at 333,941 over the 100 self-check instances (33.4 %, 35.1 %). The pre-probe of `layout.practonaut` is a
 later step with a model agent.
 
 **A round** (preregistered in PADR-0040) has 3 development instances × 3 agents (9 model runs) and

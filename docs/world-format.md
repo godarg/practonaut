@@ -308,7 +308,7 @@ positions, on boxes and on straight lines between step centres, in exact integer
 | `noOverlap` | `select` (steps, count ≥ 2), `gap` 0–10,000 | every two selected boxes are at least `gap` apart horizontally or vertically (with gap 0 edges and corners may touch) |
 | `aligned` | `select` (steps, ≥ 2), `axis` `x`/`y`, `anchor` `start`/`center`/`end`, `tolerance` 0–10,000 | the anchors (left or top edge, centre, right or bottom edge) differ by at most `tolerance` |
 | `evenlySpaced` | `select` (steps, ≥ 3), `axis`, `tolerance` | ordered by their start on the axis, no two projections overlap (no gap is negative) and the largest gap minus the smallest is at most `tolerance`; direction is not judged |
-| `within` | `select` (steps, ≥ 1), `x`, `y` (±1,000,000), `width`, `height` (1–2,000,000; `x + width`, `y + height` ≤ 1,000,000) | every box lies in the closed rectangle |
+| `within` | `select` (steps, ≥ 1), `x`, `y` (±1,000,000), `width`, `height` (1–2,000,000; `x + width`, `y + height` ≤ 1,000,000) | every box lies in the closed rectangle, the **layout area** ("Layoutbereich"; its overlay field is `canvas`) |
 | `arrowsNoCrossing` | `select` (arrows, ≥ 2) | every selected arrow is attached at both ends and no two judged segments meet: arrows between the same two steps are not compared; arrows sharing one step may meet only at its centre; a self-loop is the point at its step's centre |
 | `arrowsClearOfSteps` | `select` (arrows, ≥ 1), `steps` (steps, ≥ 1) | every selected arrow is attached at both ends and no judged segment touches the closed box of a selected step other than its own ends (grazing a corner counts) |
 
@@ -317,12 +317,17 @@ segment** runs from the centre of its `from` step to the centre of its `to` step
 A **selection** is `{ "type", "as", "where", "count" }` with `count` at most 256, and `where` exactly
 one of three shapes: `{"op":"true"}` (every live object of the type), `as.frameId = null` (outside
 every frame), or the from-scenes frame clause `exists frame f: f.id = as.frameId and f.name = "<name>"`
-(in a live frame with that name, whatever its id). A selection that holds another number of objects
-than `count` makes the clause false. A layout clause may stand only as the goal, as a direct argument
+(in a live frame with that name, whatever its id; the name is at most 256 characters of display text,
+like a state's frame name). A selection that holds another number of objects than `count` makes the
+clause false. The minimum counts only rule out empty selections; they do not make a clause about
+anything (`arrowsNoCrossing` over A→B and B→A holds wherever the steps lie), so a layout goal clause
+the task's start already satisfies is refused. A layout clause may stand only as the goal, as a direct argument
 of a top-level `all` goal, or as an error class's `when` (directly or under one `not`); anywhere else,
 in action or rule preconditions, world/1, another selection shape or a count above 256 is refused with
 `E_WORLD_INVALID`. A task with `within` needs `layoutOffset` (0, 0) in every variant case; a task with
-any layout clause needs every live step of its start inside ±1,000,000. Every box a layout clause reads
+any layout clause needs every live step of its start inside ±1,000,000 in every variant case (shifted
+by its `layoutOffset`) and as far as `resize_step` can grow it (to its largest width and height, 4,000
+unless the world restates the bound), and states no layout goal clause its start already satisfies. Every box a layout clause reads
 must lie within ±1,000,000 (`LAYOUT_LIMITS`, `src/world/limits.ts`); a box outside that range is
 `checker_invalid`, never a verdict. Each clause is charged by formula before it reads any position:
 one step for the node, N per selection (2N for a frame name; N counts every object, tombstones
