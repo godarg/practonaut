@@ -12,7 +12,7 @@ import { resolveAgent } from '../../src/bench/agents.ts';
 import { ownBenchWorld } from '../../src/bench/world.ts';
 import { summarize, validateBenchReport, validateBenchReportV3, type BenchReport, type SessionReportV3 } from '../../src/bench/report.ts';
 import { loadReportDetails } from '../../src/bench/details.ts';
-import { detailWords, readTokensCss, renderHtml, renderTable, type VerificationInput } from '../../src/bench/render.ts';
+import { detailWords, readTokensCss, renderHtml, renderTable, type VerificationDetail, type VerificationInput } from '../../src/bench/render.ts';
 import { compareReports, differences } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderIncomparableHtml, type CompareInput } from '../../src/bench/render-compare.ts';
 import { verifyBenchV3 } from '../../src/bench/verify.ts';
@@ -23,6 +23,8 @@ import { v3States } from './bench-v3-states.ts';
 const AGENT = fileURLToPath(new URL('./bench-agent.ts', import.meta.url));
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const V1_REPORT = fileURLToPath(new URL('../fixtures/bench/v1/report.json', import.meta.url));
+/** The committed draw.io evidence (PADR-0049): both libraries benched by the oracle with their app mirrored. */
+const DRAWIO_EVIDENCE = fileURLToPath(new URL('../../docs/benchmarks/drawio/', import.meta.url));
 /** The bench/2 folder the /2 writer made (oracle, ci-recipe world, mirror): a stored /2 report read through the view. */
 const V2_FOLDER = fileURLToPath(new URL('../fixtures/bench/v2/', import.meta.url));
 type Step = { act?: string; params?: Record<string, unknown>; client?: number; undo?: true; reset?: true; check?: true };
@@ -173,6 +175,14 @@ export function firstRepeats(report: SessionReportV3): SessionReportV3 {
   value.summary = summarize(value.runs, 1, run => run.agentActions);
   return validateBenchReportV3(value) as SessionReportV3;
 }
+/** A committed evidence bench, re-judged against this Practonaut's library as `report --verify` and
+ * `compare --verify` do: any difference is refused, so a state never shows evidence that no longer holds. */
+export async function evidenceBench(name: 'drawio-oracle' | 'excalidraw-oracle'): Promise<Bench & { verification: VerificationDetail }> {
+  const directory = join(DRAWIO_EVIDENCE, name);
+  const report = validateBenchReportV3(JSON.parse(await readFile(join(directory, 'report.json'), 'utf8'))) as SessionReportV3;
+  const verified = await verifyBenchV3(report, directory, libraryWorld);
+  return { report, directory, verification: { level: 're-verified', notRederived: verified.parsers.notShipped, preset: verified.preset } };
+}
 /** Every named state of the report and compare pages (PADR-0039 B, C). */
 export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   if (!all.good || !all.bad) throw new Error('reportStates needs the compare fixtures: fixtureBenches(folder, { compare: true })');
@@ -184,6 +194,7 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   // a preset report whose client values were not re-derived, and three cases with changed outcomes.
   const { artifact, excalidraw, drawio, unjudgedCandidate, claimed, claims, configExcalidraw, configDrawio } = v3States();
   await verifyBenchV3(fixtures.solved.report, fixtures.solved.directory, libraryWorld);
+  const drawioOracle = await evidenceBench('drawio-oracle'), excalidrawOracle = await evidenceBench('excalidraw-oracle');
   const tokens = await readTokensCss();
   const side = (report: SessionReportV3, name: string): CompareInput => ({ report, verification: 'consistency-checked', name });
   const compared = (baseline: CompareInput, candidate: CompareInput) => async (language: Language): Promise<string> => renderCompareHtml(baseline, candidate, compareReports(baseline.report, candidate.report), tokens, language);
@@ -215,6 +226,12 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     { id: 'compare-identity-unjudged', html: compared({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: unjudgedCandidate, verification: 'consistency-checked', name: 'drawio' }) },
     { id: 'compare-identity-config', html: compared({ report: configExcalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: configDrawio, verification: 'consistency-checked', name: 'drawio' }) },
     { id: 'compare-incomparable-gate', html: async language => renderIncomparableHtml({ report: excalidraw, verification: 'consistency-checked', name: 'excalidraw' }, { report: drawio, verification: 'consistency-checked', name: 'drawio' }, differences(excalidraw, drawio, { regressionGate: true }), tokens, language, { regressionGate: true }) },
+    // The committed draw.io evidence (docs/benchmarks/drawio/): the draw.io library's 48 runs with
+    // draw.io's own final-board pictures beside the targets, closed and with every run card open, and
+    // its comparison with the Excalidraw library's runs, paired by task identity.
+    { id: 'report-drawio-library', html: language => reportPage(drawioOracle, language, drawioOracle.verification) },
+    { id: 'report-drawio-library-open', html: language => reportPage(drawioOracle, language, drawioOracle.verification), open: true },
+    { id: 'compare-drawio-library', html: compared({ report: excalidrawOracle.report, verification: excalidrawOracle.verification, name: 'excalidraw-oracle' }, { report: drawioOracle.report, verification: drawioOracle.verification, name: 'drawio-oracle' }) },
   ];
   if (fixtures.engine) {
     const engine = fixtures.engine;

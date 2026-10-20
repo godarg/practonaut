@@ -3,7 +3,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fixture, assertOracle, type Fixture } from "../tests/e2e/harness.ts";
 import { TOKEN_HEADER, type HostReply, type MutationReply } from "../src/host/protocol.ts";
-import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, limitsWorld, practiceBaseline, setLanguage, startPlayer } from "../tests/support/player-states.ts";
+import { CREATE_PROGRESS_STATES, PLAYER_STATES, MODEL_ONLY_STATES, LIMIT_STATES, DRAWIO_STATES, DRAWIO_MODEL_ONLY_SESSIONS, limitsWorld, practiceBaseline, setLanguage, startDrawioPlayer, startPlayer } from "../tests/support/player-states.ts";
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -169,7 +169,25 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     for (const st of MODEL_ONLY_STATES) { await st.enter(modelExport); await state(modelExport, st.id, stem); }
     assert.deepEqual(modelExport.external, []);
   } finally { await modelExport.close(); }
-  console.log(`player:a11y ${stem}: scanned editor, export and create workspaces`);
+  // draw.io sessions (PADR-0049): mirrored by the real draw.io where draw.war is installed for the tests,
+  // else by the stand-in (the ledger and the log say which picture drawio-real-tool shows), and model-only.
+  const drawio = await startDrawioPlayer({ theme, width, height: 900 });
+  try {
+    await setLanguage(drawio.page, language);
+    for (const st of DRAWIO_STATES) { await st.enter(drawio); await state(drawio, st.id, stem); }
+    assert.deepEqual(drawio.external, []);
+    ledger.push({ surface: stem + "-drawio", picture: drawio.picture });
+    console.log(`player:a11y ${stem}: draw.io picture: ${drawio.picture?.kind === "stand-in" ? `stand-in (${drawio.picture.reason})` : "draw.io"}`);
+  } finally { await drawio.close(); }
+  for (const session of DRAWIO_MODEL_ONLY_SESSIONS) {
+    const model = await startDrawioPlayer({ theme, width, height: 900, mirror: "off", modelOnly: session.notice });
+    try {
+      await setLanguage(model.page, language);
+      for (const st of session.states) { await st.enter(model); await state(model, st.id, stem); }
+      assert.deepEqual(model.external, []);
+    } finally { await model.close(); }
+  }
+  console.log(`player:a11y ${stem}: scanned editor, export, create and draw.io workspaces`);
 }
 // Bench report and compare pages (PADR-0039): every named state from real fixture runs, as the static
 // files `report --html` and `compare --html` write, light and dark, 1280 and 320 px, EN and DE. Text in a
