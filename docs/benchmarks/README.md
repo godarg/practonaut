@@ -854,42 +854,54 @@ retuned once: probe 2 of the same round, with a newer generator version and new 
 **The release ledger.** 0.3.0 counts every model run made for the project from zero, at most 800
 (the 0.2.0 rounds are never counted; the cap is the release's, never a value the ledger file names).
 Every client start takes a **start entry** in the local, append-only ledger before the client starts,
-naming the world it benches; the runner that took it appends one **run-end record** when the run
-ends, with the SHA-256 of the judged `session.json`, of `agent.stdout` and of `checker.json`, the
-status, the failure and the observed billing class. There is **one local ledger per repository**, in
-its git common directory (`.git/practonaut/release-ledger-0.3.0.jsonl` for a normal clone), shared
-with one lock by every worktree and checkout of it: one canonical JSON record per line, each chained
-to the line before by its SHA-256. A start that would pass 800 is refused before the client starts
+naming the world it benches and the task identity of the instance; the runner that took it appends
+one **run-end record** when the run ends, with the SHA-256 of the judged `session.json`, of
+`agent.stdout` and of `checker.json`, the status, the failure and the observed billing class. There is
+**one local ledger per user and repository**, under `PRACTONAUT_HOME`
+(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the repository's normalised `origin`
+URL and root commit), shared with one lock by every clone and worktree of the repository on the
+machine: one canonical JSON record per line, each chained to the line before by its SHA-256. A second
+machine, or a second user with another `PRACTONAUT_HOME`, counts on a ledger of its own until it
+pushes; the committed copy's history catches the overlap only then. A start that would pass 800 is refused before the client starts
 (`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
 local model attested `local`, or a run the client refused before any model work (a usage limit or a
 login error, classified by a shipped parser from the run's own output, with no host call and no
 tokens); none of the latter is decided from a note's words. Built-in agents start no client and take
 no entry. `probe` and `declare` register what they decided (an admission or refusal, a declaration
-with its held-out world) in the ledger, so funding and earlier declarations are read from the one
-shared ledger, not from a branch's files.
+with its held-out world, each with the task identities of its instances) in the ledger, so funding
+and earlier declarations are read from the one shared ledger, not from a branch's files.
 
 The guard sees every client start of a bench run through `node tools/challenge.ts bench`;
 `practonaut bench` itself takes no ledger. It cannot see `practonaut bench` run directly, or a client
 started by hand or by another program. A round's instances are protected anyway: `probe`, `declare`
-and `gate` refuse a round when a model-run folder of its tasks under the bench roots has no start
-entry, and `ledger init` refuses while any such folder exists. Every project run — a fixture, example,
-acceptance or red-team run included — is a bench run through the guard; a client started otherwise is
-not counted, and is not made for the project. `ledger init` creates the local ledger (a copy of the
-committed one); `ledger write` writes the committed copy
-`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger show` prints the count.
-`probe`, `declare` and `gate` read a run only when its two records are in the committed ledger,
-committed and pushed, and the local ledger has nothing the committed one lacks; every committed
-version of the file on HEAD and on every remote-tracking branch, merged or not, must be a prefix of
-the current one.
+and `gate` refuse a round when a model-run folder of one of its instances under the bench roots has no
+start entry — matched by task identity from the world the bench stored, so on any world, or by task
+id for a folder without one — and `ledger init` refuses while any model-run folder without a start
+entry exists. Every project run — a fixture, example, acceptance or red-team run included — is a
+bench run through the guard; a client started otherwise is not counted, and is not made for the
+project. `ledger init` creates the local ledger: it refuses first when the repository's ledger exists
+(or lies where an earlier Practonaut kept it), and in a shallow clone, and copies the longest pushed
+version of the committed ledger (every pushed version must be one history). `ledger write` writes the
+committed copy `docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger show` prints
+the count and the file. `probe`, `declare` and `gate` read a run only when its two records are in the
+committed ledger, committed and pushed, and the local ledger has nothing the committed one lacks;
+every committed version of the file on HEAD and on every remote-tracking branch, merged or not, must
+be a prefix of the current one, and a shallow clone is refused. A version only a deleted or
+force-pushed branch held is not seen: delete a round's branch only once its ledger records reached a
+kept one.
 
 **Every run on a round's instances belongs to the round.** A start belongs to a unit's round when it
-names the unit and round, or when it benches a world one of the round's starts or registrations
-names — under any purpose, plan or declaration. All of them count against the round's 100 runs and
-are named in the gate report, and they share one repeat check per model and task: every run but the
-last ended unjudged, and the last judged one is the round's own run, given to the gate. A judged run
-whose run-end record is lost (or whose folder is gone) is void: not passed, counted toward the void
-rule, never benched again; only a run whose folder holds no verdict may be benched again. A round is
-not declared again once its held-out runs started, and a pre-probe under another plan of the round is
+names the unit and round, or when it runs one of the round's instances — by task identity, so on any
+world that poses it (a tuning set of the same seeds, a copied world) — under any purpose, plan or
+declaration. A start never widens a round, and the guard refuses a pre-probe or held-out start on
+another world or instance than the round's own set (`round_instance_refused`). All members count
+against the round's 100 runs and are named in the gate report, and they share one repeat check per
+model and instance — in the preflight too, before any ladder run: every run but the last ended as an
+infra_error, and the last, judged or void, is the round's own run; a judged one was given to the gate.
+**A start without its run-end record is void**, whatever its run folder holds: counted, not passed,
+counted toward the void rule, never benched again, and named in the gate report; a void pre-probe run
+refuses the pre-probe (recorded as not admitted, so a retune may follow). A round is not declared again
+once a run on its held-out instances started, and a pre-probe under another plan of the round is
 refused unless that plan's pre-probe was registered as refused (a retune).
 
 **A round, step by step.** Run the commands from the checkout's top level on a branch of the round's
@@ -901,7 +913,7 @@ Each command below prints the next.
 
 ```bash
 U=layout.practonaut; F=docs/benchmarks/challenge/0.3.0; D=.local/challenge/$U
-node tools/challenge.ts ledger init                                   # once per repository
+node tools/challenge.ts ledger init                                   # once per user and repository
 # 1. The probe plan: committed and pushed before the first pre-probe run.
 node tools/challenge.ts plan --unit $U --round 1 --difficulty 2 --seed 101 --model claude-opus-5-5 \
   --mirror required --timeout 600 --max-actions 60 --out $F/$U-round-1.probe-1.plan.json
@@ -934,12 +946,16 @@ node tools/challenge.ts gate --declaration $F/$U-round-1.declaration.json --set 
 
 A bench stopped by a usage limit (`--stop-on-infra`, exit 75) names the remaining tasks; bench them
 with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` through the guard again. A
-killed bench is recovered with `node src/cli/main.ts bench <its arguments> --recover <bench folder>`
-(recovery starts no client and writes no run-end record: such a run counts and is never scored; its
-task is benched again only when its folder holds no verdict). Do not rerun a judged task, under any
-purpose: the ledger shows every start on the round's worlds, and the gate refuses best-of-N and a
-judged run it was not given. `probe`, `declare` and `gate` take `--bench-root <dir,…>` for bench
-folders outside the parents of the given reports.
+bench that was killed, or that stopped because a run-end record could not be appended (it names the
+folder and writes no report), is recovered **through the guard**: the same `node tools/challenge.ts
+bench --purpose … --plan|--declaration … -- <its arguments> --recover <bench folder>`. Recovery starts
+no client; it rebuilds and re-verifies the report from the run folders, appends the run-end record of
+every run its folder proves (judged, or an infra_error its client's own output reports), marked
+`recovered`, and names the starts that stay void. `probe` and `gate` take the recovered report; its
+requested model is the one its start entries name. Do not rerun a judged or void task, under any
+purpose or on any world: the ledger shows every start on the round's instances, and the gate refuses
+best-of-N and a judged run it was not given. `probe`, `declare` and `gate` take `--bench-root
+<dir,…>` for bench folders outside the parents of the given reports.
 
 **What the files fix.** The probe plan pins the unit, the toolchain (at session level the Practonaut
 version; `probe`, `declare`, every report of the round and the gate itself use it), generator and
@@ -951,7 +967,8 @@ The declaration (`practonaut.challenge-declaration/2`) names release, unit, roun
 (preset, client, requested model, attestation, billing class), the gate pair, the sizes, the ledger
 count before the round and the runs kept for others. A unit is **funded** when that count, the
 round's 78 held-out runs, the runs kept and 40 runs to leave fit into 800. Kept, read from the
-ledger: every other declared round's held-out runs not yet started, the held-out runs of units
+ledger: every other declared round's held-out runs less those of them that are counted and final
+(judged or void; an exempt run is not counted and an infra_error is benched again), the held-out runs of units
 admitted earlier and not yet declared, and — for a unit on Practonaut's own actions, until artifact
 mode is accepted — two rounds for foreign toolchains (198 runs) less those declared. Otherwise
 `declare` refuses it as "admitted, not gated for budget"; the gate re-derives both figures from the
@@ -972,20 +989,24 @@ read again, one prompt, one API key source and one release line per client. A ru
 only when a shipped parser re-derived its client values from its bound stdout and they name the
 declared model; a run on another model refuses the round. The verdict rules are PADR-0040's: headroom
 (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar on the discordant instances below
-α), more than 5 % `infra_error`, missing, unattested or unrecorded runs of the pair and the ladder
-voids the round, more than 100 model runs in the round voids it for budget. For discrimination a
-non-run counts against passing: an instance the weakest agent has no attested, recorded verdict for
-counts as passed by the weakest, and such an instance of the strongest as failed, so leaving out runs
-never makes a pair discordant. The gate report (`<unit>-round<k>.md`) and its JSON
+α), more than 5 % `infra_error`, missing, unattested or unrecorded (void) runs of the pair and the
+ladder voids the round, more than 100 model runs in the round voids it for budget. A non-run counts
+against passing: for discrimination an instance the weakest agent has no attested, recorded verdict
+for counts as passed by the weakest, and such an instance of the strongest as failed; for headroom the
+strongest's non-runs count as passes for the 80 % ceiling. Leaving out runs never moves the verdict
+towards passing. The gate report (`<unit>-round<k>.md`) and its JSON
 (`<unit>-round<k>.gate.json`, `practonaut.challenge-gate/2`) hold every number; the round's spend and
 the release count come from the ledger. Every page under `docs/` needs a link from
 [the documentation index](../index.md) (`npm run check`).
 
 The integration layer (`tests/integration/challenge-round.test.ts`, `challenge-git.test.ts`) runs a
-start at 801 refused before the stand-in starts, one ledger shared by two worktrees, `ledger init`
-refused by a run outside the ledger, `probe` and `declare` refusing such runs and another pin, the
-ledger's whole history including merged and unmerged branches, and the file side on a real bench
-through the shipped parser. A whole round without a language model — stand-in `claude` scripts that
+start at 801 refused before the stand-in starts, one ledger shared by a clone and a worktree, `ledger
+init` refusals (an existing or earlier ledger, a shallow clone, a run outside every pushed version,
+versions that are not one history), `probe` and `declare` refusing runs outside the ledger (also on a
+tuning set of the same instances) and another pin, a bench whose run-end could not be appended and a
+bench killed with kill -9, both recovered through the guard, the ledger's whole history including
+merged and unmerged branches, the scan by task identity, and the file side on a real bench through
+the shipped parser. A whole round without a language model — stand-in `claude` scripts that
 observe or play a listed task's reference, a usage-limit stop and resume, the ledger written and
 pushed between the steps, a re-declaration refused, the committed 0.2.0 files present and not
 counted — re-judges every run and near miss in checker processes, longer than `test:integration`
