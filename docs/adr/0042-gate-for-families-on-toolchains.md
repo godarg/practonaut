@@ -244,26 +244,27 @@ points marked *(review 2)* close them.
       declaration and the gate use one count. Exempt only when the failure is `usage_limit` or `auth`,
       before model work, read by a shipped parser, with no host call beyond the bridge's start-up read
       and no tokens (PADR-0044 decision 9).
-   6. *One local ledger per user and repository* *(review, review 2)*: under PRACTONAUT_HOME, keyed by
-      the root commit of the repository's history alone
+   6. *One local ledger per user and repository* *(review, review 2)*: under PRACTONAUT_HOME, keyed
+      by the root commit of the repository's history alone
       (`release-ledgers/<key>/release-ledger-0.3.0.jsonl`), so every clone and every worktree of the
       repository on one machine shares one file and one lock, and none can count to 800 again; no
       option names another file. Not by the `origin` URL: a relative one reads differently from each
       directory, and every spelling of a URL would need one normal form. The root commit is the same
-      from every directory, clone and remote; a fork shares it and so shares the budget, which errs on
-      the safe side. A branch with an unrelated history (another root commit) is another repository
-      here, like another PRACTONAUT_HOME. It is created only by `ledger init`, which refuses, in this order,
-      when this repository's ledger exists (`ledger_exists`) or lies where an earlier Practonaut kept
-      it (`ledger_elsewhere`), in a shallow clone (`shallow_clone`), when the pushed versions of the
-      committed ledger over HEAD and every remote-tracking branch are not one history
-      (`ledger_diverged`), and while model-run folders exist that no start entry of those versions
-      names (`runs_outside_ledger`); it copies the longest pushed version. What it cannot see: a
-      second machine, or a second user with another PRACTONAUT_HOME, counts on a ledger of its own
-      until it pushes; the history check and the committed copy catch the overlap only then
-      (`ledger_rewritten`, `ledger_diverged`). The guard refuses a start when the committed ledger is
-      not a prefix of the local one (`ledger_diverged`) and when there is no local ledger
-      (`ledger_missing`). The cap is the release's 800: a ledger whose header names another cap or
-      release is refused *(review)*.
+      from every directory, clone and remote; a fork shares it and so shares the budget, which errs
+      on the safe side. A branch with an unrelated history (another root commit) is another
+      repository here, like another PRACTONAUT_HOME. A relative PRACTONAUT_HOME, another folder from
+      each directory a command runs in, is refused. It is created only by `ledger init`, which
+      refuses, in this order, when this repository's ledger exists (`ledger_exists`) or lies where
+      an earlier Practonaut kept it (`ledger_elsewhere`), in a shallow clone (`shallow_clone`), when
+      the pushed versions of the committed ledger over HEAD and every remote-tracking branch are not
+      one history (`ledger_diverged`), and while model-run folders exist that no start entry of
+      those versions names (`runs_outside_ledger`); it copies the longest pushed version. What it
+      cannot see: a second machine, or a second user with another PRACTONAUT_HOME, counts on a
+      ledger of its own until it pushes; the history check and the committed copy catch the overlap
+      only then (`ledger_rewritten`, `ledger_diverged`). The guard refuses a start when the
+      committed ledger is not a prefix of the local one (`ledger_diverged`) and when there is no
+      local ledger (`ledger_missing`). The cap is the release's 800: a ledger whose header names
+      another cap or release is refused *(review)*.
    7. *Round records.* `probe` registers its outcome (`admitted` or `refused`, with the plan, the
       record, the pre-probe world and the task identities of its instances) and `declare` its
       declaration (with its hash, its held-out world and instances, and the held-out runs it plans) in

@@ -853,16 +853,18 @@ retuned once: probe 2 of the same round, with a newer generator version and new 
 
 **The release ledger.** 0.3.0 counts every model run made for the project from zero, at most 800
 (the 0.2.0 rounds are never counted; the cap is the release's, never a value the ledger file names).
-Every client start takes a **start entry** in the local, append-only ledger before the client starts,
-naming the world it benches and the task identity of the instance; the runner that took it appends
-one **run-end record** when the run ends, with the SHA-256 of the judged `session.json`, of
-`agent.stdout` and of `checker.json`, the status, the failure and the observed billing class. There is
-**one local ledger per user and repository**, under `PRACTONAUT_HOME`
-(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the root commit alone — the same from
-every directory, clone and remote; a fork shares it, and with it the budget), shared with one lock by
-every clone and worktree of the repository on the machine: one canonical JSON record per line, each chained to the line before by its SHA-256. A second
-machine, or a second user with another `PRACTONAUT_HOME`, counts on a ledger of its own until it
-pushes; the committed copy's history catches the overlap only then. A start that would pass 800 is refused before the client starts
+Every client start takes a **start entry** in the local, append-only ledger before the client
+starts, naming the world it benches and the task identity of the instance; the runner that took it
+appends one **run-end record** when the run ends, with the SHA-256 of the judged `session.json`, of
+`agent.stdout` and of `checker.json`, the status, the failure and the observed billing class. There
+is **one local ledger per user and repository**, under `PRACTONAUT_HOME`
+(`release-ledgers/<key>/release-ledger-0.3.0.jsonl`, the key from the root commit alone — the same
+from every directory, clone and remote; a fork shares it, and with it the budget), shared with one
+lock by every clone and worktree of the repository on the machine: one canonical JSON record per
+line, each chained to the line before by its SHA-256. A second machine, or a second user with
+another `PRACTONAUT_HOME`, counts on a ledger of its own until it pushes; the committed copy's
+history catches the overlap only then. A relative `PRACTONAUT_HOME`, another folder from each
+directory, is refused. A start that would pass 800 is refused before the client starts
 (`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
 local model attested `local`, or a run the client refused before any model work (a usage limit or a
 login error, classified by a shipped parser from the run's own output, with no host call and no
@@ -1001,14 +1003,17 @@ towards passing. The gate report (`<unit>-round<k>.md`) and its JSON
 the release count come from the ledger. Every page under `docs/` needs a link from
 [the documentation index](../index.md) (`npm run check`).
 
-The integration layer (`tests/integration/challenge-round.test.ts`, `challenge-git.test.ts`) runs a
-start at 801 refused before the stand-in starts, one ledger shared by a clone and a worktree, `ledger
-init` refusals (an existing or earlier ledger, a shallow clone, a run outside every pushed version,
-versions that are not one history), `probe` and `declare` refusing runs outside the ledger (also on a
-tuning set of the same instances) and another pin, a bench whose run-end could not be appended and a
-bench killed with kill -9, both recovered through the guard, the ledger's whole history including
-merged and unmerged branches, the scan by task identity, and the file side on a real bench through
-the shipped parser. A whole round without a language model — stand-in `claude` scripts that
+The integration layer runs, each file well within its per-file limit: a start at 801 refused before
+the stand-in starts and the file side on a real bench through the shipped parser
+(`tests/integration/challenge-round.test.ts`); one ledger shared by a clone, a worktree and a fork
+and found from every directory, and the `ledger init` refusals — an existing or earlier ledger, a
+shallow clone, a run outside every pushed version, versions that are not one history
+(`challenge-ledger-home.test.ts`); `probe` and `declare` refusing runs outside the ledger (also on a
+tuning set of the same instances) and another pin (`challenge-probe.test.ts`,
+`challenge-declare.test.ts`); a bench whose run-end could not be appended and a bench killed with
+kill -9, both recovered through the guard (`challenge-recover.test.ts`, `challenge-killed.test.ts`);
+and the ledger's whole history including merged and unmerged branches and the scan by task identity
+(`challenge-git.test.ts`). The shared project is `tests/support/challenge-project.ts`. A whole round without a language model — stand-in `claude` scripts that
 observe or play a listed task's reference, a usage-limit stop and resume, the ledger written and
 pushed between the steps, a re-declaration refused, the committed 0.2.0 files present and not
 counted — re-judges every run and near miss in checker processes, longer than `test:integration`
