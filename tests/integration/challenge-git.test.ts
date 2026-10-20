@@ -138,10 +138,12 @@ test('a committed ledger version on a merged side branch or a pushed unmerged br
     const one = append(headerLine(), 1);
     await commitLedger(one, 'ledger 1'); git(work, 'push', '-u', 'origin', 'main');
     // A side branch appends its own record and is pushed; main appends another and merges the side
-    // branch, resolving the ledger to its own side. The side's pushed record is gone from main.
+    // branch, resolving the ledger to its own side, and the side branch is deleted everywhere. The
+    // side's pushed record is gone from main's simplified history; only the merge's second parent has it.
     git(work, 'switch', '-c', 'side'); await commitLedger(append(one, 2), 'side record'); git(work, 'push', '-u', 'origin', 'side');
     git(work, 'switch', 'main'); const mine = append(one, 3); await commitLedger(mine, 'main record');
     git(work, 'merge', '-s', 'ours', '--no-edit', 'side'); git(work, 'push');
+    git(work, 'push', 'origin', '--delete', 'side'); git(work, 'branch', '-D', 'side'); git(work, 'fetch', '--prune');
     await writeFile(paths.local, mine);
     await assert.rejects(pushedLedger(paths), (error: Error & { code?: string }) => error.code === 'ledger_rewritten');
     // Without the merge: a pushed branch that is not merged holds a diverged version as well.
