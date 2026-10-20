@@ -1009,18 +1009,22 @@ the release count come from the ledger. Every page under `docs/` needs a link fr
 The integration layer runs, each file well within its per-file limit: a start at 801 refused before
 the stand-in starts and the file side on a real bench through the shipped parser
 (`tests/integration/challenge-round.test.ts`); one ledger shared by a clone, a worktree and a fork
-and found from every directory, and the `ledger init` refusals — an existing or earlier ledger, a
-shallow clone, a run outside every pushed version, versions that are not one history
+and found from every directory, a history with more than one root refused on every branch (also with
+a replace ref), the committed ledger read at the path git knows (a link to the checkout the same
+folder; a link inside it and a folder outside it refused on every command that takes `--folder`), a
+shallow clone refused on every command, and the `ledger init` refusals — an existing or earlier
+ledger, a run outside every pushed version, versions that are not one history
 (`challenge-ledger-home.test.ts`); `probe` and `declare` refusing runs outside the ledger (also on a
 tuning set of the same instances) and another pin (`challenge-probe.test.ts`,
 `challenge-declare.test.ts`); a bench whose run-end could not be appended and a bench killed with
 kill -9, both recovered through the guard (`challenge-recover.test.ts`, `challenge-killed.test.ts`);
 and the ledger's whole history including merged and unmerged branches and the scan by task identity
-(`challenge-git.test.ts`). The shared project is `tests/support/challenge-project.ts`. A whole round without a language model — stand-in `claude` scripts that
-observe or play a listed task's reference, a usage-limit stop and resume, the ledger written and
-pushed between the steps, a re-declaration refused, the committed 0.2.0 files present and not
-counted — re-judges every run and near miss in checker processes, longer than `test:integration`
-gives a file; run it on its own, after the engine build:
+(`challenge-git.test.ts`). The shared project is `tests/support/challenge-project.ts`. A whole round
+without a language model — stand-in `claude` scripts that observe or play a listed task's reference,
+a usage-limit stop and resume, the ledger written and pushed between the steps, a re-declaration
+refused, the committed 0.2.0 files present and not counted — re-judges every run and near miss in
+checker processes, longer than `test:integration` gives a file; run it on its own, after the engine
+build:
 
 ```bash
 npm run engine:build && npm run player:build

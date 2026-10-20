@@ -182,9 +182,10 @@ own now.
 - `.github/workflows/host-deadline-repeat.yml` (by hand) runs the amplifier on each CI platform in 5
   jobs of 30 attempts per test, without throttling and beside the 0.3.0 gate's integration files
   (`challenge-round`, `challenge-ledger-home`, `challenge-probe`, `challenge-declare`,
-  `challenge-recover`, `challenge-killed`: the tests `challenge-round.test.ts` held at the time of
-  the measurements below, now split), with `--require-pass`, and uploads the record after a pass
-  too.
+  `challenge-recover`, `challenge-killed`, one after the other), with `--require-pass`, and uploads
+  the record after a pass too. It no longer reproduces the partner of #64's failed Windows runs:
+  that was 0.2.0's `challenge-round.test.ts`, which the 0.3.0 gate replaced, and the measurements
+  below were made with it (#64 is closed; the numbers stay as recorded).
 
 Measured 2026-10-18/19 on one shared machine (other work running beside it), macOS 27 (Apple M4,
 10 cores, Node 22); c645e5f has the product code before this change, b1b071f the named error:

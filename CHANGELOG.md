@@ -77,20 +77,23 @@ All notable changes are recorded here. The format follows
   in an append-only, hash-chained ledger before its client starts, and a run-end record with its
   hashes when it ends; a start that would pass 800 model runs is refused before the client starts
   (`release_budget_exhausted`; the cap is the release's, never the file's). One local ledger per
-  user and repository, under `PRACTONAUT_HOME` and keyed by the repository's one root commit (a fork
-  shares it; a history with more than one root is refused by name), is shared with one lock by every
-  clone, worktree and branch; a `PRACTONAUT_HOME` not named fully is refused; `ledger init` refuses
-  an existing ledger first, a shallow clone, pushed versions that are not one history and model-run
-  folders outside every pushed version, and starts from the longest pushed version. Benches reach it
-  through `node tools/challenge.ts bench --purpose … -- <bench arguments>`, which refuses a round's
-  start on another world or instance than the round's; a killed bench, or one whose run-end could
-  not be appended (it stops without a report), is recovered through it with `--recover`, which
-  appends the run-end records its folders prove and keeps the outcome of every run-end record
-  already appended. The committed copy (`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl`) is
-  written from it, every committed version on HEAD and on every remote-tracking branch must be a
-  prefix of the current one (a shallow clone is refused), and `probe`, `declare` and `gate` read a
-  run only once both its records are pushed and refuse a round whose instances were run outside the
-  ledger. 0.3.0 counts from zero: the 0.2.0 rounds stay readable and are never counted.
+  user and repository, under `PRACTONAUT_HOME` and keyed by the repository's one root commit read
+  without replace refs (a fork shares it; a history with more than one root is refused,
+  `repository_roots`), is shared with one lock by every clone, worktree and branch; every ledger
+  command refuses a shallow clone (`shallow_clone`), a `PRACTONAUT_HOME` not named fully
+  (`home_not_fully_qualified`), and a `--folder` whose committed ledger lies outside the checkout
+  (`ledger_outside_repository`) or behind a link inside it (`ledger_path_link`); `ledger init`
+  refuses an existing ledger first, pushed versions that are not one history and model-run folders
+  outside every pushed version, and starts from the longest pushed version. Benches reach it through
+  `node tools/challenge.ts bench --purpose … -- <bench arguments>`, which refuses a round's start on
+  another world or instance than the round's; a killed bench, or one whose run-end could not be
+  appended (it stops without a report), is recovered through it with `--recover`, which appends the
+  run-end records its folders prove and keeps the outcome of every run-end record already appended.
+  The committed copy (`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl`) is written from it,
+  every committed version on HEAD and on every remote-tracking branch must be a prefix of the
+  current one (a shallow clone is refused), and `probe`, `declare` and `gate` read a run only once
+  both its records are pushed and refuse a round whose instances were run outside the ledger. 0.3.0
+  counts from zero: the 0.2.0 rounds stay readable and are never counted.
 
 ### Changed
 

@@ -252,27 +252,38 @@ points marked *(review 2)* close them.
       URL would need one normal form. The root commit is the same from every directory, clone and
       remote; a fork shares it and so shares the budget, which errs on the safe side. The root is
       read over the whole history the clone knows — HEAD, every local and every remote-tracking
-      branch — and a history with more than one root (an orphan branch, a branch that merged an
-      unrelated history, a fetched unrelated remote) is refused by name on every branch
-      (`repository_roots`): keyed on the root of HEAD's history alone, a branch whose merged root
-      sorts first would get another ledger and another 800, and picking one root of several would be
-      a silent choice; the project's history has one root. PRACTONAUT_HOME must name its folder
-      fully (on Windows with its drive or as a UNC share): a relative path, or `\pn` on Windows,
-      names another folder from each directory or drive and is refused. It is created only by
-      `ledger init`, which refuses, in this order, when this repository's ledger exists
-      (`ledger_exists`) or lies where an earlier Practonaut kept it (`ledger_elsewhere`), in a
-      shallow clone (`shallow_clone`), when `--folder` names a committed ledger outside the
-      repository (both spelled canonically first: a symbolic link, a short name or another letter
-      case is the same folder; `ledger_outside_repository`), when the pushed versions of the
-      committed ledger over HEAD and every remote-tracking branch are not one history
-      (`ledger_diverged`), and while model-run folders exist that no start entry of those versions
-      names (`runs_outside_ledger`); it copies the longest pushed version. What it cannot see: a
-      second machine, or a second user with another PRACTONAUT_HOME, counts on a ledger of its own
-      until it pushes; the history check and the committed copy catch the overlap only then
-      (`ledger_rewritten`, `ledger_diverged`). The guard refuses a start when the committed ledger
-      is not a prefix of the local one (`ledger_diverged`) and when there is no local ledger
-      (`ledger_missing`). The cap is the release's 800: a ledger whose header names another cap or
-      release is refused *(review)*.
+      branch — and without git's replace refs (`--no-replace-objects`, as every git call of the
+      gate's tools: a local `git replace` could give the root a parent, or hide a committed
+      version). A shallow clone, whose cut-off commits git reports as roots, is refused on every
+      ledger command (`shallow_clone`), and a history with more than one root (an orphan branch, a
+      branch that merged an unrelated history, a fetched unrelated remote) is refused by name on
+      every branch (`repository_roots`): keyed on the root of HEAD's history alone, a branch whose
+      merged root sorts first would get another ledger and another 800, and picking one root of
+      several would be a silent choice; the project's history has one root. PRACTONAUT_HOME must
+      name its folder fully (on Windows with its drive or as a UNC share): a relative path, or `\pn`
+      on Windows, names another folder from each directory or drive and is refused
+      (`home_not_fully_qualified`). Every command that takes `--folder` reads the committed ledger
+      at the path git knows it by: only the checkout root is compared by its canonical spelling (a
+      `--folder` through a link to the checkout, a short name or another letter case is the same
+      folder), a link inside the checkout on the ledger's path is refused (`ledger_path_link`: git
+      would read the tracked path, the file system another file, and a pushed history could be
+      hidden), and a committed ledger outside the checkout is refused (`ledger_outside_repository`).
+      The local ledger is created only by `ledger init`, which refuses, in this order, when this
+      repository's ledger exists (`ledger_exists`) or lies where an earlier Practonaut kept it
+      (`ledger_elsewhere`), when the pushed versions of the committed ledger over HEAD and every
+      remote-tracking branch are not one history (`ledger_diverged`), and while model-run folders
+      exist that no start entry of those versions names (`runs_outside_ledger`); it copies the
+      longest pushed version. What it cannot see: a second machine, or a second user with another
+      PRACTONAUT_HOME, counts on a ledger of its own until it pushes; the history check and the
+      committed copy catch the overlap only then (`ledger_rewritten`, `ledger_diverged`). Accepted
+      limitations, each of which needs deliberate local tampering or a forbidden step and gives
+      nothing a second PRACTONAUT_HOME would not: a graft file (`.git/info/grafts`, deprecated in
+      git and not covered by `--no-replace-objects`) changes the root git reports, and so the key; a
+      rewrite of the root commit (forbidden on shared branches) gives every checkout cloned
+      afterwards a new key. The guard refuses a start when the committed ledger is not a prefix of
+      the local one (`ledger_diverged`) and when there is no local ledger (`ledger_missing`). The
+      cap is the release's 800: a ledger whose header names another cap or release is refused
+      *(review)*.
    7. *Round records.* `probe` registers its outcome (`admitted` or `refused`, with the plan, the
       record, the pre-probe world and the task identities of its instances) and `declare` its
       declaration (with its hash, its held-out world and instances, and the held-out runs it plans) in
