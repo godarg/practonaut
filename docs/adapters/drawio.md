@@ -33,7 +33,8 @@ exactly that size and hash is kept; a mismatch names both sizes and both hashes 
   over 30 s, 10 minutes for the whole download; network errors, HTTP 429 and 5xx are retried twice
   (after 2 s and 8 s), a size or hash mismatch never. One setup at a time per version: a lock file
   that appears whole or not at all and that only its own setup removes; a second setup stops with
-  `app_install_busy`.
+  `app_install_busy`, and only one setup takes over a lock left by an interrupted one. On a home
+  without hard links (FAT, exFAT, some network shares) the lock is created exclusively instead.
 - **Failures by name** (exit 3): `app_download_failed` (names the limit or error and `--from`),
   `app_download_mismatch`, `app_install_busy`.
 
@@ -86,10 +87,10 @@ counts those that carry `--no-sandbox` (0 in every committed run).
 
 | world/2 | draw.io cell |
 |---|---|
-| frame | container vertex, id = frame id, value = name, `swimlane;container=1;collapsible=0;startSize=30;html=0;`, geometry the envelope of its steps plus padding and title band |
+| frame | container vertex, id = frame id, value = name, `swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;` (the title band is not filled, so overlapping frames hide nothing), geometry the envelope of its steps plus padding and title band; an empty frame keeps its last box or gets its own place in a row above the diagram |
 | group | vertex `pn:group:<groupId>`, `group;`, `connectable="0"`, child of its members' frame or of the layer |
 | step | vertex, id = step id, value = label, `rounded=0;` / `ellipse;` / `rhombus;` plus `html=0;strokeColor=…;fillColor=…;`, integer geometry relative to its parent |
-| arrow | edge, id = arrow id, `endArrow=classic;html=0;`, `source`/`target` its live ends |
+| arrow | edge, id = arrow id, `endArrow=classic;html=0;`, `source`/`target` its live ends; with a live end a child of the layer after every frame and step (painted over them), with both ends loose a child of its frame |
 | deleted object | no cell (draw.io keeps none; the core holds the tombstones) |
 
 Colours: stroke black `#000000`, red `#b85450`, green `#82b366`, blue `#6c8ebf`, orange `#d79b00`;
@@ -112,7 +113,8 @@ parser and tables, and is independent of the adapter. It is **allowlist-based**:
 cells, attributes, style names, keys and values the adapter writes (and a few forms the real app is
 shown to draw as read), and refuses everything else with a named `reason`. Nothing is skipped as
 unmodeled. So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example
-for a default style key, a hidden or transparent cell, a container or a colour outside the table.
+for a default style key, a hidden or transparent cell, a container, a colour outside the table, a
+filled frame band, a filled step over an arrow, a frame name over a label or a page background.
 This stays so until artifact mode (Must 3) decides otherwise. Every export the adapter writes is read.
 The rules and limits are in
 [PADR-0049 decision 6](../adr/0049-drawio-adapter.md#6-the-checkers-independent-drawio-reader),

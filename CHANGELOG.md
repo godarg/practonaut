@@ -61,8 +61,9 @@ All notable changes are recorded here. The format follows
   Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.
   - `practonaut setup --app drawio [--from <file>]` downloads the unmodified `draw.war` (48,442,174
     bytes) only on request, names file, source, size and SHA-256 first, and keeps it only when both
-    match (redirect, scheme, stall, deadline and retry limits; a lock per version that appears whole
-    and only its own setup removes; atomic keep and a re-hash; `--from` hashes a file of any size, so
+    match (redirect, scheme, stall, deadline and retry limits; a lock per version that appears whole,
+    that only one setup takes over when stale and only its own setup removes, also on homes without
+    hard links; atomic keep and a re-hash; `--from` hashes a file of any size, so
     a mismatch names both SHA-256 values). New codes, exit 3: `app_download_failed`, `app_download_mismatch`, `app_install_busy`,
     and before any browser starts `app_runtime_missing` and `app_runtime_unverified`; with `--mirror
     auto` such a session runs model-only and names the setup command. `doctor --adapter` lists the
@@ -73,10 +74,12 @@ All notable changes are recorded here. The format follows
     and child element, and integrity; every read, `snapshot()` included, also runs integrity over
     every attribute and compares the app with the last confirmed write. Chromium always runs with its
     sandbox for draw.io, and every conformance run records that none of its processes ran with
-    `--no-sandbox`.
+    `--no-sandbox`. Frames have unfilled title bands and arrows with a live end are drawn above every
+    frame and step, so the adapter's own picture hides nothing.
   - The checker has its own allowlist-based `.drawio` reader: it reads only the cells, attributes,
-    style names, keys and values the adapter writes and refuses everything else by a reason from a
-    closed list, so a file drawn by hand is strict until artifact mode (Must 3) decides otherwise;
+    style names, keys and values the adapter writes, nothing that draw.io paints over (a filled step
+    over earlier content, a frame name over a label), and only well-formed XML with draw.io's own file
+    attributes; it refuses everything else by a reason from a closed list, so a file drawn by hand is strict until artifact mode (Must 3) decides otherwise;
     `check` reads a `.drawio` export with `--pair` or with `--seed` and `--task`.
   - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.

@@ -16,7 +16,8 @@ the shared shell with the mapping decided here
 reviews on 2026-10-19 (OpenAI Codex, Google Gemini, a three-lens Claude Opus workflow with a skeptic
 per major), the coordinator's dispositions, and a second round (see *Review* and *Re-review*);
 revised again on 2026-10-20 after the review of the implementation (decision 6 made allowlist-based;
-see *Review of the implementation*) · To be accepted with the pull request that implements it, after
+see *Review of the implementation*) and its re-review (unfilled frame bands, paint order, the XML
+prolog; see *Re-review of the implementation*) · To be accepted with the pull request that implements it, after
 a review of that code
 
 ## Context
@@ -248,12 +249,18 @@ through a test seam, so the product reads no new variable.
    exclusively (`O_EXCL`, no link following, mode 0600) in the version directory. One setup at a time
    per version directory holds a lock file there. The lock holds the process id, its start and a
    random token. It is written whole to a temp file and then hard-linked to the lock's name, which
-   fails when the name exists, so no setup ever sees a lock half written. A lock that cannot be read
-   is judged by its own modification time. A lock whose process is gone, or that is older than the
-   absolute deadline, is stale. The next setup removes a stale lock only after a second read finds
-   that same lock, and under the lock it removes the partial files of earlier setups. A release
-   removes the lock only while it holds the setup's own token. Only a complete file whose size and
-   SHA-256 equal the pin is kept: flush; on
+   fails when the name exists, so no setup ever sees a lock half written. On a filesystem without hard
+   links (`link` fails with `EPERM`, `ENOTSUP`, `EOPNOTSUPP` or `ENOSYS`: FAT, exFAT, some network
+   shares) the lock is created exclusively under its name and then written. A lock that cannot be
+   read, such as one still empty, is judged by its own modification time. A lock whose process is
+   gone, or that is older than the absolute deadline, is stale. Only one setup takes a stale lock
+   over: the one that creates the exclusive breaker file `.setup.lock.break` beside it, and only while
+   a second read under the breaker still finds that same lock. Any other setup that judged the same
+   lock stale stops as busy. A breaker older than the stale bound, left by a setup that died during a
+   takeover, is removed, the setup that found it stops as busy, and the next one proceeds. Under the
+   lock a setup removes the partial files of earlier setups. A release removes the lock only while it
+   holds the setup's own token. Any other failure to take the lock is `app_download_failed` with
+   reason `lock`. Only a complete file whose size and SHA-256 equal the pin is kept: flush; on
    POSIX sync the file, rename over the target, sync the directory (`src/platform/private-fs.ts`
    already skips directory sync on Windows); on Windows a rename that fails with `EPERM`, `EBUSY` or
    `EACCES` (a reader holds the file for the moment of its read) is retried up to 10 times, 200 ms
@@ -292,8 +299,10 @@ through a test seam, so the product reads no new variable.
      cases include a fresh lock that is not yet written (busy) and the same lock an hour old (stale).
      They also include two concurrent setups with the first held before its lock is written (one
      download; the first stops by name), a lock that another setup took over during a run (the release
-     leaves it), and 25 pairs of setups started together. A retry wait is tested in a child process
-     in which nothing else runs: it must retry and finish.
+     leaves it), and 25 pairs of setups started together. Two setups held after judging the same
+     stale lock, the first inside its takeover, give one download and one busy setup. A link seam
+     stands for a filesystem without hard links. A retry wait is tested in a child process in which
+     nothing else runs: it must retry and finish.
    - The draw.io conformance and adapter tests get the runtime through two **test-only** variables,
      read only by test support, never by the product: `PN_DRAWIO_HOME` (an absolute path to a
      Practonaut home in which `setup --app drawio` ran; default `.local/drawio-home/` in the
@@ -413,7 +422,9 @@ through a test seam, so the product reads no new variable.
    the app's cells with the cells of the last confirmed write. The transaction's saved scene carries
    those cells, so a rollback restores them. A change that reached the app after a confirmed write is
    therefore `integrity_failed` at the next read. Tests show this, both with and without the real app,
-   for a hidden step and for a changed label (review m2c, Codex 3).
+   for a hidden step and for a changed label (review m2c, Codex 3). The comparison and the saved
+   scene live in `src/adapters/drawio/scene.ts`, which reaches the app only through the functions
+   passed in, so the tests without the app drive them with a fake (review m2d, r2-runtime-3).
    A failure is undone in place or the committed scene is rebuilt on a fresh page by the shell
    (PADR-0045 decision 7); under `--mirror required` the step is rejected and the core state is
    unchanged (PADR-0011). The spike's 12 silent-change cases become conformance cases, written
@@ -446,8 +457,11 @@ through a test seam, so the product reads no new variable.
 1. **Cells** (measured: `mapping.ts`, decision 8.4's precursor). Root `pn:root`, one layer
    `pn:layer` (`:` lies outside the semantic id pattern, so no object can take these ids). A **frame**
    is a container vertex, id = frame id, value = name, style
-   `swimlane;container=1;collapsible=0;startSize=30;html=0;`, geometry the envelope of its steps plus
-   padding and title band (an empty frame keeps its last box). A **group** is a vertex
+   `swimlane;container=1;collapsible=0;startSize=30;fillColor=none;html=0;`, geometry the envelope of
+   its steps plus padding and title band (an empty frame keeps its last box; an empty frame with none
+   gets its own place in a row from (0, −400), 200 × 120, 240 apart). The title band is not filled
+   (measured: draw.io's default fills it white), so frames whose envelopes overlap, as two frames with
+   interleaved steps do, never hide a name, a step or an arrow (review m2d). A **group** is a vertex
    `pn:group:<groupId>` with style `group;` and `connectable="0"`, child of its members' frame or of
    the layer, geometry the envelope of its members. A **step** is a vertex, id = step id, value =
    label, style `rounded=0;` / `ellipse;` / `rhombus;` plus `html=0;strokeColor=…;fillColor=…;` from
@@ -457,8 +471,10 @@ through a test seam, so the product reads no new variable.
    and an `x` or `y` of 0 left out. No `whiteSpace=wrap`: measured, it puts labels into
    `foreignObject` HTML in the SVG export. An **arrow** is an edge, id = arrow id, style
    `endArrow=classic;html=0;`, `source` and `target` its live ends (absent = loose end, with a
-   terminal point the adapter remembers), child of its frame or of the layer. A **tombstone** has no
-   cell.
+   terminal point the adapter remembers). An arrow with a live end is a child of the layer, after
+   every frame and step, so draw.io paints it over them; its frame follows from its ends (world/2's
+   rule), in the read-back as in the checker. An arrow with both ends loose is a child of its frame
+   or of the layer, the only place its frame is kept (review m2d). A **tombstone** has no cell.
 
    **Derived memory.** The adapter remembers two things the state does not hold: an empty frame's last
    box and a loose end's last point. Every adapter start, `restoreState` and recovery resets that
@@ -539,14 +555,25 @@ through a test seam, so the product reads no new variable.
    - an unclosed or mismatched element, or more than one root;
    - a prefixed name (`x:y`; no draw.io file declares a namespace);
    - a comment that holds `--` or ends in `-`, or `]]>` in text;
-   - an XML declaration anywhere but at the very start, and any other processing instruction.
+   - outside the root element, anything but space, tab, CR and LF (a no-break space, U+2028, U+3000
+     or U+FEFF there is not well-formed), in the file and in an inflated page; one UTF-8 byte-order
+     mark before the file is allowed, as every XML parser allows it;
+   - an XML declaration anywhere but at the very start, one that does not follow its grammar
+     (`version="1.0"`, then optionally `encoding` UTF-8 in any case, then optionally `standalone` yes
+     or no, each after white space), and any other processing instruction;
+   - any namespace declaration (`xmlns`; reserved URIs included).
 3. **File and model.** The file is an `mxfile` with exactly one `diagram`, or a bare `mxGraphModel`.
-   Several pages are refused (`pages_unsupported`). A `diagram` is compressed if and only if its
-   trimmed text content, descendants included, is non-empty. A compressed `diagram` has no element
+   Several pages are refused (`pages_unsupported`). A `diagram` is compressed if and only if its text
+   content, descendants included, is not XML white space. A compressed `diagram` has no element
    child, and it is decoded the way draw.io decodes it: Base64 without ASCII whitespace, raw inflate
    with `maxOutputLength`, strict UTF-8, then URI decoding. An uncompressed `diagram` holds exactly one
-   `mxGraphModel` and no other element (`diagram_invalid`). The model holds one `root`, and the root
-   holds no text.
+   `mxGraphModel` and no other element (`diagram_invalid`). The model holds one `root`, and neither
+   holds text. The file's own elements carry only the attributes draw.io's export carries, measured on
+   the committed exports: `host` on `mxfile`; `id` and `name` on `diagram`; `dx`, `dy`, `grid`,
+   `gridSize`, `guides`, `tooltips`, `connect`, `arrows`, `fold`, `page`, `pageScale`, `pageWidth`,
+   `pageHeight`, and `math` and `shadow` only as `0`, on `mxGraphModel`; none on `root`. Anything else
+   is `unmodeled_value`: draw.io keeps and paints `background` (measured: a black page) and
+   `backgroundImage` (review m2d).
 4. **Elements and attributes, by table.**
    - An `mxCell` carries only `id`, `value`, `style`, `vertex`, `edge`, `parent`, `source`, `target` and
      `connectable`.
@@ -571,8 +598,9 @@ through a test seam, so the product reads no new variable.
    listed and skipped. A style is named styles and then `key=value` pairs. A leading `;` (draw.io then
    drops its default style), an empty segment, a repeated key and more than one name are
    `unmodeled_value`. By kind:
-   - a **frame** is `swimlane` with `container=1`, `collapsible=0` and `startSize=30` (all three
-     required) and optionally `html`;
+   - a **frame** is `swimlane` with `container=1`, `collapsible=0`, `startSize=30` and
+     `fillColor=none` (all four required: without the last, draw.io fills the title band) and
+     optionally `html`;
    - a **group** is `group` with no keys, `connectable` `0` or absent, and an empty value;
    - a **step** is no name (a rectangle, optionally `rounded=0`), `ellipse` or `rhombus`, with
      `strokeColor` and `fillColor` both present and in the reader's own colour tables (case does not
@@ -602,6 +630,16 @@ through a test seam, so the product reads no new variable.
      cells (`duplicate_id`; a file with group cells `g1` and `pn:group:g1` is a fixture).
    - Labels and frame names are plain text, compared after NFC. Invisible format characters are
      refused (`text_invalid`). The limits are 4,096 characters for a label and 256 for a frame name.
+   - **What draw.io paints over what** (review m2d), all `structure_invalid`. draw.io paints the
+     cells depth first in document order, each after its parent; a later cell lies on top. A frame's
+     band is not filled (above), so the only opaque area is a filled step. Nothing the reader reads
+     that draw.io painted before a filled step may lie under it: a step's box, an arrow's line
+     between its ends (arrows ending at that step excepted), or a frame's title band with its name.
+     A frame's name is drawn in its title band (its top 30 px) whatever the order, so the band must
+     not overlap a step's label line, taken as 16 px tall at the box's centre and as wide as the box
+     or 12 px per character, whichever is wider (draw.io draws a plain label on one line, centred,
+     at 12 px). The reader does not measure text otherwise: two labels drawn over each other, or two
+     frame names, are both read; goals that count steps or frames bound what that can add.
 6. **Refusals** are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
    `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
    `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
@@ -624,17 +662,23 @@ through a test seam, so the product reads no new variable.
      conformance seam. The app's own export must read the same, and the reader's boxes and labels must
      match what draw.io draws in its SVG export, measured against a reference step on the layer.
      - Read: CRLF in an attribute, an upper-case colour, the three shapes, a start head, a step without
-       an `html` key, an `object` and a `UserObject` label, and steps in groups in frames with integer
-       and fractional offsets (PADR-0047 decision 10).
+       an `html` key, an `object` and a `UserObject` label, steps in groups in frames with integer
+       and fractional offsets (PADR-0047 decision 10), an unfilled band over an arrow, and a filled
+       step painted before the arrow that crosses it.
      - Refused by the reason named: adjacent attributes, `&#1;`, `--` in a comment, compressed text with
        a model child, two geometries, `x="0x1F4"`, cancelling offsets, `vertex="true"`, `visible="0"`,
        `collapsed="1"`, `noLabel=1`, `opacity=0`, `container=1` on a step, unknown names and shapes,
        stacked shape tokens, a leading `;`, `relative` on a vertex or an ancestor, an object's inner
        value, a value child, an edge label vertex, a plain cell as an ancestor, a vertex under the
-       root, the marker cases, `g1` beside `pn:group:g1`, a `" A "` label with `html=1`, and a
-       non-positive size.
+       root, the marker cases, `g1` beside `pn:group:g1`, a `" A "` label with `html=1`, a
+       non-positive size, a filled band, a frame name over a label, a filled step painted after the
+       arrow it crosses, a page `background`, a no-break space after the root and a namespace
+       declaration.
    - `startArrow`, the one edge key beyond what the adapter writes, has its own case: for every listed
      marker draw.io draws one head, at the source.
+   - The facts behind the m2d rules have their own case against the real app: draw.io's default
+     frame style fills the band and `fillColor=none` does not; a later filled step is drawn after the
+     arrow it crosses, with its fill; `background` is kept in the export and paints the SVG's page.
 
 ### 7. Linux: draw.io never starts without the Chromium sandbox
 
@@ -739,7 +783,9 @@ through a test seam, so the product reads no new variable.
    - the Chromium version each run's browser reports (the runs must agree);
    - the sandbox as an observation (the policy, and per run the processes seen and how many carry
      `--no-sandbox`), not as a setting;
-   - whether the checkout had changes not in its commit.
+   - the commit and whether the checkout had changes not in it, sampled before the first run and
+     after the last: a different commit or changed files between the two samples is a problem, which
+     fails the layer (review m2d).
 
    `tools/require-drawio-summary.ts` refuses a summary without the pin, without one Chromium version,
    or with a run in which no process was observed or one ran without its sandbox. The evidence tool
@@ -842,9 +888,12 @@ through a test seam, so the product reads no new variable.
 - `practonaut check` reads `.drawio` files strictly. The reader is allowlist-based (decision 6): it
   reads only the adapter's own vocabulary, plus the forms the real app is shown to draw as read. A
   file drawn by hand in draw.io is therefore usually refused by name, for example for a default style
-  key, a colour outside the table, markup in a label, a hidden or transparent cell, or a container.
-  This stays so until artifact mode's reading rules (Must 3) decide otherwise. Every export the
-  adapter writes is read.
+  key, a colour outside the table, markup in a label, a hidden or transparent cell, a container, a
+  filled frame band, a filled step over an arrow or a frame name over a label. This stays so until
+  artifact mode's reading rules (Must 3) decide otherwise. Every export the adapter writes is read.
+- The adapter's frames have unfilled title bands and its arrows with a live end sit on the layer, so
+  the adapter's own picture never hides a name, a step or an arrow, even where two frames' envelopes
+  overlap.
 - Each running draw.io adapter holds the 48.4 MB archive in Node memory.
 - On Linux with the default AppArmor restriction draw.io is model-only; CI covers draw.io in a Linux
   step after the one that lifts the restriction; macOS and Windows are covered by the manual
@@ -1012,3 +1061,22 @@ disposition:
 | acceptance-pr-rerun-claim (minor) | Adopted | The evidence is rebuilt with the tool on the final commit of this round and committed; its README names that commit, and a test checks that the summary's commit is the README's |
 | acceptance-summary-chromium-version (minor) | Adopted | 8.6: each run's browser version recorded; the runs must agree; the summary names it |
 | Found while running the layers for this round: a shuffled run disagreed with the forward run on one PNG (one pixel wider), with identical native files | Fixed | 5.1: every write loads the empty model first, so the PNG depends on the state alone; `tests/adapter/drawio/cases.test.ts` fails without it |
+
+## Re-review of the implementation (2026-10-20)
+
+A second round reviewed the fixes of the first, at commit 0f7dce0 (round m2d). OpenAI Codex's review
+was cut off by the provider's content filter, so its view of this round is UNKNOWN. A Claude Opus
+reviewer, with a skeptic, confirmed every first-round finding resolved except two it found partly
+resolved. It ran 60,000 random mutations of the 48 committed exports through the reader, with no stray
+exception and no refusal outside the closed list. It found seven new points. Each was reproduced
+before it was fixed. Every finding and its disposition:
+
+| Finding (severity after verification) | Disposition | Where, and the test that fails without it |
+|---|---|---|
+| r2-reader-frame-band-occlusion (major, skeptic confirmed): a frame in the adapter's style, appended after the goal arrow (connect) or over the new label with the start's misspelling as its name (rename-step), passes while draw.io shows something else | Adopted | 5.1: the adapter's frames have an unfilled band, its arrows with a live end sit on the layer after every frame and step, and empty frames get their own places, so its own picture hides nothing. 6.5: the reader reads only unfilled bands; a filled step must not cover what was painted before it; a frame's name must not be drawn over a label. All 303 final and 1,511 intermediate exports of the planned sequences read. Tests: the review's two files (`drawio-reader-attacks.test.ts`), reader unit tests, differential fixtures and a real-app case for the band fill, the paint order and the background |
+| r2-reader-xml-prolog (minor; Codex 2 and reader-xml-wellformedness partly resolved): no-break space, U+2028, U+3000 or U+FEFF outside the root, a malformed declaration, reserved namespace URIs; a byte-order mark refused | Adopted | 6.2: only XML white space outside the root, one byte-order mark, the declaration by its grammar, no namespace declaration; unit tests for every form of the finding |
+| r2-reader-model-attributes-unread (minor): `mxGraphModel@background` paints the page | Adopted | 6.3: the file's own attributes by a table measured on draw.io's export, `math` and `shadow` pinned to 0; unit tests, a fixture and the real-app case (the export keeps `background`, the SVG's page turns black) |
+| runtime-2 / r2-runtime-1 (minor): two setups that judge the same stale lock can both hold it | Adopted | 2.3: the takeover happens only under an exclusive breaker file, with a second read under it; `drawio-setup.test.ts` holds both setups after judging the lock, the first inside its takeover. On the old code, with the same pauses, both reached the takeover and both downloaded |
+| r2-runtime-2 (minor): without hard links (FAT, exFAT, CIFS), setup fails with an unnamed error | Adopted | 2.3: an exclusive create and write instead; any other lock failure is `app_download_failed`, reason `lock`; tests with a link seam for EPERM, ENOTSUP, EOPNOTSUPP, ENOSYS and EIO |
+| r2-runtime-3 (minor): the comparison with the last confirmed write and the saved scene were tested only with the real app | Adopted | 4.2: both in `scene.ts`; `drawio-scene.test.ts` with a fake app fails when the comparison or the restore is dropped |
+| r2-runtime-4 (minor): the summary's commit and dirty flag were sampled after the runs only | Adopted | 8.6: sampled before and after, a difference is a problem that fails the layer; `checkoutOf` unit-tested with a commit and a stash during the runs |

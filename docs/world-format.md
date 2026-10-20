@@ -351,13 +351,16 @@ input, duplicate ids and invisible format characters in text remain `artifact_in
 reader (`src/checker/drawio.ts`). The file is an `mxfile` with exactly one page, plain or compressed
 (Base64, raw deflate, UTF-8, URI encoding, as draw.io decodes it), or a bare `mxGraphModel`. It must
 be well-formed XML without namespaces: no DOCTYPE, only the five predefined entities and numeric
-references, XML 1.0 characters only, no `--` in comments, the XML declaration only at the very
-start.
+references, XML 1.0 characters only, no `--` in comments, nothing but XML white space outside the
+root (one UTF-8 byte-order mark allowed), the XML declaration only at the very start and by its
+grammar (version 1.0, encoding UTF-8). The file's own elements carry only the attributes draw.io's
+export carries (`mxGraphModel`'s `math` and `shadow` only as 0; no `background`).
 
 The reader is **allowlist-based**. It reads exactly the vocabulary the adapter writes and refuses
 everything else by name, never skipping it:
 - the root (the cell without a parent) and its layers, each with only `id` and `parent`;
-- a **frame**: `swimlane;container=1;collapsible=0;startSize=30;` on a layer;
+- a **frame**: `swimlane;container=1;collapsible=0;startSize=30;fillColor=none;` (an unfilled title
+  band) on a layer;
 - a **group**: `group;` with an empty value and `connectable="0"`, on a layer or in a frame;
 - a **step**: a rectangle (optionally `rounded=0`), `ellipse` or `rhombus`, with `strokeColor` and
   `fillColor` from the reader's own colour table, on a layer, in a frame or in a group;
@@ -375,7 +378,10 @@ its group is its parent group (`pn:group:<id>` gives `<id>`; group ids are uniqu
 Its box is its geometry plus every ancestor's offset, summed root first, each value within
 ±1,000,000, rounded by edges; a box with no area is refused. A start head reverses an arrow. Labels
 are plain text; `html=1` is `markup_label`. Labels are at most 4,096 characters and frame names at
-most 256.
+most 256. Nothing read may lie under what draw.io paints later: a filled step must not cover a step,
+an arrow (other than one ending at it) or a frame's name painted before it, in document order, depth
+first; a frame's name, drawn in its 30 px band, must not lie over a step's label line (16 px at the
+box's centre, as wide as the box or 12 px per character). Both are `structure_invalid`.
 
 Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
 `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
