@@ -26,7 +26,7 @@ import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFil
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
-import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
+import { drawioPlacement, engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
 import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
@@ -260,6 +260,7 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
   if (report.verdictLevel === 'artifact') return { folder: 'read', runs, explanations };
   if (folder === null) return { folder: 'missing', runs, explanations };
   const logFormat = report.readFrom === BENCH_SCHEMA_V3 ? 'v3' : 'v2', nativeName = nativeFileOf(report);
+  const drawio = report.environment.app.adapterId === 'drawio';
   const found = await boundWorld(report, folder);
   if ('problem' in found) return { folder: found.problem, runs, explanations };
   const world = found.world, references = await boundReferences(report, folder);
@@ -336,9 +337,16 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
       if ('text' in read) {
         try {
           const svg = readEngineSvg(read.text, `run${index}-engine`);
-          let scene: Box | null = null;
-          if (run.artifacts.native) { const native = await bound(folder, run.id, nativeName, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
-          engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
+          if (drawio) {
+            // draw.io's export lies at the board's coordinates less its own top-left corner: the judged
+            // steps' shapes in it give the shift (PADR-0049), so the pair shares one viewBox.
+            const live = Object.values(state.objects).flatMap(object => object.type === 'step' && !object.deleted ? [{ id: object.id, x: object.x, y: object.y }] : []);
+            engine = { read: svg, box: drawioPlacement(read.text, live) };
+          } else {
+            let scene: Box | null = null;
+            if (run.artifacts.native) { const native = await bound(folder, run.id, nativeName, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
+            engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
+          }
         } catch { reason = 'picture-unreadable'; }
       } else reason = read.missing === 'changed' ? 'picture-changed' : 'no-picture';
     } else reason = mirror === 'required' ? 'no-picture' : 'model-only';

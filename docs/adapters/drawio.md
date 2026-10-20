@@ -82,7 +82,9 @@ counts those that carry `--no-sandbox` (0 in every committed run).
   is `integrity_failed`.
 - **Closing.** The browser closes under the close contract ([PADR-0050](../adr/0050-browser-close-is-a-bounded-request.md)), as Excalidraw's does. It runs on a slot of the process's browser budget, with the sink held while that slot is. A close passes its caller's deadline down and reports *closed*, *failed* or *abandoned*. A mirror close stops a recovery's replacement start through its abort.
 - **Pictures.** The PNG and SVG are draw.io's own protocol exports, never a screenshot of the editor.
-  `importArtifact` is not offered: foreign `.drawio` files are not loaded into the app.
+  `importArtifact` is not offered: foreign `.drawio` files are not loaded into the app. The SVG starts
+  at the drawing's top-left corner; a bench report places it in board coordinates by the judged
+  steps' shapes in it, so the final board and the target share one viewBox.
 
 ### Mapping
 

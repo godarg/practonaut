@@ -159,6 +159,43 @@ export function readEngineSvg(text: string, prefix: string): EngineSvg {
 const numeral = (value: number): string => String(Math.round(value * 100) / 100);
 
 /**
+ * Where a draw.io SVG export lies in board units (PADR-0049), so its picture can share one viewBox with
+ * the target schematic beside it. draw.io draws every cell at its board position less the drawing's
+ * top-left corner, in one coordinate system, and marks each cell's group with `data-cell-id`; the
+ * adapter's cells carry the steps' own ids. The first given step whose shape is found (a rectangle,
+ * an ellipse or a rhombus path) gives the shift; the result is the export's viewBox in board units, or
+ * null when no step is found or the shift is not a bounded number. Only numbers are read from the
+ * (hostile) file: nothing of it reaches the page through this.
+ */
+export function drawioPlacement(text: string, steps: ReadonlyArray<{ id: string; x: number; y: number }>): Box | null {
+  if (Buffer.byteLength(text, 'utf8') > MAX_SVG_BYTES) return null;
+  const view = /<svg\b[^>]*?\sviewBox="(-?[0-9.]+) (-?[0-9.]+) ([0-9.]+) ([0-9.]+)"/.exec(text);
+  if (!view) return null;
+  const [x, y, width, height] = view.slice(1).map(Number) as [number, number, number, number];
+  const number = (tag: string, name: string): number => Number(new RegExp(`\\s${name}="(-?[0-9.]+)"`).exec(tag)?.[1] ?? NaN);
+  for (const step of steps) {
+    if (!IDENT.test(step.id)) continue;
+    const at = text.indexOf(`data-cell-id="${step.id}"`);
+    if (at < 0) continue;
+    const next = text.indexOf('data-cell-id="', at + 14), part = text.slice(at, next < 0 ? undefined : next);
+    const shape = /<(rect|ellipse|path)\b[^>]*>/.exec(part);
+    if (!shape) continue;
+    let left = NaN, top = NaN;
+    if (shape[1] === 'rect') { left = number(shape[0], 'x'); top = number(shape[0], 'y'); }
+    else if (shape[1] === 'ellipse') { left = number(shape[0], 'cx') - number(shape[0], 'rx'); top = number(shape[0], 'cy') - number(shape[0], 'ry'); }
+    else {
+      const values = (/\sd="([^"]*)"/.exec(shape[0])?.[1] ?? '').match(/-?[0-9]+(?:\.[0-9]+)?/g)?.map(Number) ?? [];
+      const xs = values.filter((_, i) => i % 2 === 0), ys = values.filter((_, i) => i % 2 === 1);
+      if (xs.length && ys.length) { left = Math.min(...xs); top = Math.min(...ys); }
+    }
+    const dx = left - step.x, dy = top - step.y;
+    if (![x, y, width, height, dx, dy].every(Number.isFinite) || Math.abs(dx) > 1_000_000 || Math.abs(dy) > 1_000_000) continue;
+    return { x: x - dx, y: y - dy, width, height };
+  }
+  return null;
+}
+
+/**
  * The export's drawing as inline SVG markup: `<svg viewBox class role aria-label>` around the
  * allowlisted content. `label` becomes the accessible name (escaped here); `classes` the class list.
  * With `offset` the drawing is moved by that many board units and shown in `viewBox` (the union with
