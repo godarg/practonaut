@@ -123,16 +123,19 @@ export async function commandCheck(args:string[]):Promise<number>{
   let pair;
   try{pair=parseExportPair(await readArchiveFile(flags['--pair']),world,input);}catch(error){if(error instanceof ExportPairError)throw new RuntimeError(error.code,cliText('pairInvalid'));throw error;}
   if((flags['--seed']!==undefined&&integer(flags['--seed'])!==pair.seed)||(flags['--task']!==undefined&&flags['--task']!==pair.taskId))throw new RuntimeError('artifact_invalid',cliText('exportContradiction'));
-  // `check` reads a file from outside a session (PADR-0049 decision 6.8): a refused one says why by name
-  // before any comparison with the pair's state.
-  try{nativeFormat(world.app).parse(world.schema,input,'submission');}
+  const settings={seed:pair.seed,taskId:pair.taskId,...(bundle?{bundle}:{})};
+  // The session first: this separate process runs the independent history interpreter, not the
+  // production Session replay, so its state is one the world reaches by legal actions.
+  await checkInProcess(world,canonicalJson(pair.session),settings);
+  // The pair's native file is read as the session's own export (PADR-0049 decision 6.8, review m4): it
+  // must be exactly that replayed state, so its verdict is the session's, and the host's own download of
+  // a legal state checks. A file the reader refuses says why by name; one that reads as another state
+  // is a mismatch. Without --pair a .drawio file is read in submission mode.
+  try{nativeFormat(world.app).parse(world.schema,input,'own-export');}
   catch(error){if(!(error instanceof CheckerError)||error.code!=='artifact_invalid')throw error;const reason=(error.details as {reason?:unknown}|undefined)?.reason;
    throw new RuntimeError('artifact_invalid',cliText('checkerRejected',{code:typeof reason==='string'&&(DRAWIO_REFUSALS as readonly string[]).includes(reason)?`artifact_invalid: ${reason}`:'artifact_invalid'}));}
-  if(!nativeMatchesState(world,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
-  const settings={seed:pair.seed,taskId:pair.taskId,...(bundle?{bundle}:{})};
-  // This separate process runs the independent history interpreter, not the production Session replay.
-  await checkInProcess(world,canonicalJson(pair.session),settings);
-  const verdict=await checkInProcess(world,input.toString('utf8'),settings);
+  if(!nativeMatchesState(world,input,pair.session.state,'own-export'))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+  const verdict=await checkInProcess(world,input.toString('utf8'),{...settings,reading:'own-export'});
   process.stdout.write(safeJson({...verdict,binding:{kind:'export-pair',revision:pair.revision,hash:pair.hash,sessionSha256:pair.sessionSha256,nativeSha256:pair.nativeSha256,origin:'unattested'}})+'\n');return verdict.passed?0:2;
  }
  let routing:{seed:number;taskId:string}|undefined;

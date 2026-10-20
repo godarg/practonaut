@@ -380,18 +380,20 @@ Its box is its geometry plus every ancestor's offset, summed root first, each va
 are plain text; `html=1` is `markup_label`. Labels are at most 4,096 characters and frame names at
 most 256; a frame without a positive size is `geometry_invalid`. The caller says what the file is
 ([PADR-0049](adr/0049-drawio-adapter.md) decision 6.8). The host's own export in a session (the export
-pair, a bench run, `run --export`, `report --verify`) must equal the session state and is read as
-written. Any other file, `practonaut check` among them, is refused by name where something read could
+pair, a bench run, `run --export`, `report --verify`, and `check --pair` once its session replays) must
+equal the session state and is read as written. Any other file, `practonaut check` among them, is refused by name where something read could
 be hidden or misread: `boxes_overlap` (two steps' boxes, or a frame's 30 px title band and a step or
-another band, intersect; a frame's whole box counts towards steps outside it), `arrow_hidden` (an
-arrow not drawn, or whose part between its end steps' boxes meets a filled step) and `text_extent` (a
+another band, intersect; a frame's whole box counts towards steps outside it), `frame_outside` (a
+frame's step not inside the frame's body below its band), `arrow_hidden` (an arrow not drawn, or whose
+part between its end steps' boxes is shorter than 10 px or comes within 4 px of another filled step)
+and `text_extent` (a
 label or frame name with a control character, or wider or taller than its box or band by the estimate
 of one 16 px line at 12 px per UTF-16 code unit).
 
 Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
 `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
 `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
-`unmodeled_value`, `boxes_overlap`, `arrow_hidden`, `text_extent`, `constraint`. `check` on a `.drawio`
+`unmodeled_value`, `boxes_overlap`, `frame_outside`, `arrow_hidden`, `text_extent`, `constraint`. `check` on a `.drawio`
 file drawn by hand is therefore strict until artifact mode (Must 3) decides otherwise; every legal
 state the adapter writes reads as the host's own export. The request format
 `drawio` names it; a `.drawio` file for an Excalidraw world, or the reverse, is refused.

@@ -17,7 +17,8 @@
  *   painting, so every legal state the adapter writes reads.
  * - `submission` (the default): any other file, `practonaut check` on a `.drawio` file. No model of
  *   draw.io's painting either: whatever read could be hidden or misread is refused by name
- *   (`boxes_overlap`, `arrow_hidden`, `text_extent`, `geometry_invalid`; see `submissionCheck`).
+ *   (`boxes_overlap`, `frame_outside`, `arrow_hidden`, `text_extent`, `geometry_invalid`; see
+ *   `submissionCheck`).
  *
  * Refusals are `artifact_invalid` with `details.reason` from a closed list.
  */
@@ -28,8 +29,8 @@ import { CheckerError } from "./errors.ts";
 import { validateSubmissionState } from "./state.ts";
 
 export const DRAWIO_READER_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, inflated: 10 * 1024 * 1024, elements: 50_000, depth: 64, attributes: 128, attributeChars: 65_536, styleChars: 4_096, styleKeys: 128, cells: 5_000, coordinate: 1_000_000, labelChars: 4_096, nameChars: 256 });
-export type DrawioRefusal = "too_large" | "xml_invalid" | "xml_doctype" | "pages_unsupported" | "diagram_invalid" | "cell_invalid" | "duplicate_id" | "structure_invalid" | "geometry_invalid" | "markup_label" | "text_invalid" | "unmodeled_value" | "boxes_overlap" | "arrow_hidden" | "text_extent";
-export const DRAWIO_REFUSALS: readonly DrawioRefusal[] = Object.freeze(["too_large", "xml_invalid", "xml_doctype", "pages_unsupported", "diagram_invalid", "cell_invalid", "duplicate_id", "structure_invalid", "geometry_invalid", "markup_label", "text_invalid", "unmodeled_value", "boxes_overlap", "arrow_hidden", "text_extent"]);
+export type DrawioRefusal = "too_large" | "xml_invalid" | "xml_doctype" | "pages_unsupported" | "diagram_invalid" | "cell_invalid" | "duplicate_id" | "structure_invalid" | "geometry_invalid" | "markup_label" | "text_invalid" | "unmodeled_value" | "boxes_overlap" | "arrow_hidden" | "text_extent" | "frame_outside";
+export const DRAWIO_REFUSALS: readonly DrawioRefusal[] = Object.freeze(["too_large", "xml_invalid", "xml_doctype", "pages_unsupported", "diagram_invalid", "cell_invalid", "duplicate_id", "structure_invalid", "geometry_invalid", "markup_label", "text_invalid", "unmodeled_value", "boxes_overlap", "arrow_hidden", "text_extent", "frame_outside"]);
 /** What the file is: the app's export from Practonaut's own host in a session, or anything else. */
 export type DrawioReadMode = "own-export" | "submission";
 export const DRAWIO_READ_MODES: readonly DrawioReadMode[] = Object.freeze(["own-export", "submission"]);
@@ -503,16 +504,26 @@ export function parseDrawio(input: string | Uint8Array, mode: DrawioReadMode = "
  * 12 px per UTF-16 code unit wide; draw.io draws an `html=0` label at 12 px, unwrapped and unclipped. A
  * frame's name is drawn the same way in its title band, the top 30 px. */
 export const DRAWIO_TEXT_ESTIMATE = Object.freeze({ lineHeight: 16, unitWidth: 12, band: 30 });
+/** What an arrow needs to be seen (`arrow_hidden`; review m4). draw.io's classic end marker is 6 px long
+ * with a 1 px stroke, and each end box's 1 px border is centred on its edge, so up to 8 px of an arrow's
+ * drawn part can lie under its marker and the borders: the drawn part must be at least `length` (10 px)
+ * long. The marker is 7 px wide with its stroke: the drawn part keeps `clearance` (4 px) from every
+ * other filled step's box. */
+export const DRAWIO_ARROW_MARGIN = Object.freeze({ length: 10, clearance: 4 });
 /**
  * Submission mode: no model of draw.io's painting; anything read that could be hidden or misread is
  * refused by name (review m3).
  * - `boxes_overlap`: two read boxes intersect for a positive area. The read boxes are the steps' boxes
  *   and the frames' title bands (the top 30 px, the whole frame when it is lower); a frame's whole box
  *   counts only towards a step outside it.
- * - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point, or no length outside
- *   its end steps' boxes), or its drawn part meets a filled step's box. The drawn part is the line
- *   between its ends (an end step's box centre, a loose end's point) less what lies inside its end
- *   steps' boxes, so it starts and ends on or outside them; a filled end step counts as any other.
+ * - `frame_outside`: a step of a frame does not lie inside that frame's body, below its title band.
+ *   draw.io neither moves nor clips a container's children, so such a step is drawn outside the frame
+ *   it is read in (review m4).
+ * - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point), or too little of it
+ *   is. The drawn part is the line between its ends (an end step's box centre, a loose end's point)
+ *   less what lies inside its end steps' boxes, so it starts and ends on or outside them. It must be at
+ *   least `DRAWIO_ARROW_MARGIN.length` long and keep `DRAWIO_ARROW_MARGIN.clearance` from every other
+ *   filled step's box; its own filled end steps are covered by the length.
  * - `text_extent`: a step label or a frame name holds a control character (a line feed among them), or
  *   its estimated extent (`DRAWIO_TEXT_ESTIMATE`) leaves its box or its band.
  * Sizes that are not positive are `geometry_invalid` in both modes.
@@ -561,6 +572,13 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     }
     for (let j = i + 1; j < bands.length; j++) if (overlaps(band, bands[j]!.band)) refuse("boxes_overlap", `the title bands of frames ${shown(frame.id)} and ${shown(bands[j]!.frame.id)} overlap`);
   }
+  // Membership as drawn: a frame's step lies inside the frame's body, below its title band.
+  for (const step of steps) {
+    const own = chains.get(step.id)!.find(id => kinds.get(id) === "frame");
+    if (own === undefined) continue;
+    const { whole, band } = bands.find(entry => entry.frame.id === own)!, b = box.get(step.id)!;
+    if (b.left < whole.left || b.right > whole.right || b.top < band.bottom || b.bottom > whole.bottom) refuse("frame_outside", `step ${shown(step.id)} of frame ${shown(own)} is drawn outside the frame's body`);
+  }
   // Arrows: a drawn part outside the end steps' boxes, meeting no filled step's box.
   const filled = steps.filter(step => styles.get(step.id)!.fillColor?.toLowerCase() !== "none");
   for (const edge of cells) {
@@ -575,11 +593,14 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     let from = 0, to = 1;
     if (edge.source !== null) { const range = inside(p, q, box.get(edge.source)!); if (range) from = Math.max(from, range[1]); }
     if (edge.target !== null) { const range = inside(p, q, box.get(edge.target)!); if (range) to = Math.min(to, range[0]); }
-    if (!(Math.hypot(q.x - p.x, q.y - p.y) * (to - from) > 0)) refuse("arrow_hidden", `arrow ${shown(edge.id)} has no length outside its end steps`);
+    const length = Math.hypot(q.x - p.x, q.y - p.y) * (to - from);
+    if (!(length >= DRAWIO_ARROW_MARGIN.length)) refuse("arrow_hidden", `arrow ${shown(edge.id)} has ${length > 0 ? `only ${Math.round(length * 10) / 10} px` : "no length"} outside its end steps (${DRAWIO_ARROW_MARGIN.length} px needed)`);
     const a = { x: p.x + (q.x - p.x) * from, y: p.y + (q.y - p.y) * from }, b = { x: p.x + (q.x - p.x) * to, y: p.y + (q.y - p.y) * to };
+    const margin = DRAWIO_ARROW_MARGIN.clearance;
     for (const step of filled) {
-      const range = inside(a, b, box.get(step.id)!);
-      if (range && Math.min(1, range[1]) > Math.max(0, range[0])) refuse("arrow_hidden", `arrow ${shown(edge.id)} meets filled step ${shown(step.id)}`);
+      if (step.id === edge.source || step.id === edge.target) continue;
+      const near = box.get(step.id)!, range = inside(a, b, { left: near.left - margin, top: near.top - margin, right: near.right + margin, bottom: near.bottom + margin });
+      if (range && Math.min(1, range[1]) > Math.max(0, range[0])) refuse("arrow_hidden", `arrow ${shown(edge.id)} comes within ${margin} px of filled step ${shown(step.id)}`);
     }
   }
 }

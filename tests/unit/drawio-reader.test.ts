@@ -184,7 +184,7 @@ test('labels, colours and geometry: plain text, no snapped colours, bounded valu
   assert.throws(() => read(vertex('a', 'A', STEP, '1', geo(999_999, 0, 160, 80))), reason('geometry_invalid'), 'an edge past ±1,000,000');
   assert.throws(() => read(group('g', '1', geo('9223372036854775808', 0)) + vertex('a', 'A', STEP, 'g', geo('-9223372036854775808', 0))), reason('geometry_invalid'));
   assert.throws(() => read(group('g', '1', geo('1e400', 0)) + vertex('a', 'A', STEP, 'g', geo('-1e400', 0))), reason('geometry_invalid'));
-  assert.equal((read(vertex('f', 'F', FRAME, '1', geo(600_000, 0, 400, 200)) + group('g', 'f', geo(300_000, 0)) + vertex('a', 'A', STEP, 'g', geo(50_000, 0))).state.objects.a as { x: number }).x, 950_000);
+  assert.equal((own(vertex('f', 'F', FRAME, '1', geo(600_000, 0, 400, 200)) + group('g', 'f', geo(300_000, 0)) + vertex('a', 'A', STEP, 'g', geo(50_000, 0))).state.objects.a as { x: number }).x, 950_000);
 });
 
 test('submission mode models no painting: overlapping boxes, an arrow meeting a filled step and text that may leave its box are refused by name, in any order (review m3)', () => {
@@ -197,7 +197,8 @@ test('submission mode models no painting: overlapping boxes, an arrow meeting a 
   assert.throws(() => read(ab + cover(FILLED)), reason('arrow_hidden'), 'a filled step after the arrow');
   assert.throws(() => read(cover(FILLED) + ab), reason('arrow_hidden'), 'a filled step before the arrow');
   assert.ok(read(ab + cover(STEP)).state.objects.c, 'an unfilled step');
-  assert.ok(read(ab + cover(FILLED, geo(250, 41, 60, 40))).state.objects.c, 'a filled step 1 px below the line');
+  assert.ok(read(ab + cover(FILLED, geo(250, 45, 60, 40))).state.objects.c, 'a filled step 5 px below the line');
+  assert.throws(() => read(ab + cover(FILLED, geo(250, 43, 60, 40))), reason('arrow_hidden'), 'a filled step 3 px below the line: within the marker\'s reach');
   // The drawn part starts and ends on the end steps' boxes: filled end steps cover none of it. Touching end
   // boxes leave nothing to draw; a loose end inside a filled step, or an arrow of no length, draws nothing seen.
   assert.ok(read(vertex('a', 'A', FILLED, '1', geo(0, 0)) + edge('e', 'a', 'b') + vertex('b', 'B', FILLED, '1', geo(400, 0))).state.objects.e, 'filled end steps');

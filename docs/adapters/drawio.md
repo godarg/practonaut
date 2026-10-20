@@ -120,16 +120,20 @@ unmodeled.
 The caller says what the file is (review m3):
 
 - **The host's own export** (`own-export`): the export pair, a bench run's native verdict, `run
-  --export`, `report --verify` and the conformance layer. The session state is the ground truth, and
+  --export`, `report --verify`, `practonaut check --pair` once the pair's session has replayed (review
+  m4: the file must be exactly that legal state, so its verdict is the session's) and the conformance
+  layer. The session state is the ground truth, and
   the export must equal it; like Excalidraw's reader, this mode models no painting. Every legal state
   the adapter writes reads: a property test plays random legal actions from every library start and
   reads 5,151 states with none refused.
-- **Any other file** (`submission`, the default; `practonaut check`): no model of draw.io's painting
-  either, but whatever read could be hidden or misread is refused by name, in any document order:
-  overlapping boxes (`boxes_overlap`: steps, frames' title bands, a frame over a step that is not its
-  own), an arrow not drawn or meeting a filled step (`arrow_hidden`), a label or frame name with a
-  line break or wider or taller than its box or band (`text_extent`, estimated as one 16 px line at
-  12 px per UTF-16 code unit).
+- **Any other file** (`submission`, the default; `practonaut check` without `--pair`): no model of
+  draw.io's painting either, but whatever read could be hidden or misread is refused by name, in any
+  document order: overlapping boxes (`boxes_overlap`: steps, frames' title bands, a frame over a step
+  that is not its own), a frame's step drawn outside its frame (`frame_outside`), an arrow not drawn,
+  shorter than 10 px between its end boxes or within 4 px of another filled step (`arrow_hidden`: room
+  for draw.io's end marker and the borders), a label or frame name with a line break or wider or
+  taller than its box or band (`text_extent`, estimated as one 16 px line at 12 px per UTF-16 code
+  unit).
 
 So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example for a
 default style key, a hidden or transparent cell, a container, a colour outside the table, a filled

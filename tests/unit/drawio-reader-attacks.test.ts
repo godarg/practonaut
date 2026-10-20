@@ -34,7 +34,7 @@ const restyled = (list: XmlNode[], label: string, change: (style: string) => str
 const labelOf = (state: State, predicate: (step: StepV2) => boolean): string => (Object.values(state.objects).find(o => o.type === 'step' && !o.deleted && predicate(o as StepV2)) as StepV2).label;
 
 test('baselines: the honest goal passes and the unchanged start fails, for every task attacked below', () => {
-  for (const taskId of ['connect', 'remove-step', 'reorder', 'rename-step', 'align']) {
+  for (const taskId of ['connect', 'remove-step', 'reorder', 'rename-step', 'align', 'two-frames', 'recolor']) {
     assert.equal(outcome(taskId, file(cells(goal(taskId)))), 'passed', taskId);
     assert.equal(outcome(taskId, file(cells(start(taskId)))), 'failed', taskId);
   }
@@ -224,4 +224,39 @@ test('the compressed page reads as draw.io reads it', () => {
   const plain = modelXml(cells(goal('connect'))), packed = deflateRawSync(Buffer.from(encodeURIComponent(plain), 'utf8')).toString('base64');
   assert.equal(outcome('connect', `<mxfile><diagram id="p">${packed}</diagram></mxfile>`), 'passed');
   assert.equal(outcome('connect', `<mxfile><diagram id="p">${packed.slice(0, 8)} ${packed.slice(8)}</diagram></mxfile>`), 'diagram_invalid');
+});
+
+// Review m4 (r4-frame-membership-outside): draw.io neither moves nor clips a frame's children, so steps
+// parented to the start's empty frames, at their old places, draw like the unsolved start.
+test('r4-frame-membership-outside: steps read in a frame but drawn outside it are refused', () => {
+  const start2 = cells(start('two-frames')), goalState = goal('two-frames');
+  const moved = structuredClone(start2);
+  const frameCell = (id: string): XmlNode => moved.find(c => c.attrs.id === id)!;
+  for (const step of Object.values(goalState.objects)) {
+    if (step.type !== 'step' || step.deleted || step.frameId === null) continue;
+    const cell = moved.find(c => c.attrs.id === step.id)!, frame = box(frameCell(step.frameId));
+    // The same absolute box as in the start, now relative to the frame it is parented to.
+    const was = box(cell);
+    cell.attrs.parent = step.frameId;
+    Object.assign(cell.children[0]!.attrs, { x: String(was.x - frame.x), y: String(was.y - frame.y) });
+  }
+  assert.equal(outcome('two-frames', file(start2)), 'failed', 'the unchanged start');
+  assert.equal(outcome('two-frames', file(moved)), 'frame_outside', 'the review\'s file: every step drawn outside its frame');
+  // Read as the host's own export, it is read as written (that mode compares with the session state).
+  assert.equal(outcome('two-frames', file(moved), 'own-export'), 'passed');
+});
+
+// Review m4 (r4-arrow-subpixel-gap): an arrow between boxes less than a marker apart, before its filled
+// source in the file, lies wholly under the marker, the borders and the source's fill.
+test('r4-arrow-subpixel-gap: an arrow needs room for its marker outside its end boxes', () => {
+  const recolor = cells(goal('recolor'));
+  const at = (x: string): string => {
+    const copy = structuredClone(recolor), byId = (id: string): XmlNode => copy.find(c => c.attrs.id === id)!;
+    byId('c').children[0]!.attrs.x = x;
+    // The review's order: root, layer, bc, a, b, c, ab.
+    return file(['pn:root', 'pn:layer', 'bc', 'a', 'b', 'c', 'ab'].map(byId));
+  };
+  // b spans 400..580: c 0.4, 1 and 6 px after it leaves too little of bc to be seen; 20 px leaves enough.
+  for (const x of ['580.4', '581', '586']) assert.equal(outcome('recolor', at(x)), 'arrow_hidden', `c at x=${x}`);
+  assert.equal(outcome('recolor', at('600')), 'passed', 'c at x=600');
 });

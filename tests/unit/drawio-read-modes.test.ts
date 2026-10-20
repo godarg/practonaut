@@ -1,8 +1,8 @@
 // PADR-0049 decision 6.8 (review m3, r3-paint-honest-states-refused): each caller reads a .drawio file in
 // the mode that says what it is. The host's own export of a legal state in which two steps overlap (the
 // review's first state: recolor solved, then Payment failed moved onto Checkout) is exported and judged as
-// the session is; the same pair checked from outside the session (`practonaut check --pair`) is refused by
-// name. The mirror here is a stand-in whose native file is the adapter's writer output.
+// the session is, and so is the pair by `practonaut check --pair` (review m4); the same file alone is a
+// submission and refused by name. The mirror here is a stand-in whose native file is the writer's output.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -51,7 +51,7 @@ test('the host exports its own draw.io export of a legal overlapping state, and 
   await assert.rejects(checkInProcess(slice, exported.native.utf8, { seed: exported.seed, taskId: 'recolor' }), (error: unknown) => error instanceof RuntimeError && error.code === 'artifact_invalid' && /artifact_invalid: boxes_overlap/.test(error.message));
 });
 
-test('`practonaut check --pair` reads the pair from outside the session in submission mode and names the refusal', { timeout: 120_000 }, async () => {
+test('`practonaut check --pair` reads the host\'s own pair as its own export; the same file alone is a submission (review m4, r4-check-pair-honest-export)', { timeout: 120_000 }, async () => {
   const exported = await overlappingExport();
   const dir = mkdtempSync(join(realpathSync(tmpdir()), 'pn-drawio-modes-'));
   try {
@@ -61,8 +61,15 @@ test('`practonaut check --pair` reads the pair from outside the session in submi
     writeFileSync(join(dir, 'result.drawio'), exported.native.utf8);
     writeFileSync(join(dir, 'result.session.json'), exported.session.utf8);
     const cli = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
-    const checked = spawnSync(process.execPath, [cli, 'check', join(dir, 'result.drawio'), '--world', join(dir, 'world.pnworld'), '--pair', join(dir, 'result.session.json')], { encoding: 'utf8' });
-    assert.notEqual(checked.status, 0);
-    assert.match(checked.stdout + checked.stderr, /artifact_invalid: boxes_overlap/);
+    // The pair: its session replays to a legal state and the file is exactly that state, so it is read
+    // as the session's own export and judged as the session is (the Player's download checks).
+    const paired = spawnSync(process.execPath, [cli, 'check', join(dir, 'result.drawio'), '--world', join(dir, 'world.pnworld'), '--pair', join(dir, 'result.session.json')], { encoding: 'utf8' });
+    assert.equal(paired.status, 0, paired.stdout + paired.stderr);
+    const verdict = JSON.parse(paired.stdout) as { passed: boolean; binding: { kind: string } };
+    assert.deepEqual([verdict.passed, verdict.binding.kind], [true, 'export-pair']);
+    // The same file without its session is a file from outside a session: refused by name.
+    const alone = spawnSync(process.execPath, [cli, 'check', join(dir, 'result.drawio'), '--world', join(dir, 'world.pnworld'), '--seed', String(exported.seed), '--task', 'recolor'], { encoding: 'utf8' });
+    assert.notEqual(alone.status, 0);
+    assert.match(alone.stdout + alone.stderr, /artifact_invalid: boxes_overlap/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
