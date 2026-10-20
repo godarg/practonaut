@@ -197,9 +197,10 @@ test('the native Open repeat runs only the H1 native file test, by hand, 20 time
   assert.ok(all.indexOf(uploads[0]!) > check, 'the upload comes after the test and its check');
 });
 
-// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside the tests they
-// ran beside in the failed Windows runs (challenge-round.test.ts then; the 0.3.0 gate's integration
-// files since that file was split), and keeps the close timings after a pass too.
+// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside other
+// integration files, as test:integration runs them, and keeps the close timings after a pass too. Its
+// partner today is the 0.3.0 gate's integration files; in #64's failed Windows runs it was 0.2.0's
+// challenge-round.test.ts, which the 0.3.0 gate replaced.
 test('the host deadline repeat runs both deadline tests beside the 0.3.0 gate\'s integration files, by hand, on each CI platform, and fails unless every attempt passed', () => {
   const doc = workflow('.github/workflows/host-deadline-repeat.yml');
   assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
@@ -212,12 +213,20 @@ test('the host deadline repeat runs both deadline tests beside the 0.3.0 gate\'s
   assert.deepEqual(matrix.os, PLATFORMS);
   assert.equal(strategy['fail-fast'], 'false', 'one failed run does not cancel the others');
   const all = list(job.steps).map(map);
-  const build = all.findIndex(step => runWords(step).join(' ') === 'node tools/build-engine.ts');
   const runs = all.flatMap((step, index) => runWords(step).includes('tools/amplify-host-deadline.ts') ? [index] : []);
   assert.equal(runs.length, 1, 'one amplifier command');
   const run = runs[0]!, argv = runWords(all[run]!);
   const value = (name: string): string | undefined => argv[argv.indexOf(name) + 1];
-  assert.ok(build >= 0 && build < run, 'the engine is built before the tests');
+  // The partner files are integration files: everything test:integration builds before it runs them
+  // (each `npm run <script>` before its test command) is built before the amplifier, by that script or
+  // by the command the script runs (review: the partner's guarded benches need the Player).
+  const scripts = (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts;
+  const builds = scripts['test:integration']!.split('&&').map(part => part.trim()).filter(part => /^npm run [\w:-]+$/.test(part)).map(part => part.slice('npm run '.length));
+  assert.ok(builds.length >= 1, 'test:integration builds before it tests');
+  for (const name of builds) {
+    const at = all.findIndex(step => { const line = runWords(step).join(' '); return line === `npm run ${name}` || line === scripts[name]; });
+    assert.ok(at >= 0 && at < run, `${name} (${scripts[name]}) runs before the amplifier`);
+  }
   // Existing gate integration files, among them those that carry the old file's long tests.
   const beside = String(value('--beside')).split(',');
   for (const file of beside) { assert.match(file, /^tests\/integration\/challenge-[a-z-]+\.test\.ts$/); assert.ok(existsSync(fileURLToPath(new URL(`../../${file}`, import.meta.url))), file); }

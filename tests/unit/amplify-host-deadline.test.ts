@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classify, closePhases, ledgerCounts, requireAllPassed, tapResult } from '../../tools/amplify-host-deadline.ts';
+import { classify, closePhases, ledgerCounts, partnerArgs, partnerFiles, requireAllPassed, tapResult } from '../../tools/amplify-host-deadline.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'pn-amplify-tap-'));
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
@@ -95,4 +95,20 @@ test('the ledger rows the preload writes at exit are counted by statement, and f
   assert.deepEqual(ledgerCounts(rows, log), { entries: 4, callers: { closed: 1, failed: 0, abandoned: 3, cancelled: 1 }, abandonedEnded: 1, abandonedPendingAtExit: 1, launchesRejected: 1,
     released: { proof: 2, 'launch-wait': 1, unused: 0, heldAtExit: 1 }, forcedEnds: 1 });
   assert.equal(ledgerCounts([{ event: 'close-end', ms: 40 }]).entries, 0, 'a run before PADR-0050 has no ledger rows');
+});
+
+test('--beside names one or more partner files, separated by commas, and runs them one after the other in one process (review: the partner list and its run were untested)', () => {
+  assert.deepEqual(partnerFiles('tests/a.test.ts'), ['tests/a.test.ts']);
+  assert.deepEqual(partnerFiles('tests/a.test.ts,tests/b.test.ts'), ['tests/a.test.ts', 'tests/b.test.ts']);
+  for (const value of [undefined, '', 'tests/a.test.ts,', 'README.md', 'tests/a.test.ts,notes.txt']) assert.throws(() => partnerFiles(value), /--beside needs one or more test files, separated by commas/, String(value));
+  // Two scratch partner files: the first holds for 300 ms, and the second starts only after it ended.
+  const order = join(scratch, 'order.log');
+  const first = join(scratch, 'first.test.mjs'), second = join(scratch, 'second.test.mjs');
+  writeFileSync(first, `import test from 'node:test'; import { appendFileSync } from 'node:fs';\ntest('first', async () => { appendFileSync(${JSON.stringify(order)}, 'first start\\n'); await new Promise(resolve => setTimeout(resolve, 300)); appendFileSync(${JSON.stringify(order)}, 'first end\\n'); });\n`);
+  writeFileSync(second, `import test from 'node:test'; import { appendFileSync } from 'node:fs';\ntest('second', () => { appendFileSync(${JSON.stringify(order)}, 'second start\\n'); });\n`);
+  const tap = join(scratch, 'partner.tap');
+  const done = spawnSync(process.execPath, partnerArgs([first, second], tap), { encoding: 'utf8', env });
+  assert.equal(done.status, 0, done.stderr);
+  assert.deepEqual(readFileSync(order, 'utf8').split('\n').filter(Boolean), ['first start', 'first end', 'second start']);
+  assert.match(readFileSync(tap, 'utf8'), /ok \d+ - first[\s\S]*ok \d+ - second/);
 });

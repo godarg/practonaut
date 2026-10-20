@@ -6,9 +6,10 @@
 // `--load` adds host load beside the attempts: CPU workers and file churn in the OS temporary
 // directory (where Playwright keeps Chromium's profile). `--beside <test file>[,<test file>…]` runs
 // those files one after the other, again and again, in their own `node --test` process while the
-// attempts run, as `test:integration` (two files at a time) ran `challenge-round.test.ts` beside
-// `host-deadline.test.ts` in both failed Windows runs — the tests that file held then are now the
-// 0.3.0 gate's challenge-*.test.ts files; its results are kept, not judged.
+// attempts run, as `test:integration` (two files at a time) runs other files beside
+// `host-deadline.test.ts`; its results are kept, not judged. In both failed Windows runs of #64 the
+// file beside it was 0.2.0's `challenge-round.test.ts`, which the 0.3.0 gate replaced: a partner
+// load today is not that one.
 //
 //   npm run amplify:host-deadline -- [--runs 30] [--cpu 20] [--block 0] [--load 0] [--hold 0] [--beside <file,…>] [--require-pass]
 //
@@ -115,6 +116,17 @@ export function classify(result: TapResult | null, closes: CloseRow[], closeBoun
   return 'other';
 }
 
+/** The partner files `--beside` names: one or more test files, separated by commas. */
+export function partnerFiles(value: string | undefined): string[] {
+  const files = (value ?? '').split(',');
+  if (!value || files.some(file => !file.endsWith('.test.ts'))) throw new Error('--beside needs one or more test files, separated by commas');
+  return files;
+}
+/** The node arguments of one partner run: the files one after the other (`--test-concurrency=1`), as
+ * one file's tests run, with a TAP report at `tap`. */
+export const partnerArgs = (files: readonly string[], tap: string): string[] =>
+  ['--import', './tests/support/test-home.ts', '--test', '--test-concurrency=1', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...files];
+
 async function main(): Promise<void> {
   const { BROWSER_BOUNDS } = await import('../src/adapters/browser/bounded.ts');
   const closeBoundMs = BROWSER_BOUNDS.graceful + BROWSER_BOUNDS.forced;
@@ -125,9 +137,8 @@ async function main(): Promise<void> {
     return value;
   };
   const runs = option('--runs', 30, 1), cpu = option('--cpu', 20, 1), block = option('--block', 0, 0), load = option('--load', 0, 0), hold = option('--hold', 0, 0);
-  const besideIndex = args.indexOf('--beside'), beside = besideIndex >= 0 ? args[besideIndex + 1] : undefined, requirePass = args.includes('--require-pass');
-  const besideFiles = beside === undefined ? [] : beside.split(',');
-  if (besideIndex >= 0 && (!besideFiles.length || besideFiles.some(file => !file.endsWith('.test.ts')))) throw new Error('--beside needs one or more test files, separated by commas');
+  const besideIndex = args.indexOf('--beside'), requirePass = args.includes('--require-pass');
+  const besideFiles = besideIndex >= 0 ? partnerFiles(args[besideIndex + 1]) : [], beside = besideFiles.length ? besideFiles.join(',') : undefined;
   const git = (...command: string[]): string => spawnSync('git', command, { encoding: 'utf8' }).stdout.trim();
   const commit = git('rev-parse', '--short', 'HEAD'), dirty = git('status', '--porcelain').length > 0;
   const srcChanged = git('status', '--porcelain', '--', 'src').length > 0;
@@ -152,8 +163,7 @@ for(let i=0;i<${load};i++)new Worker('for(;;){}',{eval:true});
   const runPartner = (run: number): void => {
     if (!beside || attemptsDone) return;
     const started = performance.now();
-    // One file at a time, as the tests of the one file they were ran one after the other.
-    const child = spawn(process.execPath, ['--import', './tests/support/test-home.ts', '--test', '--test-concurrency=1', '--test-reporter=tap', `--test-reporter-destination=${join(root, `beside-${run}.tap`)}`, ...besideFiles], { stdio: 'ignore' });
+    const child = spawn(process.execPath, partnerArgs(besideFiles, join(root, `beside-${run}.tap`)), { stdio: 'ignore' });
     partner = new Promise(done => child.once('close', code => { partnerRuns.push({ run, exitCode: code, ms: Math.round(performance.now() - started) }); runPartner(run + 1); done(); }));
   };
   runPartner(1);
