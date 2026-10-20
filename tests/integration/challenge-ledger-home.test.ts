@@ -69,12 +69,12 @@ test('one release ledger whatever directory a command runs in and however the or
     assert.equal(forked.status, 2); assert.match(forked.stderr, /ledger_exists: /);
     // A data folder named relatively would be another folder, and another ledger, in every directory.
     const relative = p.toolIn(docs, ['ledger', 'init'], { PRACTONAUT_HOME: 'relative-home' });
-    assert.equal(relative.status, 1, relative.stdout); assert.match(relative.stderr, /PRACTONAUT_HOME is a relative path \(relative-home\)/);
+    assert.equal(relative.status, 2, relative.stdout); assert.match(relative.stderr, /home_not_fully_qualified: PRACTONAUT_HOME is not named fully \(relative-home\)/);
     assert.equal(existsSync(join(docs, 'relative-home')), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('ledger init refuses where an earlier Practonaut kept this repository\'s ledger, and in a shallow clone (review: budget-checkout-local-ledger, r2-ledger-history-local-refs)', { timeout: 300_000 }, async () => {
+test('ledger init refuses where an earlier Practonaut kept this repository\'s ledger; every ledger command refuses a shallow clone, with one tip or more (review: budget-checkout-local-ledger, r2-ledger-history-local-refs, a shallow clone named by its cause)', { timeout: 300_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-elsewhere-'));
   try {
     const p = await project(dir);
@@ -87,8 +87,16 @@ test('ledger init refuses where an earlier Practonaut kept this repository\'s le
     await writeFile(join(p.repo, 'second.txt'), 'a second commit, so that a clone of depth 1 cuts history off\n'); p.commit('second');
     const shallow = join(dir, 'shallow');
     p.gitIn(dir, 'clone', '--quiet', '--depth', '1', pathToFileURL(p.remote).href, shallow);
-    refused = p.toolIn(shallow, ['ledger', 'init']);
-    assert.equal(refused.status, 2, refused.stderr); assert.match(refused.stderr, /shallow_clone: this repository is a shallow clone/);
+    const shallowRefused = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /^challenge: shallow_clone: this repository is a shallow clone/); };
+    shallowRefused(p.toolIn(shallow, ['ledger', 'init']));
+    shallowRefused(p.toolIn(shallow, ['ledger', 'show']));
+    shallowRefused(p.toolIn(shallow, ['bench', '--purpose', 'example', '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS }));
+    assert.deepEqual(await p.started(), [], 'no client started');
+    // Two tips cut off at depth 1: git reports two roots, and the cause named is still the shallow clone.
+    p.git('switch', '--quiet', '-c', 'side'); await writeFile(join(p.repo, 'side.txt'), 'a side branch\n'); p.git('add', 'side.txt'); p.git('commit', '--quiet', '-m', 'side'); p.git('push', '--quiet', '-u', 'origin', 'side'); p.git('switch', '--quiet', 'main');
+    const twoTips = join(dir, 'two-tips');
+    p.gitIn(dir, 'clone', '--quiet', '--depth', '1', '--no-single-branch', pathToFileURL(p.remote).href, twoTips);
+    shallowRefused(p.toolIn(twoTips, ['ledger', 'init']));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -145,10 +153,18 @@ test('a history with more than one root commit is refused by name on every branc
     // Without the other history in this clone, the repository's one ledger again.
     p.git('branch', '--quiet', '-D', 'merged');
     assert.match(p.ok(['ledger', 'show']).stdout, /0 of 800 model runs counted/);
+    // A replace ref that gives the root a parent (git replace --graft) changes the root git reports, not
+    // the ledger: the tool reads git without replace refs (review: local replace refs).
+    const root = p.git('rev-list', '--max-parents=0', 'HEAD'), tree = p.gitIn(dir, '-C', p.repo, 'write-tree');
+    const elsewhere = p.git('commit-tree', tree, '-m', 'a commit no branch holds');
+    p.git('replace', '--graft', root, elsewhere);
+    assert.equal(p.git('rev-list', '--max-parents=0', 'HEAD'), elsewhere, 'git itself now reports another root');
+    const again = p.tool(['ledger', 'init']);
+    assert.equal(again.status, 2, again.stderr); assert.match(again.stderr, /ledger_exists: /);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('ledger init reads every pushed version under the folder git names, however --folder spells it; a folder outside the repository is refused (review: --folder spelled otherwise than the top level)', { timeout: 300_000 }, async () => {
+test('the committed ledger is read at the path git knows: --folder through a link to the checkout is the same folder, a link inside the checkout and a folder outside it are refused on every command that takes --folder (review: --folder spelled otherwise; a link inside the checkout hides pushed history; --folder on every ledger command)', { timeout: 300_000 }, async () => {
   const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-folder-'));
   try {
     const p = await project(dir);
@@ -163,8 +179,21 @@ test('ledger init reads every pushed version under the folder git names, however
     // The checkout through a link (a symbolic link, a junction on Windows): another spelling of the same folder.
     const link = join(dir, 'link'); await symlink(p.repo, link, 'junction');
     diverged(p.tool(['ledger', 'init', '--folder', join(link, 'docs', 'benchmarks', 'challenge', '0.3.0')]));
-    const outside = p.tool(['ledger', 'init', '--folder', join(dir, 'elsewhere')]);
-    assert.equal(outside.status, 2, outside.stderr); assert.match(outside.stderr, /ledger_outside_repository: the committed ledger .* lies outside this repository/);
+    // A folder outside the checkout, on every command that takes --folder: refused before anything starts.
+    const elsewhere = join(dir, 'elsewhere');
+    const outside = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /ledger_outside_repository: the committed ledger .* lies outside this repository/); };
+    outside(p.tool(['ledger', 'init', '--folder', elsewhere]));
+    outside(p.tool(['ledger', 'show', '--folder', elsewhere]));
+    outside(p.tool(['ledger', 'write', '--folder', elsewhere]));
+    outside(p.tool(['bench', '--purpose', 'example', '--folder', elsewhere, '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS }));
+    assert.deepEqual(await p.started(), [], 'no client started');
     assert.equal(existsSync(p.ledgerPath), false, 'no ledger was started');
+    // The release folder a link inside the checkout (to an empty folder): git would be asked for the
+    // link's target and see no pushed version at all; refused by name, and no count starts at zero.
+    await mkdir(join(p.repo, '.local', 'empty'), { recursive: true });
+    await symlink(join(p.repo, '.local', 'empty'), p.folder, 'junction');
+    const linked = p.tool(['ledger', 'init'], { PRACTONAUT_HOME: join(dir, 'home2') });
+    assert.equal(linked.status, 2, linked.stderr); assert.match(linked.stderr, /ledger_path_link: .* is a symbolic link inside the checkout: git reads the committed ledger at docs\/benchmarks\/challenge\/0\.3\.0\/release-ledger\.jsonl/);
+    assert.equal(existsSync(join(dir, 'home2', 'release-ledgers')), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

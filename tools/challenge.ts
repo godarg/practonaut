@@ -20,15 +20,15 @@
 //   node tools/challenge.ts gate [--preflight] --declaration <file> --set <dir> --dev <…> --oracle <…> --random <…> [--ladder <…>] [--bench-root <dir,…>] [--out <file.md>]
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash, fileHash, GATE_PRESET, heldOutSeeds } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
-import { committedFile, COMMITTED_LEDGER, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, setIdentities, verifySet, writeSet } from '../src/challenge/files.ts';
-import { appendRound, initLedger, ledgerExists, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
+import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, setIdentities, verifySet, writeSet } from '../src/challenge/files.ts';
+import { appendRound, initLedger, ledgerExists, ledgerGuard, readLedger, writeCommittedLedger, type LedgerPaths } from '../src/challenge/ledger-file.ts';
 import { countLedger, headerLine, isPrefix, LedgerError, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
-import { canonicalPath, earlierLedgerPaths, fullyQualified, releaseLedgerPath, repositoryIdentity } from '../src/challenge/repository.ts';
-import { committedVersions, isShallowRepository } from '../src/challenge/git.ts';
+import { earlierLedgerPaths, ledgerGitPath, localLedgerPath } from '../src/challenge/repository.ts';
+import { committedVersions } from '../src/challenge/git.ts';
 import { taskIdOf } from '../src/challenge/build.ts';
 import { canonicalJson, sha256Hex } from '../src/canonical/index.ts';
 import { resolvedDataPaths } from '../src/platform/paths.ts';
@@ -88,15 +88,14 @@ const gitPath = (args: string[]): string => {
 /** The checkout's top level: the release folder of this branch's round files. */
 const defaultFolder = (): string => join(gitPath(['rev-parse', '--show-toplevel']), 'docs', 'benchmarks', 'challenge', RELEASE);
 /** One local ledger per user and repository (PADR-0042 amended): under PRACTONAUT_HOME, keyed by the
- * repository's normalised origin URL and root commit, so every clone and worktree of the repository on
- * this machine shares it and its lock. Never a path an option names. */
-async function localLedger(): Promise<string> {
-  // A data folder not named fully is resolved against each directory a command runs in (on Windows also
-  // `\pn` or `/pn`, against the current drive): another folder, and another ledger, from each of them.
-  const configured = process.env.PRACTONAUT_HOME;
-  if (configured !== undefined && configured !== '' && !fullyQualified(configured)) fail(`PRACTONAUT_HOME is a relative path (${configured}); the release ledger would be another file in every directory${process.platform === 'win32' ? ' or on every drive' : ''}: name it fully (with its drive on Windows)`);
-  const identity = repositoryIdentity(process.cwd()) ?? fail('not in a git repository with a commit: the release ledger belongs to a repository');
-  return releaseLedgerPath((await resolvedDataPaths()).home, identity.key);
+ * repository's one root commit, so every clone, worktree and branch of the repository on this machine
+ * shares it and its lock (src/challenge/repository.ts: the refusals). Never a path an option names. */
+const localLedger = (): Promise<string> => localLedgerPath(process.env, process.cwd());
+/** The ledger files of a release folder of this checkout: the committed copy's path must lie inside the
+ * checkout with no symbolic link on the way (repository.ts, `ledgerGitPath`); the path git knows it by. */
+function checkedPaths(folder: string, local: string): LedgerPaths & { gitPath: string } {
+  const paths = ledgerPaths(folder, local);
+  return { ...paths, gitPath: ledgerGitPath(gitPath(['rev-parse', '--show-toplevel']), paths.committed) };
 }
 /** No argument but the options a command names. */
 const noPositional = (positional: string[]): void => { if (positional.length) fail(`unexpected argument ${positional[0]}`); };
@@ -167,20 +166,15 @@ async function ledger(args: string[]): Promise<void> {
   const { values, positional } = options(args, ['--folder', '--bench-root']);
   const action = positional[0];
   if (positional.length !== 1 || !['init', 'write', 'show'].includes(action!)) fail('ledger init, write or show');
-  const folder = values['--folder'] ?? defaultFolder(), paths = ledgerPaths(folder, await localLedger());
+  const folder = values['--folder'] ?? defaultFolder(), paths = checkedPaths(folder, await localLedger());
   if (action === 'init') {
     // This repository's ledger exists (here, or where an earlier Practonaut kept it): never a second one.
     if (await ledgerExists(paths.local)) throw new LedgerError('ledger_exists', `${paths.local} exists: this repository's local release ledger (shared by every clone and worktree of it); a local ledger is never replaced`);
     for (const earlier of earlierLedgerPaths(process.cwd())) if (await ledgerExists(earlier))
       throw new LedgerError('ledger_elsewhere', `a release ledger of this repository exists at ${earlier}, where an earlier Practonaut kept it; move it to ${paths.local} instead of starting a second count`);
-    // Every pushed version, over HEAD and every remote-tracking branch: one history, the longest its head.
-    const top = gitPath(['rev-parse', '--show-toplevel']);
-    if (isShallowRepository(top)) throw new LedgerError('shallow_clone', 'this repository is a shallow clone: the release ledger\'s pushed versions cannot all be read (git fetch --unshallow)');
-    // Both by their canonical spelling (a symbolic link, a short name or another letter case would leave
-    // the repository and hide every pushed version); a ledger outside the repository is refused.
-    const rel = relative(canonicalPath(top), canonicalPath(resolve(folder, COMMITTED_LEDGER))).split(sep).join('/');
-    if (rel === '' || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) throw new LedgerError('ledger_outside_repository', `the committed ledger ${resolve(folder, COMMITTED_LEDGER)} lies outside this repository (${top}); --folder names a folder of the checkout`);
-    const versions = committedVersions(top, rel);
+    // Every pushed version, over HEAD and every remote-tracking branch, at the path git knows (a shallow
+    // clone was refused with the repository's identity): one history, the longest its head.
+    const versions = committedVersions(gitPath(['rev-parse', '--show-toplevel']), paths.gitPath);
     const texts = [...versions.map(version => version.text), ...(await readLedger(paths.committed).then(value => value ? [value.text] : [], () => []))];
     const longest = texts.reduce<string | null>((best, text) => best === null || text.length > best.length ? text : best, null);
     const diverged = texts.find(text => !isPrefix(text, longest!));
@@ -227,12 +221,12 @@ async function bench(args: string[]): Promise<void> {
     const made = purpose === 'pre-probe' ? { set: probeSet(value as Awaited<ReturnType<typeof readPlan>>), seeds: (value as Awaited<ReturnType<typeof readPlan>>).seeds } : heldOutSet(value as Awaited<ReturnType<typeof readDeclaration>>);
     const family = value.unit.split('.')[0] as Family;
     const set = { world: sha256Hex(canonicalJson(made.set.world)), instances: new Set(setIdentities(made.set, made.seeds.map(seed => taskIdOf(family, seed)))) };
-    guard = { paths: ledgerPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models, set };
+    guard = { paths: checkedPaths(dirname(path), local), purpose, unit: value.unit, round: value.round, basis, toolchain: value.toolchain.id, rules: value.toolchain.rules, models, set };
   } else {
     if (values['--plan'] !== undefined || values['--declaration'] !== undefined) fail(`a ${purpose} run serves no plan or declaration`);
     const unit = values['--unit'] === undefined ? null : parseUnit(values['--unit']);
     if (unit && unit.level !== 'session') fail(`${unit.id} is judged in artifact mode, which this Practonaut does not ship yet`);
-    guard = { paths: ledgerPaths(values['--folder'] ?? defaultFolder(), local), purpose, unit: unit?.id ?? null, round: null, basis: null, toolchain: unit?.toolchain ?? PRACTONAUT_TOOLCHAIN, rules: null };
+    guard = { paths: checkedPaths(values['--folder'] ?? defaultFolder(), local), purpose, unit: unit?.id ?? null, round: null, basis: null, toolchain: unit?.toolchain ?? PRACTONAUT_TOOLCHAIN, rules: null };
   }
   process.exitCode = await commandBench(args.slice(split + 1), { guard: ledgerGuard(guard) });
 }

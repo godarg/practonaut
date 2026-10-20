@@ -114,6 +114,11 @@ test('the release ledger as declare and gate read it: committed and pushed, noth
     await writeFile(paths.local, other.text); await writeFile(paths.committed, other.text);
     git(work, 'add', '.'); git(work, 'commit', '-m', 'rewrite'); git(work, 'push');
     await code('ledger_rewritten', /is not a prefix of the current one/);
+    // A replace ref that cuts the history off before the current version (git replace --graft) hides the
+    // older versions from git, not from the check: it reads git without replace refs.
+    git(work, 'replace', '--graft', git(work, 'rev-parse', 'HEAD'));
+    assert.equal(git(work, 'rev-list', '--count', 'HEAD'), '1', 'git itself now sees one commit');
+    await code('ledger_rewritten', /is not a prefix of the current one/);
     // A shallow clone cannot show every version (review: r2-ledger-history-local-refs): refused.
     const shallow = join(dir, 'shallow');
     git(dir, 'clone', '--quiet', '--depth', '1', pathToFileURL(remote).href, shallow);

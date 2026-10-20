@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { countLedger, exemptEnd, headerLine, isPrefix, nextLine, parseLedger, roundEvents, roundStarts, type LedgerRecord, type RoundBody, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
 import { initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../../src/challenge/ledger-file.ts';
 import { presetRun } from '../support/challenge-round.ts';
-import { fullyQualified } from '../../src/challenge/repository.ts';
+import { fullyQualified, localLedgerPath } from '../../src/challenge/repository.ts';
 
 const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
 const start = (index: number, extra: Partial<StartBody> = {}): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64), ...extra });
@@ -211,4 +211,14 @@ test('PRACTONAUT_HOME names one folder from every directory only when fully qual
   for (const path of ['\\pn', '/pn', 'C:pn', 'pn', '.\\pn', '..\\pn', '\\\\server']) assert.equal(fullyQualified(path, 'win32'), false, path);
   for (const path of ['/pn', '/srv/data/practonaut']) assert.equal(fullyQualified(path, 'linux'), true, path);
   for (const path of ['pn', './pn', 'C:\\pn']) assert.equal(fullyQualified(path, 'darwin'), false, path);
+});
+
+test('the tool\'s local ledger path refuses a PRACTONAUT_HOME not named fully, with the rules of the platform (review: the wiring of the fully-qualified home)', async () => {
+  // localLedgerPath is what `node tools/challenge.ts` calls for every ledger command; the refusal comes
+  // before anything is read, so Windows' rules hold here on every platform.
+  const refused = async (home: string, platform: NodeJS.Platform): Promise<void> => {
+    await assert.rejects(localLedgerPath({ PRACTONAUT_HOME: home }, process.cwd(), platform), (error: Error & { code?: string }) => error.code === 'home_not_fully_qualified' && error.message.includes(`(${home})`), `${platform} ${home}`);
+  };
+  for (const home of ['\\pn', '/pn', 'C:pn', 'pn']) await refused(home, 'win32');
+  for (const home of ['pn', './pn']) await refused(home, 'linux');
 });

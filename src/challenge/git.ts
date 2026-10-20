@@ -13,8 +13,10 @@ export class DeclarationGitError extends Error {
   constructor(message: string) { super(message); this.name = 'DeclarationGitError'; }
 }
 
+/** git without a shell; replace refs never change the history it reports (`git replace` is local and
+ * silent: it could hide a committed version of a round file or of the release ledger). */
 const git = (cwd: string, args: string[]): { ok: boolean; out: string } => {
-  try { return { ok: true, out: execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }) }; }
+  try { return { ok: true, out: execFileSync('git', ['--no-replace-objects', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }) }; }
   catch (error) { return { ok: false, out: String((error as { stdout?: unknown }).stdout ?? '') }; }
 };
 
