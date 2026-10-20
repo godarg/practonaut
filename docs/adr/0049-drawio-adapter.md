@@ -409,6 +409,9 @@ through a test seam, so the product reads no new variable.
    run without a stall, and a bench on draw.io. The bench records the start check's browser and then
    the adapter's, both launched with the sandbox, each closed while connected, with its end proven
    and its slot released; a bench whose mirror starts find the budget full loses its run by name.
+   That the start check applies the policy is pinned by a unit test on a simulated Linux that refuses
+   sandboxed launches (`browser-start-policy.test.ts`, review m3): draw.io's check fails after one
+   sandboxed launch, Excalidraw's falls back; a host that allows the sandbox cannot show it.
 
 ### 4. Protocol: write and read only through the embed JSON protocol
 

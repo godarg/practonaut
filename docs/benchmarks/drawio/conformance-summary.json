@@ -1,6 +1,6 @@
 {
  "schema": "practonaut.drawio-conformance/2",
- "commit": "8537906946dfafd9dc54bd78014deebdf91607af",
+ "commit": "43e74164c8d603fb661bf849651a8879717c1b3f",
  "dirty": false,
  "platform": "darwin-arm64",
  "node": "v22.22.3",
@@ -37,10 +37,10 @@
    "seed": 0,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 1561,
+   "startMs": 1670,
    "peakRss": {
-    "node": 425984000,
-    "chromiumTree": 827457536
+    "node": 413646848,
+    "chromiumTree": 813842432
    },
    "refusedRequests": 0,
    "chromium": "156.0.8078.4",
@@ -212,10 +212,10 @@
    "seed": 0,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 1368,
+   "startMs": 1664,
    "peakRss": {
-    "node": 435159040,
-    "chromiumTree": 878051328
+    "node": 399736832,
+    "chromiumTree": 818020352
    },
    "refusedRequests": 0,
    "chromium": "156.0.8078.4",
@@ -384,13 +384,13 @@
   },
   {
    "order": "shuffle",
-   "seed": 591035588,
+   "seed": 977746720,
    "sequences": 303,
    "steps": 1511,
-   "startMs": 1555,
+   "startMs": 1669,
    "peakRss": {
-    "node": 391200768,
-    "chromiumTree": 962019328
+    "node": 478674944,
+    "chromiumTree": 850526208
    },
    "refusedRequests": 0,
    "chromium": "156.0.8078.4",
@@ -400,14 +400,19 @@
     "noSandbox": 0
    },
    "byTask": {
+    "family/long-horizon/long-horizon-2": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "disconnect": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
     "add-step": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "6/6",
-     "startsFailed": "3/3"
-    },
-    "recolor": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
      "startsFailed": "3/3"
     },
     "group": {
@@ -415,35 +420,10 @@
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "rename-frame": {
+    "connect": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "3/3",
      "startsFailed": "3/3"
-    },
-    "family/repair/repair-3": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "reconnect": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "6/6",
-     "startsFailed": "3/3"
-    },
-    "two-frames": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
-     "startsFailed": "3/3"
-    },
-    "restyle-flow": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
-     "startsFailed": "3/3"
-    },
-    "family/long-horizon/long-horizon-3": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
     },
     "remove-step": {
      "referencesPassed": "3/3",
@@ -455,7 +435,57 @@
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
     },
-    "family/injection/injection-2": {
+    "close-chain": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "align": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "12/12",
+     "startsFailed": "3/3"
+    },
+    "recolor": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "two-frames": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "12/12",
+     "startsFailed": "3/3"
+    },
+    "rename-step": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "family/injection/injection-3": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/limited-checks/limited-checks-2": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "restyle-flow": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "12/12",
+     "startsFailed": "3/3"
+    },
+    "rename-frame": {
+     "referencesPassed": "3/3",
+     "nearMissesFailed": "3/3",
+     "startsFailed": "3/3"
+    },
+    "family/limited-checks/limited-checks-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/repair/repair-3": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
@@ -465,37 +495,52 @@
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "connect": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
-    },
     "decision": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "close-chain": {
+    "reconnect": {
      "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
+     "nearMissesFailed": "6/6",
      "startsFailed": "3/3"
     },
-    "rename-step": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
+    "family/limited-checks/limited-checks-3": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
     },
     "reorder": {
      "referencesPassed": "3/3",
      "nearMissesFailed": "12/12",
      "startsFailed": "3/3"
     },
-    "align": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "12/12",
-     "startsFailed": "3/3"
+    "family/long-horizon/long-horizon-3": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
     },
-    "family/limited-checks/limited-checks-2": {
+    "family/long-horizon/long-horizon-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/injection/injection-2": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/tight-budget/tight-budget-1": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/repair/repair-2": {
+     "referencesPassed": "1/1",
+     "nearMissesFailed": "4/4",
+     "startsFailed": "1/1"
+    },
+    "family/injection/injection-1": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"
@@ -506,51 +551,6 @@
      "startsFailed": "1/1"
     },
     "family/tight-budget/tight-budget-2": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "disconnect": {
-     "referencesPassed": "3/3",
-     "nearMissesFailed": "3/3",
-     "startsFailed": "3/3"
-    },
-    "family/long-horizon/long-horizon-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/limited-checks/limited-checks-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/limited-checks/limited-checks-3": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/repair/repair-2": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/long-horizon/long-horizon-2": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/tight-budget/tight-budget-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/injection/injection-1": {
-     "referencesPassed": "1/1",
-     "nearMissesFailed": "4/4",
-     "startsFailed": "1/1"
-    },
-    "family/injection/injection-3": {
      "referencesPassed": "1/1",
      "nearMissesFailed": "4/4",
      "startsFailed": "1/1"

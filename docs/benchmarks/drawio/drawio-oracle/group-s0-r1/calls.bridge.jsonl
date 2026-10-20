@@ -1,4 +1,4 @@
-{"id":2,"tool":"observe","code":"ok","resultBytes":5928,"bridgeMs":3.8}
-{"id":3,"tool":"act","code":"ok","resultBytes":1500,"bridgeMs":37.7}
-{"id":4,"tool":"act","code":"ok","resultBytes":978,"bridgeMs":54.8}
-{"id":5,"tool":"check_result","code":"ok","resultBytes":4070,"bridgeMs":10.7}
+{"id":2,"tool":"observe","code":"ok","resultBytes":5928,"bridgeMs":4.3}
+{"id":3,"tool":"act","code":"ok","resultBytes":1500,"bridgeMs":50.5}
+{"id":4,"tool":"act","code":"ok","resultBytes":978,"bridgeMs":34.1}
+{"id":5,"tool":"check_result","code":"ok","resultBytes":4070,"bridgeMs":12.1}
