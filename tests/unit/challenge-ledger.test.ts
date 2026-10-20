@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { countLedger, exemptEnd, headerLine, isPrefix, nextLine, parseLedger, roundEvents, roundStarts, type LedgerRecord, type RoundBody, type RunEndBody, type StartBody } from '../../src/challenge/ledger.ts';
 import { initLedger, ledgerGuard, readLedger, writeCommittedLedger } from '../../src/challenge/ledger-file.ts';
 import { presetRun } from '../support/challenge-round.ts';
+import { fullyQualified } from '../../src/challenge/repository.ts';
 
 const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
 const start = (index: number, extra: Partial<StartBody> = {}): StartBody => ({ kind: 'start', purpose: 'example', unit: null, round: null, basis: null, toolchain: 'practonaut', rules: null, requested: 'api-key', model: 'claude-opus-5-5', agent: 'claude-code', bench: '20261102T100000Z-0001', run: `connect-s${index + 1}-r1`, world: 'f'.repeat(64), instance: 'e'.repeat(64), ...extra });
@@ -201,4 +202,13 @@ test('recovery through the guard (review: r2-killed-bench-dead-end): the run-end
     const other = ledgerGuard({ paths, purpose: 'pre-probe', unit: 'repair.practonaut', round: 1, basis: 'b'.repeat(64), toolchain: 'practonaut', rules: null });
     await assert.rejects(other.recover!(bench, runs), (error: Error & { code?: string }) => error.code === 'ledger_mismatch');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('PRACTONAUT_HOME names one folder from every directory only when fully qualified: on Windows a drive with its root or a UNC share, never a rooted path without a drive (review: a drive-less rooted home)', () => {
+  // Written by hand, with Windows' rules on every platform: \pn and /pn name a folder on the current
+  // drive, C:pn one relative to drive C's current folder.
+  for (const path of ['C:\\pn', 'c:/pn', 'D:\\data\\practonaut', '\\\\server\\share\\pn', '//server/share/pn', '\\\\?\\C:\\pn']) assert.equal(fullyQualified(path, 'win32'), true, path);
+  for (const path of ['\\pn', '/pn', 'C:pn', 'pn', '.\\pn', '..\\pn', '\\\\server']) assert.equal(fullyQualified(path, 'win32'), false, path);
+  for (const path of ['/pn', '/srv/data/practonaut']) assert.equal(fullyQualified(path, 'linux'), true, path);
+  for (const path of ['pn', './pn', 'C:\\pn']) assert.equal(fullyQualified(path, 'darwin'), false, path);
 });

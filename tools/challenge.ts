@@ -27,7 +27,7 @@ import { FAMILIES, type Difficulty, type Family } from '../src/challenge/familie
 import { committedFile, COMMITTED_LEDGER, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, setIdentities, verifySet, writeSet } from '../src/challenge/files.ts';
 import { appendRound, initLedger, ledgerExists, ledgerGuard, readLedger, writeCommittedLedger } from '../src/challenge/ledger-file.ts';
 import { countLedger, headerLine, isPrefix, LedgerError, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
-import { earlierLedgerPaths, releaseLedgerPath, repositoryIdentity } from '../src/challenge/repository.ts';
+import { canonicalPath, earlierLedgerPaths, fullyQualified, releaseLedgerPath, repositoryIdentity } from '../src/challenge/repository.ts';
 import { committedVersions, isShallowRepository } from '../src/challenge/git.ts';
 import { taskIdOf } from '../src/challenge/build.ts';
 import { canonicalJson, sha256Hex } from '../src/canonical/index.ts';
@@ -91,10 +91,10 @@ const defaultFolder = (): string => join(gitPath(['rev-parse', '--show-toplevel'
  * repository's normalised origin URL and root commit, so every clone and worktree of the repository on
  * this machine shares it and its lock. Never a path an option names. */
 async function localLedger(): Promise<string> {
-  // A data folder named relatively is resolved against each directory a command runs in: another folder,
-  // and another ledger, from each of them.
+  // A data folder not named fully is resolved against each directory a command runs in (on Windows also
+  // `\pn` or `/pn`, against the current drive): another folder, and another ledger, from each of them.
   const configured = process.env.PRACTONAUT_HOME;
-  if (configured !== undefined && configured !== '' && !isAbsolute(configured)) fail(`PRACTONAUT_HOME is a relative path (${configured}); the release ledger would be another file in every directory: name it absolutely`);
+  if (configured !== undefined && configured !== '' && !fullyQualified(configured)) fail(`PRACTONAUT_HOME is a relative path (${configured}); the release ledger would be another file in every directory${process.platform === 'win32' ? ' or on every drive' : ''}: name it fully (with its drive on Windows)`);
   const identity = repositoryIdentity(process.cwd()) ?? fail('not in a git repository with a commit: the release ledger belongs to a repository');
   return releaseLedgerPath((await resolvedDataPaths()).home, identity.key);
 }
@@ -176,7 +176,10 @@ async function ledger(args: string[]): Promise<void> {
     // Every pushed version, over HEAD and every remote-tracking branch: one history, the longest its head.
     const top = gitPath(['rev-parse', '--show-toplevel']);
     if (isShallowRepository(top)) throw new LedgerError('shallow_clone', 'this repository is a shallow clone: the release ledger\'s pushed versions cannot all be read (git fetch --unshallow)');
-    const rel = relative(top, resolve(folder, COMMITTED_LEDGER)).split(sep).join('/');
+    // Both by their canonical spelling (a symbolic link, a short name or another letter case would leave
+    // the repository and hide every pushed version); a ledger outside the repository is refused.
+    const rel = relative(canonicalPath(top), canonicalPath(resolve(folder, COMMITTED_LEDGER))).split(sep).join('/');
+    if (rel === '' || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) throw new LedgerError('ledger_outside_repository', `the committed ledger ${resolve(folder, COMMITTED_LEDGER)} lies outside this repository (${top}); --folder names a folder of the checkout`);
     const versions = committedVersions(top, rel);
     const texts = [...versions.map(version => version.text), ...(await readLedger(paths.committed).then(value => value ? [value.text] : [], () => []))];
     const longest = texts.reduce<string | null>((best, text) => best === null || text.length > best.length ? text : best, null);

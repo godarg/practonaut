@@ -4,7 +4,7 @@
 // (tests/support/challenge-project.ts); no language model.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,5 +121,50 @@ test('ledger init refuses while model-run folders exist that no pushed version o
     p.git('add', '-A'); p.git('commit', '--quiet', '-m', 'another ledger'); p.git('push', '--quiet', '-u', 'origin', 'third'); p.git('switch', '--quiet', 'main');
     const refusedThird = p.tool(['ledger', 'init'], { PRACTONAUT_HOME: join(dir, 'home3') });
     assert.equal(refusedThird.status, 2); assert.match(refusedThird.stderr, /ledger_diverged: the pushed versions of the release ledger are not one history/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a history with more than one root commit is refused by name on every branch, never keyed on one of its roots (review: the ledger key on a branch that merged an unrelated history)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-roots-'));
+  try {
+    const p = await project(dir);
+    p.ok(['ledger', 'init']);
+    const roots = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /repository_roots: this repository's history has 2 root commits \([0-9a-f]{12}, [0-9a-f]{12}\)/); };
+    // An unrelated history on a branch of its own: refused there and on main, which does not contain it.
+    p.git('switch', '--quiet', '--orphan', 'unrelated'); await writeFile(join(p.repo, 'other.txt'), 'another history\n');
+    p.git('add', 'other.txt'); p.git('commit', '--quiet', '-m', 'another root');
+    roots(p.tool(['ledger', 'show']));
+    p.git('switch', '--quiet', 'main');
+    roots(p.tool(['ledger', 'show']));
+    // A branch that merged it (the root of the merged history may sort before main's): refused as well.
+    p.git('switch', '--quiet', '-c', 'merged'); p.git('merge', '--quiet', '--allow-unrelated-histories', '-m', 'merge another history', 'unrelated');
+    p.git('branch', '--quiet', '-D', 'unrelated');
+    roots(p.tool(['ledger', 'show']));
+    p.git('switch', '--quiet', 'main');
+    roots(p.tool(['ledger', 'show']));
+    // Without the other history in this clone, the repository's one ledger again.
+    p.git('branch', '--quiet', '-D', 'merged');
+    assert.match(p.ok(['ledger', 'show']).stdout, /0 of 800 model runs counted/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('ledger init reads every pushed version under the folder git names, however --folder spells it; a folder outside the repository is refused (review: --folder spelled otherwise than the top level)', { timeout: 300_000 }, async () => {
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), 'pn-release-folder-'));
+  try {
+    const p = await project(dir);
+    // Two pushed branches whose ledgers are not one history; main holds none.
+    const pushed = async (branch: string, text: string): Promise<void> => {
+      p.git('switch', '--quiet', '-c', branch); await mkdir(p.folder, { recursive: true }); await writeFile(join(p.folder, 'release-ledger.jsonl'), text);
+      p.git('add', '-A'); p.git('commit', '--quiet', '-m', `ledger on ${branch}`); p.git('push', '--quiet', '-u', 'origin', branch); p.git('switch', '--quiet', 'main');
+    };
+    await pushed('other', counted(2)); await pushed('third', counted(1).replace('connect-s1-r1', 'connect-s9-r1'));
+    const diverged = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /ledger_diverged: the pushed versions of the release ledger are not one history/); };
+    diverged(p.tool(['ledger', 'init']));
+    // The checkout through a link (a symbolic link, a junction on Windows): another spelling of the same folder.
+    const link = join(dir, 'link'); await symlink(p.repo, link, 'junction');
+    diverged(p.tool(['ledger', 'init', '--folder', join(link, 'docs', 'benchmarks', 'challenge', '0.3.0')]));
+    const outside = p.tool(['ledger', 'init', '--folder', join(dir, 'elsewhere')]);
+    assert.equal(outside.status, 2, outside.stderr); assert.match(outside.stderr, /ledger_outside_repository: the committed ledger .* lies outside this repository/);
+    assert.equal(existsSync(p.ledgerPath), false, 'no ledger was started');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
