@@ -130,7 +130,7 @@ test('every run state is shown by name with its reason', { timeout: 120_000 }, a
   for (const name of ['Rechnungseingangsprüfung', 'Zahlungsfreigabeverfahrensdokumentation', 'Kreditorenstammdatenänderungsantragsprüfung']) assert.ok(germanRun.includes(name), name);
   assert.ok(germanRun.includes('Kein Beispielziel Diese Aufgabe hat keine geprüfte Referenz.'), 'no example target');
   assert.equal(/class="no-picture"|stroke-dasharray|dashed/.test(german.slice(german.indexOf('<body>'))), false, 'no dashed box for a missing target');
-  assert.match(plain(german), /0\/1 bestanden · 95-%-Intervall 0–80 % über 1 Instanz Sitzungsurteil auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
+  assert.match(plain(german), /0\/1 bestanden · 95\u2011%-Intervall 0–80 % über 1 Instanz Sitzungsurteil auf Stimmigkeit geprüft, nicht nachgerechnet nur Modell \(keine Spiegelung\)/);
   // Without its bench folder: one banner says what is missing, what still shows and how to fix it;
   // every card says in a line what it cannot show, and error classes keep their explanation (the
   // report's world is the bundled library).

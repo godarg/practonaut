@@ -50,9 +50,31 @@ const joined = (value: string): string => value.split(QUOTED).map((part, index) 
   .replace(/(\d) %/gu, '$1\u00a0%').replace(/(\d)\u2013(?=\d)/gu, '$1\u2013\u2060').replace(/([<>\u2264\u2265]) (?=\d)/gu, '$1\u00a0')).join('');
 const ENTITIES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (value: string): string => joined(readableText(value)).replace(/[&<>"']/g, char => ENTITIES[char]!);
-/** Escaped as written, without joining numbers to words: a formal condition's text, which wraps freely
- * (joined, "= 3 und" became one run that a narrow line had to cut inside a word). */
-const escapePlain = (value: string): string => readableText(value).replace(/[&<>"']/g, char => ENTITIES[char]!);
+/** A formal condition's text: numbers are not joined to words (joined, "= 3 und" became one run that a
+ * narrow line had to cut inside a word, design review R3), and each comparison (left operand, operator,
+ * right operand) is one box (`.op`, inline-block, never wider than the line) that moves to the next
+ * line whole (design reviews R4, R5). So a line ends on an operator only inside a comparison wider than
+ * the line: then the operator ends the line with its left operand ("(s.Beschriftung =" / the label),
+ * never alone. A right operand is a word, a quoted string up to its closing quote, or the fixed value
+ * "unattached" / "nicht angebunden"; one that fits a line (`ID_MAX`) never breaks inside. */
+const FORMAL_OPERAND = String.raw`(?:"(?:[^"\\]|\\.)*"|nicht angebunden|unattached)[)\]]*|\S+`;
+const FORMAL_COMPARISON = new RegExp(String.raw`(\S+) ([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
+const FORMAL_PAIR = new RegExp(String.raw`(?<=^|\s)([=≈<>≤≥]) (${FORMAL_OPERAND})`, 'u');
+const escapeFormal = (value: string): string => {
+  const text = (part: string): string => part.replace(/[&<>"']/g, char => ENTITIES[char]!);
+  const operand = (part: string): string => text(part.length <= ID_MAX ? part.replace(/ /gu, '\u00a0') : part);
+  // An operator whose left operand closed the comparison before it ("… = nicht angebunden) = 1") still
+  // travels with its right operand.
+  const pairs = (part: string): string => {
+    const pieces = part.split(FORMAL_PAIR);
+    return pieces.map((piece, index) => index % 3 === 0 ? text(piece) : index % 3 === 1 ? `<span class="op">${text(piece)} ${operand(pieces[index + 1]!)}</span>` : '').join('');
+  };
+  const parts = readableText(value).split(FORMAL_COMPARISON);
+  return parts.map((part, index) => index % 4 === 0 ? pairs(part) : index % 4 === 1 ? `<span class="op">${text(part)} ${text(parts[index + 1]!)} ${operand(parts[index + 2]!)}</span>` : '').join('');
+};
+/** Escaped, with a number kept with the word it counts ("3 runs") but a word free to break before the
+ * number after it ("3 of" / "3 runs"): text in a narrow cell, which must shrink to its cell (R4). */
+export const escapeBreakable = (value: string): string => readableText(value).split(QUOTED).map((part, index) => index % 2 ? part : part.replace(/(\d) (?=\p{L})/gu, '$1\u00a0')).join('').replace(/[&<>"']/g, char => ENTITIES[char]!);
 const esc = escapeHtml;
 /** A command named in prose ("practonaut report", "report --verify") and a command-line flag: code, set
  * in mono like every command; a flag stays on one line, so a reader who copies it gets it whole. */
@@ -126,7 +148,7 @@ export function chips(label: string, facts: readonly string[], ids: readonly str
 export function stackedTable(label: string, labelledBy: string | null, head: ReadonlyArray<{ text: string; numeric?: boolean; wide?: boolean; capped?: boolean; prose?: boolean }>, rows: ReadonlyArray<ReadonlyArray<string>>, many = false, compact = false): string {
   const region = labelledBy ? `aria-labelledby="${labelledBy}"` : `aria-label="${esc(label)}"`;
   const header = head.map(cell => `<th scope="col"${cell.capped ? ' class="text capped"' : cell.numeric ? '' : ' class="text"'}>${esc(cell.text)}</th>`).join('');
-  const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.wide ? ' class="text wide"' : cell.numeric ? '' : cell.prose ? ' class="text prose"' : ' class="text"';
+  const kind = (cell: { numeric?: boolean; wide?: boolean; prose?: boolean }): string => cell.numeric && !cell.wide ? '' : ` class="${['text', ...(cell.wide ? ['wide'] : []), ...(cell.prose ? ['prose'] : [])].join(' ')}"`;
   const body = rows.map(row => `<tr>${row.map((cell, index) => `<td data-label="${esc(head[index]!.text)}"${kind(head[index]!)}>${cell}</td>`).join('')}</tr>`).join('');
   return `<div class="scroll ${many ? 'stack-many' : 'stack'}${compact ? ' compact' : ''}" role="region" ${region} tabindex="0"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -442,7 +464,7 @@ function conditionsHtml(detail: RunDetail, language: Language): string {
   const items = detail.conditions.map((condition, index) => {
     const kind = condition.met === null ? 'unknown' : condition.met ? 'pass' : 'fail';
     const word = condition.met === null ? t.conditionUnknown : condition.met ? t.conditionMet : t.conditionUnmet;
-    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${escapePlain(condition.formal[language])}</span>` : ''}</div></li>`;
+    return `<li class="condition"><span class="condition-number">${index + 1}</span>${statusIcon(kind)}<div><span class="condition-status ${kind}">${esc(word)}:</span> ${prose(condition.text[language])} <span class="history">(${esc(historyText(condition.history, language))})</span>${condition.formal ? `<span class="formal">${esc(t.formal)}: ${escapeFormal(condition.formal[language])}</span>` : ''}</div></li>`;
   }).join('');
   const note = detail.traceError ? `<p class="note">${esc(t.traceMissing)}</p>` : detail.conditionsMissing ? `<p class="note">${esc(fill(language, t.conditionsMissing, { reason: missing(detail.conditionsMissing) }))}</p>` : '';
   return `<ol class="conditions">${items}</ol>${note}`;
@@ -491,12 +513,15 @@ function trajectoryHtml(detail: RunDetail, language: Language): string {
   }
   if (!detail.trajectory.length) return `<p class="note">${esc(t.trajectoryEmpty)}</p>`;
   const total = detail.conditions?.length ?? 0, byClient = detail.clients.length > 1;
+  // A label and a single item stay on one line ("lost: 3"); a longer list wraps after its commas.
+  const conditionList = (template: string, items: readonly number[]): string => { const text = fill(language, template, { list: items.join(', ') }); return items.length === 1 ? text.replace(': ', ':\u00a0') : text; };
   const row = (entry: TrajectoryRow): string[] => {
+    // The result takes a full stacked row (R4), so its counted phrase stays whole ("(revision 1)", R5).
     const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
-    const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [fill(language, t.gained, { list: entry.gained.join(', ') })] : []), ...(entry.lost.length ? [fill(language, t.lost, { list: entry.lost.join(', ') })] : [])].join(' · ');
+    const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [conditionList(t.gained, entry.gained)] : []), ...(entry.lost.length ? [conditionList(t.lost, entry.lost)] : [])].join(' · ');
     return [String(entry.number), ...(byClient ? [entry.client ? dataWords(entry.client) : esc(t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
   };
-  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult }, { text: t.trajectoryMet }];
+  const head = [{ text: t.trajectoryHead, numeric: true }, ...(byClient ? [{ text: t.trajectoryBy, wide: true }] : []), { text: t.trajectoryAction, wide: true }, { text: t.trajectoryResult, wide: true }, { text: t.trajectoryMet, wide: true }];
   return stackedTable(t.trajectory, null, head, detail.trajectory.map(row));
 }
 
@@ -705,7 +730,7 @@ ${report.label !== undefined ? `<p class="meta">${esc(`${t.label}: ${report.labe
 ${jump}</header>
 ${banner('warning', t.cardNoSandbox, `<p>${prose(t.noSandbox)}</p>`)}
 <section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}</h2><dl class="figures ${cards.length === 4 ? 'n4' : 'n3'}">${cards.join('')}</dl></section>
-<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
+<section aria-labelledby="by-task"><h2 id="by-task">${esc(t.byTask)}</h2>${stackedTable(t.byTask, 'by-task', [{ text: t.task, wide: true }, { text: t.runs, numeric: true }, { text: t.passed, numeric: true }], taskRows, false, true)}</section>
 <section aria-labelledby="runs"><h2 id="runs">${esc(t.runsHeading)}</h2>${stackedTable(t.runsHeading, 'runs', [{ text: t.result }, { text: t.task }, { text: t.seed, numeric: true }, { text: t.repeat, numeric: true }, { text: t.status }, { text: t.judgedFile }, { text: t.proxyCalls, numeric: true }, { text: t.time, numeric: true }, { text: t.errors, wide: true, capped: true }], runRows, true)}</section>
 <section aria-labelledby="details"><h2 id="details">${esc(t.details)}</h2><p class="note">${esc(t.artifactBoardNote)}</p>${runCards.join('')}</section>
 <section aria-labelledby="settings"><h2 id="settings">${esc(t.settings)}</h2><dl class="settings">

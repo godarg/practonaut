@@ -53,7 +53,7 @@ test('no rate is shown finer than 1/n, in the terminal or on the page, in Englis
       const texts = [renderTable(value, language), renderHtml(value, ':root{}', language).replace(/<style>[\s\S]*<\/style>/, '').replace(/<[^>]+>/g, ' ').replace(/\u00a0/g, ' ').replace(/\u2060/g, '')];
       for (const text of texts) {
         // Remove the confidence level and the interval range: they are estimates, not observed rates.
-        const rest = text.replace(/95(-| )%(-Intervall| interval) \d+–\d+ %/g, '').replace(/95 %|95-%/g, '');
+        const rest = text.replace(/95(-|\u2011| )%(-Intervall| interval) \d+–\d+ %/g, '').replace(/95 %|95[-\u2011]%/g, '');
         // Every percentage belongs to a fraction k/m and has the resolution m allows (each per-task row has its own m).
         let alone = rest;
         for (const match of rest.matchAll(/(\d+)\/(\d+) \((?:[<>] )?(\d+(?:[.,]\d+)?) %\)/g)) {

@@ -793,3 +793,21 @@ unit, and `test:a11y` measures every word of the instance cell, red on the revie
 minors were fixed (run-count lines name their pair as the table does; "Wilson", "McNemar" and
 "Practonaut" are never hyphenated in notes and notices; a formal line wraps between its words; the
 compact table applies only where the table does not stack). Nothing was consciously left undone.
+
+Round R4 looked at the R3 fixes on 2026-10-19, an independent agent from fresh context: 15 captures
+from commit `2603d7d`. Verdict PASS: no blocker, no major, 3 minor findings. R3-F1 was resolved on
+every session compare and R3-F2 to F5 were accepted. The minors were fixed after the merge: an
+operator moves to the next line with its operand instead of ending a line (see R5 for the exact rule),
+the change column of a compare takes the full stacked row, and a cell's words may break before a
+number so its text shrinks to the cell. `test:a11y` now measures all three, and the two R3 fixes the
+round found untested (a formal word cut inside, a compact table that stacks), each red on the commit
+before its fix.
+
+Round R5 looked at the R4 fixes on 2026-10-20, an independent agent from fresh context: 15 captures
+from commit `50b9b75`. Verdict PASS: no blocker, no major, 5 minor findings, all fixed with a check in
+`test:a11y` that is red on the reviewed commit. The rule that holds for formal lines: a comparison
+(left operand, operator, right operand) moves to the next line whole; only a comparison wider than the
+line breaks, after its operator, which then ends the line with its left operand and never stands
+alone; a quoted value or "nicht angebunden" that fits a line is never split. The trajectory's
+"conditions met" takes the full stacked row like its result, whose counted phrase ("(Revision 1)")
+stays whole again; "95‑%" keeps its hyphen, and a label keeps a single item ("verloren: 3").
