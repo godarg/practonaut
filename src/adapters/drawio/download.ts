@@ -30,7 +30,7 @@ export const PRODUCT_SCHEMES: ReadonlySet<string> = Object.freeze(new Set(['http
 
 export type InstallCode = 'app_download_failed' | 'app_download_mismatch' | 'app_install_busy';
 /** Why a setup stopped, from a closed list, so a test can assert the reason by name. */
-export type InstallReason = 'network' | 'http' | 'scheme' | 'redirects' | 'connect' | 'stall' | 'deadline' | 'size' | 'sha256' | 'busy' | 'not_file' | 'rename' | 'verify';
+export type InstallReason = 'network' | 'http' | 'scheme' | 'redirects' | 'connect' | 'stall' | 'deadline' | 'size' | 'sha256' | 'busy' | 'lock' | 'not_file' | 'rename' | 'verify';
 export class DrawioInstallError extends Error {
   readonly code: InstallCode; readonly reason: InstallReason; readonly details: Readonly<Record<string, string | number>>;
   constructor(code: InstallCode, reason: InstallReason, message: string, details: Record<string, string | number> = {}) {
@@ -45,14 +45,17 @@ export interface InstallOptions {
   pin?: InstallPin;
   limits?: Partial<InstallLimits>;
   /** Test seams: the network, the clock's waits, the clock the deadline is read from, the rename (to
-   * simulate a held file), and a pause while this setup's lock is being written (to hold a second setup
-   * in that window). */
+   * simulate a held file), the hard link (to simulate a filesystem without them), and a pause at three
+   * points of taking the lock (to hold a second setup in that window): while this setup's lock is being
+   * written, after it judged the lock it found stale, and while it takes that stale lock over. */
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   rename?: (from: string, to: string) => Promise<void>;
-  lockPause?: () => Promise<void>;
+  link?: (from: string, to: string) => Promise<void>;
+  lockPause?: (stage: LockStage) => Promise<void>;
 }
+export type LockStage = 'writing' | 'stale' | 'takeover';
 export interface InstallResult { status: 'installed' | 'already'; path: string; bytes: number; sha256: string; replaced: boolean; attempts: number }
 
 const LOCK = '.setup.lock';
@@ -82,42 +85,86 @@ const sameLock = (a: HeldLock, b: HeldLock): boolean => a.ino === b.ino && a.mti
 const LOCK_TEMP = /^\.setup\.lock\.[0-9]+\.[0-9a-f]{32}\.tmp$/;
 const staleAfterMs = (limits: InstallLimits): number => limits.totalMs + 60_000;
 
+/** `link(2)` errors of a filesystem without hard links (FAT, exFAT, some network shares). */
+const NO_HARD_LINKS: ReadonlySet<string> = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']);
+const errorCode = (error: unknown): string => String((error as NodeJS.ErrnoException).code ?? 'error');
+
 /**
- * One setup per version directory (decision 2.3; review m2c, runtime-2). The lock holds this process id,
- * its start and a random token. It is written whole to a temp file first and then hard-linked to the
- * lock name, which fails when the name exists, so no other setup ever sees it half written. A held lock
- * stays held while it is younger than the whole chain may take and its process exists; one that cannot
- * be read (damaged, or left by an older version) is judged by its own modification time. A stale lock is
- * removed only when a second read still finds that same lock. The release removes the lock only while
- * it holds this setup's own token.
+ * One setup per version directory (decision 2.3; reviews m2c and m2d, runtime-2). The lock holds this
+ * process id, its start and a random token.
+ * - It is written whole to a temp file first and then hard-linked to the lock name, which fails when the
+ *   name exists, so no other setup ever sees it half written. On a filesystem without hard links it is
+ *   created exclusively under its name and then written; a setup that finds it still empty judges it by
+ *   its fresh modification time and stops as busy.
+ * - A held lock stays held while it is younger than the whole chain may take and its process exists;
+ *   one that cannot be read (damaged, or left by an older version) is judged by its own modification time.
+ * - A stale lock is taken over only by the one setup that creates the exclusive breaker file beside it,
+ *   and only while a second read under the breaker still finds that same lock; any other setup that
+ *   judged the same lock stale stops as busy. A breaker older than the stale bound (its setup died in the
+ *   moment of a takeover) is removed and that setup stops as busy; the next one proceeds.
+ * - The release removes the lock only while it holds this setup's own token.
+ * Any other failure to take the lock is `app_download_failed` with reason `lock`.
  */
-async function takeLock(directory: string, limits: InstallLimits, pause?: () => Promise<void>): Promise<() => Promise<void>> {
-  const path = join(directory, LOCK), token = randomBytes(16).toString('hex');
-  const temp = join(directory, `${LOCK}.${process.pid}.${token}.tmp`);
-  const out = await open(temp, EXCLUSIVE_CREATE, 0o600);
-  try { await pause?.(); await out.writeFile(JSON.stringify({ pid: process.pid, started: Date.now(), token })); await out.sync(); } finally { await out.close(); }
+async function takeLock(directory: string, limits: InstallLimits, seams: Pick<InstallOptions, 'link' | 'lockPause'> = {}): Promise<() => Promise<void>> {
+  const path = join(directory, LOCK), breaker = join(directory, `${LOCK}.break`), token = randomBytes(16).toString('hex');
+  const temp = join(directory, `${LOCK}.${process.pid}.${token}.tmp`), content = JSON.stringify({ pid: process.pid, started: Date.now(), token });
+  const pause = seams.lockPause, linkImpl = seams.link ?? link;
   const busy = (held?: HeldLock): DrawioInstallError => new DrawioInstallError('app_install_busy', 'busy', 'another setup of this draw.io version is running', typeof held?.pid === 'number' ? { pid: held.pid } : {});
-  try {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try { await link(temp, path); }
+  let hardLinks = true;
+  /** Puts this setup's lock under the lock name; false when the name is taken. */
+  const place = async (): Promise<boolean> => {
+    if (hardLinks) {
+      try { await linkImpl(temp, path); return true; }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        const held = await readLock(path);
-        if (held === undefined) continue;
-        const started = held.readable && typeof held.started === 'number' ? held.started : held.mtimeMs;
-        // Stale when older than the whole chain may take, or when its process is gone. Signal 0
-        // delivers no signal; it only asks whether the process exists.
-        let gone = false;
-        if (held.readable && typeof held.pid === 'number' && Number.isSafeInteger(held.pid) && held.pid > 0 && held.pid !== process.pid) { try { process.kill(held.pid, 0); } catch (probe) { gone = (probe as NodeJS.ErrnoException).code === 'ESRCH'; } }
-        if (Date.now() - started <= staleAfterMs(limits) && !gone) throw busy(held);
-        const again = await readLock(path);
-        if (again !== undefined && !sameLock(held, again)) throw busy(again);
-        if (again !== undefined) await unlink(path).catch(() => undefined);
-        continue;
+        if (errorCode(error) === 'EEXIST') return false;
+        if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
+        hardLinks = false;
       }
-      return async () => { const now = await readLock(path).catch(() => undefined); if (now?.readable && now.token === token) await unlink(path).catch(() => undefined); };
+    }
+    let handle;
+    try { handle = await open(path, EXCLUSIVE_CREATE, 0o600); }
+    catch (error) { if (errorCode(error) === 'EEXIST') return false; throw error; }
+    try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+    return true;
+  };
+  /** Removes the stale lock `held` if this setup is the one to take it over; busy otherwise. */
+  const takeOver = async (held: HeldLock): Promise<void> => {
+    let handle;
+    try { handle = await open(breaker, EXCLUSIVE_CREATE, 0o600); }
+    catch (error) {
+      if (errorCode(error) !== 'EEXIST') throw error;
+      const info = await lstat(breaker).catch(() => undefined);
+      if (info && Date.now() - info.mtimeMs > staleAfterMs(limits)) await unlink(breaker).catch(() => undefined);
+      throw busy(held);
+    }
+    await handle.close();
+    try {
+      const again = await readLock(path);
+      if (again !== undefined && !sameLock(held, again)) throw busy(again);
+      await pause?.('takeover');
+      if (again !== undefined) await unlink(path).catch(() => undefined);
+    } finally { await unlink(breaker).catch(() => undefined); }
+  };
+  try {
+    const out = await open(temp, EXCLUSIVE_CREATE, 0o600);
+    try { await pause?.('writing'); await out.writeFile(content); await out.sync(); } finally { await out.close(); }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await place()) return async () => { const now = await readLock(path).catch(() => undefined); if (now?.readable && now.token === token) await unlink(path).catch(() => undefined); };
+      const held = await readLock(path);
+      if (held === undefined) continue;
+      const started = held.readable && typeof held.started === 'number' ? held.started : held.mtimeMs;
+      // Stale when older than the whole chain may take, or when its process is gone. Signal 0
+      // delivers no signal; it only asks whether the process exists.
+      let gone = false;
+      if (held.readable && typeof held.pid === 'number' && Number.isSafeInteger(held.pid) && held.pid > 0 && held.pid !== process.pid) { try { process.kill(held.pid, 0); } catch (probe) { gone = (probe as NodeJS.ErrnoException).code === 'ESRCH'; } }
+      if (Date.now() - started <= staleAfterMs(limits) && !gone) throw busy(held);
+      await pause?.('stale');
+      await takeOver(held);
     }
     throw busy();
+  } catch (error) {
+    if (error instanceof DrawioInstallError) throw error;
+    throw failed('lock', `the setup lock in the version directory could not be taken (${errorCode(error)})`, { code: errorCode(error) });
   } finally { await unlink(temp).catch(() => undefined); }
 }
 /** Partial files of earlier setups, and lock temp files of setups that died: under the lock no partial
@@ -153,7 +200,7 @@ async function prepare(options: InstallOptions): Promise<{ pin: InstallPin; limi
   const pin = options.pin ?? DRAWIO_PIN, limits = { ...INSTALL_LIMITS, ...options.limits };
   const directory = drawioRuntimeDirectory(options.home, pin);
   await ensurePrivateDirectory(directory);
-  const release = await takeLock(directory, limits, options.lockPause);
+  const release = await takeLock(directory, limits, options);
   try {
     const status = await drawioRuntimeStatus(join(directory, pin.asset), pin);
     if (status.ok) { await release(); return { status: 'already', path: join(directory, pin.asset), bytes: pin.size, sha256: pin.sha256, replaced: false, attempts: 0 }; }

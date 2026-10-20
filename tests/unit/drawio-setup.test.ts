@@ -198,7 +198,7 @@ test('the lock (review m2c, runtime-2): a fresh lock not yet written is busy, tw
       let resume!: () => void, entered!: () => void, serve!: () => void, downloading!: () => void;
       const paused = new Promise<void>(r => { resume = r; }), inWindow = new Promise<void>(r => { entered = r; }), requested = new Promise<void>(r => { downloading = r; });
       hold = new Promise<void>(r => { serve = r; }); during = () => downloading(); requests = 0;
-      const first = outcome(installDrawio({ ...opts, lockPause: async () => { entered(); await paused; } }));
+      const first = outcome(installDrawio({ ...opts, lockPause: async stage => { if (stage === 'writing') { entered(); await paused; } } }));
       await inWindow;
       const second = outcome(installDrawio(opts));
       await requested;
@@ -222,6 +222,69 @@ test('the lock (review m2c, runtime-2): a fresh lock not yet written is busy, tw
         assert.deepEqual(readdirSync(drawioRuntimeDirectory(other, opts.pin!)), [opts.pin!.asset], `trial ${trial}: no lock, temp or partial file is left`);
       } finally { rmSync(other, { recursive: true, force: true }); }
     }
+  } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('two setups that judge the same stale lock: only one takes it over (review m2d, r2-runtime-1)', { timeout: 60_000 }, async () => {
+  let requests = 0, serve!: () => void, downloading!: () => void;
+  const held = new Promise<void>(r => { serve = r; }), requested = new Promise<void>(r => { downloading = r; });
+  const server = await standIn((_request, response) => { requests++; downloading(); void held.then(() => serveFixture(response)); });
+  const dir = home();
+  try {
+    const opts = options(server.origin, dir), directory = drawioRuntimeDirectory(dir, opts.pin!), lock = join(directory, '.setup.lock');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    // A lock left by a setup ended with Ctrl-C an hour ago.
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, started: Date.now() - 3_600_000, token: 'd'.repeat(32) }));
+    const outcome = (setup: Promise<{ status: string }>): Promise<string> => setup.then(r => r.status, (error: unknown) => error instanceof DrawioInstallError ? error.reason : String(error));
+    // Both setups judge the lock stale and wait there; the first then waits again in its takeover.
+    const gate = () => { let open!: () => void, reached!: () => void; return { opened: new Promise<void>(r => { open = r; }), arrived: new Promise<void>(r => { reached = r; }), open: () => open(), reach: () => reached() }; };
+    const [aStale, aTakeover, bStale, bTakeover] = [gate(), gate(), gate(), gate()];
+    const seam = (stale: ReturnType<typeof gate>, takeover: ReturnType<typeof gate>) => async (stage: string): Promise<void> => {
+      if (stage === 'stale') { stale.reach(); await stale.opened; }
+      if (stage === 'takeover') { takeover.reach(); await takeover.opened; }
+    };
+    const first = outcome(installDrawio({ ...opts, lockPause: seam(aStale, aTakeover) }));
+    const second = outcome(installDrawio({ ...opts, lockPause: seam(bStale, bTakeover) }));
+    await Promise.all([aStale.arrived, bStale.arrived]);
+    aStale.open(); await aTakeover.arrived;
+    // The second setup goes on while the first is inside its takeover: it must not take the lock too.
+    bStale.open(); const settledOrWaiting = await Promise.race([second.then(result => `settled ${result}`), bTakeover.arrived.then(() => 'waiting in its takeover')]);
+    aTakeover.open(); await requested; bTakeover.open();
+    serve();
+    assert.deepEqual([await first, await second, settledOrWaiting], ['installed', 'busy', 'settled busy']);
+    assert.equal(requests, 1, 'one download');
+    assert.deepEqual(readdirSync(directory), [opts.pin!.asset], 'no lock, breaker, temp or partial file is left');
+    // A breaker left by a setup that died in the moment of a takeover: removed once it is older than the
+    // stale bound, and the setup that found it stops as busy; the next one proceeds.
+    rmSync(join(directory, opts.pin!.asset));
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, started: Date.now() - 3_600_000, token: 'e'.repeat(32) }));
+    writeFileSync(join(directory, '.setup.lock.break'), '');
+    const hourAgo = new Date(Date.now() - 3_600_000); utimesSync(join(directory, '.setup.lock.break'), hourAgo, hourAgo);
+    await assert.rejects(installDrawio({ ...opts, fetch: (async () => new Response(fixture)) as typeof fetch }), reason('busy', 'app_install_busy'));
+    assert.equal((await installDrawio({ ...opts, fetch: (async () => new Response(fixture)) as typeof fetch })).status, 'installed');
+  } finally { serve(); await server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a home without hard links (FAT, exFAT, some network shares): the lock is created exclusively instead; other lock failures are named (review m2d, r2-runtime-2)', async () => {
+  const server = await standIn((_request, response) => serveFixture(response));
+  const dir = home();
+  try {
+    const opts = options(server.origin, dir), directory = drawioRuntimeDirectory(dir, opts.pin!), lock = join(directory, '.setup.lock');
+    for (const code of ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']) {
+      let sawLock = '';
+      const noLinks = async (): Promise<void> => { throw Object.assign(new Error(`link: ${code}`), { code }); };
+      const result = await installDrawio({ ...opts, link: noLinks, fetch: (async () => { sawLock = readFileSync(lock, 'utf8'); return new Response(fixture); }) as typeof fetch });
+      assert.equal(result.status, 'installed', code);
+      assert.match(sawLock, /"token":"[0-9a-f]{32}"/, `${code}: the lock was held, whole, during the download`);
+      assert.deepEqual(readdirSync(directory), [opts.pin!.asset], `${code}: the lock is released`);
+      rmSync(join(directory, opts.pin!.asset));
+    }
+    // The fallback lock still refuses a second setup by name.
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, started: Date.now(), token: 'c'.repeat(32) }));
+    await assert.rejects(installDrawio({ ...opts, link: async () => { throw Object.assign(new Error('x'), { code: 'EPERM' }); } }), reason('busy', 'app_install_busy'));
+    rmSync(lock);
+    // Any other failure to take the lock is named, never a raw error.
+    await assert.rejects(installDrawio({ ...opts, link: async () => { throw Object.assign(new Error('x'), { code: 'EIO' }); } }), (error: unknown) => reason('lock')(error) && (error as DrawioInstallError).details.code === 'EIO');
   } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
