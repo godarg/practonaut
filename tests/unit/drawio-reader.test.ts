@@ -233,6 +233,43 @@ test('submission mode models no painting: overlapping boxes, an arrow meeting a 
   assert.throws(() => parseDrawio(file(ab), 'checked' as never), (error: unknown) => error instanceof CheckerError && error.code === 'checker_invalid', 'an unknown mode');
 });
 
+// Final check of PR #70: every submission-mode threshold is met within DRAWIO_GEOMETRY_TOLERANCE, so a
+// distance of exactly the threshold passes however its decimal coordinates round, and anything a tenth
+// of a pixel short is refused (PADR-0049 decision 6.8). The arrow's length is in drawio-reader-attacks.
+const FILLED_STEP = 'rounded=0;html=0;strokeColor=#000000;fillColor=#dae8fc;';
+test('submission mode: a filled step exactly 4 px from an arrow keeps the clearance; 3.9 px is refused', () => {
+  // a and b, 160 x 80, at height y: the arrow runs level at y + 40 from x = 160 to x = 400.
+  const level = (y: number): string => vertex('a', 'A', STEP, '1', geo(0, y)) + vertex('b', 'B', STEP, '1', geo(400, y)) + edge('e', 'a', 'b');
+  const below = (top: number): string => vertex('c', '', FILLED_STEP, '1', geo(250, top, 60, 40));
+  assert.ok(read(level(0) + below(44)).state.objects.c, 'exactly 4 px below the line');
+  assert.ok(read(level(0.4) + below(44.4)).state.objects.c, 'exactly 4 px below a line at 40.4, which rounds to 40.400000000000006');
+  assert.throws(() => read(level(0) + below(43.9)), reason('arrow_hidden'), '3.9 px');
+  assert.throws(() => read(level(0.4) + below(44.3)), reason('arrow_hidden'), '3.9 px below a line at 40.4');
+});
+
+test('submission mode: boxes that touch do not overlap however their edges round; 0.1 px of overlap is refused', () => {
+  // a's right edge is 0.1 + 50.2, which rounds to 50.300000000000004; b starts at 50.3.
+  const a = vertex('a', 'A', STEP, '1', geo(0.1, 0, 50.2, 80));
+  assert.ok(read(a + vertex('b', 'B', STEP, '1', geo(50.3, 0, 100, 80))).state.objects.b, 'touching');
+  assert.throws(() => read(a + vertex('b', 'B', STEP, '1', geo(50.2, 0, 100, 80))), reason('boxes_overlap'), '0.1 px of overlap');
+});
+
+test('submission mode: a frame\'s step on the frame\'s edge lies inside it however the sum rounds; 0.1 px outside is refused', () => {
+  // The frame spans 0.1..100.3; its step's right edge is 0.1 + 50.1 + 50.1, which rounds to 100.30000000000001.
+  const frame = vertex('f', 'F', FRAME, '1', geo(0.1, 0, 100.2, 200));
+  assert.ok(read(frame + vertex('a', 'A', STEP, 'f', geo(50.1, 40, 50.1, 80))).state.objects.a, 'on the right edge');
+  assert.throws(() => read(frame + vertex('a', 'A', STEP, 'f', geo(50.1, 40, 50.2, 80))), reason('frame_outside'), '0.1 px outside');
+});
+
+test('submission mode: a text estimate that exactly fits its box or band passes however the box rounds; 0.1 px less is refused', () => {
+  // Five units are estimated 60 px wide: a box 60 wide at x = 10.1 is 59.99999999999999 wide as computed.
+  assert.ok(read(vertex('a', 'xxxxx', STEP, '1', geo(10.1, 0, 60, 80))).state.objects.a, 'a label exactly as wide as its box');
+  assert.throws(() => read(vertex('a', 'xxxxx', STEP, '1', geo(10.1, 0, 59.9, 80))), reason('text_extent'), 'a box 59.9 px wide');
+  // A frame 16 high at y = 0.15 has a band 15.999999999999998 high as computed: one line fits exactly.
+  assert.ok(read(vertex('f', 'F', FRAME, '1', geo(0, 0.15, 300, 16))).state.objects.f, 'a band exactly one line high');
+  assert.throws(() => read(vertex('f', 'F', FRAME, '1', geo(0, 0.15, 300, 15.9))), reason('text_extent'), 'a band 15.9 px high');
+});
+
 test('the XML prolog and the file\'s own attributes: only what an XML parser and draw.io\'s export allow (review m2d)', () => {
   const doc = file(two);
   // Outside the root only space, tab, CR and LF.

@@ -260,3 +260,24 @@ test('r4-arrow-subpixel-gap: an arrow needs room for its marker outside its end 
   for (const x of ['580.4', '581', '586']) assert.equal(outcome('recolor', at(x)), 'arrow_hidden', `c at x=${x}`);
   assert.equal(outcome('recolor', at('600')), 'passed', 'c at x=600');
 });
+
+// Final check of PR #70: the length is compared within DRAWIO_GEOMETRY_TOLERANCE (PADR-0049 decision 6.8).
+// b spans 400..580 (centre 490) and c, 100 wide, spans x..x+100 at b's height, so bc runs level from
+// x = 490 to x + 50 and its drawn part is x - 580 long: exactly 10 px at x = 590, which the line's
+// parameters round to 9.999999999999998 px.
+test('an arrow drawn exactly 10 px long passes however its length rounds; shorter is refused', () => {
+  const recolor = cells(goal('recolor'));
+  const at = (x: string): string => {
+    const copy = structuredClone(recolor), byId = (id: string): XmlNode => copy.find(c => c.attrs.id === id)!;
+    Object.assign(byId('c').children[0]!.attrs, { x, width: '100' });
+    return file(['pn:root', 'pn:layer', 'bc', 'a', 'b', 'c', 'ab'].map(byId));
+  };
+  const message = (xml: string): string => {
+    try { checkSubmission(slice('recolor'), xml, { seed: seed('recolor'), taskId: 'recolor', format: 'drawio', reading: 'submission' }); return ''; }
+    catch (error) { assert.ok(error instanceof CheckerError, String(error)); return error.message; }
+  };
+  assert.equal(outcome('recolor', at('590')), 'passed', 'exactly 10 px');
+  assert.equal(outcome('recolor', at('589.9')), 'arrow_hidden', '9.9 px');
+  assert.match(message(at('589.9')), /only 9\.9 px outside its end steps \(10 px needed\)/);
+  assert.match(message(at('589.99')), /less than 10 px outside its end steps \(10 px needed\)/, '9.99 px is not shown as 10 px');
+});

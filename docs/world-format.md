@@ -388,7 +388,8 @@ frame's step not inside the frame's body below its band), `arrow_hidden` (an arr
 part between its end steps' boxes is shorter than 10 px or comes within 4 px of another filled step)
 and `text_extent` (a
 label or frame name with a control character, or wider or taller than its box or band by the estimate
-of one 16 px line at 12 px per UTF-16 code unit).
+of one 16 px line at 12 px per UTF-16 code unit). Each threshold is met within a millionth of a pixel
+(floating-point rounding of exact values does not refuse them).
 
 Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
 `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,

@@ -86,8 +86,9 @@ All notable changes are recorded here. The format follows
     legal states), and the Player's download of a legal state checks with `--pair`. Any other file,
     `practonaut check` without `--pair` among them, is refused by name where something read could be
     hidden or misread (`boxes_overlap`, `frame_outside`, `arrow_hidden` with room for draw.io's end
-    marker, `text_extent`), so a file drawn by hand is strict until artifact mode (Must 3) decides
-    otherwise; a refusal names its reason (`artifact_invalid: boxes_overlap`).
+    marker, `text_extent`; each threshold met within a millionth of a pixel, so exact values pass
+    however their coordinates round), so a file drawn by hand is strict until artifact mode (Must 3)
+    decides otherwise; a refusal names its reason (`artifact_invalid: boxes_overlap`).
   - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.
   - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux

@@ -133,7 +133,8 @@ The caller says what the file is (review m3):
   shorter than 10 px between its end boxes or within 4 px of another filled step (`arrow_hidden`: room
   for draw.io's end marker and the borders), a label or frame name with a line break or wider or
   taller than its box or band (`text_extent`, estimated as one 16 px line at 12 px per UTF-16 code
-  unit).
+  unit). Each threshold is met within a millionth of a pixel, so a distance of exactly 10 px or 4 px,
+  or boxes that touch, pass however their decimal coordinates round.
 
 So a file drawn by hand in draw.io is usually refused by `practonaut check`, for example for a
 default style key, a hidden or transparent cell, a container, a colour outside the table, a filled

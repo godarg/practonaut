@@ -705,7 +705,7 @@ through a test seam, so the product reads no new variable.
      additions, deletions, connections, rewiring, grouping, with labels holding markup characters,
      line feeds, tabs and non-Latin letters), each state written by the writer with its carried
      memory and read back as exactly the live state. With the fixed PRNG seed it reads 5,151 states
-     and refuses none; submission mode refuses 2,493 of them.
+     and refuses none; submission mode refuses 2,497 of them (with the m4 rules and the tolerance).
 8. **Two reading modes** (review m3). Modelling how draw.io paints a file did not converge: the m2d
    rules refused the adapter's own export of legal states (69 of 3,840 random legal states), so a
    solved bench run became `infra_error`, and they still read an arrow hidden inside its own filled end
@@ -741,6 +741,18 @@ through a test seam, so the product reads no new variable.
        tall and 12 px per UTF-16 code unit wide (draw.io draws a plain label at 12 px, unwrapped and
        unclipped). It is an estimate, not a measurement: glyphs wider than 12 px exist.
      - A non-positive size is `geometry_invalid` in both modes.
+     - Every threshold above is met within a millionth of a pixel (`DRAWIO_GEOMETRY_TOLERANCE`;
+       final check of the implementation): boxes overlap, a step lies outside its frame, a drawn part
+       is short of 10 px or nearer than 4 px, a text estimate exceeds its box or band, each only by
+       more than that. The rules compute with the file's decimal coordinates in binary floating
+       point, so a distance of exactly a threshold can come out a few units in the last place on the
+       wrong side: an arrow drawn exactly 10 px long between boxes at 400..580 and 590..690 is
+       computed as 9.999999999999998 px, and two touching boxes as overlapping by 7e-15 px. Coordinates
+       as drawn (thousands of pixels with a few decimals) round by about 1e-12 px, and nothing draw.io
+       draws differs by a millionth of a pixel, so the rules stay as strict as stated: a drawn part of
+       9.9 px, a filled step 3.9 px from an arrow and boxes overlapping by 0.1 px are refused. A drawn
+       part exactly 4 px from a filled step keeps the clearance (it was refused before, on the
+       widened box's edge).
 
      Honest files drawn by hand with overlapping boxes are refused; the record accepts that ("strict
      until artifact mode"). The refusal reaches the CLI with its name (`artifact_invalid: <reason>`).
@@ -1194,3 +1206,12 @@ in submission mode and three minors:
 | r4-check-pair-honest-export (minor): `check --pair` refused the Player's download of a legal state | Adopted, option 1 | 6.8: once the pair's session has replayed, its file is read as the session's own export and must equal that legal state, so its verdict is the session's and nothing in the file adds to it; the file alone stays a submission (`drawio-read-modes.test.ts`, which fails with the mode dropped) |
 | r4-run-export-mode-untested (minor) | Adopted | `drawio-run-export.test.ts`: `run --export` on a draw.io registration with a writer stand-in, ending in an overlapping legal state, writes its three files; fails with the mode dropped |
 | r4-picture-floor-cap (minor): the one-px-per-unit floor stopped at 6,000 units | Adopted | design-language §10.5: a pair with draw.io's export takes a width attribute of exactly its width in px, no class cap (`drawio-report-board.test.ts` at 9,000 and 20,000 units) |
+
+## Final check of the implementation (2026-10-20)
+
+A last Codex check of the submission-mode rules at 42eda9d confirmed the rest of the PR and found one
+minor:
+
+| Finding (severity after verification) | Disposition | Where, and the test that fails without it |
+|---|---|---|
+| Threshold comparisons without a numeric tolerance (minor): an arrow drawn exactly 10 px long (recolor's b at 400..580, c at 590..690) is computed as 9.999999999999998 px and refused as `arrow_hidden`; the same pattern refuses touching boxes, a frame's step on the frame's edge and a text estimate that exactly fits, whose sums round past the edge, and a filled step exactly 4 px from an arrow | Adopted | 6.8: every threshold is met within `DRAWIO_GEOMETRY_TOLERANCE`, a millionth of a pixel; exactly 10 px passes and 9.9 px is refused (`drawio-reader-attacks.test.ts`), and the same for the 4 px clearance, touching boxes against 0.1 px of overlap, a step on its frame's edge against 0.1 px outside, and a label or band that exactly fits against 0.1 px less (`drawio-reader.test.ts`). Each exact case fails with 42eda9d's reader, each short case with a tolerance of 0.5 px. A refused drawn part between 9.95 and 10 px is named as less than 10 px, no longer as "only 10 px" |

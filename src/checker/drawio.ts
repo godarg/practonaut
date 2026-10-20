@@ -510,6 +510,15 @@ export const DRAWIO_TEXT_ESTIMATE = Object.freeze({ lineHeight: 16, unitWidth: 1
  * long. The marker is 7 px wide with its stroke: the drawn part keeps `clearance` (4 px) from every
  * other filled step's box. */
 export const DRAWIO_ARROW_MARGIN = Object.freeze({ length: 10, clearance: 4 });
+/** How far a computed distance may miss a threshold of the paint rules and still meet it: a millionth
+ * of a pixel (final check of PR #70). The rules compare sums, differences and quotients of the file's
+ * decimal coordinates in binary floating point, so a distance that is exactly a threshold can come out a
+ * few units in the last place on the wrong side (an arrow's drawn part of exactly 10 px computed as
+ * 9.999999999999998 px, two touching boxes as overlapping by 7e-15 px). Coordinates as drawn, thousands
+ * of pixels with a few decimals, round by about 1e-12 px; nothing draw.io draws differs by a millionth
+ * of a pixel, so every rule stays as strict as stated (a drawn part of 9.9 px, a step 3.9 px from an
+ * arrow, boxes overlapping by 0.1 px are refused). */
+export const DRAWIO_GEOMETRY_TOLERANCE = 1e-6;
 /**
  * Submission mode: no model of draw.io's painting; anything read that could be hidden or misread is
  * refused by name (review m3).
@@ -526,7 +535,10 @@ export const DRAWIO_ARROW_MARGIN = Object.freeze({ length: 10, clearance: 4 });
  *   filled step's box; its own filled end steps are covered by the length.
  * - `text_extent`: a step label or a frame name holds a control character (a line feed among them), or
  *   its estimated extent (`DRAWIO_TEXT_ESTIMATE`) leaves its box or its band.
- * Sizes that are not positive are `geometry_invalid` in both modes.
+ * Sizes that are not positive are `geometry_invalid` in both modes. Every threshold is met within
+ * `DRAWIO_GEOMETRY_TOLERANCE`: boxes overlap by more than it, a step lies outside its frame by more than
+ * it, an arrow's drawn part is short of its length or comes nearer than its clearance by more than it,
+ * a text estimate exceeds its box or band by more than it.
  */
 function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, string>, chains: ReadonlyMap<string, string[]>, byId: ReadonlyMap<string, Cell>, styles: ReadonlyMap<string, Record<string, string>>): void {
   interface Box { left: number; top: number; right: number; bottom: number }
@@ -536,7 +548,8 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     return { x, y };
   };
   const boxOf = (cell: Cell): Box => { const o = origin(cell.id), g = cell.geometry!; return { left: o.x + g.x, top: o.y + g.y, right: o.x + g.x + g.width, bottom: o.y + g.y + g.height }; };
-  const overlaps = (a: Box, b: Box): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const tolerance = DRAWIO_GEOMETRY_TOLERANCE;
+  const overlaps = (a: Box, b: Box): boolean => a.left < b.right - tolerance && b.left < a.right - tolerance && a.top < b.bottom - tolerance && b.top < a.bottom - tolerance;
   /** The parameter range of the line through p and q inside box b (Liang–Barsky), or null when it misses. */
   const inside = (p: Point, q: Point, b: Box): [number, number] | null => {
     const dx = q.x - p.x, dy = q.y - p.y;
@@ -556,7 +569,7 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     if (cell.value === "") return;
     if (/\p{Cc}/u.test(cell.value)) refuse("text_extent", `a control character (a line break) in ${what}`);
     const width = DRAWIO_TEXT_ESTIMATE.unitWidth * cell.value.length;
-    if (width > area.right - area.left || DRAWIO_TEXT_ESTIMATE.lineHeight > area.bottom - area.top) refuse("text_extent", `${what} would reach outside its ${within} (estimated ${width} × ${DRAWIO_TEXT_ESTIMATE.lineHeight} px)`);
+    if (width > area.right - area.left + tolerance || DRAWIO_TEXT_ESTIMATE.lineHeight > area.bottom - area.top + tolerance) refuse("text_extent", `${what} would reach outside its ${within} (estimated ${width} × ${DRAWIO_TEXT_ESTIMATE.lineHeight} px)`);
   };
   for (const step of steps) text(step, box.get(step.id)!, `the label of step ${shown(step.id)}`, "box");
   for (const { frame, band } of bands) text(frame, band, `the name of frame ${shown(frame.id)}`, "title band");
@@ -577,7 +590,7 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     const own = chains.get(step.id)!.find(id => kinds.get(id) === "frame");
     if (own === undefined) continue;
     const { whole, band } = bands.find(entry => entry.frame.id === own)!, b = box.get(step.id)!;
-    if (b.left < whole.left || b.right > whole.right || b.top < band.bottom || b.bottom > whole.bottom) refuse("frame_outside", `step ${shown(step.id)} of frame ${shown(own)} is drawn outside the frame's body`);
+    if (b.left < whole.left - tolerance || b.right > whole.right + tolerance || b.top < band.bottom - tolerance || b.bottom > whole.bottom + tolerance) refuse("frame_outside", `step ${shown(step.id)} of frame ${shown(own)} is drawn outside the frame's body`);
   }
   // Arrows: a drawn part outside the end steps' boxes, meeting no filled step's box.
   const filled = steps.filter(step => styles.get(step.id)!.fillColor?.toLowerCase() !== "none");
@@ -593,13 +606,17 @@ function submissionCheck(cells: readonly Cell[], kinds: ReadonlyMap<string, stri
     let from = 0, to = 1;
     if (edge.source !== null) { const range = inside(p, q, box.get(edge.source)!); if (range) from = Math.max(from, range[1]); }
     if (edge.target !== null) { const range = inside(p, q, box.get(edge.target)!); if (range) to = Math.min(to, range[0]); }
-    const length = Math.hypot(q.x - p.x, q.y - p.y) * (to - from);
-    if (!(length >= DRAWIO_ARROW_MARGIN.length)) refuse("arrow_hidden", `arrow ${shown(edge.id)} has ${length > 0 ? `only ${Math.round(length * 10) / 10} px` : "no length"} outside its end steps (${DRAWIO_ARROW_MARGIN.length} px needed)`);
+    const length = Math.hypot(q.x - p.x, q.y - p.y) * (to - from), need = DRAWIO_ARROW_MARGIN.length;
+    if (!(length >= need - tolerance)) {
+      const rounded = Math.round(length * 10) / 10;
+      refuse("arrow_hidden", `arrow ${shown(edge.id)} has ${!(length > 0) ? "no length" : rounded < need ? `only ${rounded} px` : `less than ${need} px`} outside its end steps (${need} px needed)`);
+    }
     const a = { x: p.x + (q.x - p.x) * from, y: p.y + (q.y - p.y) * from }, b = { x: p.x + (q.x - p.x) * to, y: p.y + (q.y - p.y) * to };
-    const margin = DRAWIO_ARROW_MARGIN.clearance;
+    // A drawn part exactly the clearance away, on the edge of the widened box, keeps it.
+    const margin = DRAWIO_ARROW_MARGIN.clearance, reach = margin - tolerance;
     for (const step of filled) {
       if (step.id === edge.source || step.id === edge.target) continue;
-      const near = box.get(step.id)!, range = inside(a, b, { left: near.left - margin, top: near.top - margin, right: near.right + margin, bottom: near.bottom + margin });
+      const near = box.get(step.id)!, range = inside(a, b, { left: near.left - reach, top: near.top - reach, right: near.right + reach, bottom: near.bottom + reach });
       if (range && Math.min(1, range[1]) > Math.max(0, range[0])) refuse("arrow_hidden", `arrow ${shown(edge.id)} comes within ${margin} px of filled step ${shown(step.id)}`);
     }
   }
