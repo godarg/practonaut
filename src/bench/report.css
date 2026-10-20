@@ -208,6 +208,17 @@ td.text code{overflow-wrap:anywhere}
 .sch-tip{fill:var(--pn-color-content-line-black)}
 .sch-loose{fill:var(--pn-color-canvas);stroke:var(--pn-color-danger-icon);stroke-width:2.5}
 .sch-loose-label{fill:var(--pn-color-danger-fg);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+/* What a layout task judges (PADR-0047): neutral dashes over the picture; an unmet clause's numbered
+   marks, each explained by a legend line in words. */
+.sch-judged{pointer-events:none}
+.sch-judged-canvas{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:14 8}
+.sch-judged-label{fill:var(--pn-color-text-secondary);font:var(--pn-weight-medium) var(--pn-text-title3) var(--pn-font-sans)}
+.sch-judged-box{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:1.5;stroke-dasharray:6 6}
+.sch-judged-segment{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2;stroke-dasharray:8 6;stroke-linecap:round}
+.sch-judged-point{fill:none;stroke:var(--pn-color-text-secondary);stroke-width:2}
+.sch-mark{fill:var(--pn-color-danger-solid)}
+.sch-mark-number{fill:var(--pn-color-text-on-accent);font:var(--pn-weight-semibold) var(--pn-text-title3) var(--pn-font-sans)}
+.engine-board .sch-judged-label,.engine-board .sch-mark-number{font-family:var(--pn-font-sans)}
 
 /* compare */
 .sides{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--pn-space-3);margin:0}

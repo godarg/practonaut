@@ -20,7 +20,7 @@ import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { fill, sentence, TEXT, type Words } from './report-text.ts';
-import { explanationKey, type ConditionDetail, type ReportDetails, type RunDetail, type TrajectoryRow } from './details.ts';
+import { explanationKey, type ConditionDetail, type LayoutMark, type ReportDetails, type RunDetail, type TrajectoryRow } from './details.ts';
 import type { BoardObject } from './schematic.ts';
 import { styleNames } from '../world/style-names.ts';
 
@@ -111,9 +111,9 @@ export function prose(value: string, ids: readonly string[] = [], idTag: 'data' 
 }
 
 /** Words for the details loader (picture labels and legends) in the page's language. */
-export function detailWords(language: Language): { group: string; loose: string; finalBoard: string; target: string } {
+export function detailWords(language: Language): { group: string; loose: string; finalBoard: string; target: string; canvas: string } {
   const t = TEXT[language];
-  return { group: t.group, loose: t.loose, finalBoard: t.finalBoard, target: t.target };
+  return { group: t.group, loose: t.loose, finalBoard: t.finalBoard, target: t.target, canvas: t.canvas };
 }
 
 // The kit's status shapes and info mark (src/player/ui/icons.ts), drawn inline: shape first, colour second.
@@ -483,11 +483,41 @@ export function objectLines(objects: readonly BoardObject[], language: Language)
   });
 }
 
+/** One legend line of an unmet layout clause (PADR-0047 decision 7): what the numbered mark names, in
+ * words, never by colour alone. */
+export function layoutMarkText(mark: LayoutMark, language: Language): string {
+  const t = TEXT[language], quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
+  const name = (id: string): string => {
+    const value = mark.names[id];
+    if (!value) return quoted(id);
+    if ('step' in value) return quoted(value.step);
+    const end = (label: string | null): string => label === null ? t.layoutLooseEnd : quoted(label);
+    return `${end(value.from)} → ${end(value.to)}`;
+  };
+  const r = mark.reason, clause = mark.clause;
+  const tolerance = 'tolerance' in clause ? clause.tolerance : 0;
+  const text = r.kind === 'count' ? (() => {
+    const scope = (r.selection === 1 && clause.op === 'arrowsClearOfSteps' ? clause.steps : 'arrows' in clause ? clause.arrows : clause.steps).scope;
+    const where = scope.kind === 'frame' ? fill(language, t.layoutScopeFrame, { name: quoted(scope.name) }) : scope.kind === 'outside' ? t.layoutScopeOutside : '';
+    return fill(language, r.type === 'step' ? t.layoutCountSteps : t.layoutCountArrows, { n: r.expected, scope: where, found: r.found });
+  })()
+    : r.kind === 'loose' ? fill(language, t.layoutLoose, { arrow: name(r.arrow) })
+    : r.kind === 'overlap' ? (clause.op === 'noOverlap' && clause.gap > 0 ? fill(language, t.layoutOverlapGap, { a: name(r.steps[0]), b: name(r.steps[1]), gap: clause.gap }) : fill(language, t.layoutOverlap, { a: name(r.steps[0]), b: name(r.steps[1]) }))
+    : r.kind === 'spread' ? fill(language, t.layoutSpread, { a: name(r.steps[0]), b: name(r.steps[1]), tolerance })
+    : r.kind === 'projection' ? fill(language, t.layoutProjection, { a: name(r.steps[0]), b: name(r.steps[1]), axis: 'axis' in clause ? clause.axis : 'x' })
+    : r.kind === 'gaps' ? fill(language, t.layoutGaps, { a: name(r.smallest[0]), b: name(r.smallest[1]), c: name(r.largest[0]), d: name(r.largest[1]), tolerance })
+    : r.kind === 'outside' ? fill(language, t.layoutOutside, { a: name(r.step) })
+    : r.kind === 'crossing' ? fill(language, t.layoutCrossing, { a: name(r.arrows[0]), b: name(r.arrows[1]) })
+    : fill(language, t.layoutTouch, { a: name(r.arrow), b: name(r.step) });
+  return fill(language, t.markLine, { n: mark.number, c: mark.condition, text });
+}
+
 function boardHtml(detail: RunDetail, report: SessionReportView, language: Language): string {
   const t = TEXT[language], picture = detail.picture;
   const quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
   const reason = picture?.kind === 'schematic' ? { 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason] : '';
-  const caption = picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.app.version })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`;
+  const judged = detail.layout?.drawn ? ` ${t.judgedCaption}` : '';
+  const caption = (picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.app.version })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`) + judged;
   const list = (title: string, items: string[]): string => `<p class="legend-title">${esc(title)}</p><ul class="legend">${items.map(item => `<li>${prose(item)}</li>`).join('')}</ul>`;
   // A picture wider than the column scrolls inside its frame; a faded edge and a line say so. When the
   // first difference from the target lies in the right half, both frames open at that end (F3).
@@ -495,12 +525,14 @@ function boardHtml(detail: RunDetail, report: SessionReportView, language: Langu
   const end = detail.overflow !== 'none' && detail.fromEnd ? ' from-end' : '';
   const frame = (markup: string, label: string): string => `<div class="board-scroll ${overflow}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${detail.overflow === 'none' ? '' : `<p class="scroll-hint ${overflow}">${esc(t.scrollHint)}</p>`}`;
   const legend: string[] = [];
+  // The numbered marks of the unmet layout clauses first: what the reader looks for in the picture.
+  if (detail.layout?.marks.length) legend.push(list(t.marksTitle, detail.layout.marks.map(mark => layoutMarkText(mark, language))));
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));
   legend.push(detail.groups.length ? list(t.groups, detail.groups.map(group => `${group.name}: ${group.members.map(quoted).join(', ')}`)) : `<p class="legend-title">${esc(t.groups)}</p><p class="meta">${esc(t.noGroups)}</p>`);
   if (detail.frames.length) legend.push(list(t.frames, detail.frames.map(item => item.members.length ? fill(language, t.frameMembers, { name: quoted(item.name), members: item.members.map(quoted).join(', ') }) : fill(language, t.emptyFrame, { name: quoted(item.name) }))));
   const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard)}${legend.join('')}</figure>` : '';
   const target = detail.target
-    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
+    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption + judged)}</figcaption>${frame(detail.target, t.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
     : banner('neutral', t.noTargetTitle, `<p>${esc(detail.targetMissing === 'unreadable' ? t.targetUnreadable : t.noTarget)}</p>`);
   return `<div class="boards">${final}${target}</div>${picture && detail.target ? `<p class="note">${esc(t.pairNote)}</p>` : ''}`;
 }

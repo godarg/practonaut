@@ -9,7 +9,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { libraryWorld, runBench, type BenchOptions } from '../../src/bench/run.ts';
 import { resolveAgent } from '../../src/bench/agents.ts';
-import { ownBenchWorld } from '../../src/bench/world.ts';
+import { ownBenchWorld, type BenchReference, type BenchWorld } from '../../src/bench/world.ts';
+import { layoutWorld } from './layout-world.ts';
 import { summarize, validateBenchReport, validateBenchReportV3, type BenchReport, type SessionReportV3 } from '../../src/bench/report.ts';
 import { loadReportDetails } from '../../src/bench/details.ts';
 import { detailWords, readTokensCss, renderHtml, renderTable, type VerificationInput } from '../../src/bench/render.ts';
@@ -86,15 +87,30 @@ async function germanWorld(dir: string): Promise<{ world: string; taskId: string
   return { world: join(dir, 'german', 'world'), taskId: world.tasks[0]!.id };
 }
 
+/** The hand-written layout task (tests/support/layout-world.ts) as an own world with its reference:
+ * a2 into lane A's row, lane B into its row inside the canvas (PADR-0047). */
+async function layoutBenchWorld(dir: string): Promise<{ world: BenchWorld; references: Map<string, BenchReference> }> {
+  const folder = join(dir, 'layout', 'world');
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, 'world.json'), JSON.stringify(layoutWorld(), null, 2) + '\n');
+  const world = await ownBenchWorld(folder);
+  const steps = [{ name: 'move_step' as const, params: { id: 'a2', x: 320, y: 100 } }, { name: 'move_step' as const, params: { id: 'b2', x: 320, y: 300 } }, { name: 'move_step' as const, params: { id: 'b3', x: 540, y: 300 } }];
+  return { world, references: new Map([['tidy', { taskId: 'tidy', source: 'oracle-file' as const, worldId: world.world.id, steps }]]) };
+}
+/** Half of the layout reference: lane A tidied, lane B left out of row and past the canvas. */
+const LAYOUT_HALF: Script = { tidy: { steps: [{ act: 'move_step', params: { id: 'a2', x: 320, y: 100 } }, { check: true }] } };
+
 export interface Fixtures {
   failing: Bench; solved: Bench; timeout: Bench; unjudged: Bench; german: Bench;
+  /** A layout task left half done: unmet layout conditions with their numbered marks. */
+  layout: Bench;
   /** An agent that acted and then exited with code 7. */
   crashed: Bench;
   /** Two command-template benches on the same grid (two tasks × seeds 1–3), three repeats: for compare
    * (36 runs, so only when asked for). */
   good?: Bench; bad?: Bench;
   /** With the real mirror (only when asked for). */
-  engine?: { solved: Bench; failing: Bench };
+  engine?: { solved: Bench; failing: Bench; layout: Bench };
 }
 
 /** Refuses a fixture bench that did not play as its script says: a fixture whose agent could not run
@@ -125,7 +141,9 @@ export async function fixtureBenches(folder: string, options: { mirror?: boolean
   // Benched without its oracle: no reference, so no efficiency and no example target.
   const world = await ownBenchWorld(authored.world);
   const german = expectBench('german', await scripted(dir, 'german', { [authored.taskId]: { steps: [{ act: 'rename_step', params: { id: 'a', label: 'Kreditorenstammdatenänderungsantragsprüfung' } }, { act: 'set_style', params: { id: 'b', shape: 'rectangle', stroke: 'black', fill: 'yellow' } }] } }, { world, tasks: [authored.taskId], label: 'Langer deutscher Name: Rechnungseingangsprüfung' }), { status: 'completed', pass: false, acted: true });
-  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed };
+  const layoutOwn = await layoutBenchWorld(dir);
+  const layout = expectBench('layout', await scripted(dir, 'layout', LAYOUT_HALF, { world: layoutOwn.world, references: layoutOwn.references, tasks: ['tidy'] }), { status: 'completed', pass: false, acted: true });
+  const fixtures: Fixtures = { failing, solved, timeout, unjudged, german, crashed, layout };
   if (options.compare) {
     // Seeds 1–3: six instances, so six instance flips are enough for an exact McNemar verdict (p = 2 · 2⁻⁶).
     fixtures.good = expectBench('good', await scripted(dir, 'good', SOLVING, { seeds: [1, 2, 3], repeats: 3 }), { status: 'completed', pass: true, acted: true });
@@ -136,6 +154,7 @@ export async function fixtureBenches(folder: string, options: { mirror?: boolean
     fixtures.engine = {
       solved: expectBench('engine solved', await bench({ ...base, ...mirrored, agent: resolveAgent('oracle'), tasks: ['restyle-flow', 'group'] }), { status: 'completed', pass: true, acted: true }),
       failing: expectBench('engine failing', await scripted(dir, 'engine-failing', { 'restyle-flow': FAILING['restyle-flow']!, group: FAILING.group! }, mirrored), { status: 'completed', pass: false, acted: true }),
+      layout: expectBench('engine layout', await scripted(dir, 'engine-layout', LAYOUT_HALF, { ...mirrored, world: layoutOwn.world, references: layoutOwn.references, tasks: ['tidy'] }), { status: 'completed', pass: false, acted: true }),
     };
   }
   return fixtures;
@@ -197,6 +216,8 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
     { id: 'report-unjudged', html: language => reportPage(fixtures.unjudged, language) },
     { id: 'report-agent-failed', html: language => reportPage(fixtures.crashed, language) },
     { id: 'report-long-german', html: language => reportPage(fixtures.german, language) },
+    // A layout task (PADR-0047): judged geometry on both pictures, numbered marks and their legend.
+    { id: 'report-layout', html: language => reportPage(fixtures.layout, language), open: true },
     { id: 'report-no-folder', html: language => reportPage({ report: fixtures.failing.report, directory: null }, language) },
     // Repeats: pass^k and the instance outcome in the headline.
     { id: 'report-repeats', html: language => reportPage(fixtures.good, language) },
@@ -218,7 +239,7 @@ export async function reportStates(all: Fixtures): Promise<ReportState[]> {
   ];
   if (fixtures.engine) {
     const engine = fixtures.engine;
-    states.push({ id: 'report-engine-pass', html: language => reportPage(engine.solved, language) }, { id: 'report-engine-failing', html: language => reportPage(engine.failing, language) },
+    states.push({ id: 'report-engine-pass', html: language => reportPage(engine.solved, language) }, { id: 'report-engine-failing', html: language => reportPage(engine.failing, language) }, { id: 'report-engine-layout', html: language => reportPage(engine.layout, language), open: true },
       { id: 'report-engine-pass-open', html: language => reportPage(engine.solved, language), open: true });
   }
   return states;

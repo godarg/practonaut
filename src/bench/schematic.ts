@@ -11,6 +11,7 @@
  * nothing here names a colour.
  */
 import { isStepV2, type Arrow, type Frame, type State, type Step } from '../world/types.ts';
+import type { LayoutOverlay, LayoutWhere } from '../host/protocol.ts';
 import { readableText } from '../cli/output.ts';
 
 const xml = (value: string): string => readableText(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -137,7 +138,80 @@ export function groupOutlines(state: State, words: { group: string }): string {
  * accessible name; `words` names groups and loose ends in the report's language; `viewBox` (the union
  * with the picture it is shown beside) keeps a pair at one scale.
  */
-export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean }): string {
+/** A numbered mark on the final board: the objects one reason of an unmet layout clause names. */
+export interface MarkPlacement { number: number; steps: string[]; arrows: string[] }
+/** Where a layout task's judged geometry lies (its canvases), for a viewBox that shows it. */
+export function judgedBounds(overlays: readonly LayoutOverlay[]): Box[] {
+  // Room around the outline, and under it for its corners as text.
+  return overlays.flatMap(overlay => overlay.op === 'within' ? [{ x: overlay.canvas.x - 28, y: overlay.canvas.y - 28, width: overlay.canvas.width + 56, height: overlay.canvas.height + 76 }] : []);
+}
+/**
+ * What a layout task judges (PADR-0047 decision 7), as SVG to lay over a picture in the same viewBox:
+ * each canvas as a dashed outline with its corners, the box of every ellipse or diamond, the selected
+ * arrows as dashed segments between step centres, a self-loop's centre as a ring, and the numbered
+ * marks of unmet clauses. Drawn from the judged state and the conditions' public overlays.
+ */
+export function judgedOverlay(state: State, overlays: readonly LayoutOverlay[], marks: readonly MarkPlacement[], words: { canvas: string }, prefix: string): string {
+  if (!overlays.length) return '';
+  const { steps, frames, arrows } = live(state);
+  const byId = new Map(steps.map(step => [step.id, step]));
+  const frameName = new Map(frames.map(frame => [frame.id, frame.name]));
+  const inScope = (object: Step | Arrow, scope: LayoutWhere): boolean =>
+    scope.kind === 'all' || (scope.kind === 'outside' ? object.frameId === null : object.frameId !== null && frameName.get(object.frameId) === scope.name);
+  const parts: string[] = [];
+  // The canvas outline, its corners as text under it (inside, a frame's name would sit there).
+  for (const overlay of overlays) if (overlay.op === 'within') {
+    const c = overlay.canvas;
+    parts.push(`<rect x="${n(c.x)}" y="${n(c.y)}" width="${n(c.width)}" height="${n(c.height)}" class="sch-judged-canvas"/><text x="${n(c.x)}" y="${n(c.y + c.height + 30)}" class="sch-judged-label">${xml(`${words.canvas} (${c.x}, ${c.y})–(${c.x + c.width}, ${c.y + c.height})`)}</text>`);
+  }
+  for (const step of steps) if (isStepV2(step) && step.shape !== 'rectangle') parts.push(`<rect x="${n(step.x)}" y="${n(step.y)}" width="${n(step.width)}" height="${n(step.height)}" class="sch-judged-box"/>`);
+  const centre = (step: Step): [number, number] => [step.x + step.width / 2, step.y + step.height / 2];
+  const judged = new Set<Arrow>();
+  for (const overlay of overlays) if ('arrows' in overlay) for (const arrow of arrows) if (inScope(arrow, overlay.arrows.scope)) judged.add(arrow);
+  // Judged segments never cross a step's label (they would read as struck through): a clip cuts the
+  // label areas out, estimated from the label's lines as the schematic draws them.
+  const segments: string[] = [];
+  for (const arrow of judged) {
+    const from = arrow.from ? byId.get(arrow.from) : undefined, to = arrow.to ? byId.get(arrow.to) : undefined;
+    if (!from || !to) continue;
+    if (from.id === to.id) { const [x, y] = centre(from); parts.push(`<circle cx="${n(x)}" cy="${n(y)}" r="9" class="sch-judged-point"/>`); continue; }
+    const [x1, y1] = centre(from), [x2, y2] = centre(to);
+    segments.push(`<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" class="sch-judged-segment"/>`);
+  }
+  let clip = '';
+  if (segments.length) {
+    const area = (x: number, y: number, w: number, h: number): string => `M ${n(x)} ${n(y)} h ${n(w)} v ${n(h)} h ${n(-w)} Z`;
+    const labels = steps.map(step => {
+      const shape = isStepV2(step) ? step.shape : 'rectangle', rows = lines(step.label, shape === 'rectangle' ? step.width : step.width * 0.72, LABEL);
+      const width = Math.min(step.width, Math.max(...rows.map(row => [...row].length)) * LABEL * 0.62 + 10), height = rows.length * LABEL * 1.2 + 8;
+      return area(step.x + (step.width - width) / 2, step.y + (step.height - height) / 2, width, height);
+    });
+    clip = `<clipPath id="${prefix}-judged"><path d="${[area(-4e6, -4e6, 8e6, 8e6), ...labels].join(' ')}" clip-rule="evenodd"/></clipPath><g clip-path="url(#${prefix}-judged)">${segments.join('')}</g>`;
+  }
+  // A mark sits at a step's top-left corner and at the middle of an arrow's judged segment; marks on
+  // the same object stand side by side.
+  const arrowById = new Map(arrows.map(arrow => [arrow.id, arrow]));
+  const taken = new Map<string, number>();
+  const mark = (object: string, x: number, y: number, number: number): string => {
+    const k = taken.get(object) ?? 0; taken.set(object, k + 1);
+    const cx = x + k * 36;
+    return `<circle cx="${n(cx)}" cy="${n(y)}" r="16" class="sch-mark"/><text x="${n(cx)}" y="${n(y + 7)}" text-anchor="middle" class="sch-mark-number">${number}</text>`;
+  };
+  const markParts: string[] = [];
+  for (const placement of marks) {
+    for (const id of placement.steps) { const step = byId.get(id); if (step) markParts.push(mark(id, step.x, step.y, placement.number)); }
+    for (const id of placement.arrows) {
+      const arrow = arrowById.get(id), from = arrow?.from ? byId.get(arrow.from) : undefined, to = arrow?.to ? byId.get(arrow.to) : undefined;
+      const end = from ?? to;
+      if (!end) continue;
+      const [x1, y1] = centre(end), [x2, y2] = from && to ? centre(to) : [x1 + end.width / 2 + 60, y1];
+      markParts.push(mark(id, (x1 + x2) / 2, (y1 + y2) / 2, placement.number));
+    }
+  }
+  return `<g class="sch-judged">${parts.join('')}${clip}${markParts.join('')}</g>`;
+}
+
+export function schematicSvg(state: State, options: { prefix: string; label: string; words: { group: string; loose: string }; viewBox?: Box; groups?: boolean; overlay?: string }): string {
   const { steps, frames, arrows } = live(state);
   const byId = new Map(steps.map(step => [step.id, step]));
   const parts: string[] = [];
@@ -230,5 +304,5 @@ export function schematicSvg(state: State, options: { prefix: string; label: str
     const first = y + h / 2 - ((rows.length - 1) * leading) / 2 + LABEL * 0.35;
     parts.push(`<text x="${n(x + w / 2)}" y="${n(first)}" text-anchor="middle" class="${filled ? 'sch-label sch-label--on-fill' : 'sch-label'}">${rows.map((row, index) => `<tspan x="${n(x + w / 2)}" dy="${index ? n(leading) : '0'}">${xml(row)}</tspan>`).join('')}</text>`);
   }
-  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureSizeClass(view.width)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}</svg>`;
+  return `<svg viewBox="${n(view.x)} ${n(view.y)} ${n(view.width)} ${n(view.height)}" class="schematic ${pictureSizeClass(view.width)}" role="img" aria-label="${xml(options.label)}">${parts.join('')}${options.overlay ?? ''}</svg>`;
 }

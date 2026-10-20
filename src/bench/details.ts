@@ -21,13 +21,15 @@ import { LIMITS } from '../package/limits.ts';
 import { evaluate } from '../predicate/index.ts';
 import { generateVariant } from '../world/variant.ts';
 import { validateState } from '../world/schema.ts';
-import { worldEra, type Action, type Localized, type SessionData, type State, type World } from '../world/types.ts';
+import { isLayoutPredicate, worldEra, type Action, type Localized, type Predicate, type SessionData, type State, type World } from '../world/types.ts';
 import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFileSchema, worldContentHash, worldFromPackage } from './world.ts';
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
 import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, judgedBounds, judgedOverlay, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend, type MarkPlacement } from './schematic.ts';
+import { layoutReasons, type LayoutReason } from '../predicate/index.ts';
+import type { LayoutOverlay } from '../host/protocol.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -66,11 +68,43 @@ export interface RunDetail {
   fromEnd: boolean;
   /** The export carries the judged state's group outline (it shows no groups of its own). */
   groupOverlay: boolean;
+  /** A layout task's judged geometry (PADR-0047 decision 7): the conditions' overlays, whether the
+   * pictures draw them, and for each unmet layout clause its numbered reasons from the shared analysis. */
+  layout: { overlays: LayoutOverlay[]; drawn: boolean; marks: LayoutMark[] } | null;
   calls: CallSummary | null; callsMissing: Missing | null;
   /** Distinct MCP client names that changed the board (from the mutation log). */
   clients: string[];
   rejected: Array<[string, number]>;
 }
+/** One reason an unmet layout clause names (at most five per clause), numbered on the final board and
+ * in its legend. `names` gives each named object as the board shows it: a step's label, an arrow's
+ * end labels (null for a loose end). */
+export interface LayoutMark {
+  number: number; condition: number; clause: LayoutOverlay; reason: LayoutReason;
+  names: Record<string, { step: string } | { from: string | null; to: string | null }>;
+}
+/** The marks of the unmet layout clauses of `conditions` on `state`, numbered from 1; a clause whose
+ * boxes leave the judged range gets none (the checker refuses such a board). */
+export function layoutMarks(state: State, conditions: ReadonlyArray<{ predicate: Predicate; layout?: LayoutOverlay }>): LayoutMark[] {
+  const marks: LayoutMark[] = [];
+  const label = (id: string): string => { const object = state.objects[id]; return object?.type === 'step' ? object.label : ''; };
+  const name = (id: string): LayoutMark['names'][string] => { const object = state.objects[id]; return object?.type === 'arrow' ? { from: object.from === null ? null : label(object.from), to: object.to === null ? null : label(object.to) } : { step: label(id) }; };
+  conditions.forEach((condition, index) => {
+    if (!condition.layout || !isLayoutPredicate(condition.predicate)) return;
+    let reasons: LayoutReason[];
+    try { reasons = layoutReasons(condition.predicate, state, 5); } catch { return; }
+    for (const reason of reasons) {
+      const ids = 'steps' in reason ? reason.steps : 'arrows' in reason ? reason.arrows : reason.kind === 'gaps' ? [...reason.smallest, ...reason.largest] : reason.kind === 'loose' ? [reason.arrow] : reason.kind === 'outside' ? [reason.step] : reason.kind === 'touch' ? [reason.arrow, reason.step] : [];
+      marks.push({ number: marks.length + 1, condition: index + 1, clause: condition.layout, reason, names: Object.fromEntries(ids.map(id => [id, name(id)])) });
+    }
+  });
+  return marks;
+}
+/** Where the marks go on the picture: the steps and arrows each reason names. */
+const placements = (marks: readonly LayoutMark[]): MarkPlacement[] => marks.map(mark => {
+  const ids = Object.entries(mark.names);
+  return { number: mark.number, steps: [...new Set(ids.filter(([, value]) => 'step' in value).map(([id]) => id))], arrows: ids.filter(([, value]) => !('step' in value)).map(([id]) => id) };
+});
 export interface ReportDetails {
   folder: 'read' | 'missing' | 'world-changed' | 'world-unreadable'; runs: Map<string, RunDetail>;
   /** Error-class explanations by task, seed and id, from the bundled library when the report's world is
@@ -249,7 +283,7 @@ export function firstDifference(final: State, target: State): number | null {
 }
 
 /** Reads the details of every run from `folder` (the bench folder); `null` folder: none given. */
-export async function loadReportDetails(input: ReportInput, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string }): Promise<ReportDetails> {
+export async function loadReportDetails(input: ReportInput, folder: string | null, words: { group: string; loose: string; finalBoard: string; target: string; canvas: string }): Promise<ReportDetails> {
   const report = asView(input);
   const runs = new Map<string, RunDetail>();
   const explanations = await libraryExplanations(report).catch(() => new Map<string, Localized>());
@@ -262,7 +296,7 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
   const world = found.world, references = await boundReferences(report, folder);
   const mirror = report.environment.mirror;
   for (const [index, run] of report.runs.entries()) {
-    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', fromEnd: false, groupOverlay: false, calls: null, callsMissing: null, clients: [], rejected: [] };
+    const detail: RunDetail = { run, conditions: null, conditionsMissing: null, traceError: null, errors: [], trajectory: null, trajectoryMissing: null, picture: null, groups: [], frames: [], objects: [], target: null, targetMissing: null, targetObjects: [], overflow: 'none', fromEnd: false, groupOverlay: false, layout: null, calls: null, callsMissing: null, clients: [], rejected: [] };
     runs.set(run.id, detail);
     const variant = generateVariant(world, run.seed), task = variant.tasks.find(candidate => candidate.id === run.taskId);
     if (!task) continue;
@@ -350,7 +384,13 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     }
     // One viewBox for the pair: the union in board units; an export whose place is unknown gets a frame
     // of the same size as the target's, so the two are still drawn at one scale.
-    const finalBox = engine ? engine.box ?? engine.read.box : schematicBounds(state), targetBox = target ? schematicBounds(target) : null;
+    // A layout task's judged geometry (PADR-0047 decision 7): its canvases join the viewBox, its unmet
+    // clauses' reasons come from the same analysis that decided the verdict.
+    const overlays = conditions.flatMap(condition => condition.layout ? [condition.layout] : []);
+    const marks = overlays.length ? layoutMarks(state, conditions) : [];
+    const judged = judgedBounds(overlays);
+    const withJudged = (box: Box): Box => judged.length ? unionBox(box, ...judged) : box;
+    const finalBox = engine ? engine.box ? withJudged(engine.box) : engine.read.box : withJudged(schematicBounds(state)), targetBox = target ? withJudged(schematicBounds(target)) : null;
     let finalView = finalBox, targetView = targetBox;
     if (targetBox && (!engine || engine.box)) finalView = targetView = unionBox(finalBox, targetBox);
     else if (targetBox) { const width = Math.max(finalBox.width, targetBox.width), height = Math.max(finalBox.height, targetBox.height); finalView = { ...finalBox, width, height }; targetView = { ...targetBox, width, height }; }
@@ -359,13 +399,16 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     // outline is laid over it when the two share coordinates; when they cannot, neither picture draws
     // groups (the legend under each still names them).
     const placed = !engine || engine.box !== null;
+    // The judged geometry is drawn like the group outline: on both pictures when they share coordinates.
+    const judgedFinal = placed ? judgedOverlay(state, overlays, placements(marks), words, `run${index}-final`) : '';
+    if (overlays.length) detail.layout = { overlays, drawn: placed, marks };
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
-      const overlay = engine.box ? groupOutlines(state, words) : '';
-      detail.groupOverlay = overlay !== '';
+      const groups = engine.box ? groupOutlines(state, words) : '', overlay = groups + judgedFinal;
+      detail.groupOverlay = groups !== '';
       detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
-    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed }); detail.targetObjects = boardObjects(target); }
+    } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView, ...(judgedFinal ? { overlay: judgedFinal } : {}) }) };
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, ...(placed && overlays.length ? { overlay: judgedOverlay(target, overlays, [], words, `run${index}-target`) } : {}) }); detail.targetObjects = boardObjects(target); }
     detail.overflow = pictureOverflow(finalView.width);
     // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
     const difference = target && placed ? firstDifference(state, target) : null;

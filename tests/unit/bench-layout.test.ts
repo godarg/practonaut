@@ -1,0 +1,70 @@
+// The report's layout overlay and legend (PADR-0047 decision 7): the numbered reasons of unmet layout
+// clauses come from the shared analysis and read as words, EN and DE; the overlay draws the judged
+// geometry. Expected marks are derived by hand from the fixture's coordinates
+// (tests/support/layout-world.ts).
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { layoutMarks } from '../../src/bench/details.ts';
+import { layoutMarkText } from '../../src/bench/render.ts';
+import { judgedOverlay } from '../../src/bench/schematic.ts';
+import { publicConditions } from '../../src/host/session.ts';
+import type { State, StepV2 } from '../../src/world/types.ts';
+import { aligned, clearOfSteps, everything, inFrame } from '../support/layout-board.ts';
+import { LAYOUT_GOAL_STATE, LAYOUT_START_STATE, layoutWorld } from '../support/layout-world.ts';
+
+const conditions = publicConditions(layoutWorld().tasks[0]!);
+
+describe('report: unmet layout clauses', () => {
+  it('number every reason of every unmet clause and say it in words', () => {
+    const marks = layoutMarks(LAYOUT_START_STATE, conditions);
+    // By hand on the start: a2 (480–640 × 120–200) overlaps a3 (540–700 × 100–180); b3 ends at 940,
+    // past 760; e1 ends at a2's centre (560, 160) inside a3's box and e3 leaves a3's centre (620, 140)
+    // through a2's box; lane A's centres are 140, 160, 140; a2 and a3 overlap along x; lane B's centres
+    // are 340, 370, 340; lane B's gaps are 60 (b1–b2) and 300 (b2–b3).
+    assert.deepEqual(marks.map(mark => layoutMarkText(mark, 'en')), [
+      '1 · condition 1: “Check” and “Decide” are closer than 20 px',
+      '2 · condition 2: “Done” lies outside the canvas',
+      '3 · condition 4: the arrow “Start” → “Check” touches the box of “Decide”',
+      '4 · condition 4: the arrow “Decide” → “Pack” touches the box of “Check”',
+      '5 · condition 5: “Start” and “Check” differ most, by more than 4 px',
+      '6 · condition 6: “Check” and “Decide” overlap along x',
+      '7 · condition 7: “Pack” and “Ship” differ most, by more than 4 px',
+      '8 · condition 8: the smallest gap is between “Pack” and “Ship”, the largest between “Ship” and “Done”: they differ by more than 4 px',
+    ]);
+    assert.equal(layoutMarkText(marks[1]!, 'de'), '2 · Bedingung 2: „Done“ liegt außerhalb der Arbeitsfläche');
+    assert.equal(layoutMarkText(marks[7]!, 'de'), '8 · Bedingung 8: die kleinste Lücke liegt zwischen „Pack“ und „Ship“, die größte zwischen „Ship“ und „Done“: Sie unterscheiden sich um mehr als 4 px');
+    assert.deepEqual(layoutMarks(LAYOUT_GOAL_STATE, conditions), [], 'the reference meets every clause: no mark');
+  });
+
+  it('name a count that differs and a loose end; at most five reasons per clause', () => {
+    const outOfLane: State = structuredClone(LAYOUT_GOAL_STATE); (outOfLane.objects.b3 as StepV2).frameId = null;
+    (outOfLane.objects.e5 as { frameId: string | null }).frameId = null;
+    const lane = [{ predicate: aligned(inFrame('step', 'Lane B', 3), 'y', 'center', 4), layout: conditions[6]!.layout! }];
+    assert.deepEqual(layoutMarks(outOfLane, lane).map(mark => layoutMarkText(mark, 'en')), ['1 · condition 1: expected 3 steps in “Lane B”, found 2']);
+    assert.equal(layoutMarkText(layoutMarks(outOfLane, lane)[0]!, 'de'), '1 · Bedingung 1: erwartet 3 Schritte in „Lane B“, gefunden 2');
+    const loose: State = structuredClone(LAYOUT_GOAL_STATE); (loose.objects.e5 as { to: string | null }).to = null;
+    (loose.objects.e5 as { frameId: string | null }).frameId = 'fB';
+    const clear = [{ predicate: clearOfSteps(everything('arrow', 6), everything('step', 6)), layout: conditions[3]!.layout! }];
+    assert.deepEqual(layoutMarks(loose, clear).map(mark => layoutMarkText(mark, 'en')), ['1 · condition 1: the arrow “Ship” → a loose end is not attached at both ends']);
+    // Six overlapping steps: fifteen overlapping pairs, five of them named.
+    const pile: State = structuredClone(LAYOUT_GOAL_STATE);
+    for (const id of ['a1', 'a2', 'a3', 'b1', 'b2', 'b3']) Object.assign(pile.objects[id]!, { x: 100, y: 100 });
+    assert.equal(layoutMarks(pile, [conditions[0]!]).length, 5);
+  });
+
+  it('draw the judged geometry: the canvas with its corners, the boxes of ellipses and diamonds, the segments, the self-loop ring and the marks', () => {
+    const overlays = conditions.flatMap(condition => condition.layout ? [condition.layout] : []);
+    const marks = layoutMarks(LAYOUT_START_STATE, conditions);
+    const svg = judgedOverlay(LAYOUT_START_STATE, overlays, [{ number: 1, steps: ['a2', 'a3'], arrows: [] }, { number: 2, steps: ['b3'], arrows: [] }], { canvas: 'Canvas' }, 'run0-final');
+    const count = (pattern: RegExp): number => (svg.match(pattern) ?? []).length;
+    assert.equal(count(/class="sch-judged-canvas"/g), 1);
+    assert.match(svg, />Canvas \(40, 40\)–\(760, 440\)</);
+    assert.equal(count(/class="sch-judged-box"/g), 3, 'Start, Done (ellipses) and Decide (diamond)');
+    assert.equal(count(/class="sch-judged-segment"/g), 5);
+    assert.equal(count(/class="sch-judged-point"/g), 1);
+    assert.equal(count(/class="sch-mark"/g), 3);
+    assert.match(svg, /<clipPath id="run0-final-judged">/);
+    assert.ok(marks.length > 0);
+    assert.equal(judgedOverlay(LAYOUT_START_STATE, [], [], { canvas: 'Canvas' }, 'x'), '', 'no layout condition, no overlay');
+  });
+});
