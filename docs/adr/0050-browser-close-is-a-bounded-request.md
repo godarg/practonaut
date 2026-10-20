@@ -604,3 +604,13 @@ On that CI run the Linux jobs passed every real-Chromium test of this record (th
 directories seen appearing. One Player end-to-end test (`create: starting a recording keeps the record
 step in place`, a 16 px layout shift) failed once on Ubuntu and passed three times locally; this
 change touches no Player or recording code.
+
+Codex's next look, at 6b83a89, confirmed the signal handlers and found the re-review's major only
+partly resolved; CI on 6b83a89 (run 39347852821) failed the rejected-launch test on Ubuntu and on
+Windows:
+
+| Source | Finding | Disposition |
+|---|---|---|
+| Codex | major — a child start whose private diagnostics file could not be made, and whose credential could then not be removed either, threw the removal's error in place of its own, without `closeError`; a parent's shutdown that had stopped that start took it as *cancelled* and ended clean with the credential left | Fixed: that removal is a cleanup step like every other, and its failure stays next to the start's own error as `closeError`; a start error that cannot carry it (a primitive, a frozen error) becomes the cause of a `StartCleanupFailed` that does. A thrown cleanup error is a *failed* close, never a cancellation. |
+| CI (Ubuntu, Node 22 and 26) | the 35 s hold measured 34 998.5 to 34 999.9 ms by the ledger's own times (Node 24 passed) | Node's timers count whole milliseconds of the event loop's clock, so a 35 000 ms timer can fire up to about 2 ms early by `performance.now()`. The test allows 5 ms; a release without the hold, and a hold of 34 s, still fail it. |
+| CI (Windows) | Playwright's profile and artifacts directories were still there after the release, with no spawned process left; the run recorded no cause | The test now waits up to 30 s after the release, records when the directories go, and keeps Playwright's own log of its kill, the process exit and the cleanup (its `exception while removing` lines included). Locally Playwright's forced end comes 30 s after the rejection (its graceful close goes unanswered) and its cleanup follows the exit within milliseconds. On Windows, a removal Playwright's log shows refused by a file in use (EBUSY, EPERM, ENOTEMPTY) is reported as a TODO with that evidence on every run: a platform fact of Playwright's cleanup after a forced end, which Practonaut never claims (statement 3). Any other leftover fails. Which case Windows is: UNKNOWN until a CI run of this test. |

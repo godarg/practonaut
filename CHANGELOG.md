@@ -104,7 +104,8 @@ All notable changes are recorded here. The format follows
   `run`, a render check, a report card); Playwright itself ends a browser that has not closed 30 s
   after the request. A mirror recovery whose old browser closes slowly goes on to its replacement,
   and a session closed during a recovery stops the replacement's start instead of waiting for it;
-  an author host's close also stops a practice host it is still starting.
+  an author host's close also stops a practice host it is still starting, and reports a failure
+  when that start's cleanup did not close (a credential it could not remove).
   Measured with the amplifier on macOS (60 attempts of the two host deadline tests per row, main
   with the previous fix against this change): with every close held 8.5 s, 60 of 60 failed before
   and 0 of 60 after, every close abandoned at its deadline and its end proven 0.5 s later; under

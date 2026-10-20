@@ -237,7 +237,10 @@ held (`src/cli/browser-exit.ts`). The product reads no process table; the tests 
   refusal over HTTP is `browser_budget_exhausted` (503); a slot granted too late to launch is not
   taken; a refused sandbox setting takes no slot. From the re-review: a stopped child start whose
   cleanup did not close (its credential left behind, read-only directory) makes the parent's
-  shutdown report a failure instead of a clean close.
+  shutdown report a failure instead of a clean close — also when the start failed at its first step
+  (its diagnostics file refused, then its credential's removal refused; a stand-in for the open of
+  that one file makes the directory read-only first) and when the start's error cannot carry the
+  cleanup's failure (a frozen error).
 - `tests/unit/browser-exit.test.ts`: Codex's combined path (a close that fulfils after a disconnect)
   keeps the slot and leads to `process.exit` 35 s after the last close request, only after the
   command's writes; no exit once the end is proven; `practonaut mcp` ends only after `stop()` closed
@@ -256,18 +259,29 @@ held (`src/cli/browser-exit.ts`). The product reads no process table; the tests 
   it), and a bench counts the runs it lost to the budget, in both languages.
 - `tests/integration/browser-close-contract.test.ts` (real Chromium): a launch that Playwright
   rejects after it spawned Chromium (Chromium's own `--wait-for-debugger`, added by the test only,
-  makes the spawned browser wait before it connects) holds its slot and sink for 35 s; the test's own
-  read finds the spawned process after the rejection and none afterwards, and Playwright's
-  directories appear under the test's temporary directory and go. POSIX, the real CLI with the
-  mirror's browser group stopped before its close (`tests/support/close-stall-preload.ts`): (A)
-  `run`'s close is abandoned at its deadline with the browser alive, and the CLI exits after
-  Playwright's forced end, about 30 s after the request, with none of the recorded processes (pid,
-  parent, group, session, start time) and no directory left; (B) a bench's second interrupt calls
-  `process.exit` while that close is pending, and nothing is left; (C) Ctrl+C while the command waits
-  for that browser ends it through `process.exit` (130), and nothing is left. Every platform runs
-  `run` without a stall and watches Playwright's directories appear under the CLI's temporary
-  directory before it asserts that they, and every process started with it, are gone (on Windows the
-  only one of these tests).
+  makes the spawned browser wait before it connects) holds its slot and sink for 35 s, judged by the
+  ledger's release time with 5 ms of timer tolerance (Node's timers count whole milliseconds of the
+  event loop's clock; CI on 6b83a89 measured 34 998.5 to 34 999.9 ms on Ubuntu, Node 22 and 26); the
+  test's own read finds the spawned process after the rejection and none afterwards, and
+  Playwright's directories appear under the test's temporary directory. The test then waits up to
+  30 s after the release for them to go and records when, with Playwright's own `pw:browser` log of
+  its kill, the process exit and the cleanup (captured in the test's process only). Measured locally
+  (macOS 27, 2026-10-20): the graceful close Playwright starts at the rejection goes unanswered, its
+  forced end comes 30.0 s after the rejection, and its cleanup finishes 3 ms after the process exit.
+  Windows: on 6b83a89 (CI run 39347852821) both directories were still there after the release, with
+  no spawned process left; that run recorded no cause. On Windows the test reports a removal that
+  Playwright's log shows refused by a file in use (EBUSY, EPERM, ENOTEMPTY) as a TODO with the
+  evidence, on every run — never a pass; any other leftover fails, on every platform. Whether
+  Windows is that case is UNKNOWN until a CI run of this test. POSIX, the real CLI with the mirror's
+  browser group stopped before its close (`tests/support/close-stall-preload.ts`): (A) `run`'s close
+  is abandoned at its deadline with the browser alive, and the CLI exits after Playwright's forced
+  end, about 30 s after the request, with none of the recorded processes (pid, parent, group,
+  session, start time) and no directory left; (B) a bench's second interrupt calls `process.exit`
+  while that close is pending, and nothing is left; (C) Ctrl+C while the command waits for that
+  browser ends it through `process.exit` (130), and nothing is left. Every platform runs `run`
+  without a stall and watches Playwright's directories appear under the CLI's temporary directory
+  before it asserts that they, and every process started with it, are gone (on Windows the only one
+  of these tests).
 
 Every one of these tests failed with its mechanism disabled for the run (the proof rule, the launch
 hold, the late browser's close, the budget's count and its wait, the one close per browser, the
