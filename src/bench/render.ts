@@ -19,7 +19,7 @@ import { asView, type ArtifactReportView, type BenchReportView, type ReportInput
 import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
-import { appText, fill, sentence, TEXT, type Words } from './report-text.ts';
+import { appNotice, appText, fill, sentence, TEXT, type Words } from './report-text.ts';
 import { appDisplayName } from '../world/apps.ts';
 import { explanationKey, type ConditionDetail, type ReportDetails, type RunDetail, type TrajectoryRow } from './details.ts';
 import type { BoardObject } from './schematic.ts';
@@ -98,6 +98,8 @@ export function dataWords(value: string, tag: 'data' | 'code' = 'data'): string 
 /** Escaped prose whose quoted parts (labels, names) and the given ids are data, and whose commands and
  * flags are code: never hyphenated; ids, commands and flags each word on one line. `code`: the ids are set as code (mono), as
  * a table or a compare list names a task. Proper names are never hyphenated either. */
+/** The interim notice once in a page's closing notes, when the page names an app that needs it. */
+export function noticeHtml(t: { noticeDrawio: string }, adapterIds: readonly string[]): string { const notice = appNotice(t, adapterIds); return notice ? `<p class="note">${prose(notice)}</p>` : ''; }
 export function prose(value: string, ids: readonly string[] = [], idTag: 'data' | 'code' = 'data'): string {
   const names = [...new Set(ids)].filter(Boolean).sort((a, b) => b.length - a.length).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   // An id is matched as a whole word, never inside another (a task "T" is not the T of "The").
@@ -628,7 +630,7 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${prose(label)}</dt><dd>${prose(value, (report.environment.world.limits ?? []).map(entry => entry.taskId))}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(appText(t.note, e.app.adapterId))}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(appText(t.note, e.app.adapterId))}</p>${noticeHtml(t, [e.app.adapterId])}<p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 
@@ -744,7 +746,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${prose(t.noSandbox)}</p>`)}
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p>${noticeHtml(t, [report.environment.app.adapterId])}</section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

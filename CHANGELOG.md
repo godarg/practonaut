@@ -81,12 +81,13 @@ All notable changes are recorded here. The format follows
     style names, keys and values the adapter writes, and only well-formed XML with draw.io's own file
     attributes; it refuses everything else by a reason from a closed list. The caller says what the file
     is. The host's own export (the export pair, a bench run, `run --export`, `report --verify`,
-    conformance) must equal the session state and is read as written: every legal state the adapter
-    writes reads (a property test reads 5,151 random legal states). Any other file, `practonaut check`
-    among them, is refused by name where something read could be hidden or misread (`boxes_overlap`,
-    `arrow_hidden`, `text_extent`), so a file drawn by hand is strict until artifact mode (Must 3)
-    decides otherwise; `check` reads a `.drawio` export with `--pair` or with `--seed` and `--task`,
-    and a refusal names its reason (`artifact_invalid: boxes_overlap`).
+    `check --pair` once the pair's session replays, conformance) must equal the session state and is
+    read as written: every legal state the adapter writes reads (a property test reads 5,151 random
+    legal states), and the Player's download of a legal state checks with `--pair`. Any other file,
+    `practonaut check` without `--pair` among them, is refused by name where something read could be
+    hidden or misread (`boxes_overlap`, `frame_outside`, `arrow_hidden` with room for draw.io's end
+    marker, `text_extent`), so a file drawn by hand is strict until artifact mode (Must 3) decides
+    otherwise; a refusal names its reason (`artifact_invalid: boxes_overlap`).
   - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
     by name in the core (`constraint_refused`), world validation, the checker and the adapter.
   - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
@@ -107,8 +108,11 @@ All notable changes are recorded here. The format follows
   - Bench report: a draw.io run's final-board picture is placed in board coordinates by its judged
     steps (draw.io exports from its drawing's top-left corner), so it shares one viewBox with the
     target schematic as an Excalidraw run's does, and group outlines are drawn over it. Such a pair is
-    drawn at one px per board unit or more, so draw.io's 12-unit text is never below 12 px (it was
-    11.8 px at 1280 px and 7.8 px at 320 px wide).
+    drawn at exactly one px per board unit at any width, so draw.io's 12-unit text is never below 12 px (it was
+    11.8 px at 1280 px and 7.8 px at 320 px wide). draw.io's picture is shown as draw.io drew it, its
+    own font on a light ground in both themes, with no dark-mode filter; the note under the pair says
+    how the target schematic differs. A report or compare page that names draw.io, and a draw.io
+    session's Player under "Rules and origins", carry the interim trademark notice once, EN and DE.
   - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
     the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
     difference); `tools/drawio-evidence.ts` rebuilds it on a clean release commit and refuses a summary
@@ -174,6 +178,18 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- "Show in the real tool" (design review D1): the picture lies on a light ground in both themes (in
+  dark mode draw.io's transparent PNG showed black ink on near-black, 1.22:1), inset in its rounded
+  frame; draw.io's picture is shown at its own size (one px per unit, 12 px text) in a labelled region
+  that scrolls sideways. The button keeps the focus while the picture is fetched, the picture is
+  brought into view and announced, and the inspector keeps its scroll position across redraws (it
+  jumped to its top and the focus fell to the page). The picture's text alternative says what it shows.
+- The workspace control's segments that can never open in a window (draw.io and Create in a draw.io
+  session, Create in a practice window) are `aria-disabled`, so the keyboard reaches them and their
+  reason is read.
+- The model-only banner names one download with its size first and keeps number and unit, and a
+  product and its version, together ("one download of about 48 MB: draw.io 32.4.1"); the file name
+  stays in the terminal. German names a frame "Rahmen" in the group refusal.
 - `setup --app drawio` on a home without hard links: any `link()` failure other than an existing lock
   takes the exclusive-create path, so a Windows FAT or exFAT volume (EISDIR) installs too.
 - The start check (`doctor --adapter`, `setup --app drawio`, `run --mirror required`) is tested to

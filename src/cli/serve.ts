@@ -171,7 +171,7 @@ export function modelOnlyNotice(choice: MirrorChoice, mirror: MirrorResolution, 
   if (mirror.reason === 'start') return { reason: 'start', command: `${invocationName()} doctor --adapter` };
   // A downloaded app runtime that is absent or damaged: its own setup option and download size.
   const registration = mirror.app !== undefined && Object.hasOwn(registry, mirror.app) ? registry[mirror.app]! : undefined;
-  if (registration?.download && (mirror.reason === 'app-missing' || mirror.reason === 'app-unverified')) return { reason: 'missing', command: `${invocationName()} setup --app ${registration.id}`, download: { name: registration.download.name, megabytes: Math.round(registration.download.bytes / 1_000_000) } };
+  if (registration?.download && (mirror.reason === 'app-missing' || mirror.reason === 'app-unverified')) return { reason: 'missing', command: `${invocationName()} setup --app ${registration.id}`, download: { name: registration.download.product, megabytes: Math.round(registration.download.bytes / 1_000_000) } };
   const download = headlessShellDownload();
   return { reason: 'missing', command: `${invocationName()} setup`, download: { name: download.name, megabytes: download.size } };
 }

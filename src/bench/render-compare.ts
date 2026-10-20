@@ -10,7 +10,7 @@
 import { isolationOf, refusalHint, type CompareOptions, type Comparison, type Difference, type InstanceName, type InstancePair, type SideRate } from './compare.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
 import { appText, fill, sentence, TEXT, type Words } from './report-text.ts';
-import { agentIds, appName, banner, chips, escapeBreakable, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
+import { agentIds, appName, banner, chips, escapeBreakable, escapeHtml as esc, ID_MAX, levelShort, modelHeadline, noSandbox, noticeHtml, page, prose, stackedTable, statusIcon, verificationFacts, type VerificationInput } from './render.ts';
 import { asView, type BenchReportView, type ReportInput } from './view.ts';
 import { readableText } from '../cli/output.ts';
 
@@ -20,6 +20,8 @@ interface Side { report: BenchReportView; verification: VerificationInput; name?
 const toSide = (input: CompareInput): Side => ({ ...input, report: asView(input.report) });
 
 const nameOf = (input: Side): string => input.name ?? input.report.label ?? input.report.agent.name;
+/** The applications a compare page names. */
+const apps = (...sides: Side[]): string[] => sides.map(side => side.report.environment.app.adapterId);
 const heading = (baseline: Side, candidate: Side, language: Language): string => fill(language, TEXT[language].compareHeading, { baseline: nameOf(baseline), candidate: nameOf(candidate) });
 const pValue = (p: number, language: Language): string => p < 0.001 ? '< 0.001' : number(p, 3, language);
 /** A line of its own (a list item) starts with a capital letter. */
@@ -238,7 +240,7 @@ ${noVerdictBanner(comparison, language)}${comparison.incomplete.length ? banner(
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides">${side(t.baseline, baseline, candidate, comparison.baseline, comparison, t, language)}${side(t.candidate, candidate, baseline, comparison.candidate, comparison, t, language)}</dl></section>
 <section aria-labelledby="regressions"><h2 id="regressions">${esc(comparison.pairing === 'identity' ? t.identityOutcomes : t.regressions)}</h2>${comparison.regressions.length ? htmlList(comparison.regressions.map(flipHtml), 'fail') : `<p class="lead">${esc(sentence(regressionText(comparison, language)))}</p>`}${sections.join('')}</section>
 <section aria-labelledby="instances"><h2 id="instances">${esc(t.instancesHeading)}</h2>${stackedTable(t.instancesHeading, 'instances', [{ text: t.instance, wide: true }, { text: t.baselineOutcome }, { text: t.candidateOutcome }, { text: t.changeColumn, prose: true, wide: true }], rows)}</section>
-${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${htmlList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p></section>`;
+${caveats.length ? `<section aria-labelledby="caveats"><h2 id="caveats">${esc(t.caveats)}</h2>${htmlList(caveats)}</section>\n` : ''}<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(rulesText(comparison, t))}</p>${noticeHtml(t, apps(baseline, candidate))}</section>`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }
 
@@ -264,6 +266,6 @@ export function renderIncomparableHtml(baselineInput: CompareInput, candidateInp
 </header>
 ${banner('warning', t.incomparableDiffers, `<p>${esc(lead)}</p>${idList(items, 'fail')}<p>${prose(fix)}</p>`)}
 <section aria-labelledby="sides"><h2 id="sides">${esc(t.compareSides)}</h2><dl class="sides"><div class="figure"><dt>${esc(t.baseline)}</dt><dd class="detail">${chips(t.baseline, sideFacts(baseline, candidate, t, language), sideIds(baseline))}</dd></div><div class="figure"><dt>${esc(t.candidate)}</dt><dd class="detail">${chips(t.candidate, sideFacts(candidate, baseline, t, language), sideIds(candidate))}</dd></div></dl></section>
-${hint === 'level' ? '' : `<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(t.compareRules)}</p></section>`}`;
+${hint === 'level' ? noticeHtml(t, apps(baseline, candidate)) : `<section aria-labelledby="rules"><h2 id="rules">${esc(t.rulesHeading)}</h2><p class="note">${prose(t.compareRules)}</p>${noticeHtml(t, apps(baseline, candidate))}</section>`}`;
   return page(language, `${t.compareTitle}: ${heading(baseline, candidate, language)}`, tokensCss, body);
 }

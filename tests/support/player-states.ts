@@ -804,7 +804,7 @@ export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',labe
 // ---------------------------------------------------------------------------------------------
 export const DRAWIO_TASK = "rename-frame";
 /** What `npx practonaut play drawio/<task>` without draw.war tells the Player (src/cli/serve.ts). */
-export const MISSING_DRAWIO: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup --app drawio", download: { name: "draw.io 32.4.1 (draw.war)", megabytes: 48 } };
+export const MISSING_DRAWIO: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup --app drawio", download: { name: "draw.io 32.4.1", megabytes: 48 } };
 export type DrawioPicture = { kind: "drawio" } | { kind: "stand-in"; reason: string };
 export interface DrawioSession extends PlayerSession { picture: DrawioPicture | null }
 
@@ -911,14 +911,29 @@ async function mirroredDrawio(s: PlayerSession): Promise<void> {
 /** A mirrored draw.io session (`startDrawioPlayer()`), in this order or any other. */
 export const DRAWIO_STATES: StateDef[] = [
   { id: "drawio-practice", label: "draw.io session, mirrored: the board, the workspace control and How this is checked", workspace: "board", async enter(s) { await mirroredDrawio(s); } },
-  { id: "drawio-workspaces", label: "draw.io session: the draw.io and Create segments disabled, each saying why", workspace: "board", view: ".shell-modes", async enter(s) {
+  { id: "drawio-workspaces", label: "draw.io session: the draw.io and Create segments unavailable (aria-disabled), the reason of the first read by keyboard", workspace: "board", view: ".shell-modes", async enter(s) {
     await mirroredDrawio(s);
-    for (const id of ["mode-editor", "mode-author"]) if (!await s.page.getByTestId(id).isDisabled()) throw new Error(`${id} is offered in a draw.io session`);
+    for (const id of ["mode-editor", "mode-author"]) if (await s.page.getByTestId(id).getAttribute("aria-disabled") !== "true") throw new Error(`${id} is offered in a draw.io session`);
     if ((await s.page.getByTestId("mode-editor").innerText()).trim() !== "draw.io") throw new Error("the app segment does not name draw.io");
+    // Reached by keyboard, so its reason (its accessible name) is read; the focus ring shows it.
+    await s.page.getByTestId("mode-editor").focus(); await s.page.keyboard.press("Shift+Tab"); await s.page.keyboard.press("Tab");
+    if (await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset?.testid) !== "mode-editor") throw new Error("the draw.io segment is not reachable by keyboard");
   } },
-  { id: "drawio-real-tool", label: "The real tool's picture: draw.io's own PNG, or the stand-in picture where draw.war is not installed", workspace: "board", view: ".tool-image", async enter(s) {
+  { id: "drawio-real-tool", label: "The real tool's picture: draw.io's own PNG at its own size on its light ground, or the stand-in picture where draw.war is not installed", workspace: "board", view: "[data-testid=tool-picture]", async enter(s) {
     await mirroredDrawio(s); await s.page.getByTestId("show-tool").click(); await s.page.locator(".tool-image").waitFor();
     await s.page.waitForFunction(() => { const image = document.querySelector<HTMLImageElement>(".tool-image"); return !!image && image.complete && image.naturalWidth > 0; });
+    await settle(s.page);
+  } },
+  { id: "drawio-constraint-refused", label: "A group across frames refused by draw.io's declared constraint: the board unchanged, the reason in words", workspace: "board", view: ".notice.error", async enter(s) {
+    await mirroredDrawio(s);
+    // b leaves the frame, then the Player's own group tool asks to group a (in the frame) with b.
+    await act(s, { name: "set_frame", params: { id: "b", frameId: null } });
+    await s.page.locator('[data-object-id="b"]').first().waitFor();
+    await s.page.locator('[data-object-id="a"]').first().click(); await s.page.getByTestId("action-group").click();
+    await s.page.getByTestId("cancel-preview").waitFor();
+    await s.page.locator('[data-object-id="b"]').first().click();
+    if (await s.page.getByTestId("cancel-preview").count()) await s.page.keyboard.press("Enter");
+    await s.page.locator(".notice.error").waitFor({ timeout: 15_000 });
   } },
   { id: "drawio-check-pass", label: "Solved in a mirrored draw.io session: history confirmed by draw.io, the verdict", workspace: "board", view: "[data-testid=check-result]", async enter(s) {
     await mirroredDrawio(s); await solveDrawio(s); await checkResult(s, "pass");

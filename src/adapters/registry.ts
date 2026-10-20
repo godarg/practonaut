@@ -40,7 +40,7 @@ export interface AdapterRegistration<A extends MirrorAdapter = MirrorAdapter> ex
   readonly editor: boolean;
   /** A `downloaded` runtime: what `setup --app <id>` fetches, and its check under a Practonaut home
    * (present, then size and SHA-256 against the pin), run before any browser starts (PADR-0049 decision 1.3). */
-  readonly download?: Readonly<{ name: string; bytes: number }>;
+  readonly download?: Readonly<{ name: string; product: string; bytes: number }>;
   runtimeStatus?(home: string): Promise<RuntimeStatus>;
   create(initial: State, options?: AdapterOptions, probe?: EngineLifecycleProbe): Promise<A>;
 }
@@ -54,7 +54,8 @@ const EXCALIDRAW = Object.freeze({
 const DRAWIO = Object.freeze({
   id: 'drawio', appVersions: Object.freeze(['32.4.1'] as const), schemas: Object.freeze(['practonaut.world/2'] as const),
   runtime: 'downloaded', readBack: 'live', sandbox: 'required', editor: false, create: createDrawioAdapter,
-  download: Object.freeze({ name: `draw.io ${DRAWIO_PIN.version} (${DRAWIO_PIN.asset})`, bytes: DRAWIO_PIN.size }),
+  // `name` with the file for the terminal; `product` for the Player's sentence (review D1-F11).
+  download: Object.freeze({ name: `draw.io ${DRAWIO_PIN.version} (${DRAWIO_PIN.asset})`, product: `draw.io ${DRAWIO_PIN.version}`, bytes: DRAWIO_PIN.size }),
   runtimeStatus: (home: string): Promise<RuntimeStatus> => drawioRuntimeStatus(drawioRuntimePath(home)),
 } as const);
 export const ADAPTER_REGISTRY = Object.freeze({ excalidraw: EXCALIDRAW, drawio: DRAWIO } satisfies { readonly [K in AdapterId]: AdapterRegistration });

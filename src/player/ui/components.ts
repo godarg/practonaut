@@ -59,7 +59,9 @@ export function button(options: ButtonOptions): HTMLButtonElement {
 /** Remembers the last selected index per group so the thumb can glide instead of jump. */
 const lastIndex = new Map<string, number>();
 
-export interface SegmentedItem { id: string; label: string; icon?: IconName; testid?: string; disabled?: boolean; ariaLabel?: string }
+/** `unavailable`: never selectable here, but reachable by keyboard so its reason (`ariaLabel`) can be
+ * read (`aria-disabled`); `disabled`: not selectable for the moment (native). */
+export interface SegmentedItem { id: string; label: string; icon?: IconName; testid?: string; disabled?: boolean; unavailable?: boolean; ariaLabel?: string }
 export interface SegmentedOptions {
   /** Stable identity of this control across re-renders; enables the thumb animation. */
   key: string;
@@ -87,7 +89,8 @@ export function segmented(options: SegmentedOptions): HTMLElement {
     if (item.icon) node.append(icon(item.icon));
     node.append(h('span', { text: item.label }));
     node.disabled = !!item.disabled;
-    node.addEventListener('click', () => { if (item.id !== options.value) options.onChange(item.id); });
+    if (item.unavailable) node.setAttribute('aria-disabled', 'true');
+    node.addEventListener('click', () => { if (item.id !== options.value && !item.unavailable) options.onChange(item.id); });
     root.append(node);
   }
   return root;

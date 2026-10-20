@@ -30,18 +30,44 @@ async function post(f: Fixture, route: string, extra: object = {}): Promise<unkn
   if (!reply.ok && route !== "act") throw new Error(reply.error.code);
   return reply;
 }
-async function state(f: Pick<Fixture, "page">, name: string, stem: string, sink: string[] = failures): Promise<void> {
+async function state(f: Pick<Fixture, "page">, name: string, stem: string, sink: string[] = failures, view?: string, fullPage = true): Promise<void> {
   // A paint turn follows SSE data; no arbitrary simulated check delays in the product.
   await f.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   let builder = new AxeBuilder({ page: f.page }).withTags(tags);
   for (const selector of FOREIGN) builder = builder.exclude(selector);
   const axe = await builder.analyze();
   const overflow = await f.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  const row = { surface: stem + "-" + name, violations: axe.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })), overflow, screenshot: stem + "-" + name + ".png", gating: sink === failures };
+  const row = { surface: stem + "-" + name, violations: axe.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })), overflow, screenshot: stem + "-" + name + ".png", ...(view ? { view: stem + "-" + name + "-view.png" } : {}), gating: sink === failures };
   ledger.push(row);
   if (overflow > 0) sink.push(`${row.surface}: overflow ${overflow}px`);
   for (const violation of axe.violations) sink.push(`${row.surface}: ${violation.id} ${violation.nodes.map(n => n.target.join(" ")).join(" | ")}`);
-  await f.page.screenshot({ path: output + "/" + row.screenshot, fullPage: true });
+  // The real tool's picture (design-language §10.2, review D1): on a light ground in every theme, and an
+  // app's own export at one px per unit is never drawn smaller, so its 12-unit text stays at 12 px.
+  for (const problem of await f.page.evaluate(() => {
+    const out: string[] = [];
+    const luminance = (rgb: string): number => { const [r, g, b] = (rgb.match(/[0-9.]+/g) ?? []).slice(0, 3).map(Number).map(c => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!; };
+    for (const ground of document.querySelectorAll<HTMLElement>("[data-testid=tool-picture]")) {
+      const ratio = (luminance(getComputedStyle(ground).backgroundColor) + 0.05) / 0.05;
+      if (ratio < 4.5) out.push(`the real tool's picture lies on a ground of ${ratio.toFixed(2)}:1 against black ink`);
+    }
+    for (const image of document.querySelectorAll<HTMLImageElement>("img.tool-image--natural")) {
+      if (image.complete && image.naturalWidth > 0 && image.getBoundingClientRect().width < image.naturalWidth - 0.5) out.push(`the real tool's picture is drawn at ${(image.getBoundingClientRect().width / image.naturalWidth).toFixed(2)} px per unit, text below 12 px`);
+    }
+    return out;
+  })) sink.push(`${row.surface}: ${problem}`);
+  // The whole page from its top (a sticky bar is never drawn mid-page), then the reader's screen at the
+  // state's anchor: the element in the middle of the view, the inspector scrolled to it.
+  await f.page.evaluate(() => window.scrollTo(0, 0));
+  await f.page.screenshot({ path: output + "/" + row.screenshot, fullPage });
+  if (view) {
+    const anchor = f.page.locator(view).first();
+    if (!await anchor.count()) { sink.push(`${row.surface}: its view ${view} is not on the page`); return; }
+    await anchor.evaluate(element => element.scrollIntoView({ block: "center", inline: "nearest" }));
+    await f.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const visible = await anchor.evaluate(element => { const box = element.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth; });
+    if (!visible) sink.push(`${row.surface}: its view ${view} cannot be brought into view`);
+    await f.page.screenshot({ path: output + "/" + row.view });
+  }
 }
 
 for (const theme of ["light", "dark"] as const) for (const width of [1280, 320]) for (const language of ["en", "de"] as const) {
@@ -74,7 +100,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     await f.page.getByTestId("hint").click();
     await state(f, "hint", stem);
     await f.page.getByTestId("show-tool").click();
-    await f.page.locator(".tool-image").waitFor(); await state(f, "real-tool", stem);
+    await f.page.locator(".tool-image").waitFor(); await state(f, "real-tool", stem, failures, "[data-testid=tool-picture]");
     await post(f, "act", { action: { name: "delete_step", params: { id: "b" } } });
     // A world consequence is a neutral notice (.notice.consequence); rejections stay .notice.error.
     await f.page.locator(".notice.consequence").waitFor(); await state(f, "loose-arrow", stem);
@@ -144,14 +170,14 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   const workspaces = await startPlayer({ theme, width, height: 900 });
   try {
     await setLanguage(workspaces.page, language);
-    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("practice-export-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("practice-export-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem, failures, st.view); }
     // The bundled example's demonstration: asking, playing, finished, stopped and stopped early.
-    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("demo-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    for (const st of PLAYER_STATES.filter(x => x.id.startsWith("demo-"))) { await st.enter(workspaces); await state(workspaces, st.id, stem, failures, st.view); }
     // The editor states below work on a plain attempt, never on the demonstration's board.
     await practiceBaseline(workspaces);
-    for (const st of PLAYER_STATES.filter(x => x.workspace === "editor")) { await st.enter(workspaces); await state(workspaces, st.id, stem); }
+    for (const st of PLAYER_STATES.filter(x => x.workspace === "editor")) { await st.enter(workspaces); await state(workspaces, st.id, stem, failures, st.view); }
     for (const st of [...PLAYER_STATES.filter(x => x.workspace === "author"), ...CREATE_PROGRESS_STATES]) {
-      try { await st.enter(workspaces); await state(workspaces, st.id, stem, CREATE_GATES ? failures : createFindings); }
+      try { await st.enter(workspaces); await state(workspaces, st.id, stem, CREATE_GATES ? failures : createFindings, st.view); }
       catch (error) { (CREATE_GATES ? failures : createFindings).push(`${stem}-${st.id}: not reached (${(error as Error).message.split("\n")[0]})`); }
     }
     assert.deepEqual(workspaces.external, []);
@@ -160,13 +186,13 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   const limited = await startPlayer({ theme, width, height: 900, phase3: false, world: limitsWorld(), taskId: "T1" });
   try {
     await setLanguage(limited.page, language);
-    for (const st of LIMIT_STATES) { await st.enter(limited); await state(limited, st.id, stem); }
+    for (const st of LIMIT_STATES) { await st.enter(limited); await state(limited, st.id, stem, failures, st.view); }
     assert.deepEqual(limited.external, []);
   } finally { await limited.close(); }
   const modelExport = await startPlayer({ theme, width, height: 900, phase3: false, mirror: "off" });
   try {
     await setLanguage(modelExport.page, language);
-    for (const st of MODEL_ONLY_STATES) { await st.enter(modelExport); await state(modelExport, st.id, stem); }
+    for (const st of MODEL_ONLY_STATES) { await st.enter(modelExport); await state(modelExport, st.id, stem, failures, st.view); }
     assert.deepEqual(modelExport.external, []);
   } finally { await modelExport.close(); }
   // draw.io sessions (PADR-0049): mirrored by the real draw.io where draw.war is installed for the tests,
@@ -174,7 +200,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
   const drawio = await startDrawioPlayer({ theme, width, height: 900 });
   try {
     await setLanguage(drawio.page, language);
-    for (const st of DRAWIO_STATES) { await st.enter(drawio); await state(drawio, st.id, stem); }
+    for (const st of DRAWIO_STATES) { await st.enter(drawio); await state(drawio, st.id, stem, failures, st.view); }
     assert.deepEqual(drawio.external, []);
     ledger.push({ surface: stem + "-drawio", picture: drawio.picture });
     console.log(`player:a11y ${stem}: draw.io picture: ${drawio.picture?.kind === "stand-in" ? `stand-in (${drawio.picture.reason})` : "draw.io"}`);
@@ -183,7 +209,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
     const model = await startDrawioPlayer({ theme, width, height: 900, mirror: "off", modelOnly: session.notice });
     try {
       await setLanguage(model.page, language);
-      for (const st of session.states) { await st.enter(model); await state(model, st.id, stem); }
+      for (const st of session.states) { await st.enter(model); await state(model, st.id, stem, failures, st.view); }
       assert.deepEqual(model.external, []);
     } finally { await model.close(); }
   }
@@ -227,7 +253,14 @@ for (const theme of ["light", "dark"] as const) for (const width of [1280, 320])
           ...[...document.querySelectorAll(".data, .id, code")].filter(element => getComputedStyle(element).hyphens !== "none").map(element => `${element.textContent} may hyphenate`),
         ]), ...(await page.evaluate(brokenIdentifiers)).map(word => `${word} breaks across lines`), ...await page.evaluate(layoutDefects)];
         if (split.length) failures.push(`${theme}-${width}-${entry.language}-${entry.id}: ${split.slice(0, 3).join("; ")}`);
-        await state({ page }, entry.id, `${theme}-${width}-${entry.language}`);
+        if (!entry.open) { await state({ page }, entry.id, `${theme}-${width}-${entry.language}`); continue; }
+        // An open report is captured per run card (a full page that tall paints only in parts).
+        await state({ page }, entry.id, `${theme}-${width}-${entry.language}`, failures, undefined, false);
+        const runs = page.locator("details.run");
+        for (let index = 0; index < await runs.count(); index++) {
+          const card = runs.nth(index), id = (await card.getAttribute("id")) ?? `run-${index + 1}`;
+          await card.screenshot({ path: `${output}/${theme}-${width}-${entry.language}-${entry.id}-${id}.png` });
+        }
       }
       assert.deepEqual(external, [], "a report page loads nothing");
       await context.close();

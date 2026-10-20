@@ -50,7 +50,8 @@ test('a missing or damaged draw.io runtime is refused by name before any browser
   assert.match(fallbackNotice(resolved), /draw\.io is not installed.*setup --app drawio/s);
   const notice = modelOnlyNotice('auto', resolved);
   assert.equal(notice?.reason, 'missing'); assert.match(notice?.command ?? '', /setup --app drawio$/); assert.equal(notice?.download?.megabytes, 48);
-  assert.match(notice?.download?.name ?? '', /draw\.io 32\.4\.1 \(draw\.war\)/);
+  // The Player names the product; the file name stays in the terminal (review D1-F11).
+  assert.equal(notice?.download?.name, 'draw.io 32.4.1');
 });
 
 test('Chromium is started under each adapter\'s policy; a refused sandboxed start for draw.io is browser_start_failed by name', async () => {

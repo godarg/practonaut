@@ -10,7 +10,7 @@
  * the reader cannot parse is refused (the report then draws its schematic instead).
  */
 import { readableText } from '../cli/output.ts';
-import { PICTURE_FLOOR, pictureClassAt, type Box } from './schematic.ts';
+import { PICTURE_FLOOR, pictureSizing, type Box } from './schematic.ts';
 
 /** The largest SVG read (Excalidraw's export of a three-step board is about 8 KB). */
 export const MAX_SVG_BYTES = 4 * 1024 * 1024;
@@ -20,7 +20,7 @@ const ELEMENTS = new Set(['svg', 'g', 'path', 'rect', 'ellipse', 'circle', 'line
 const TEXT_ELEMENTS = new Set(['text', 'tspan']);
 const ATTRIBUTES = new Set(['id', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'd', 'points', 'transform', 'viewBox',
   'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-opacity', 'stroke-miterlimit',
-  'fill-opacity', 'fill-rule', 'clip-rule', 'opacity', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline', 'direction',
+  'fill-opacity', 'fill-rule', 'clip-rule', 'opacity', 'font-family', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline', 'direction',
   'clip-path', 'mask', 'maskUnits', 'clipPathUnits', 'maskContentUnits']);
 /** Plain values: numbers, words, colours, transforms and path data; nothing that could open markup or a URL. */
 const VALUE = /^[A-Za-z0-9 #.,%()+\-_]*$/;
@@ -207,6 +207,7 @@ export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: str
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
   // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
+  const sizing = pictureSizing(view.width, options.floor ?? PICTURE_FLOOR);
   const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
-  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureClassAt(view.width, options.floor ?? PICTURE_FLOOR)}" role="img" aria-label="${label}">${content}</svg>`;
+  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${sizing.classes}"${sizing.attributes} role="img" aria-label="${label}">${content}</svg>`;
 }

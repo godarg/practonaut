@@ -8,9 +8,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadReportDetails } from '../../src/bench/details.ts';
-import { detailWords } from '../../src/bench/render.ts';
-import { validateBenchReportV3 } from '../../src/bench/report.ts';
-import { drawioPlacement } from '../../src/bench/svg.ts';
+import { detailWords, readTokensCss, renderHtml } from '../../src/bench/render.ts';
+import { renderCompareHtml } from '../../src/bench/render-compare.ts';
+import { compareReports } from '../../src/bench/compare.ts';
+import { validateBenchReportV3, type SessionReportV3 } from '../../src/bench/report.ts';
+import { drawioPlacement, engineSvgMarkup } from '../../src/bench/svg.ts';
+import { pictureOverflow } from '../../src/bench/schematic.ts';
 
 const folder = 'docs/benchmarks/drawio/drawio-oracle';
 const viewBox = (markup: string | null | undefined): string | undefined => /viewBox="([^"]+)"/.exec(markup ?? '')?.[1];
@@ -33,21 +36,42 @@ test('every draw.io final-board picture shares one viewBox with its target, and 
   assert.equal(details.runs.get('group-s0-r1')!.groupOverlay, true);
 });
 
-test('a draw.io pair is never drawn below one px per board unit, so draw.io\'s 12-unit text stays at 12 px (design-language §10.5)', async () => {
+test('a draw.io pair is drawn at exactly one px per board unit at any width, so draw.io\'s 12-unit text stays at 12 px (design-language §10.5; review m4)', async () => {
   const report = validateBenchReportV3(JSON.parse(readFileSync(join(folder, 'report.json'), 'utf8')));
   const details = await loadReportDetails(report, folder, detailWords('en'));
-  const sizeClass = (markup: string | null | undefined): string | undefined => /class="[^"]*\b(p[uw]-\d+)\b/.exec(markup ?? '')?.[1];
+  // The svg's width attribute in px, and whether it carries the class the width rule leaves alone.
+  const sized = (markup: string | null | undefined): [string | undefined, boolean] => { const tag = /^<svg\b[^>]*>/.exec(markup ?? '')?.[0] ?? ''; return [/\swidth="([0-9.]+)"/.exec(tag)?.[1], /class="[^"]*\bpu\b/.test(tag)]; };
   for (const [id, detail] of details.runs) {
-    const width = Number(viewBox(detail.picture!.markup)!.split(' ')[2]), k = Math.min(60, Math.max(3, Math.ceil(width / 100)));
-    assert.equal(sizeClass(detail.picture!.markup), `pu-${k}`, id);
-    assert.equal(sizeClass(detail.target), `pu-${k}`, `${id}: the target shares the scale`);
+    const width = viewBox(detail.picture!.markup)!.split(' ')[2];
+    assert.deepEqual(sized(detail.picture!.markup), [width, true], id);
+    assert.deepEqual(sized(detail.target), [width, true], `${id}: the target shares the scale`);
   }
-  // report.css: pu-k is exactly k × 100 px wide (k × 6.25 rem), for every k the class can take.
+  // Past the old 6,000-unit cap of the size classes: a board 9,000 and 20,000 units wide.
+  const svg = readFileSync(join(folder, 'connect-s0-r1', 'board.svg'), 'utf8');
+  for (const width of [9000, 20000]) {
+    assert.deepEqual(sized(engineSvgMarkup(svg, { prefix: 'wide', label: 'x', classes: 'engine-board engine-board--drawio', floor: 1, viewBox: { x: 0, y: 0, width, height: 200 } })), [String(width), true]);
+    assert.equal(pictureOverflow(width, 1), 'wide');
+  }
+  // report.css: the 100 % width rule skips such a picture, and no rule caps it.
   const css = readFileSync('src/bench/report.css', 'utf8');
-  for (let k = 3; k <= 60; k++) {
-    const rule = new RegExp(`\\.pu-${k}\\{min-width:([0-9.]+)rem;max-width:([0-9.]+)rem\\}`).exec(css);
-    assert.ok(rule, `pu-${k}`);
-    assert.deepEqual([Number(rule[1]) * 16, Number(rule[2]) * 16], [k * 100, k * 100], `pu-${k}`);
+  assert.match(css, /\.schematic:not\(\.pu\),\.engine-board:not\(\.pu\)\{width:100%\}/);
+  assert.match(css, /\.pu\{max-width:none\}/);
+  assert.equal(/\.pu-\d+\{/.test(css), false);
+});
+
+test('the interim notice once on every page that names draw.io, never on one that does not; draw.io\'s picture is marked as its own (review D1-F4, F5)', async () => {
+  const notice = { en: 'draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.', de: 'draw.io ist eine eingetragene Marke; Practonaut ist mit draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert.' } as const;
+  const read = (name: string) => validateBenchReportV3(JSON.parse(readFileSync(join('docs/benchmarks/drawio', name, 'report.json'), 'utf8'))) as SessionReportV3;
+  const drawio = read('drawio-oracle'), excalidraw = read('excalidraw-oracle'), tokens = await readTokensCss();
+  const count = (html: string, text: string): number => html.replace(/<[^>]+>/g, '').split(text).length - 1;
+  for (const language of ['en', 'de'] as const) {
+    const drawioPage = renderHtml(drawio, tokens, language, 'consistency-checked', await loadReportDetails(drawio, folder, detailWords(language)));
+    assert.equal(count(drawioPage, notice[language]), 1, `${language}: the draw.io report`);
+    assert.ok(drawioPage.split('class="engine-board engine-board--drawio').length - 1 >= 48, `${language}: every picture is marked as draw.io's own`);
+    assert.equal(count(renderHtml(excalidraw, tokens, language, 'consistency-checked'), notice[language]), 0, `${language}: an Excalidraw report`);
+    const side = (report: SessionReportV3) => ({ report, verification: 'consistency-checked' as const });
+    assert.equal(count(renderCompareHtml(side(excalidraw), side(drawio), compareReports(excalidraw, drawio), tokens, language), notice[language]), 1, `${language}: the compare page`);
+    assert.equal(count(renderCompareHtml(side(excalidraw), side(excalidraw), compareReports(excalidraw, excalidraw), tokens, language), notice[language]), 0, `${language}: Excalidraw only`);
   }
 });
 

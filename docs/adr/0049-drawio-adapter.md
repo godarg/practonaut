@@ -661,7 +661,7 @@ through a test seam, so the product reads no new variable.
 6. **Refusals** are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
    `xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
    `duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
-   `unmodeled_value`, `boxes_overlap`, `arrow_hidden`, `text_extent` (decision 6.8) and `constraint`
+   `unmodeled_value`, `boxes_overlap`, `frame_outside`, `arrow_hidden`, `text_extent` (decision 6.8) and `constraint`
    (decision 5.2). The checker refuses every file it does not read,
    and every refusal carries one of these reasons; nothing is listed as unmodeled and skipped. A
    `.drawio` file for an Excalidraw world, or the reverse, is refused by the format table as today.
@@ -710,23 +710,30 @@ through a test seam, so the product reads no new variable.
    step and a frame name drawn below its band. The caller now says what the file is.
    - **`own-export`**: the real app's export made by Practonaut's own host in a session: the host's
      export pair, a bench run's native verdict, `run --export`, `report --verify` (after the native
-     file is found equal to the session state the checker has just replayed) and the conformance
-     layer, which reads the export after every step. The session state is the ground truth, and the
+     file is found equal to the session state the checker has just replayed), `practonaut check
+     --pair` once its session has replayed (review m4: the pair's file must be exactly that legal
+     state, so its verdict is the session's, and the Player's download of a legal state checks), and
+     the conformance layer, which reads the export after every step. The session state is the ground truth, and the
      export must equal it (`nativeMatchesState`); like Excalidraw's reader, this mode models no
      painting. Every legal state the adapter writes reads (the property test in 6.7). draw.io's
      picture of such a state shows what draw.io shows, a filled step over another step included; the
      verdict follows the session.
-   - **`submission`** (the default): any other file, `practonaut check` on a `.drawio` file with or
-     without `--pair`, and any later artifact use until Must 3 decides more. No paint model either:
+   - **`submission`** (the default): any other file, `practonaut check` on a `.drawio` file without
+     `--pair`, and any later artifact use until Must 3 decides more. No paint model either:
      whatever read could be hidden or misread is refused by name, in any document order.
      - `boxes_overlap`: two read boxes intersect for a positive area. The read boxes are the steps'
        boxes and the frames' title bands (the top 30 px, the whole frame when it is lower); a frame's
        whole box counts only towards a step outside it.
-     - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point, or no length
-       outside its end steps' boxes), or its drawn part meets a filled step's box. The drawn part is
-       the line between its ends (an end step's box centre, a loose end's point) less what lies inside
-       its end steps' boxes, so it starts and ends on or outside them; its own filled end steps count
-       as any other.
+     - `frame_outside` (review m4): a frame's step does not lie inside the frame's body, below its
+       title band. draw.io neither moves nor clips a container's children, so such a step is drawn
+       outside the frame it is read in.
+     - `arrow_hidden`: an arrow is not drawn (an end with neither a step nor a point), or too little
+       of it is. The drawn part is the line between its ends (an end step's box centre, a loose end's
+       point) less what lies inside its end steps' boxes, so it starts and ends on or outside them.
+       It must be at least 10 px long, and keep 4 px from every other filled step's box (review m4):
+       draw.io's classic end marker is 6 px long with a 1 px stroke and 7 px wide, and each end box's
+       1 px border is centred on its edge, so up to 8 px of the drawn part can lie under the marker
+       and the borders, and a filled end step painted after the arrow covers what lies inside it.
      - `text_extent`: a step label or a frame name holds a control character (a line feed among
        them), or its estimated extent leaves its box or band. The estimate: one line, centred, 16 px
        tall and 12 px per UTF-16 code unit wide (draw.io draws a plain label at 12 px, unwrapped and
@@ -881,14 +888,20 @@ through a test seam, so the product reads no new variable.
    page, `setup --app drawio`): "draw.io is a registered trademark; Practonaut is not affiliated with,
    endorsed or sponsored by draw.io Ltd or draw.io AG." The roadmap's notice text is the coordinator's
    to align. Text says what the adapter works with: "works with draw.io". No draw.io logo anywhere —
-   the Player shows the protocol's PNG of the diagram, never the editor's interface.
+   the Player shows the protocol's PNG of the diagram, never the editor's interface. Generated pages
+   that name draw.io carry it once in their closing notes (a bench report, a compare page, EN and
+   DE); the Player shows it once under "Rules and origins" in a draw.io session, off the working
+   surface (design review D1-F4).
 3. **Open with the maintainer:** whether descriptive naming, including the identifiers below, needs
    the written permission the README asks for. Until the maintainer decides, no release, post or
    launch page names draw.io. No "draw.io" in product or package names: the npm package stays
    `practonaut`, and no package, command or product is named after it. Identifiers that name the file
    format and the app the adapter works with are descriptive: adapter id and prefix `drawio`,
    `src/adapters/drawio/`, `tasks/drawio/`, the world id `drawio-library`, the extension `.drawio`
-   (draw.io's own); they change if the maintainer's decision requires it.
+   (draw.io's own); they change if the maintainer's decision requires it. A second rule question
+   goes with it (design review D1-F8): whether the Player's workspace control appears at all in a
+   session of an app without the editor and author workspaces. Until decided it stays, with draw.io
+   and Create unavailable (`aria-disabled`, so their reasons are read; design-language §10.1).
 4. **Licence.** The adapter page states what the spike found (Apache-2.0 app code; the stencil clause
    limited to Atlassian products and their marketplace, which binds a downstream product distributed
    there; LGPL-2.1 libavoid in the archive, not loaded) and that Practonaut downloads the unmodified
@@ -1164,3 +1177,18 @@ and its disposition:
 | r3-contract-2 (minor, = r2-runtime-2 partly): on Windows FAT and exFAT, `link()` fails with EISDIR, not in the fallback set | Adopted | 2.3: every `link()` failure other than EEXIST takes the exclusive-create path; a real I/O fault then fails in `open()` and is still named `lock`; the link-seam test feeds EISDIR and an unknown code |
 | r3-contract-3 (minor, = r2-runtime-4 partly): the evidence tool's own benches were bound to the commit by one sample before they started | Adopted | 8.6: `tools/drawio-evidence.ts` samples HEAD and the checkout again after the compare, excluding its output folder, and refuses a difference before it reports; `checkoutOf` gained the exclusion, unit-tested |
 | r3-contract-4 (minor): the testing docs and the threat model do not list the draw.io close-contract cases | Adopted | `docs/testing.md` (the draw.io layer row) and threat model §4 (the close-contract tests) |
+
+## Fourth review of the implementation (2026-10-20)
+
+Round m4 re-reviewed the reading-mode split at 93e629e: Claude Opus with a skeptic. It confirmed the
+split: the mode is chosen only by the caller, the property test covers all 13 world/2 actions, deletes,
+frames and groups, and no CLI or MCP path reads a foreign file in own-export mode. It found two majors
+in submission mode and three minors:
+
+| Finding (severity after verification) | Disposition | Where, and the test that fails without it |
+|---|---|---|
+| r4-frame-membership-outside (major, skeptic confirmed): a step parented to a frame but placed outside it is drawn outside and read inside; two-frames passes with a file that draws like its start | Adopted | 6.8: `frame_outside` in submission mode; the review's two-frames file (`drawio-reader-attacks.test.ts`) |
+| r4-arrow-subpixel-gap (major, skeptic confirmed): an arrow with a positive but sub-pixel drawn part lies under its marker, the borders and its filled source | Adopted | 6.8: at least 10 px of drawn part and 4 px from every other filled step, with the margins stated; the review's recolor file at gaps of 0.4, 1 and 6 px (`drawio-reader-attacks.test.ts`) |
+| r4-check-pair-honest-export (minor): `check --pair` refused the Player's download of a legal state | Adopted, option 1 | 6.8: once the pair's session has replayed, its file is read as the session's own export and must equal that legal state, so its verdict is the session's and nothing in the file adds to it; the file alone stays a submission (`drawio-read-modes.test.ts`, which fails with the mode dropped) |
+| r4-run-export-mode-untested (minor) | Adopted | `drawio-run-export.test.ts`: `run --export` on a draw.io registration with a writer stand-in, ending in an overlapping legal state, writes its three files; fails with the mode dropped |
+| r4-picture-floor-cap (minor): the one-px-per-unit floor stopped at 6,000 units | Adopted | design-language §10.5: a pair with draw.io's export takes a width attribute of exactly its width in px, no class cap (`drawio-report-board.test.ts` at 9,000 and 20,000 units) |

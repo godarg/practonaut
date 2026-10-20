@@ -376,7 +376,7 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
       const overlay = engine.box ? groupOutlines(state, words) : '';
       detail.groupOverlay = overlay !== '';
-      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', floor, ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: drawio ? 'engine-board engine-board--drawio' : 'engine-board', floor, ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
     } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
     if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, floor }); detail.targetObjects = boardObjects(target); }
     detail.overflow = pictureOverflow(finalView.width, floor);

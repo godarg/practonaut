@@ -1,7 +1,7 @@
 import type { Action, Arrow, Frame, Localized, Step, StepV2, WorldObject } from '../world/types.ts';
 import type { DemonstrationStatus, HostEvent, HostReply, HostView, ModelOnlyNotice, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
 import { createPhase3 } from './phase3.ts';
-import { appName, catalogs, workspaceApps } from './messages.ts';
+import { appName, appNotices, catalogs, naturalPictureApps, workspaceApps } from './messages.ts';
 import type { Language, Message } from './messages.ts';
 import { clearTabSession, readTabSession, writeTabSession } from './tab-session.ts';
 import { banner, button, card, chip, disclosure, evidence, h, icon, listPicker, openSheet, segmented, selectField, statusIcon, textField } from './ui/components.ts';
@@ -26,6 +26,8 @@ let showFormal = false, showRuleOrigins = false;
 let boardResize = new ResizeObserver(() => {});
 let streamPaused = false;
 let working = false, announcement = '', errorCode: string | undefined, lastCheck: PublicCheck | undefined, toolUrl: string | undefined;
+/** The real tool's picture is being fetched: its button stays focusable and says it is busy (§11). */
+let toolBusy = false;
 // Entrance motion only for what just happened, never for a plain re-render.
 let freshVerdict = false, previousHints = 0, previousHistory = 0;
 // Where each step was drawn last, so a step glides to its new place instead of jumping.
@@ -385,12 +387,18 @@ async function check(): Promise<void> {
   if (!reply.ok) { rejected(reply.error.code); return; } lastCheck = reply.value; freshVerdict = true; render(); (document.querySelector('[data-testid="check-result"]') as HTMLElement)?.focus(); say(msg(reply.value.passed ? 'passed' : 'failed'));
 }
 async function showTool(): Promise<void> {
-  if (working) return; working = true; render();
+  if (working) return; working = true; toolBusy = true; render();
   try {
     const response = await fetch('/api/tool.png', { headers: { 'X-Practonaut-Token': token }, cache: 'no-store', credentials: 'omit' });
     if (!response.ok || response.headers.get('content-type') !== 'image/png') throw new Error('image unavailable');
-    if (toolUrl) URL.revokeObjectURL(toolUrl); toolUrl = URL.createObjectURL(await response.blob()); working = false; render();
-  } catch { working = false; rejected('mirror_unavailable'); }
+    if (toolUrl) URL.revokeObjectURL(toolUrl); toolUrl = URL.createObjectURL(await response.blob()); working = false; toolBusy = false; render();
+    // The picture arrives below the button, which keeps the focus: it is brought into view and named.
+    const picture = document.querySelector<HTMLElement>('[data-testid="tool-picture"]');
+    const reveal = (): void => picture?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const image = picture?.querySelector('img');
+    if (image && !image.complete) image.addEventListener('load', reveal, { once: true }); else reveal();
+    say(msg('toolShown'));
+  } catch { working = false; toolBusy = false; rejected('mirror_unavailable'); }
 }
 
 // ---------- Demonstration (bundled example only) ----------
@@ -715,10 +723,30 @@ function howCheckedCard(): HTMLElement {
   // attempt is never practice evidence, yet its actions were confirmed when the mirror ran.
   const mirrored = c.mirrorHealth.status === 'available';
   root.append(h('p', { class: 't-subhead' }, evidence(mirrored ? 'confirmed' : 'observed', msg(mirrored ? 'evidence' : 'noEvidence'))));
-  root.append(button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || locked() }));
-  if (toolUrl) root.append(h('img', { class: 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } }));
+  // While the picture is fetched the button stays focusable and busy (aria-busy), so the focus stays on it.
+  const toolButton = button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', busy: toolBusy, onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || (locked() && !toolBusy) });
+  if (toolBusy) toolButton.setAttribute('aria-disabled', 'true');
+  root.append(toolButton);
+  if (toolUrl) {
+    // The picture lies on a light ground in every theme (the app's own ink), inset in its rounded frame.
+    // An app whose picture is its export at one px per unit is shown at its own size and scrolls sideways.
+    const natural = naturalPictureApps.includes(c.world.adapterId);
+    const image = h('img', { class: natural ? 'tool-image tool-image--natural' : 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } });
+    const picture = h('div', { class: natural ? 'tool-picture tool-picture--scroll' : 'tool-picture', testid: 'tool-picture', attrs: natural ? { role: 'region', 'aria-label': msg('toolPicture'), tabindex: '0' } : {} }, image);
+    root.append(picture);
+    if (natural) {
+      const hint = h('p', { class: 'tool-scroll-hint', testid: 'tool-scroll-hint', text: msg('toolScroll') });
+      hint.hidden = true;
+      const measure = (): void => { hint.hidden = picture.scrollWidth <= picture.clientWidth + 1; };
+      if (image.complete) requestAnimationFrame(measure); else image.addEventListener('load', measure, { once: true });
+      root.append(hint);
+    }
+  }
   const rules = h('div', { class: 'rule-list' });
   for (const rule of c.rules) rules.append(h('div', { class: 'rule-item' }, h('span', { class: 't-footnote t-medium', text: `${msg('confirmed')} · ${rule.id}` }), h('small', { class: 'rule-origin', text: `${msg('origin')}: ${rule.evidence.map(evidence => `${evidence.run} / ${evidence.case}`).join('; ')}` })));
+  // An app whose name needs the interim notice (PADR-0049 9.2) gets it once, off the working surface.
+  const notice = Object.hasOwn(appNotices, c.world.adapterId) ? appNotices[c.world.adapterId]! : undefined;
+  if (notice) rules.append(h('p', { class: 'app-notice', testid: 'app-notice', text: msg(notice) }));
   root.append(disclosure({ summary: msg('rules') }, rules));
   return root;
 }
@@ -799,10 +827,12 @@ function renderBar(): void {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
       const unavailable = id !== 'board' && (!phase3 || (id === 'author' && !authorAvailable));
-      const disabled = id !== mode && (unavailable || !phase3!.canSelect(id));
+      // An unavailable workspace stays reachable by keyboard (aria-disabled) so its reason can be read;
+      // one that waits for the drawing surface is disabled for that moment (design-language §10.1).
+      const disabled = id !== mode && !unavailable && !phase3!.canSelect(id);
       // A segment that waits for the drawing surface says so, never just greys out.
       const ariaLabel = unavailable ? msg(!ownWorkspace ? (id === 'editor' ? 'modeNoWorkspace' : 'modeNoCreate') : id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
-      return { id, label, testid: `mode-${id}`, disabled, ...(ariaLabel ? { ariaLabel } : {}) };
+      return { id, label, testid: `mode-${id}`, disabled, unavailable: id !== mode && unavailable, ...(ariaLabel ? { ariaLabel } : {}) };
     }) });
     // While another workspace is being prepared the current one stays pressed (it is where you are);
     // a click on it is kept and brings you back as soon as the preparation has ended, never dropped.
@@ -817,7 +847,8 @@ function renderBar(): void {
 function modelOnlyBanner(): HTMLElement {
   const notice = modelOnlyNotice;
   const key: Message = !notice ? 'modelOnlyUnknown' : notice.reason === 'missing' ? 'modelOnlyMissing' : notice.reason === 'start' ? 'modelOnlyStart' : 'modelOnlyOff';
-  const sentence = msg(key).replace('{name}', notice?.download?.name ?? '').replace('{size}', String(notice?.download?.megabytes ?? ''));
+  // A product and its version stay on one line (a no-break space before the version number).
+  const sentence = msg(key).replace('{name}', (notice?.download?.name ?? '').replace(/ (?=\d)/g, '\u00a0')).replace('{size}', String(notice?.download?.megabytes ?? ''));
   const [before, after] = sentence.split('{command}');
   // The command wraps only at its spaces: each word stays whole (a longer one, such as
   // `setup --app drawio`, would otherwise run past the banner at 320 px).
@@ -844,7 +875,11 @@ function render(): void {
   if (streamPaused) nodes.push(banner({tone:'warning',text:msg('streamRecovering'),class:'notice',testid:'stream-recovering'}));
   if (!reloadAvailable) nodes.push(banner({ tone: 'warning', text: msg('reloadUnavailable'), class: 'notice' }));
   nodes.push(practiceHead(), boardSection(), trayNode(), inspector());
+  // The inspector is drawn anew: it keeps where its reader had scrolled to.
+  const inspectorScroll = practiceMount.querySelector('.practice-inspector')?.scrollTop ?? 0;
   practiceMount.replaceChildren(...nodes); phase3?.update();
+  const side = practiceMount.querySelector('.practice-inspector');
+  if (side && inspectorScroll) side.scrollTop = inspectorScroll;
   if (focusedObject) focusObject(focusedObject); else if (focusedId) (document.querySelector(`[data-testid="${focusedId}"]`) as HTMLElement | null)?.focus();
 }
 let eventLifetime = new AbortController();

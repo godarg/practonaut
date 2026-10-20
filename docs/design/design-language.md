@@ -321,6 +321,23 @@ Drawing-content floor for the orange outline, target 2:1, both themes:
 |---|---|---|
 | U14 | content-line-orange | object-bg, canvas (two pairs) |
 
+**App pictures.** The real tool's picture in the Player and draw.io's export in a bench report keep a
+light ground in both themes (`picture-ground`), so the app's own dark ink (`picture-ink`, draw.io's
+black) stays readable and nothing of the picture is recoloured. The report's group outline drawn over
+draw.io's export uses the light accent (`picture-accent`, `picture-accent-text`) on that ground.
+
+App-picture text, target 4.5:1, both themes:
+
+| ID | Foreground | Background |
+|---|---|---|
+| T12 | picture-ink, picture-accent-text | picture-ground (two pairs) |
+
+App-picture outlines, target 3:1, both themes:
+
+| ID | Foreground | Background |
+|---|---|---|
+| U15 | picture-accent | picture-ground |
+
 Excalidraw's orange (`#F08C00`) stays below 3:1 on the light surfaces. It is kept as it is because
 the hue *is* the content the learner sets and must match the editor (SC 1.4.11 exception: a
 particular presentation is essential to the information). The colour is never the only carrier:
@@ -413,7 +430,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Component | Kit | Purpose, anatomy, rules |
 |---|---|---|
 | Button | `button()` | Capsule, 40 px (sm 32, lg 48). Variants: **primary** (accent fill; one per surface), **secondary** (default), **tinted** (accent wash), **plain** (accent text), **quiet** (secondary text), **tool** / **tool-danger** (inside the palette), **danger** (red wash), **danger-solid** (confirm a destructive sheet). Optional leading icon; icon-only needs a label (becomes name and tooltip). States: rest, hover, pressed (scale), focus, disabled (loses fill), busy (spinner), pressed-toggle (`aria-pressed`). |
-| Segmented control | `segmented()` | Choose one view or mode. Capsule track, sliding thumb, equal columns, `aria-pressed` on buttons. 2 to 4 items. Never for actions. |
+| Segmented control | `segmented()` | Choose one view or mode. Capsule track, sliding thumb, equal columns, `aria-pressed` on buttons. 2 to 4 items. Never for actions. An item that can never open here is `unavailable` (`aria-disabled`, reachable, its reason as its name); one that waits is `disabled`. |
 | Chip | `chip()` | A small fact, never an action. Tones: neutral, accent, success, danger, warning, unknown, record. |
 | Banner | `banner()` | A statement about the situation, with tone, icon, optional title. `role="status"` or `alert` when it appears dynamically. Unknown tone carries the hatched band. |
 | Card | `card()` | Rounded rectangle on `surface` with the raised shadow, a header with title and quiet actions. |
@@ -452,7 +469,11 @@ disabled, each saying why in its tooltip and accessible name, which contain the 
 does not open as a workspace in Practonaut. Practice on the board." / "Create is not available for
 draw.io."; DE "draw.io öffnet sich in Practonaut nicht als Arbeitsbereich. Übe auf der Arbeitsfläche."
 / "Erstellen gibt es für draw.io nicht."). Such a session never names Excalidraw, and its
-inspector has no invitation to create an exercise.
+inspector has no invitation to create an exercise. A segment that can never open in this window is
+*unavailable*, not disabled: it is `aria-disabled`, so the keyboard reaches it and its reason is read;
+pressing it changes nothing (review D1-F8). Only a segment that waits for the drawing surface is
+disabled, for that moment. Whether a session of an app without workspaces shows the control at all is
+a rule question to the maintainer ([PADR-0049](../adr/0049-drawio-adapter.md) decision 9.3).
 
 Below the bar is the **stage**: one CSS grid with named areas. Nodes that must never move in the DOM
 (the real editor iframe) and nodes that are re-rendered share the stage as siblings and are placed by
@@ -491,6 +512,15 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   statement, "Show in the real tool", rules behind a disclosure) and a quiet invitation card to
   create an exercise (secondary button, never filled; not in a session of an app without Create,
   §10.1).
+- **The real tool's picture** ("Show in the real tool") is the app's own picture, never recoloured:
+  it lies on the light picture ground in both themes (§7.2), inset in its rounded frame so the curve
+  never cuts the drawing. draw.io's PNG is its export at one px per unit, so it is shown at that size
+  (its 12-unit text at 12 px) in a labelled region that scrolls sideways, with a line that says so
+  when it is wider than the panel; Excalidraw's is a screenshot of its canvas and takes the panel's
+  width. While the picture is fetched the button stays focusable and busy (§11); when it arrives the
+  focus is still on the button, the picture is brought into view and announced, and the inspector
+  keeps its scroll position across redraws. In a draw.io session the interim notice (PADR-0049 9.2)
+  stands once under "Rules and origins", off the working surface.
 - **Goal**: the world states a goal as one verdict; its sentences are shown as separate short lines
   under one status icon (the first in primary text, the rest secondary). Before a check the ring
   is empty and there is no verdict; after a check one short verdict banner ("All conditions met." /
@@ -611,8 +641,12 @@ board above an example target, the trajectory and call log; identifiers, codes a
 "Technical details". The board is the real engine's export or a schematic in the content tokens, always
 captioned with which one it is; the pair shares one viewBox (one scale), its text is never drawn below
 12 px (a wider board scrolls in its frame, with a faded edge and a line that says so; a pair with
-draw.io's own export, whose text is 12 units, is drawn at one px per unit or more), and in dark mode
-the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
+draw.io's own export, whose text is 12 units, is drawn at exactly one px per unit at any width), and in dark mode
+Excalidraw's export gets Excalidraw's own dark-mode filter so the pair shows one palette. draw.io's
+export is shown as draw.io drew it: its own font and colours on the light picture ground in both
+themes, no filter; the note under the pair says how the target, Practonaut's schematic, differs from
+it (larger labels and lines, frames as named boxes, Practonaut's shades, the page's colours in dark
+mode). A page that names draw.io carries the interim notice once in its closing notes. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
 Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.
 Below 40 rem tables stack into one block per row; the page never scrolls sideways.

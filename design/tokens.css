@@ -235,6 +235,13 @@
   --pn-color-content-fill-blue: #A5D8FF;
   --pn-color-content-fill-yellow: #FFEC99;
   --pn-color-content-text: #1E1E1E;
+  /* An app's own picture (the real tool's PNG, draw.io's export in a report) keeps a light ground in
+     every theme: the app draws dark ink on it, and nothing of the picture is recoloured. The report's
+     group outline over draw.io's export uses the light accent. Same values in every block. */
+  --pn-color-picture-ground: #FFFFFF;
+  --pn-color-picture-ink: #000000;
+  --pn-color-picture-accent: #0071E3;
+  --pn-color-picture-accent-text: #0066CC;
 }
 
 /* ------------------------------------------------------------------ */
@@ -309,6 +316,13 @@
     --pn-color-content-fill-blue: #154163;
     --pn-color-content-fill-yellow: #362600;
     --pn-color-content-text: #D3D3D3;
+    /* An app's own picture (the real tool's PNG, draw.io's export in a report) keeps a light ground in
+       every theme: the app draws dark ink on it, and nothing of the picture is recoloured. The report's
+       group outline over draw.io's export uses the light accent. Same values in every block. */
+    --pn-color-picture-ground: #FFFFFF;
+    --pn-color-picture-ink: #000000;
+    --pn-color-picture-accent: #0071E3;
+    --pn-color-picture-accent-text: #0066CC;
   }
 }
 
@@ -383,4 +397,11 @@
   --pn-color-content-fill-blue: #154163;
   --pn-color-content-fill-yellow: #362600;
   --pn-color-content-text: #D3D3D3;
+  /* An app's own picture (the real tool's PNG, draw.io's export in a report) keeps a light ground in
+     every theme: the app draws dark ink on it, and nothing of the picture is recoloured. The report's
+     group outline over draw.io's export uses the light accent. Same values in every block. */
+  --pn-color-picture-ground: #FFFFFF;
+  --pn-color-picture-ink: #000000;
+  --pn-color-picture-accent: #0071E3;
+  --pn-color-picture-accent-text: #0066CC;
 }
