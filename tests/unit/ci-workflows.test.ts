@@ -9,7 +9,7 @@
 // a regression needs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { REGRESSION_REPEATS } from '../../src/bench/stats.ts';
 import { parseYaml, type Yaml } from '../support/yaml.ts';
@@ -197,9 +197,10 @@ test('the native Open repeat runs only the H1 native file test, by hand, 20 time
   assert.ok(all.indexOf(uploads[0]!) > check, 'the upload comes after the test and its check');
 });
 
-// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside the file they
-// ran beside in the failed Windows runs, and keeps the close timings after a pass too.
-test('the host deadline repeat runs both deadline tests beside challenge-round, by hand, on each CI platform, and fails unless every attempt passed', () => {
+// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside the tests they
+// ran beside in the failed Windows runs (challenge-round.test.ts then; the 0.3.0 gate's integration
+// files since that file was split), and keeps the close timings after a pass too.
+test('the host deadline repeat runs both deadline tests beside the 0.3.0 gate\'s integration files, by hand, on each CI platform, and fails unless every attempt passed', () => {
   const doc = workflow('.github/workflows/host-deadline-repeat.yml');
   assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
   assert.deepEqual(doc.permissions, { contents: 'read' });
@@ -217,7 +218,10 @@ test('the host deadline repeat runs both deadline tests beside challenge-round, 
   const run = runs[0]!, argv = runWords(all[run]!);
   const value = (name: string): string | undefined => argv[argv.indexOf(name) + 1];
   assert.ok(build >= 0 && build < run, 'the engine is built before the tests');
-  assert.equal(value('--beside'), 'tests/integration/challenge-round.test.ts');
+  // Existing gate integration files, among them those that carry the old file's long tests.
+  const beside = String(value('--beside')).split(',');
+  for (const file of beside) { assert.match(file, /^tests\/integration\/challenge-[a-z-]+\.test\.ts$/); assert.ok(existsSync(fileURLToPath(new URL(`../../${file}`, import.meta.url))), file); }
+  for (const name of ['probe', 'declare', 'recover', 'killed']) assert.ok(beside.includes(`tests/integration/challenge-${name}.test.ts`), name);
   assert.equal(value('--cpu'), '1', 'no throttling: the conditions of the failed runs');
   assert.ok(Number(value('--runs')) * list(matrix.repeat).length >= 100, 'at least 100 attempts of each test per platform');
   assert.ok(argv.includes('--require-pass'), 'a step that ran no test or a failing one fails');
