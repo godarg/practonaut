@@ -388,6 +388,26 @@ through a test seam, so the product reads no new variable.
    process and fails when the Chromium tree exceeds 1.5 GB — the spike's bound, which covers the
    Chromium tree only — or the Node process exceeds 1 GB. The adapter's own Node memory is bounded by
    design (decision 2.6).
+7. **The browser close contract** ([PADR-0050](0050-browser-close-is-a-bounded-request.md)) holds
+   for draw.io as for every browser owner:
+   - The adapter's browser takes a slot of the process's browser budget through the shared shell, as
+     does the start check's browser under draw.io's sandbox policy (`chromiumStarts` with the policy;
+     PADR-0050 decision 4).
+   - `terminate` and `close` pass the deadline they are given down to the browser's one close and
+     return its outcome (*closed*, *failed* or *abandoned*), never a later default.
+   - The shell keeps the sink while the slot is held.
+   - The adapter's start takes the mirror's abort signal, so a mirror close stops a recovery's
+     replacement start and closes what it became under the close's own deadline (*cancelled* when
+     no browser existed yet).
+
+   Unit tests run the real `createDrawioAdapter` on a stand-in browser that answers the host page's
+   protocol: the slot and the sink, both methods at a deadline 2 s ahead, the mirror's close and a
+   recovery's dispose (the review's counterexample), a session close during a replacement's launch,
+   and a full budget. Against the real app, the draw.io layer runs the real CLI with a stalled close
+   (it comes back *abandoned* at its deadline, and nothing is left after Playwright's forced end), a
+   run without a stall, and a bench on draw.io. The bench records the start check's browser and then
+   the adapter's, both launched with the sandbox, each closed while connected, with its end proven
+   and its slot released; a bench whose mirror starts find the budget full loses its run by name.
 
 ### 4. Protocol: write and read only through the embed JSON protocol
 

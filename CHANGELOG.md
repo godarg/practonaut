@@ -95,6 +95,9 @@ All notable changes are recorded here. The format follows
     refuses a bench/3 report whose `environment.app.version` is not the stored world's pin.
   - The challenge generator writes a family for draw.io (`node tools/challenge.ts generate … --app
     drawio`): the same instances, `generatedBy` unchanged, so their identities pair.
+  - The draw.io adapter follows the browser close contract (PADR-0050): its browser and its start
+    check's take budget slots, its close and terminate pass the caller's deadline down and report the
+    outcome, and a mirror close stops a recovery's replacement start through its abort.
   - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
     the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
     difference); `tools/drawio-evidence.ts` rebuilds it on a clean release commit and refuses a summary
