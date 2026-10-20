@@ -100,7 +100,8 @@ test('D1-F6(d) and F13: the constraint refusal is a registered state and says "R
   try {
     await setLanguage(s.page, 'de');
     await DRAWIO_STATES.find(state => state.id === 'drawio-constraint-refused')!.enter(s);
-    assert.match(await s.page.locator('.notice.error').innerText(), /In dieser Anwendung bleibt eine Gruppe in einem Rahmen\./);
+    // The frame is a "Rahmen" (F13); the wording itself is design review D2-F1's (drawio-design-review-d2.test.ts).
+    assert.match(await s.page.locator('.notice.error').innerText(), /In dieser Anwendung liegen alle Schritte einer Gruppe im selben Rahmen\./);
     const view = await s.observe();
     assert.equal(view.state.objects.a && 'groupId' in view.state.objects.a ? view.state.objects.a.groupId : 'missing', null, 'the board is unchanged');
   } finally { await s.close(); }
