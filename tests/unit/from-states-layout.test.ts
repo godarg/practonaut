@@ -26,10 +26,10 @@ describe('fromStates with extra clauses', () => {
     assert.ok(run.ok && checkState(made.world, run.session.state, { taskId: 't' }).passed);
   });
   it('keeps a supplied near miss that fails, with the clauses it violates; drops one that passes or is refused', () => {
-    const made = fromStates(start, goal, { worldId: 'layout-fs', taskId: 't', extraClauses: [clause, { predicate: within(everything('step', 2), 0, 0, 400, 100), text: { en: 'Inside.', de: 'Innen.' } }], nearMissCandidates: [
+    const made = fromStates(start, goal, { worldId: 'layout-fs', taskId: 't', extraClauses: [clause, { predicate: within(everything('step', 2), 0, 0, 400, 60), text: { en: 'Inside.', de: 'Innen.' } }], nearMissCandidates: [
       { kind: 'layout-noOverlap', steps: [{ name: 'move_step', params: { id: 'b', x: 110, y: 0 } }] },
       { kind: 'layout-within', steps: [{ name: 'move_step', params: { id: 'b', x: 350, y: 0 } }] },
-      { kind: 'passes', steps: [{ name: 'move_step', params: { id: 'b', x: 250, y: 20 } }] },
+      { kind: 'passes', steps: [{ name: 'move_step', params: { id: 'b', x: 250, y: 0 } }] },
       { kind: 'refused', steps: [{ name: 'move_step', params: { id: 'missing', x: 0, y: 0 } }] },
       { kind: 'layout-noOverlap', steps: [{ name: 'move_step', params: { id: 'b', x: 115, y: 0 } }] },
     ] });

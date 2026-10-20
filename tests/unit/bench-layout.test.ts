@@ -18,22 +18,29 @@ const conditions = publicConditions(layoutWorld().tasks[0]!);
 describe('report: unmet layout clauses', () => {
   it('number every reason of every unmet clause and say it in words', () => {
     const marks = layoutMarks(LAYOUT_START_STATE, conditions);
-    // By hand on the start: a2 (480–640 × 120–200) overlaps a3 (540–700 × 100–180); b3 ends at 940,
-    // past 760; e1 ends at a2's centre (560, 160) inside a3's box and e3 leaves a3's centre (620, 140)
-    // through a2's box; lane A's centres are 140, 160, 140; a2 and a3 overlap along x; lane B's centres
-    // are 340, 370, 340; lane B's gaps are 60 (b1–b2) and 300 (b2–b3).
+    // By hand on the start: a2 (480–640 × 120–200) overlaps a3 (540–700 × 100–180) and touches b2
+    // (320–480 × 200–280) at the corner (480, 200); b3 ends at 940, past 760; the arrow Decide → Pack runs
+    // from (620, 140) to (180, 340) through b2's centre (400, 240), where the arrows from Pack, to Done and
+    // the self-loop on Ship meet, and through a2's and b2's boxes; e1 ends at a2's centre (560, 160) inside
+    // a3's box; lane A's centres are 140, 160, 140; a2 and a3 overlap along x; lane B's centres are 340,
+    // 240, 340; lane B's gaps are 60 (b1–b2) and 300 (b2–b3).
     assert.deepEqual(marks.map(mark => layoutMarkText(mark, 'en')), [
       '1 · condition 1: “Check” and “Decide” are closer than 20 px',
-      '2 · condition 2: “Done” lies outside the canvas',
-      '3 · condition 4: the arrow “Start” → “Check” touches the box of “Decide”',
-      '4 · condition 4: the arrow “Decide” → “Pack” touches the box of “Check”',
-      '5 · condition 5: “Start” and “Check” differ most, by more than 4 px',
-      '6 · condition 6: “Check” and “Decide” overlap along x',
-      '7 · condition 7: “Pack” and “Ship” differ most, by more than 4 px',
-      '8 · condition 8: the smallest gap is between “Pack” and “Ship”, the largest between “Ship” and “Done”: they differ by more than 4 px',
+      '2 · condition 1: “Check” and “Ship” are closer than 20 px',
+      '3 · condition 2: “Done” lies outside the canvas',
+      '4 · condition 3: the arrows “Decide” → “Pack” and “Pack” → “Ship” cross or touch',
+      '5 · condition 3: the arrows “Decide” → “Pack” and “Ship” → “Done” cross or touch',
+      '6 · condition 3: the arrows “Decide” → “Pack” and “Ship” → “Ship” cross or touch',
+      '7 · condition 4: the arrow “Start” → “Check” touches the box of “Decide”',
+      '8 · condition 4: the arrow “Decide” → “Pack” touches the box of “Check”',
+      '9 · condition 4: the arrow “Decide” → “Pack” touches the box of “Ship”',
+      '10 · condition 5: “Start” and “Check” differ most, by more than 4 px',
+      '11 · condition 6: “Check” and “Decide” overlap along x',
+      '12 · condition 7: “Ship” and “Pack” differ most, by more than 4 px',
+      '13 · condition 8: the smallest gap is between “Pack” and “Ship”, the largest between “Ship” and “Done”: they differ by more than 4 px',
     ]);
-    assert.equal(layoutMarkText(marks[1]!, 'de'), '2 · Bedingung 2: „Done“ liegt außerhalb der Arbeitsfläche');
-    assert.equal(layoutMarkText(marks[7]!, 'de'), '8 · Bedingung 8: die kleinste Lücke liegt zwischen „Pack“ und „Ship“, die größte zwischen „Ship“ und „Done“: Sie unterscheiden sich um mehr als 4 px');
+    assert.equal(layoutMarkText(marks[2]!, 'de'), '3 · Bedingung 2: „Done“ liegt außerhalb der Arbeitsfläche');
+    assert.equal(layoutMarkText(marks[12]!, 'de'), '13 · Bedingung 8: die kleinste Lücke liegt zwischen „Pack“ und „Ship“, die größte zwischen „Ship“ und „Done“: Sie unterscheiden sich um mehr als 4 px');
     assert.deepEqual(layoutMarks(LAYOUT_GOAL_STATE, conditions), [], 'the reference meets every clause: no mark');
   });
 

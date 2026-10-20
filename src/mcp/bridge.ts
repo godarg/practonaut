@@ -8,6 +8,7 @@ import { HOST_ROUTES, HOST_ERROR_CODES, TOKEN_HEADER, type HostReply, type HostE
 import { parseJsonEntry } from "../package/json.ts";
 import { ActionDefinitionSchemaV2, AnyStateSchema, RuleSchemaV2, WorldSchema } from "../world/schema.ts";
 import { ERROR_CODES } from "../world/types.ts";
+import { LAYOUT_FRAME_NAME } from "../world/layout.ts";
 import { agentClientName, inputProblems, TOOL_SCHEMAS, type McpBridge, type McpCallContext, type McpBridgeConfig, type McpToolName, type McpToolInputs, type McpToolValues } from "./contracts.ts";
 import { checkResult, compactView, fullView, localize, mutationResult, type Lang } from "./replies.ts";
 import {HOST_TRANSACTION_MS} from '../host/mirror.ts';
@@ -59,7 +60,7 @@ const localized = z.strictObject({ en: z.string().max(8192), de: z.string().max(
 const diagnosis = z.array(z.strictObject({ id: z.string(), explanation: localized }));
 /** A layout clause's public overlay (PADR-0047 decision 7): operator, parameters and each selection as
  * type, tagged scope and count, exactly as the host's `PublicCondition.layout` holds them. */
-const layoutScope = (type: "step" | "arrow") => z.strictObject({ type: z.literal(type), scope: z.union([z.strictObject({ kind: z.literal("all") }), z.strictObject({ kind: z.literal("outside") }), z.strictObject({ kind: z.literal("frame"), name: z.string().max(256) })]), count: integer });
+const layoutScope = (type: "step" | "arrow") => z.strictObject({ type: z.literal(type), scope: z.union([z.strictObject({ kind: z.literal("all") }), z.strictObject({ kind: z.literal("outside") }), z.strictObject({ kind: z.literal("frame"), name: z.string().max(LAYOUT_FRAME_NAME) })]), count: integer });
 const whole = z.number().int().safe();
 const axis = z.enum(["x", "y"]);
 export const layoutOverlaySchema = z.union([

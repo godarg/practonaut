@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createPracticeController, publicConditions } from '../../src/host/session.ts';
 import { checkResult, compactView } from '../../src/mcp/replies.ts';
-import { publicViewSchema } from '../../src/mcp/bridge.ts';
+import { layoutOverlaySchema, publicViewSchema } from '../../src/mcp/bridge.ts';
+import { validateWorld } from '../../src/world/schema.ts';
 import type { StepV2, Task } from '../../src/world/types.ts';
 import { aligned, everything, evenlySpaced, inFrame, noOverlap, outside } from '../support/layout-board.ts';
 import { LAYOUT_GOAL_STATE, layoutWorld } from '../support/layout-world.ts';
@@ -86,6 +87,12 @@ describe('layout clauses for the Player and agents', () => {
     assert.deepEqual(publicConditions(task).map(c => c.layout && 'steps' in c.layout ? c.layout.steps.scope : null), [{ kind: 'frame', name: 'all' }, { kind: 'all' }]);
     // Other clauses carry none.
     assert.equal(publicConditions({ ...task, goal: { op: 'true' } })[0]!.layout, undefined);
+    // The longest frame name a world may state (256 characters) passes the agent bridge's overlay schema;
+    // a longer one never reaches it, since validation refuses it (review bridge-frame-name-256).
+    const longest: Task = { ...task, goal: aligned(inFrame('step', 'x'.repeat(256), 2), 'y', 'center') };
+    assert.equal(layoutOverlaySchema.safeParse(publicConditions(longest)[0]!.layout).success, true);
+    const world = layoutWorld(); world.tasks[0]!.goal = aligned(inFrame('step', 'x'.repeat(257), 2), 'y', 'center');
+    assert.throws(() => validateWorld(world), /at most 256 characters/);
   });
 
   it('reach the Player view, the check result and the agent\'s replies deep-equal, overlay included', async () => {
@@ -103,16 +110,24 @@ describe('layout clauses for the Player and agents', () => {
       assert.equal(checked.value.passed, false);
       assert.deepEqual(checked.value.conditions.map(({ met: _met, ...rest }) => rest), view.task.conditions);
       assert.deepEqual(checkResult(checked.value, 'both'), checked.value);
-      // By hand on the start: a2 (480–640) overlaps a3 (540–700); b3 ends at 940, past 760; no two
-      // segments meet; e1 ends at a2's centre (560, 160), inside a3's box; lane A's centres are at
-      // 140, 160, 140; lane A overlaps along x; lane B's centres are at 340, 370, 340 and its gaps 60 and 300.
-      assert.deepEqual(checked.value.conditions.map(c => c.met), [false, false, true, false, false, false, false, false]);
+      // By hand on the start: a2 (480–640) overlaps a3 (540–700); b3 ends at 940, past 760; the arrow
+      // Decide → Pack passes through Ship's centre (400, 240), where three other arrows end; e1 ends at
+      // a2's centre (560, 160), inside a3's box; lane A's centres are at 140, 160, 140; lane A overlaps
+      // along x; lane B's centres are at 340, 240, 340 and its gaps 60 and 300.
+      assert.deepEqual(checked.value.conditions.map(c => c.met), [false, false, false, false, false, false, false, false]);
       // In one language the overlay is unchanged: it holds no text to translate.
       assert.deepEqual(compactView(controller.view(), 'en').task.conditions.map(c => c.layout), view.task.conditions.map(c => c.layout));
-      // The reference arrangement meets every condition.
-      const solved = layoutWorld(); solved.tasks[0]!.initialState = LAYOUT_GOAL_STATE;
-      const other = await createPracticeController(solved, { taskId: 'tidy', mirror: 'off' }, unused);
-      try { const result = await other.check({ expectedRevision: 0 }); assert.ok(result.ok); assert.equal(result.value.passed, true); } finally { await other.close(); }
+      // Three moves reach the reference arrangement, which meets every condition (a start that already
+      // met a stated layout clause would be refused).
+      let revision = controller.view().revision;
+      for (const id of ['a2', 'b2', 'b3']) {
+        const { x, y } = LAYOUT_GOAL_STATE.objects[id] as StepV2;
+        const moved = await controller.act({ expectedRevision: revision, action: { name: 'move_step', params: { id, x, y } } });
+        assert.ok(moved.ok, JSON.stringify(moved)); revision = controller.view().revision;
+      }
+      const result = await controller.check({ expectedRevision: revision });
+      assert.ok(result.ok); assert.equal(result.value.passed, true);
+      assert.deepEqual(result.value.conditions.map(c => c.met), Array(8).fill(true));
     } finally { await controller.close(); }
   });
 

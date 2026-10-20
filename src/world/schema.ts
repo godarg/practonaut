@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ACTION_NAMES, V2_ACTION_NAMES, SHAPES, STROKE_COLORS, FILL_COLORS, isLayoutPredicate, type ActionDefinition, type ActionName, type Era, type Parameter, type Predicate, type Value, type State, type Step, type World } from "./types.ts";
 import { LAYOUT_LIMITS, RUNTIME_LIMITS } from "./limits.ts";
 import { LAYOUT_MIN_COUNT, layoutProblem, selectionsOf, type LayoutPlace } from "./layout.ts";
+import { layoutReasons } from "../predicate/layout.ts";
 import { preflightJson, preflightPredicate, WorldError } from "./preflight.ts";
 import { isDisplayText } from './display-text.ts';
 import { adapterIdsFor, appVersionsFor, checkWorldApp, type AdapterId, type AppVersion } from "./apps.ts";
@@ -331,11 +332,23 @@ export function validateWorld(raw: unknown): World {
     if (!predicates.some(hasLayout)) continue;
     // `within` names absolute coordinates; an offset would move the board but not the canvas (decision 1.4).
     if (predicates.some(usesWithin) && w.variants.cases.some(c => c.layoutOffset.x !== 0 || c.layoutOffset.y !== 0)) throw new WorldError(`task ${t.id} states a canvas (within): every variant case needs layoutOffset (0, 0)`);
-    // Every box a layout clause can read starts inside the judged range (decision 1.5).
+    // Every box a layout clause can read stays inside the judged range (decision 1.5): the start's steps
+    // in every variant case (shifted by its layoutOffset) and as far as the world's actions can take
+    // them. resize_step keeps x and y and may grow a step to its largest width and height; moved and
+    // added steps stay within the action bounds (±100,000, sizes up to 4,000), far inside the range.
     const start = t.initialState ?? w.initialState;
-    for (const o of Object.values(start.objects)) {
+    const resize = w.actions.find(a => a.name === "resize_step")?.parameters;
+    const grow = { width: resize?.width?.max ?? 0, height: resize?.height?.max ?? 0 };
+    for (const offset of w.variants.cases.map(c => c.layoutOffset)) for (const o of Object.values(start.objects)) {
       if (o.type !== "step" || o.deleted) continue;
-      if ([o.x, o.y, o.x + o.width, o.y + o.height].some(edge => Math.abs(edge) > LAYOUT_LIMITS.range)) throw new WorldError(`task ${t.id} has layout conditions, and step ${o.id} of its start has an edge outside ±${LAYOUT_LIMITS.range}`);
+      const x = o.x + offset.x, y = o.y + offset.y;
+      if ([x, y, x + Math.max(o.width, grow.width), y + Math.max(o.height, grow.height)].some(edge => Math.abs(edge) > LAYOUT_LIMITS.range))
+        throw new WorldError(`task ${t.id} has layout conditions, and step ${o.id} of its start${offset.x || offset.y ? ` shifted by (${offset.x}, ${offset.y})` : ""} can reach an edge outside ±${LAYOUT_LIMITS.range} (resize_step grows a step to ${grow.width} × ${grow.height})`);
+    }
+    // A stated layout clause the start already satisfies states nothing to do: the minimum counts only
+    // rule out empty selections, so such a clause could hold on every placement (review geometry-4).
+    if (t.goal.op === "all" || isLayoutPredicate(t.goal)) for (const [index, clause] of (t.goal.op === "all" ? t.goal.args : [t.goal]).entries()) {
+      if (isLayoutPredicate(clause) && layoutReasons(clause, start, 1).length === 0) throw new WorldError(`task ${t.id} states layout goal clause ${index + 1} (${clause.op}), which its start already satisfies`);
     }
   }
   for (const recording of w.provenance.recordings) if (!w.rights.recordings.some(r => r.id === recording)) throw new WorldError("missing recording rights");

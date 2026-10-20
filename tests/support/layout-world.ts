@@ -19,8 +19,10 @@ const lanes = (positions: Record<string, [number, number]>): State => board(
 );
 /** The reference arrangement: every layout clause holds. */
 export const LAYOUT_GOAL_STATE = lanes({ a1: [100, 100], a2: [320, 100], a3: [540, 100], b1: [100, 300], b2: [320, 300], b3: [540, 300] });
-/** The start: a2 sits on a3, b3 is outside the canvas and lane B is out of row. */
-export const LAYOUT_START_STATE = lanes({ a1: [100, 100], a2: [480, 120], a3: [540, 100], b1: [100, 300], b2: [320, 330], b3: [780, 300] });
+/** The start: a2 sits on a3, b3 is outside the canvas, and Ship (b2) sits half way along the arrow from
+ * Decide to Pack, its centre (400, 240) on that segment: lane B is out of row and the arrows meet. Every
+ * layout clause of the goal is violated (a stated clause the start satisfies is refused). */
+export const LAYOUT_START_STATE = lanes({ a1: [100, 100], a2: [480, 120], a3: [540, 100], b1: [100, 300], b2: [320, 200], b3: [780, 300] });
 export const LAYOUT_CLAUSES: Predicate[] = [
   noOverlap(everything('step', 6), 20),
   within(everything('step', 6), 40, 40, 720, 400),

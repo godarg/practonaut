@@ -4,6 +4,10 @@
  * evaluator, so both refuse the same predicates. No geometry here: that is `src/predicate/layout.ts`.
  */
 import { isLayoutPredicate, type LayoutOp, type LayoutPredicate, type Predicate, type Selection, type Value } from "./types.ts";
+import { isDisplayText } from "./display-text.ts";
+
+/** The longest frame name a selection may name: a state's frame names and the public overlay share it. */
+export const LAYOUT_FRAME_NAME = 256;
 
 /** What a selection selects: every live object of its type, those outside every frame, or those in a
  * live frame with this name. A tagged value, so a frame named "all" is never read as every object. */
@@ -47,7 +51,10 @@ export function layoutProblem(p: Predicate, place: LayoutPlace): string | undefi
     if (isLayoutPredicate(node)) {
       if (!allowed) return `layout operator ${node.op} may stand only as a top-level goal clause or an error class condition (directly or under one not)`;
       for (const selection of selectionsOf(node)) {
-        if (!selectionScope(selection)) return `the ${selection.type} selection of ${node.op} must select everything, outside every frame, or in the frame with a given name (PADR-0047 decision 2)`;
+        const scope = selectionScope(selection);
+        if (!scope) return `the ${selection.type} selection of ${node.op} must select everything, outside every frame, or in the frame with a given name (PADR-0047 decision 2)`;
+        // A frame's name is at most 256 characters of display text, here as in states and the public overlay.
+        if (scope.kind === "frame" && (scope.name.length > LAYOUT_FRAME_NAME || !isDisplayText(scope.name))) return `the frame name a selection of ${node.op} names must be a frame name: at most ${LAYOUT_FRAME_NAME} characters of display text`;
       }
       return undefined;
     }

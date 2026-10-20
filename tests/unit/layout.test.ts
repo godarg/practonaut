@@ -316,7 +316,7 @@ describe('layout operators in worlds', () => {
   const clause = noOverlap(everything('step', 2));
 
   it('accepts a layout clause as the goal, as a top-level goal clause and as an error class condition (directly or under one not)', () => {
-    for (const goal of [clause, { op: 'all', args: [clause, within(everything('step', 2), 0, 0, 100, 100)] }] as Predicate[]) assert.doesNotThrow(() => validateWorld(world(goal)));
+    for (const goal of [clause, { op: 'all', args: [clause, within(everything('step', 2), 0, 0, 8, 8)] }] as Predicate[]) assert.doesNotThrow(() => validateWorld(world(goal)));
     const errorClasses = [{ id: 'o', category: 'accepted_but_violates_goal', when: { op: 'not', arg: clause }, explanation: { en: 'e', de: 'e' } }, { id: 'p', category: 'suboptimal', when: clause, explanation: { en: 'e', de: 'e' } }];
     assert.doesNotThrow(() => validateWorld(world({ op: 'true' }, {}, { errorClasses })));
   });
@@ -354,5 +354,49 @@ describe('layout operators in worlds', () => {
     refused(world(clause, {}, { initialState: board(box('a', -1_000_001, 0, 10, 10), box('b', 0, 0, 10, 10)) }), /outside ±1000000/, 'a task start edge past −1,000,000');
     // Without a layout clause the same start is a valid world (the range applies only to layout tasks).
     assert.doesNotThrow(() => validateWorld(world({ op: 'true' }, { initialState: board(box('a', 0, 0, 10, 10), box('b', 999_995, 0, 10, 10)) })));
+  });
+  it('refuses a start that an action or a variant case takes past the judged range (review geometry-1/2)', () => {
+    // Two overlapping steps whose right edges are 998,000 and 998,050: inside the range as they stand.
+    const nearEdge = board(box('a', 997_900, 0, 100, 10), box('b', 997_950, 0, 100, 10));
+    // resize_step grows a step to 4,000 px by default, keeping x: 997,950 + 4,000 = 1,001,950.
+    refused(world(clause, { initialState: nearEdge }), /step a of its start can reach an edge outside ±1000000 \(resize_step grows a step to 4000 × 4000\)/, 'a resize at the edge');
+    // A world whose resize_step stops at 2,000 px keeps every edge at 999,950 at most; one without it, at the start's own.
+    const resize = (max: number) => ({ name: 'resize_step', parameters: { id: { type: 'id' }, width: { type: 'integer', min: 10, max }, height: { type: 'integer', min: 10, max } } });
+    assert.doesNotThrow(() => validateWorld(world(clause, { initialState: nearEdge, actions: [{ name: 'move_step' }, resize(2000)] })));
+    refused(world(clause, { initialState: nearEdge, actions: [{ name: 'move_step' }, resize(2100)] }), /step b of its start can reach an edge outside/, 'a resize to 2,100 px');
+    // A variant case's layoutOffset shifts the start: a (0..10) and b (5..15) by 999,990 end at 1,000,005.
+    const offset = (x: number) => ({ actions: [{ name: 'move_step' }], variants: { generator: 'finite-seeded-v1', cases: [{ id: 'a', layoutOffset: { x: 0, y: 0 } }, { id: 'b', layoutOffset: { x, y: 0 } }] } });
+    refused(world(clause, offset(999_990)), /step b of its start shifted by \(999990, 0\) can reach an edge outside ±1000000/, 'a large offset');
+    assert.doesNotThrow(() => validateWorld(world(clause, offset(999_985))), 'an offset that keeps every edge at 1,000,000');
+    refused(world(clause, offset(-1_000_001)), /shifted by \(-1000001, 0\)/, 'a negative offset');
+  });
+  it('refuses a stated layout clause the start already satisfies: the minimum counts rule out only empty selections (review geometry-4)', () => {
+    // The reviewers' vacuous clause: arrows A→B and B→A join the same two steps, which are never compared,
+    // so arrowsNoCrossing over them holds on every placement.
+    const lane = (ax: number) => board(frame('f', 'Lane A'), box('A', ax, 0, 10, 10, 'f'), box('B', 50, 0, 10, 10, 'f'), arrow('x', 'A', 'B'), arrow('y', 'B', 'A'));
+    for (const ax of [0, 45, 50, 200]) assert.equal(holds(noCrossing(inFrame('arrow', 'Lane A', 2)), lane(ax)), true, `holds with A at ${ax}`);
+    refused(world(noCrossing(inFrame('arrow', 'Lane A', 2)), { initialState: lane(0) }), /task t states layout goal clause 1 \(arrowsNoCrossing\), which its start already satisfies/, 'the vacuous clause');
+    // A satisfied clause among others is named by its position; a start that violates every stated clause is accepted.
+    refused(world({ op: 'all', args: [clause, within(everything('step', 2), 0, 0, 100, 100)] }), /goal clause 2 \(within\), which its start already satisfies/, 'a satisfied within');
+    refused(world(clause, {}, { initialState: board(box('a', 0, 0, 10, 10), box('b', 20, 0, 10, 10)) }), /goal clause 1 \(noOverlap\)/, 'a task start that satisfies it');
+    assert.doesNotThrow(() => validateWorld(world({ op: 'all', args: [clause, within(everything('step', 2), 0, 0, 12, 12)] })));
+    // An error class may hold on the start: it describes a wrong end, not a goal.
+    assert.doesNotThrow(() => validateWorld(world({ op: 'true' }, {}, { errorClasses: [{ id: 'o', category: 'suboptimal', when: within(everything('step', 2), 0, 0, 100, 100), explanation: { en: 'e', de: 'e' } }] })));
+  });
+  it('a frame name in a selection is a frame name: at most 256 characters of display text, in worlds and the evaluator alike (review bridge-frame-name-256)', () => {
+    const named = (name: string) => noOverlap(inFrame('step', name, 2));
+    const start256 = (name: string) => board(frame('f', name), box('a', 0, 0, 10, 10, 'f'), box('b', 5, 0, 10, 10, 'f'));
+    // A world's literals are display text already; the length is the layout check's own.
+    refused(world(named('Lane\u202EA'), { initialState: start256('Lane') }), /display strings must be NFC without invisible controls/, 'a bidi override');
+    refused(world(named('x'.repeat(257)), { initialState: start256('Lane') }), /must be a frame name: at most 256 characters of display text/, '257 characters');
+    for (const bad of ['x'.repeat(257), 'Lane\u202EA']) {
+      const result = evaluate(named(bad), start256('Lane'));
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error.code, 'checker_invalid');
+    }
+    // 256 characters, the longest a state's frame name may be, are accepted and select that frame.
+    const longest = 'x'.repeat(256);
+    assert.doesNotThrow(() => validateWorld(world(named(longest), { initialState: start256(longest) })));
+    assert.equal(holds(named(longest), start256(longest)), false, 'the two steps in the frame overlap');
   });
 });
