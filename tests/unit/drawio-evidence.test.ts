@@ -5,14 +5,16 @@
 // release. The re-verification from the stored folders is in tests/integration/drawio-evidence.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateBenchReportV3 } from '../../src/bench/report.ts';
 import { compareReports } from '../../src/bench/compare.ts';
 import { summaryProblems } from '../../tools/require-drawio-summary.ts';
-import { addedBenchFolder, benchEntries } from '../../tools/drawio-evidence.ts';
+import { addedBenchFolder, benchEntries, checkoutSample } from '../../tools/drawio-evidence.ts';
+import { checkoutOf } from '../support/drawio-run.ts';
+import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)), dir = join(root, 'docs/benchmarks/drawio');
 const report = (name: string) => validateBenchReportV3(JSON.parse(readFileSync(join(dir, name, 'report.json'), 'utf8')));
@@ -101,6 +103,26 @@ test('the evidence tool takes the bench folder from PRACTONAUT_HOME, not from pr
     assert.throws(() => addedBenchFolder(home, before), /found 2/);
     assert.equal(addedBenchFolder(home, new Set(['b-one'])), join(home, 'bench', 'b-two'));
   } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test('the evidence tool\'s benches are bound to the checkout before and after: its own output may change, nothing else (review m3, r3-contract-3)', () => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'pn-drawio-checkout-'));
+  const git = (...args: string[]): void => { const run = spawnSync('git', ['-c', 'user.name=Practonaut test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' }); assert.equal(run.status, 0, run.stderr); };
+  try {
+    git('init', '-q'); mkdirSync(join(root, 'evidence')); writeFileSync(join(root, 'evidence', 'report.json'), '{}\n'); writeFileSync(join(root, 'source.ts'), 'one\n');
+    git('add', '.'); git('commit', '-q', '-m', 'start');
+    const out = join(root, 'evidence'), before = checkoutSample(root, out);
+    assert.equal(before.status, '');
+    // The tool's own writes land in --out: no problem.
+    writeFileSync(join(out, 'report.json'), '{"rebuilt":true}\n'); mkdirSync(join(out, 'run-1')); writeFileSync(join(out, 'run-1', 'session.json'), '{}\n');
+    assert.equal(checkoutOf(before, checkoutSample(root, out)).problem, null);
+    // A source file changed while the benches ran.
+    writeFileSync(join(root, 'source.ts'), 'two\n');
+    assert.match(checkoutOf(before, checkoutSample(root, out)).problem ?? '', /files changed/);
+    // Another commit while the benches ran.
+    git('add', 'source.ts'); git('commit', '-q', '-m', 'moved');
+    assert.match(checkoutOf(before, checkoutSample(root, out)).problem ?? '', /moved from/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('no committed evidence file holds a local path or a draw.io release', () => {

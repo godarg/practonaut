@@ -5,15 +5,16 @@
 // and one repeat, keeps each bench folder without the agent's and the host's working folders, compares the
 // two reports with --verify, and copies the three-run summary after checking it. The summary must have
 // been made on this very commit from a clean checkout, over every planned sequence, with Chromium
-// observed under its sandbox (review m2c); the benches run here, on the same commit. Nothing it writes
-// may hold a local path; the draw.io release is never copied.
+// observed under its sandbox (review m2c); the benches run here, on the same commit, checked again after
+// the compare: HEAD and every file outside --out must be as before (review m3, r3-contract-3). Nothing it
+// writes may hold a local path; the draw.io release is never copied.
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LIBRARY_CASES, loadLibraryOf } from '../src/library/index.ts';
-import { plannedSequences } from '../tests/support/drawio-run.ts';
+import { checkoutOf, plannedSequences, type CheckoutSample } from '../tests/support/drawio-run.ts';
 import { summaryProblems } from './require-drawio-summary.ts';
 
 /** The entries of `<home>/bench/` now. */
@@ -30,6 +31,14 @@ export function addedBenchFolder(home: string, before: ReadonlySet<string>): str
   return folder;
 }
 
+/** HEAD and the checkout's changes outside `out`, where this tool's own writes land (null where git
+ * could not tell). */
+export function checkoutSample(root: string, out: string): CheckoutSample {
+  const inside = relative(root, out), exclude = inside !== '' && !inside.startsWith('..') && !isAbsolute(inside) ? [`:(exclude)${inside.split(sep).join('/')}`] : [];
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }), status = spawnSync('git', ['status', '--porcelain', '--', '.', ...exclude], { cwd: root, encoding: 'utf8' });
+  return { commit: head.status === 0 ? head.stdout.trim() : null, status: status.status === 0 ? status.stdout : null };
+}
+
 function main(): void {
   const root = fileURLToPath(new URL('..', import.meta.url)), cli = join(root, 'src/cli/main.ts');
   const args = process.argv.slice(2), value = (name: string): string | undefined => { const at = args.indexOf(name); return at >= 0 ? args[at + 1] : undefined; };
@@ -40,6 +49,7 @@ function main(): void {
   const git = (...gitArgs: string[]): string => { const run = spawnSync('git', gitArgs, { cwd: root, encoding: 'utf8' }); return run.status === 0 ? run.stdout : fail(`git ${gitArgs.join(' ')} failed`); };
   const commit = git('rev-parse', 'HEAD').trim();
   if (git('status', '--porcelain').trim() !== '') fail('the checkout holds changes not in its commit; commit them, run npm run test:drawio, then this tool');
+  const before = checkoutSample(root, resolve(value('--out') ?? join(root, 'docs/benchmarks/drawio')));
   const summaryText = readFileSync(summaryPath, 'utf8');
   const problems = summaryProblems(summaryText, { commit, planned: plannedSequences().length });
   if (problems.length) fail(`the summary does not stand as evidence for ${commit.slice(0, 12)}: ${problems.join('; ')}`);
@@ -75,6 +85,9 @@ function main(): void {
     for (const path of forbidden) if (text.includes(path)) fail(`${relative(root, file)} holds a local path`);
   }
   rmSync(scratch, { recursive: true, force: true });
+  // The benches and the compare ran the working tree's code: it must still be this commit's.
+  const checked = checkoutOf(before, checkoutSample(root, out));
+  if (checked.problem) fail(`${checked.problem}; the files in ${relative(root, out)} do not stand as evidence for ${commit.slice(0, 12)}`);
   process.stdout.write(`drawio-evidence: wrote ${relative(root, out)} for ${commit.slice(0, 12)} (two oracle benches on seeds ${seeds.join(', ')}, the compare page and the three-run summary)\n`);
   if (!existsSync(join(out, 'README.md'))) process.stdout.write('drawio-evidence: docs/benchmarks/drawio/README.md describes these files; update its numbers\n');
 }
