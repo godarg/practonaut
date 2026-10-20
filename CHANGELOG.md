@@ -62,18 +62,27 @@ All notable changes are recorded here. The format follows
   `practonaut.challenge-declaration/2` (ladder with preset, requested model, attestation and billing;
   funding that keeps 40 runs; held-out seeds from the unit and the pre-probe digest `/2`), the held-out
   set, the preflight, and the gate report `/2` in Markdown and JSON, with a second round at α = 0.025
-  on new instances. It reads `practonaut.bench/3` session-level reports only; a run counts as attested
-  only from values a shipped parser re-derived from its bound stdout, and a run is exempt from a budget
-  only by its re-derived structure. Shape A, any preset but `claude-code` as a ladder agent, a local
-  agent, too small or too large rounds and units outside the preregistration are refused by name.
+  on new instances (0.075 over both rounds, as the report says). It reads `practonaut.bench/3`
+  session-level reports only; a run counts as attested only from values a shipped parser re-derived
+  from its bound stdout, and a run is exempt from a budget only by its re-derived structure. Every run
+  on a round's instances, under any purpose, plan or declaration, counts for the round and is in one
+  repeat check; a round is not declared again once its held-out runs started; a judged run whose
+  run-end record is lost is void and is not benched again; a non-run of the weakest agent counts as
+  its pass for discrimination; funding is read from the ledger and re-derived by the gate. Shape A,
+  any preset but `claude-code` as a ladder agent, a local agent, too small or too large rounds and
+  units outside the preregistration (approved only by name) are refused by name.
 - **The release ledger and its start guard**: every model run the project makes takes a start entry in
-  a local append-only, hash-chained ledger (`.local/release-ledger-0.3.0.jsonl`) before its client
-  starts, and a run-end record with its hashes when it ends; a start that would pass 800 model runs is
-  refused before the client starts (`release_budget_exhausted`). Benches reach it through `node
-  tools/challenge.ts bench --purpose … -- <bench arguments>`; the committed copy
+  an append-only, hash-chained ledger before its client starts, and a run-end record with its hashes
+  when it ends; a start that would pass 800 model runs is refused before the client starts
+  (`release_budget_exhausted`; the cap is the release's, never the file's). One local ledger per
+  repository, in its git common directory, is shared with one lock by every worktree; `ledger init`
+  refuses while model-run folders exist outside it. Benches reach it through `node tools/challenge.ts
+  bench --purpose … -- <bench arguments>`; the committed copy
   (`docs/benchmarks/challenge/0.3.0/release-ledger.jsonl`) is written from it, every committed version
-  must be a prefix of the current one, and `declare` and `gate` read a run only once both its records
-  are pushed. 0.3.0 counts from zero: the 0.2.0 rounds stay readable and are never counted.
+  on HEAD and on every remote-tracking branch must be a prefix of the current one, and `probe`,
+  `declare` and `gate` read a run only once both its records are pushed and refuse a round whose
+  instances were run outside the ledger. 0.3.0 counts from zero: the 0.2.0 rounds stay readable and
+  are never counted.
 
 ### Changed
 

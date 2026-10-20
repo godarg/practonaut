@@ -61,7 +61,7 @@ release ledger; the five rounds above are never counted
 | File | What it is |
 |---|---|
 | `<unit>-round-<k>.probe-<p>.plan.json` | the probe plan (`practonaut.challenge-probe-plan/1`), before the first pre-probe run |
-| `release-ledger.jsonl` | the release ledger (`practonaut.release-ledger/1`): a start entry and a run-end record per model run, written from the local ledger, only ever appended to |
+| `release-ledger.jsonl` | the release ledger (`practonaut.release-ledger/1`): a start entry and a run-end record per model run, and a round record per admission, refusal and declaration, written from the repository's one local ledger, only ever appended to |
 | `<unit>-round-<k>.probe-<p>.json` | the pre-probe record (`practonaut.challenge-probe/1`), admitted or not |
 | `<unit>-round-<k>.declaration.json` | the round declaration (`practonaut.challenge-declaration/2`) |
 | `<unit>-round<k>.md`, `<unit>-round<k>.gate.json` | the gate report and its numbers (`practonaut.challenge-gate/2`) |

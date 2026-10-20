@@ -832,11 +832,12 @@ especially long-horizon ones, on a machine that is not otherwise busy.
 amended on its acceptance. The unit is part of every file name, world id and held-out seed
 derivation. The preregistered units are `layout.practonaut`, `human-edit.practonaut` and `repair`,
 `injection`, `long-horizon` and `layout` on `excalidraw-mcp-0.3.2` (the draw.io units are named when
-its server is pinned); another unit needs `--maintainer-approved-unit <unit>`, recorded in the plan and
-the declaration. `limited-checks`, `tight-budget` and `human-edit` are refused on a foreign toolchain
-(`unit_family_toolchain`). This Practonaut gates session-level units only: a unit on a foreign
-toolchain is refused until artifact mode ships its toolchain definitions (`toolchain_unavailable`),
-and `layout` and `human-edit` until their generators exist (`family_unavailable`).
+its server is pinned); another unit needs `--maintainer-approved-unit <unit>` naming that unit, which
+the plan and the declaration record (an approval of another unit is refused). `limited-checks`,
+`tight-budget` and `human-edit` are refused on a foreign toolchain (`unit_family_toolchain`). This
+Practonaut gates session-level units only: a unit on a foreign toolchain is refused until artifact
+mode ships its toolchain definitions (`toolchain_unavailable`), and `layout` and `human-edit` until
+their generators exist (`family_unavailable`).
 
 **Shape B only.** No agent but Claude through `claude-code` is gate-eligible in 0.3.0
 ([PADR-0046](../adr/0046-vendor-neutral-presets.md) decision 7), so every round is shape B: **Opus
@@ -846,29 +847,50 @@ gate pair is Opus (strongest) and Haiku (weakest), each run's model attested by 
 `system/init`. A declaration in shape A, one naming another preset (`codex`, `codex-oss`,
 `opencode-local`) or a local agent, more than three subscription agents, fewer than three agents,
 fewer than 24 held-out instances or a round whose formula exceeds 100 is refused, each by its code.
-A unit has at most two rounds; a second one runs on new held-out instances and decides at α = 0.025.
-A refused unit may be retuned once: probe 2 of the same round, with a newer generator version and new
-seeds.
+A unit has at most two rounds; a second one runs on new held-out instances and decides at α = 0.025
+(after a first round at 0.05, the false-pass bound over both rounds is 0.075). A refused unit may be
+retuned once: probe 2 of the same round, with a newer generator version and new seeds.
 
 **The release ledger.** 0.3.0 counts every model run made for the project from zero, at most 800
-(the 0.2.0 rounds are never counted). Every client start takes a **start entry** in a local,
-append-only ledger before the client starts, and the runner that took it appends one **run-end
-record** when the run ends, with the SHA-256 of the judged `session.json`, of `agent.stdout` and of
-`checker.json`, the status, the failure and the observed billing class
-(`.local/release-ledger-0.3.0.jsonl`: one canonical JSON record per line, each chained to the line
-before by its SHA-256). A start that would pass 800 is refused before the client starts
+(the 0.2.0 rounds are never counted; the cap is the release's, never a value the ledger file names).
+Every client start takes a **start entry** in the local, append-only ledger before the client starts,
+naming the world it benches; the runner that took it appends one **run-end record** when the run
+ends, with the SHA-256 of the judged `session.json`, of `agent.stdout` and of `checker.json`, the
+status, the failure and the observed billing class. There is **one local ledger per repository**, in
+its git common directory (`.git/practonaut/release-ledger-0.3.0.jsonl` for a normal clone), shared
+with one lock by every worktree and checkout of it: one canonical JSON record per line, each chained
+to the line before by its SHA-256. A start that would pass 800 is refused before the client starts
 (`release_budget_exhausted`). Every start counts until its run-end record releases it — a run of a
 local model attested `local`, or a run the client refused before any model work (a usage limit or a
 login error, classified by a shipped parser from the run's own output, with no host call and no
 tokens); none of the latter is decided from a note's words. Built-in agents start no client and take
-no entry. The guard runs for benches started through `node tools/challenge.ts bench`; `practonaut
-bench` itself takes no ledger. A project run started another way is outside the ledger, and `declare`
-and `gate` refuse a round when a model-run folder of its tasks has no start entry. `ledger init`
-creates the local ledger (a copy of the committed one); `ledger write` writes the committed copy
+no entry. `probe` and `declare` register what they decided (an admission or refusal, a declaration
+with its held-out world) in the ledger, so funding and earlier declarations are read from the one
+shared ledger, not from a branch's files.
+
+The guard sees every client start of a bench run through `node tools/challenge.ts bench`;
+`practonaut bench` itself takes no ledger. It cannot see `practonaut bench` run directly, or a client
+started by hand or by another program. A round's instances are protected anyway: `probe`, `declare`
+and `gate` refuse a round when a model-run folder of its tasks under the bench roots has no start
+entry, and `ledger init` refuses while any such folder exists. Every project run — a fixture, example,
+acceptance or red-team run included — is a bench run through the guard; a client started otherwise is
+not counted, and is not made for the project. `ledger init` creates the local ledger (a copy of the
+committed one); `ledger write` writes the committed copy
 `docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger show` prints the count.
-`declare` and `gate` read a run only when its two records are in the committed ledger, committed and
-pushed, and the local ledger has nothing the committed one lacks; every committed version of the file
-must be a prefix of the current one.
+`probe`, `declare` and `gate` read a run only when its two records are in the committed ledger,
+committed and pushed, and the local ledger has nothing the committed one lacks; every committed
+version of the file on HEAD and on every remote-tracking branch, merged or not, must be a prefix of
+the current one.
+
+**Every run on a round's instances belongs to the round.** A start belongs to a unit's round when it
+names the unit and round, or when it benches a world one of the round's starts or registrations
+names — under any purpose, plan or declaration. All of them count against the round's 100 runs and
+are named in the gate report, and they share one repeat check per model and task: every run but the
+last ended unjudged, and the last judged one is the round's own run, given to the gate. A judged run
+whose run-end record is lost (or whose folder is gone) is void: not passed, counted toward the void
+rule, never benched again; only a run whose folder holds no verdict may be benched again. A round is
+not declared again once its held-out runs started, and a pre-probe under another plan of the round is
+refused unless that plan's pre-probe was registered as refused (a retune).
 
 **A round, step by step.** Run the commands from the checkout's top level on a branch of the round's
 own that stays pushed (`git switch -c challenge/<unit>-round-<k>`, `git push -u origin HEAD`), on an
@@ -879,22 +901,22 @@ Each command below prints the next.
 
 ```bash
 U=layout.practonaut; F=docs/benchmarks/challenge/0.3.0; D=.local/challenge/$U
-node tools/challenge.ts ledger init                                   # once per machine
+node tools/challenge.ts ledger init                                   # once per repository
 # 1. The probe plan: committed and pushed before the first pre-probe run.
 node tools/challenge.ts plan --unit $U --round 1 --difficulty 2 --seed 101 --model claude-opus-5-5 \
   --mirror required --timeout 600 --max-actions 60 --out $F/$U-round-1.probe-1.plan.json
 git add $F && git commit -s -m "challenge: plan $U round 1" && git push
-# 2. The pre-probe: Opus on the plan's 7 instances, through the guard.
+# 2. The pre-probe: Opus on the plan's 7 instances, through the guard; its record, registered.
 node tools/challenge.ts generate $U --set probe --plan $F/$U-round-1.probe-1.plan.json --out $D/probe
 DISABLE_AUTOUPDATER=1 ANTHROPIC_MODEL=claude-opus-5-5 node tools/challenge.ts bench --purpose pre-probe \
   --plan $F/$U-round-1.probe-1.plan.json -- --agent claude-code --keep-env ANTHROPIC_API_KEY $(node tools/challenge.ts args $D/probe)
 node tools/challenge.ts ledger write && git add $F && git commit -s -m "ledger: $U pre-probe" && git push
 node tools/challenge.ts probe --plan $F/$U-round-1.probe-1.plan.json --set $D/probe --dev <report.json> --out $F/$U-round-1.probe-1.json
-git add $F && git commit -s -m "challenge: pre-probe $U round 1" && git push   # admitted or not
-# 3. The declaration (an admitted, funded unit), then the held-out set.
+node tools/challenge.ts ledger write && git add $F && git commit -s -m "challenge: pre-probe $U round 1" && git push   # admitted or not
+# 3. The declaration (an admitted, funded unit), registered; then the held-out set.
 node tools/challenge.ts declare --plan $F/$U-round-1.probe-1.plan.json --probe $F/$U-round-1.probe-1.json --dev <report.json> \
   --ladder claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5 --out $F/$U-round-1.declaration.json
-git add $F && git commit -s -m "challenge: declare $U round 1" && git push
+node tools/challenge.ts ledger write && git add $F && git commit -s -m "challenge: declare $U round 1" && git push
 node tools/challenge.ts generate $U --set heldout --declaration $F/$U-round-1.declaration.json --out $D/heldout
 # 4. Oracle and random (no ledger entry), the preflight, then the ladder through the guard.
 DISABLE_AUTOUPDATER=1 node src/cli/main.ts bench --agent oracle $(node tools/challenge.ts args $D/heldout)
@@ -913,51 +935,61 @@ node tools/challenge.ts gate --declaration $F/$U-round-1.declaration.json --set 
 A bench stopped by a usage limit (`--stop-on-infra`, exit 75) names the remaining tasks; bench them
 with `$(node tools/challenge.ts args <set> --tasks <the named tasks>)` through the guard again. A
 killed bench is recovered with `node src/cli/main.ts bench <its arguments> --recover <bench folder>`
-(recovery starts no client and writes no run-end record: such a run counts, is never scored, and its
-task is benched again). Do not rerun a judged task: the ledger shows every start, and the gate refuses
-best-of-N and a judged run it was not given.
+(recovery starts no client and writes no run-end record: such a run counts and is never scored; its
+task is benched again only when its folder holds no verdict). Do not rerun a judged task, under any
+purpose: the ledger shows every start on the round's worlds, and the gate refuses best-of-N and a
+judged run it was not given. `probe`, `declare` and `gate` take `--bench-root <dir,…>` for bench
+folders outside the parents of the given reports.
 
 **What the files fix.** The probe plan pins the unit, the toolchain (at session level the Practonaut
-version; every report of the round and the gate itself use it), generator and difficulty, Opus's
-seven seeds and the bench settings. The pre-probe record holds Opus's outcomes, the digest of the
-pre-probe runs' canonical content (`practonaut.challenge-development/2`: model, task, seed, verdict,
-the judged session's state hash and action log, in UTF-16 code-unit order — no byte hash, no status),
-whether the unit is admitted, and the ledger position that orders admissions. The declaration
-(`practonaut.challenge-declaration/2`) names release, unit, round, α, the ladder (preset, client,
-requested model, attestation, billing class), the gate pair, the sizes, the ledger count before the
-round and the runs kept for other units. A unit is **funded** when that count, the round's 78
-held-out runs, the held-out runs of units admitted earlier and not yet declared, 40 runs to leave and
-— for a unit on Practonaut's own actions, until artifact mode is accepted — two rounds for foreign
-toolchains (198 runs) fit into 800; otherwise `declare` refuses it as "admitted, not gated for
-budget". The 26 held-out seeds follow from the release, the unit, the round, the generator version
-and the pre-probe digest: only new paid runs move them.
+version; `probe`, `declare`, every report of the round and the gate itself use it), generator and
+difficulty, Opus's seven seeds and the bench settings. The pre-probe record holds Opus's outcomes, the
+digest of the pre-probe runs' canonical content (`practonaut.challenge-development/2`: model, task,
+seed, verdict, the judged session's state hash and action log, in UTF-16 code-unit order — no byte
+hash, no status) and whether the unit is admitted; its registration in the ledger orders admissions.
+The declaration (`practonaut.challenge-declaration/2`) names release, unit, round, α, the ladder
+(preset, client, requested model, attestation, billing class), the gate pair, the sizes, the ledger
+count before the round and the runs kept for others. A unit is **funded** when that count, the
+round's 78 held-out runs, the runs kept and 40 runs to leave fit into 800. Kept, read from the
+ledger: every other declared round's held-out runs not yet started, the held-out runs of units
+admitted earlier and not yet declared, and — for a unit on Practonaut's own actions, until artifact
+mode is accepted — two rounds for foreign toolchains (198 runs) less those declared. Otherwise
+`declare` refuses it as "admitted, not gated for budget"; the gate re-derives both figures from the
+ledger the declaration counted. The 26 held-out seeds follow from the release, the unit, the round,
+the generator version and the pre-probe digest: only new paid runs move them.
 
 **What the gate checks.** Everything the preflight checks — the declaration is the one in the commit
 the held-out set records and that commit is pushed; plan and record are committed and the declaration
-follows from them; the held-out set, its world and oracle files are the regenerated ones; every report
-is a re-verified `practonaut.bench/3` session-level report of the pinned Practonaut, the plan's
-settings and seed list `1`; the pre-probe runs give the declared digest and outcomes; oracle 100 %,
-random ≤ 5 %, every near miss fails in a checker process; the ledger rules above, and the ledger the
-pre-probe record and the declaration counted is a prefix of the gated one — and then the
-ladder: every run bound to its two ledger records (other hashes, status, failure, toolchain or rules
-refuse), the declared preset and model requested, the billing class, isolation shown by the runs
-whose offered tools a shipped parser read again, one prompt, one API key source and one release line
-per client. A run counts as attested only when a shipped parser re-derived its client values from its
-bound stdout and they name the declared model; a run on another model refuses the round. The verdict
-rules are PADR-0040's: headroom (strongest 10–80 %), discrimination (≥ 20 points and exact McNemar on
-the discordant instances below α), every run counts, more than 5 % `infra_error`, missing,
-unattested or unrecorded runs of the pair and the ladder voids the round, more than 100 model runs in
-the round voids it for budget. The gate report (`<unit>-round<k>.md`) and its JSON
+follows from them; both are registered in the ledger; the pre-probe set is regenerated from the plan,
+the held-out set, its world and oracle files from the declaration; every report is a re-verified
+`practonaut.bench/3` session-level report of the pinned Practonaut, the plan's settings and seed list
+`1`; the pre-probe runs give the declared digest and outcomes; oracle 100 %, random ≤ 5 %, every near
+miss fails in a checker process; the ledger rules above, and the ledger the pre-probe record and the
+declaration counted is a prefix of the gated one — and then the ladder: every run bound to its two
+ledger records (other hashes, status, failure, toolchain or rules refuse), the declared preset and
+model requested, the billing class, isolation shown by the runs whose offered tools a shipped parser
+read again, one prompt, one API key source and one release line per client. A run counts as attested
+only when a shipped parser re-derived its client values from its bound stdout and they name the
+declared model; a run on another model refuses the round. The verdict rules are PADR-0040's: headroom
+(strongest 10–80 %), discrimination (≥ 20 points and exact McNemar on the discordant instances below
+α), more than 5 % `infra_error`, missing, unattested or unrecorded runs of the pair and the ladder
+voids the round, more than 100 model runs in the round voids it for budget. For discrimination a
+non-run counts against passing: an instance the weakest agent has no attested, recorded verdict for
+counts as passed by the weakest, and such an instance of the strongest as failed, so leaving out runs
+never makes a pair discordant. The gate report (`<unit>-round<k>.md`) and its JSON
 (`<unit>-round<k>.gate.json`, `practonaut.challenge-gate/2`) hold every number; the round's spend and
 the release count come from the ledger. Every page under `docs/` needs a link from
 [the documentation index](../index.md) (`npm run check`).
 
-A whole round without a language model — stand-in `claude` scripts that observe or play a listed
-task's reference, a usage-limit stop and resume, the ledger written and pushed between the steps, the
-committed 0.2.0 files present and not counted — and a start at 801 refused before the stand-in starts
-are integration tests (`tests/integration/challenge-round.test.ts`). The whole round re-judges every
-run and near miss in checker processes, longer than `test:integration` gives a file; run it on its own,
-after the engine build:
+The integration layer (`tests/integration/challenge-round.test.ts`, `challenge-git.test.ts`) runs a
+start at 801 refused before the stand-in starts, one ledger shared by two worktrees, `ledger init`
+refused by a run outside the ledger, `probe` and `declare` refusing such runs and another pin, the
+ledger's whole history including merged and unmerged branches, and the file side on a real bench
+through the shipped parser. A whole round without a language model — stand-in `claude` scripts that
+observe or play a listed task's reference, a usage-limit stop and resume, the ledger written and
+pushed between the steps, a re-declaration refused, the committed 0.2.0 files present and not
+counted — re-judges every run and near miss in checker processes, longer than `test:integration`
+gives a file; run it on its own, after the engine build:
 
 ```bash
 npm run engine:build && npm run player:build

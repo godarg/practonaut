@@ -239,9 +239,10 @@ test('a whole 0.3.0 round without a language model: pre-probe, declaration, held
     p.commit('ledger: pre-probe');
     assert.match(p.ok(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record]).stdout, /Opus passed 3 of 7; admitted \(1–5 of 7\)\. Wrote .* and registered it in the release ledger/);
     // The admission is in the local ledger only: declare reads the pushed one.
+    p.commit('pre-probe record');
     refused = p.tool(['declare', '--plan', plan, '--probe', record, '--dev', pre.path, '--ladder', [OPUS, SONNET, HAIKU].join(','), '--out', declaration]);
     assert.equal(refused.status, 2); assert.match(refused.stderr, /ledger_not_committed: the local release ledger holds 1 records the committed one lacks/);
-    p.ok(['ledger', 'write']); p.commit('pre-probe record');
+    p.ok(['ledger', 'write']); p.commit('ledger: admission');
     // A pre-probe record is made once.
     refused = p.tool(['probe', '--plan', plan, '--set', probeSet, '--dev', pre.path, '--out', record, '--force']);
     assert.equal(refused.status, 2); assert.match(refused.stderr, /probe_recorded/);
