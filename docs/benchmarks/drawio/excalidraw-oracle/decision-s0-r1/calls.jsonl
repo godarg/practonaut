@@ -1,8 +1,8 @@
-{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":6434,"bridgeMs":3.5,"clientMs":4.6}
-{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1790,"bridgeMs":36.2,"clientMs":36.7}
-{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":1570,"bridgeMs":34.3,"clientMs":34.9}
-{"seq":3,"id":5,"tool":"act","code":"ok","resultBytes":1352,"bridgeMs":30.3,"clientMs":30.9}
-{"seq":4,"id":6,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":36.3,"clientMs":36.9}
-{"seq":5,"id":7,"tool":"act","code":"ok","resultBytes":1382,"bridgeMs":55.5,"clientMs":57.1}
-{"seq":6,"id":8,"tool":"act","code":"ok","resultBytes":1382,"bridgeMs":62.7,"clientMs":63.8}
-{"seq":7,"id":9,"tool":"check_result","code":"ok","resultBytes":5030,"bridgeMs":10,"clientMs":10.6}
+{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":6434,"bridgeMs":3.2,"clientMs":4.2}
+{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1790,"bridgeMs":65.9,"clientMs":66.2}
+{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":1570,"bridgeMs":32.6,"clientMs":32.9}
+{"seq":3,"id":5,"tool":"act","code":"ok","resultBytes":1352,"bridgeMs":33.5,"clientMs":33.9}
+{"seq":4,"id":6,"tool":"act","code":"ok","resultBytes":1260,"bridgeMs":33.8,"clientMs":34.1}
+{"seq":5,"id":7,"tool":"act","code":"ok","resultBytes":1382,"bridgeMs":32.8,"clientMs":33.2}
+{"seq":6,"id":8,"tool":"act","code":"ok","resultBytes":1382,"bridgeMs":33.4,"clientMs":33.8}
+{"seq":7,"id":9,"tool":"check_result","code":"ok","resultBytes":5030,"bridgeMs":7.5,"clientMs":7.8}

@@ -6,7 +6,7 @@ draw.io is a registered trademark; Practonaut is not affiliated with, endorsed o
 or draw.io AG. Nothing here is part of the draw.io release; the release is downloaded on request and
 never redistributed.
 
-These files were made on commit `d0688bc` of the `feat/drawio-adapter` branch, from a clean checkout,
+These files were made on commit `8d0e62e` of the `feat/drawio-adapter` branch, from a clean checkout,
 on one machine (macOS 27, Apple M4, Node 22.22.3, Playwright 1.64.0, Chromium 156.0.8078.4), with
 draw.io 32.4.1 (`draw.war`, SHA-256 `b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820`).
 `tools/drawio-evidence.ts` wrote them, and it checks that the summary was made on that same commit,
@@ -30,9 +30,9 @@ app's export after every step, the PNG and the checker's verdict on draw.io's ow
 
 | Run | Order | Sequences | Steps | Start | Peak RSS Node / Chromium tree | Refused requests |
 |---|---|---|---|---|---|---|
-| 1 | forward | 303 | 1,511 | 1.4 s | 367 MB / 805 MB | 0 |
-| 2 | reverse | 303 | 1,511 | 1.4 s | 392 MB / 809 MB | 0 |
-| 3 | shuffle, seed 1576489791 | 303 | 1,511 | 1.4 s | 419 MB / 875 MB | 0 |
+| 1 | forward | 303 | 1,511 | 1.4 s | 417 MB / 862 MB | 0 |
+| 2 | reverse | 303 | 1,511 | 1.4 s | 424 MB / 910 MB | 0 |
+| 3 | shuffle, seed 779390466 | 303 | 1,511 | 1.5 s | 419 MB / 963 MB | 0 |
 
 In every run every reference passed (63 of 63), every near miss failed (177 of 177) and every start
 failed (63 of 63): for the library 48 references, 117 near misses and 48 starts, for the families 15, 60
@@ -40,8 +40,8 @@ and 15. The per-task counts are in the summary's `byTask`. The three runs agree 
 value — the export after every step, the native file, the PNG and the verdict: 0 disagreements. All
 three runs report Chromium 156.0.8078.4. The sandbox is observed, not assumed: after the start and
 before the close each run read the command lines of its Chromium processes. Each run saw 4
-processes, and none carried `--no-sandbox`. The machine was shared with other work (load average 26
-shortly before the runs), so the times are upper bounds.
+processes, and none carried `--no-sandbox`. The machine was shared with other work (load average about 6
+as the runs ended), so the times are upper bounds.
 
 ## The same tasks on both applications
 

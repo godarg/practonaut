@@ -1,3 +1,3 @@
-{"id":2,"tool":"observe","code":"ok","resultBytes":5752,"bridgeMs":4.6}
-{"id":3,"tool":"act","code":"ok","resultBytes":642,"bridgeMs":38.6}
+{"id":2,"tool":"observe","code":"ok","resultBytes":5752,"bridgeMs":4.5}
+{"id":3,"tool":"act","code":"ok","resultBytes":642,"bridgeMs":35.1}
 {"id":4,"tool":"check_result","code":"ok","resultBytes":3822,"bridgeMs":5.3}

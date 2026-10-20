@@ -1,3 +1,3 @@
-{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":5572,"bridgeMs":11.9,"clientMs":14.1}
-{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1356,"bridgeMs":41.9,"clientMs":49.9}
-{"seq":2,"id":4,"tool":"check_result","code":"ok","resultBytes":4206,"bridgeMs":14.4,"clientMs":15.2}
+{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":5572,"bridgeMs":3.9,"clientMs":5.1}
+{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1356,"bridgeMs":38.8,"clientMs":39.2}
+{"seq":2,"id":4,"tool":"check_result","code":"ok","resultBytes":4206,"bridgeMs":10.8,"clientMs":11.3}

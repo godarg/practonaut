@@ -1,4 +1,4 @@
-{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":5928,"bridgeMs":3.7,"clientMs":4.8}
-{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1500,"bridgeMs":32.6,"clientMs":32.9}
-{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":978,"bridgeMs":20.2,"clientMs":20.6}
-{"seq":3,"id":5,"tool":"check_result","code":"ok","resultBytes":4070,"bridgeMs":12.5,"clientMs":12.9}
+{"seq":0,"id":2,"tool":"observe","code":"ok","resultBytes":5928,"bridgeMs":3.5,"clientMs":4.4}
+{"seq":1,"id":3,"tool":"act","code":"ok","resultBytes":1500,"bridgeMs":35.1,"clientMs":35.5}
+{"seq":2,"id":4,"tool":"act","code":"ok","resultBytes":978,"bridgeMs":29.7,"clientMs":30}
+{"seq":3,"id":5,"tool":"check_result","code":"ok","resultBytes":4070,"bridgeMs":6,"clientMs":6.4}
