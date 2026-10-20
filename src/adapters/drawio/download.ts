@@ -85,17 +85,17 @@ const sameLock = (a: HeldLock, b: HeldLock): boolean => a.ino === b.ino && a.mti
 const LOCK_TEMP = /^\.setup\.lock\.[0-9]+\.[0-9a-f]{32}\.tmp$/;
 const staleAfterMs = (limits: InstallLimits): number => limits.totalMs + 60_000;
 
-/** `link(2)` errors of a filesystem without hard links (FAT, exFAT, some network shares). */
-const NO_HARD_LINKS: ReadonlySet<string> = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']);
 const errorCode = (error: unknown): string => String((error as NodeJS.ErrnoException).code ?? 'error');
 
 /**
  * One setup per version directory (decision 2.3; reviews m2c and m2d, runtime-2). The lock holds this
  * process id, its start and a random token.
  * - It is written whole to a temp file first and then hard-linked to the lock name, which fails when the
- *   name exists, so no other setup ever sees it half written. On a filesystem without hard links it is
- *   created exclusively under its name and then written; a setup that finds it still empty judges it by
- *   its fresh modification time and stops as busy.
+ *   name exists, so no other setup ever sees it half written. Any other `link` failure means no hard
+ *   links here, whatever the code: EPERM, ENOTSUP, EOPNOTSUPP or ENOSYS on POSIX, EISDIR on a Windows
+ *   FAT or exFAT volume (libuv's ERROR_INVALID_FUNCTION; review m3, r3-contract-2). The lock is then
+ *   created exclusively under its name and written; a setup that finds it still empty judges it by its
+ *   fresh modification time and stops as busy. A real I/O fault then fails in that create, as `lock`.
  * - A held lock stays held while it is younger than the whole chain may take and its process exists;
  *   one that cannot be read (damaged, or left by an older version) is judged by its own modification time.
  * - A stale lock is taken over only by the one setup that creates the exclusive breaker file beside it,
@@ -117,7 +117,6 @@ async function takeLock(directory: string, limits: InstallLimits, seams: Pick<In
       try { await linkImpl(temp, path); return true; }
       catch (error) {
         if (errorCode(error) === 'EEXIST') return false;
-        if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
         hardLinks = false;
       }
     }

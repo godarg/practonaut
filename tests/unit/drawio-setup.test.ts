@@ -265,12 +265,13 @@ test('two setups that judge the same stale lock: only one takes it over (review 
   } finally { serve(); await server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a home without hard links (FAT, exFAT, some network shares): the lock is created exclusively instead; other lock failures are named (review m2d, r2-runtime-2)', async () => {
+test('a home without hard links (FAT, exFAT, some network shares): the lock is created exclusively instead, whatever link() says; other lock failures are named (reviews m2d and m3, r2-runtime-2, r3-contract-2)', async () => {
   const server = await standIn((_request, response) => serveFixture(response));
   const dir = home();
   try {
     const opts = options(server.origin, dir), directory = drawioRuntimeDirectory(dir, opts.pin!), lock = join(directory, '.setup.lock');
-    for (const code of ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']) {
+    // POSIX codes, Windows' EISDIR for FAT and exFAT, and a code no list names.
+    for (const code of ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EISDIR', 'EIO', 'EUNKNOWN']) {
       let sawLock = '';
       const noLinks = async (): Promise<void> => { throw Object.assign(new Error(`link: ${code}`), { code }); };
       const result = await installDrawio({ ...opts, link: noLinks, fetch: (async () => { sawLock = readFileSync(lock, 'utf8'); return new Response(fixture); }) as typeof fetch });
@@ -283,8 +284,10 @@ test('a home without hard links (FAT, exFAT, some network shares): the lock is c
     writeFileSync(lock, JSON.stringify({ pid: process.pid, started: Date.now(), token: 'c'.repeat(32) }));
     await assert.rejects(installDrawio({ ...opts, link: async () => { throw Object.assign(new Error('x'), { code: 'EPERM' }); } }), reason('busy', 'app_install_busy'));
     rmSync(lock);
-    // Any other failure to take the lock is named, never a raw error.
-    await assert.rejects(installDrawio({ ...opts, link: async () => { throw Object.assign(new Error('x'), { code: 'EIO' }); } }), (error: unknown) => reason('lock')(error) && (error as DrawioInstallError).details.code === 'EIO');
+    // A real fault in the exclusive create is named, never a raw error: here the version directory is
+    // gone when the create runs (on every platform).
+    const vanish = async (): Promise<void> => { rmSync(directory, { recursive: true, force: true }); throw Object.assign(new Error('x'), { code: 'EISDIR' }); };
+    await assert.rejects(installDrawio({ ...opts, link: vanish }), (error: unknown) => reason('lock')(error) && (error as DrawioInstallError).details.code === 'ENOENT');
   } finally { await server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
