@@ -126,6 +126,9 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 
+- `compare --verify` re-verifies its two reports at once instead of one after the other, so it takes
+  about one report's re-verification; a refusal still names the baseline's failure before the
+  candidate's.
 - Texts that name the running app take its fixed display name from the world's adapter id: the MCP
   instructions (built per session from the host's view, which now carries `world.adapterId`), the
   Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. The

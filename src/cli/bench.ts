@@ -368,6 +368,14 @@ export async function commandReport(args: string[]): Promise<number> {
   return 0;
 }
 
+/** The values of `pending`, which run at once. When some fail, the first failure in their order is
+ * thrown, whichever failed first in time, so a refusal never depends on which one was quicker. */
+export async function inOrder<T>(pending: readonly Promise<T>[]): Promise<T[]> {
+  const settled = await Promise.allSettled(pending);
+  for (const result of settled) if (result.status === 'rejected') throw result.reason;
+  return settled.map(result => (result as PromiseFulfilledResult<T>).value);
+}
+
 /** practonaut compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression]
  * [--verify] [--json]: compares two reports by the rules of PADR-0039 C. Incomparable reports are
  * refused naming every difference; with --fail-on-regression an instance regression exits 2. */
@@ -380,7 +388,10 @@ export async function commandCompare(args: string[]): Promise<number> {
   // Each side goes by its label, else its file name (the page title says which is which).
   const named = (report: BenchReportView, path: string): string => report.label ?? basename(path).replace(/\.json$/i, '');
   const views = { baseline: toView(baseline), candidate: toView(candidate) };
-  const sides = { baseline: { report: views.baseline, verification: await level(baseline, baselinePath), name: named(views.baseline, baselinePath) }, candidate: { report: views.candidate, verification: await level(candidate, candidatePath), name: named(views.candidate, candidatePath) } };
+  // With --verify both sides are re-verified at once, each re-judging its runs in the checker's own
+  // processes; a side that fails is named as before, the baseline before the candidate.
+  const [baselineLevel, candidateLevel] = await inOrder([level(baseline, baselinePath), level(candidate, candidatePath)]) as [VerificationDetail, VerificationDetail];
+  const sides = { baseline: { report: views.baseline, verification: baselineLevel, name: named(views.baseline, baselinePath) }, candidate: { report: views.candidate, verification: candidateLevel, name: named(views.candidate, candidatePath) } };
   const language = getCliLanguage();
   const html = parsed.flags['--html'];
   let comparison;

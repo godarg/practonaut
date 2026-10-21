@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { BENCH_SCHEMA_V2, summarize, validateBenchReport, validateBenchReportV2, type BenchReportV2, type BenchRunV2 } from '../../src/bench/report.ts';
 import { compareReports, CompareError, isolationOf } from '../../src/bench/compare.ts';
 import { renderCompareHtml, renderCompareTable } from '../../src/bench/render-compare.ts';
+import { inOrder } from '../../src/cli/bench.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 const hash = (c: string): string => c.repeat(64);
@@ -226,4 +227,15 @@ test('CLI: the verdicts by exit code; incomparable and --fail-on-regression exit
     assert.equal(/<script|style="|data:/i.test(html), false);
     assert.equal(cli(baseline).status, 1, 'two reports are needed');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// compare --verify re-verifies its two sides at once (each re-judges every run in the checker's own
+// processes; the committed draw.io evidence took twice one side's time). A refusal still names the
+// baseline's failure before the candidate's, whichever of them failed first.
+test('compare --verify: both sides at once, a failure named in their order, never by which failed first', async () => {
+  const after = <T>(ms: number, outcome: () => T): Promise<T> => new Promise((resolve, reject) => { setTimeout(() => { try { resolve(outcome()); } catch (error) { reject(error); } }, ms); });
+  const refused = (side: string) => (): never => { throw new Error(`${side} refused`); };
+  assert.deepEqual(await inOrder([after(30, () => 'baseline'), after(0, () => 'candidate')]), ['baseline', 'candidate'], 'the values in their order');
+  await assert.rejects(inOrder([after(30, refused('baseline')), after(0, refused('candidate'))]), { message: 'baseline refused' }, 'the candidate failed first');
+  await assert.rejects(inOrder([after(0, () => 'baseline'), after(30, refused('candidate'))]), { message: 'candidate refused' }, 'only the candidate failed');
 });
