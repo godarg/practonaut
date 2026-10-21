@@ -82,7 +82,9 @@ All notable changes are recorded here. The format follows
   `repository_roots`), is shared with one lock by every clone, worktree and branch; every ledger
   command refuses a shallow clone (`shallow_clone`), a `PRACTONAUT_HOME` not named fully
   (`home_not_fully_qualified`), and a `--folder` whose committed ledger lies outside the checkout
-  (`ledger_outside_repository`) or behind a link inside it (`ledger_path_link`); `ledger init`
+  (`ledger_outside_repository`), behind a link inside it (`ledger_path_link`) or in any folder but
+  the release's (`ledger_not_release_folder`; another letter case of the release folder is the same
+  folder where the file system ignores case); `ledger init`
   refuses an existing ledger first, pushed versions that are not one history and model-run folders
   outside every pushed version, and starts from the longest pushed version. Benches reach it through
   `node tools/challenge.ts bench --purpose … -- <bench arguments>`, which refuses a round's start on

@@ -12,7 +12,7 @@
  * committed copy and its history catch that only once the other side pushes. Reads git without a shell.
  */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, posix, resolve } from 'node:path';
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
@@ -95,7 +95,8 @@ export function canonicalPath(path: string): string {
  * The committed release ledger's path as git knows it: `file` relative to the checkout `top` (git's top
  * level), with forward slashes. Only the checkout root is compared by its canonical spelling (a `--folder`
  * through a symbolic link to the checkout, a short name or another letter case is the same checkout);
- * the path inside the checkout is git's as written, and no component of it may be a symbolic link
+ * the path inside the checkout is git's: each existing component by its name in its folder (another letter
+ * case on a file system that ignores it reaches the tracked name), and no component of it may be a symbolic link
  * (`ledger_path_link`: git would read the tracked path, the file system another file). A file outside
  * the checkout is refused (`ledger_outside_repository`).
  */
@@ -113,11 +114,19 @@ export function ledgerGitPath(top: string, file: string): string {
   if (found === null || found === resolve(file)) throw new RepositoryError('ledger_outside_repository', `the committed ledger ${resolve(file)} lies outside this repository (${top}); --folder names a folder of the checkout`);
   const parts = resolve(file).slice(found.length).split(/[\\/]+/).filter(Boolean);
   let walk = found;
-  for (const part of parts) {
-    walk = join(walk, part);
-    let link: boolean;
-    try { link = lstatSync(walk).isSymbolicLink(); } catch { break; }
-    if (link) throw new RepositoryError('ledger_path_link', `${walk} is a symbolic link inside the checkout: git reads the committed ledger at ${parts.join('/')}, the file system another file; remove the link`);
+  for (const [index, part] of parts.entries()) {
+    const parent = walk;
+    walk = join(parent, part);
+    let entry;
+    try { entry = lstatSync(walk); } catch { break; }
+    if (entry.isSymbolicLink()) throw new RepositoryError('ledger_path_link', `${walk} is a symbolic link inside the checkout: git reads the committed ledger at ${parts.join('/')}, the file system another file; remove the link`);
+    // An existing component goes by its name in its folder, as git tracks it: on a file system that ignores
+    // letter case, `DOCS` reaches `docs`, and git would find no history under `DOCS/…` (final check of #71).
+    const names = readdirSync(parent);
+    if (!names.includes(part)) {
+      const same = names.filter(name => { try { const other = lstatSync(join(parent, name)); return other.ino === entry.ino && other.dev === entry.dev; } catch { return false; } });
+      if (same.length === 1) { parts[index] = same[0]!; walk = join(parent, same[0]!); }
+    }
   }
   return parts.join('/');
 }

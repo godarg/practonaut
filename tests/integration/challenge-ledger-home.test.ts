@@ -179,6 +179,17 @@ test('the committed ledger is read at the path git knows: --folder through a lin
     // The checkout through a link (a symbolic link, a junction on Windows): another spelling of the same folder.
     const link = join(dir, 'link'); await symlink(p.repo, link, 'junction');
     diverged(p.tool(['ledger', 'init', '--folder', join(link, 'docs', 'benchmarks', 'challenge', '0.3.0')]));
+    // Another letter case, where the file system ignores it (macOS, Windows): the same folder, read at the
+    // path git tracks, so both pushed versions are seen (final check of #71). Where letter case counts it
+    // is another folder, refused below like any folder that is not the release's.
+    if (existsSync(join(p.repo, 'DOCS'))) diverged(p.tool(['ledger', 'init', '--folder', join(p.repo, 'DOCS', 'benchmarks', 'challenge', '0.3.0')]));
+    // Another folder of the checkout: git would see no pushed version there and a ledger would start at zero.
+    const notRelease = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /ledger_not_release_folder: --folder names docs\/benchmarks\/challenge\/0\.3\.1, not this release's folder docs\/benchmarks\/challenge\/0\.3\.0/); };
+    const another = join(p.repo, 'docs', 'benchmarks', 'challenge', '0.3.1');
+    notRelease(p.tool(['ledger', 'init', '--folder', another], { PRACTONAUT_HOME: join(dir, 'home3') }));
+    notRelease(p.tool(['ledger', 'show', '--folder', another]));
+    notRelease(p.tool(['bench', '--purpose', 'example', '--folder', another, '--', '--agent', 'claude-code', '--tasks', 'connect', '--mirror', 'off', '--timeout', '60'], { ANTHROPIC_MODEL: OPUS, PN_FAKE_MODEL: OPUS }));
+    assert.equal(existsSync(join(dir, 'home3', 'release-ledgers')), false, 'no ledger was started for another folder');
     // A folder outside the checkout, on every command that takes --folder: refused before anything starts.
     const elsewhere = join(dir, 'elsewhere');
     const outside = (result: { status: number | null; stderr: string }): void => { assert.equal(result.status, 2, result.stderr); assert.match(result.stderr, /ledger_outside_repository: the committed ledger .* lies outside this repository/); };

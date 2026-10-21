@@ -265,9 +265,15 @@ points marked *(review 2)* close them.
       (`home_not_fully_qualified`). Every command that takes `--folder` reads the committed ledger
       at the path git knows it by: only the checkout root is compared by its canonical spelling (a
       `--folder` through a link to the checkout, a short name or another letter case is the same
-      folder), a link inside the checkout on the ledger's path is refused (`ledger_path_link`: git
-      would read the tracked path, the file system another file, and a pushed history could be
-      hidden), and a committed ledger outside the checkout is refused (`ledger_outside_repository`).
+      folder), each existing component inside the checkout goes by its name in its folder (on a file
+      system that ignores letter case `DOCS` reaches the tracked `docs`), a link inside the checkout
+      on the ledger's path is refused (`ledger_path_link`: git would read the tracked path, the file
+      system another file, and a pushed history could be hidden), a committed ledger outside the
+      checkout is refused (`ledger_outside_repository`), and so is any folder of the checkout but
+      the release's own (`ledger_not_release_folder`): git would be asked for another path's history,
+      see no pushed version of the release ledger, and a new local ledger would start at zero. The
+      last two came from the final check of the pull request (Codex: another letter case hid the
+      pushed versions).
       The local ledger is created only by `ledger init`, which refuses, in this order, when this
       repository's ledger exists (`ledger_exists`) or lies where an earlier Practonaut kept it
       (`ledger_elsewhere`), when the pushed versions of the committed ledger over HEAD and every

@@ -885,7 +885,8 @@ without a start entry exists. Every project run — a fixture, example, acceptan
 included — is a bench run through the guard; a client started otherwise is not counted, and is not
 made for the project. `ledger init` creates the local ledger: it refuses first when the repository's
 ledger exists (or lies where an earlier Practonaut kept it), in a shallow clone, and when `--folder`
-names a committed ledger outside the repository (both spelled canonically), and copies the longest
+names a committed ledger outside the repository (both spelled canonically) or any folder but the
+release's (`ledger_not_release_folder`, on every command that takes `--folder`), and copies the longest
 pushed version of the committed ledger (every pushed version must be one history). `ledger write`
 writes the committed copy `docs/benchmarks/challenge/0.3.0/release-ledger.jsonl` from it; `ledger
 show` prints the count and the file. `probe`, `declare` and `gate` read a run only when its two
@@ -1011,7 +1012,9 @@ the stand-in starts and the file side on a real bench through the shipped parser
 (`tests/integration/challenge-round.test.ts`); one ledger shared by a clone, a worktree and a fork
 and found from every directory, a history with more than one root refused on every branch (also with
 a replace ref), the committed ledger read at the path git knows (a link to the checkout the same
-folder; a link inside it and a folder outside it refused on every command that takes `--folder`), a
+folder, another letter case of it the same folder where the file system ignores case; a link inside
+it, a folder outside it and another folder of the checkout refused on every command that takes
+`--folder`), a
 shallow clone refused on every command, and the `ledger init` refusals — an existing or earlier
 ledger, a run outside every pushed version, versions that are not one history
 (`challenge-ledger-home.test.ts`); `probe` and `declare` refusing runs outside the ledger (also on a

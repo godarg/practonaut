@@ -27,7 +27,7 @@ import { FAMILIES, type Difficulty, type Family } from '../src/challenge/familie
 import { committedFile, declareFromFiles, gateFromFiles, heldOutSet, ledgerPaths, makePlan, preflightFromFiles, probeFromFiles, probeSet, readDeclaration, readPlan, roundFiles, scanUnledgered, setArgs, setIdentities, verifySet, writeSet } from '../src/challenge/files.ts';
 import { appendRound, initLedger, ledgerExists, ledgerGuard, readLedger, writeCommittedLedger, type LedgerPaths } from '../src/challenge/ledger-file.ts';
 import { countLedger, headerLine, isPrefix, LedgerError, parseLedger, PURPOSES, RELEASE, type Purpose } from '../src/challenge/ledger.ts';
-import { earlierLedgerPaths, ledgerGitPath, localLedgerPath } from '../src/challenge/repository.ts';
+import { earlierLedgerPaths, ledgerGitPath, localLedgerPath, RepositoryError } from '../src/challenge/repository.ts';
 import { committedVersions } from '../src/challenge/git.ts';
 import { taskIdOf } from '../src/challenge/build.ts';
 import { canonicalJson, sha256Hex } from '../src/canonical/index.ts';
@@ -94,8 +94,13 @@ const localLedger = (): Promise<string> => localLedgerPath(process.env, process.
 /** The ledger files of a release folder of this checkout: the committed copy's path must lie inside the
  * checkout with no symbolic link on the way (repository.ts, `ledgerGitPath`); the path git knows it by. */
 function checkedPaths(folder: string, local: string): LedgerPaths & { gitPath: string } {
-  const paths = ledgerPaths(folder, local);
-  return { ...paths, gitPath: ledgerGitPath(gitPath(['rev-parse', '--show-toplevel']), paths.committed) };
+  const top = gitPath(['rev-parse', '--show-toplevel']), paths = ledgerPaths(folder, local);
+  const at = ledgerGitPath(top, paths.committed), release = ledgerGitPath(top, ledgerPaths(defaultFolder(), local).committed);
+  // --folder may spell the release folder otherwise (through a link to the checkout, another letter case),
+  // never name another one: git would be asked for another path's history, see no pushed version of the
+  // release ledger, and a new local ledger would start at zero (final check of #71).
+  if (at !== release) throw new RepositoryError('ledger_not_release_folder', `--folder names ${at.replace(/\/release-ledger\.jsonl$/, '')}, not this release's folder ${release.replace(/\/release-ledger\.jsonl$/, '')}: the release ledger is committed there only`);
+  return { ...paths, gitPath: at };
 }
 /** No argument but the options a command names. */
 const noPositional = (positional: string[]): void => { if (positional.length) fail(`unexpected argument ${positional[0]}`); };
