@@ -30,7 +30,10 @@ test('D2-F1, F5: the group refusal names the way forward with the tools, determi
     for (const language of ['en', 'de', 'en'] as const) {
       await setLanguage(s.page, language);
       await state('drawio-constraint-refused').enter(s);
-      assert.ok((await s.page.locator('.notice.error').innerText()).includes(expected[language]), language);
+      // The refusal of this round, in this round's language: waited for (bounded), so a slower runner reads
+      // the notice once it is rendered; any other text still fails, and names what was shown.
+      const shown = await s.page.waitForFunction(text => { const notice = document.querySelector<HTMLElement>('.notice.error'); return notice !== null && notice.innerText.includes(text); }, expected[language], { timeout: 15_000 }).then(() => null, async () => s.page.locator('.notice.error').innerText());
+      assert.equal(shown, null, `${language}: the notice read ${JSON.stringify(shown)}`);
       // The same screen every time: the refused step is selected, never picked up, and nothing waits.
       assert.equal(await s.page.locator('.step.picked').count(), 0, `${language}: no step picked up`);
       assert.equal(await s.page.getByTestId('cancel-preview').first().isVisible(), false, `${language}: no pending tool`);
