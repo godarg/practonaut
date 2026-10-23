@@ -412,7 +412,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 
 | Component | Kit | Purpose, anatomy, rules |
 |---|---|---|
-| Button | `button()` | Capsule, 40 px (sm 32, lg 48). Variants: **primary** (accent fill; one per surface), **secondary** (default), **tinted** (accent wash), **plain** (accent text), **quiet** (secondary text), **tool** / **tool-danger** (inside the palette), **danger** (red wash), **danger-solid** (confirm a destructive sheet). Optional leading icon; icon-only needs a label (becomes name and tooltip). States: rest, hover, pressed (scale), focus, disabled (loses fill), busy (spinner), pressed-toggle (`aria-pressed`). |
+| Button | `button()` | Capsule, 40 px (sm 32, lg 48). Variants: **primary** (accent fill; one per surface), **secondary** (default), **tinted** (accent wash), **plain** (accent text), **quiet** (secondary text), **tool** / **tool-danger** (inside the palette), **danger** (red wash), **danger-solid** (confirm a destructive sheet). Optional leading icon; icon-only needs a label (becomes name and tooltip). A `title` (tooltip and fuller name) contains the visible label as whole words; with a key cap the name is the label and key as shown and the title is the description. States: rest, hover, pressed (scale), focus, disabled (loses fill), busy (spinner), pressed-toggle (`aria-pressed`). |
 | Segmented control | `segmented()` | Choose one view or mode. Capsule track, sliding thumb, equal columns, `aria-pressed` on buttons. 2 to 4 items. Never for actions. |
 | Chip | `chip()` | A small fact, never an action. Tones: neutral, accent, success, danger, warning, unknown, record. |
 | Banner | `banner()` | A statement about the situation, with tone, icon, optional title. `role="status"` or `alert` when it appears dynamically. Unknown tone carries the hatched band. |
@@ -427,7 +427,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Skeleton | `.pn-skeleton` | Loading placeholder with a quiet shimmer. |
 | Floating capsule | `.pn-floating` | Glass capsule for tool palettes and bars. |
 | Icon | `icon()` | 24-unit grid, 1.75 stroke, round caps, `currentColor`, always `aria-hidden`. A new icon is drawn in `icons.ts` and shown in the gallery. |
-| Key cap | `<kbd>` | Shows a keyboard shortcut next to its action. |
+| Key cap | `<kbd>` | Shows a keyboard shortcut next to its action; the key is part of the button's name. |
 | Stepper | `stepper()`, `step()` (`ui/stepper.ts`) | Vertical, numbered list of steps for a guided flow. Each step is a native `<details>` card with a marker (number, check when done, ring when current), a one-line summary when collapsed and a connecting line. Only the current step is open; the others stay editable. At most one filled button per open step. |
 | Step list | `stepList()` (`ui/stepper.ts`) | Static, numbered list of the parts of something that runs by itself (the demonstration): the stepper's marker grammar (number, ring when current, check when done) with a noun title and one line that says the state in words, so the marker never carries it alone. Not interactive; nothing opens. Shown in the gallery running and ended. |
 | Miniature diagram | `miniature()` (`ui/miniature.ts`) | Small read-only SVG of a process (steps with wrapped labels, arrows, loose ends as rings), used for before/after, the prepared case and examples. Always paired with a text alternative; never interactive. |
@@ -441,7 +441,9 @@ Rule of thumb: if two surfaces show the same kind of thing, they show it with th
 
 One app, one top bar, three workspaces. The bar is glass: brand wordmark on the left, the workspace
 segmented control in the centre (**Practice · Excalidraw · Create**; DE **Üben · Excalidraw ·
-Erstellen**), language (EN/DE) and appearance (System/Light/Dark) on the right. Below 48em the bar
+Erstellen**), language (EN/DE) and appearance (System/Light/Dark) on the right. The language
+segments are named by their visible code first, then the language in its own name (**EN, English**;
+**DE, Deutsch**), so the accessible name contains what the person sees (WCAG 2.5.3). Below 48em the bar
 becomes two rows: brand and settings, then the workspace control full width. While a picked
 workspace is being prepared, the current one stays pressed (it is where you are) and a click on it is
 kept, never dropped: once the preparation has ended, the person is back where they clicked.
@@ -649,6 +651,10 @@ Every surface defines these states. A screen without them is not finished.
 - One polite live region announces selection, previews, committed actions with their number and
   consequences, cancel, undo, reset and checks. A step's accessible name is its label, its position
   and relations are in its description. No `role="application"`.
+- Label in Name (WCAG 2.5.3): every accessible name contains the visible label as whole words, in
+  the order shown, so a voice-control user can say what they see. A step label that wraps keeps its
+  word boundary at the break (a zero-width space); a button that shows several texts is named by
+  them.
 - Dialogs are native `<dialog>`; focus is trapped by the platform and returns to the opener.
 - Screen-reader runs and manual 200 % zoom are human checks and stay OPEN until a person does them;
   automated scans never replace them (`manual-player-checks.md`).

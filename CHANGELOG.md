@@ -165,6 +165,15 @@ All notable changes are recorded here. The format follows
   logged, and the demonstration and editor routes do not exist there. A single-task host now refuses
   every variant and hint request; `practonaut`, `play`, `serve` and `mcp --task` keep every task,
   variant and hint ([session host](docs/session-host.md), [benchmarks](docs/benchmarks/README.md) §4).
+- Accessible names in the Player now contain the visible labels as whole words (WCAG 2.5.3 Label in
+  Name), so a voice-control user who says what they see reaches the control. axe-core 4.14 checks
+  this by whole words and reported five places: the language switch (now **EN, English** and **DE,
+  Deutsch** instead of **English** and **Deutsch**); a step label that wraps at narrow widths (its
+  lines joined into one word; a zero-width space now keeps the word boundary, the line does not
+  move); a button with a key cap such as **Stop Esc** (named by its label and key, the longer text
+  is its description); the evidence rows of the create flow (named by what they show, in that
+  order); and the frame tool **Frame name** (tooltip **Change the frame name**, DE
+  **Rahmenname ändern**) ([design language](docs/design/design-language.md) §9, §10.1, §12).
 
 ## [0.2.0] - 2026-10-16
 
