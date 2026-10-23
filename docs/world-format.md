@@ -346,6 +346,70 @@ an arrow's ends follow its bindings (a single head at the start reverses it). Fr
 labels, lines, images and other kinds are listed as `unmodeled` and ignored, never fatal; malformed
 input, duplicate ids and invisible format characters in text remain `artifact_invalid`.
 
+**draw.io worlds** (`app.adapterId` `drawio`, world/2 only; [PADR-0049](adr/0049-drawio-adapter.md),
+[adapter page](adapters/drawio.md)). The checker reads draw.io's own `.drawio` export with its own
+reader (`src/checker/drawio.ts`). The file is an `mxfile` with exactly one page, plain or compressed
+(Base64, raw deflate, UTF-8, URI encoding, as draw.io decodes it), or a bare `mxGraphModel`. It must
+be well-formed XML without namespaces: no DOCTYPE, only the five predefined entities and numeric
+references, XML 1.0 characters only, no `--` in comments, nothing but XML white space outside the
+root (one UTF-8 byte-order mark allowed), the XML declaration only at the very start and by its
+grammar (version 1.0, encoding UTF-8). The file's own elements carry only the attributes draw.io's
+export carries (`mxGraphModel`'s `math` and `shadow` only as 0; no `background`).
+
+The reader is **allowlist-based**. It reads exactly the vocabulary the adapter writes and refuses
+everything else by name, never skipping it:
+- the root (the cell without a parent) and its layers, each with only `id` and `parent`;
+- a **frame**: `swimlane;container=1;collapsible=0;startSize=30;fillColor=none;` (an unfilled title
+  band) on a layer;
+- a **group**: `group;` with an empty value and `connectable="0"`, on a layer or in a frame;
+- a **step**: a rectangle (optionally `rounded=0`), `ellipse` or `rhombus`, with `strokeColor` and
+  `fillColor` from the reader's own colour table, on a layer, in a frame or in a group;
+- an **arrow**: an edge with only `startArrow`, `endArrow` (from the measured marker list
+  `DRAWIO_MARKERS`, `none` or empty, with exactly one head) and `html=0`, an empty value, steps or
+  nothing as its ends, on a layer or in a frame.
+
+Cells carry only the attributes the adapter writes. An `object` or `UserObject` carries an `id` and a
+`label` around one `mxCell` without a value. A vertex has one geometry (`x`, `y`, `width`, `height`),
+and an edge has one geometry with `relative="1"` and at most a source and a target point. Any other
+attribute, style name, key or value is refused. This includes `visible`, `collapsed`, `noLabel`,
+`opacity`, `container` on a step, an unknown name or shape, and a leading `;`. So is any other parent
+(a plain cell, a vertex under the root, a frame in a group). A step's frame is its frame ancestor and
+its group is its parent group (`pn:group:<id>` gives `<id>`; group ids are unique over group cells).
+Its box is its geometry plus every ancestor's offset, summed root first, each value within
+±1,000,000, rounded by edges; a box with no area is refused. A start head reverses an arrow. Labels
+are plain text; `html=1` is `markup_label`. Labels are at most 4,096 characters and frame names at
+most 256; a frame without a positive size is `geometry_invalid`. The caller says what the file is
+([PADR-0049](adr/0049-drawio-adapter.md) decision 6.8). The host's own export in a session (the export
+pair, a bench run, `run --export`, `report --verify`, and `check --pair` once its session replays) must
+equal the session state and is read as written. Any other file, `practonaut check` among them, is refused by name where something read could
+be hidden or misread: `boxes_overlap` (two steps' boxes, or a frame's 30 px title band and a step or
+another band, intersect; a frame's whole box counts towards steps outside it), `frame_outside` (a
+frame's step not inside the frame's body below its band), `arrow_hidden` (an arrow not drawn, or whose
+part between its end steps' boxes is shorter than 10 px or comes within 4 px of another filled step)
+and `text_extent` (a
+label or frame name with a control character, or wider or taller than its box or band by the estimate
+of one 16 px line at 12 px per UTF-16 code unit). Each threshold is met within a millionth of a pixel
+(floating-point rounding of exact values does not refuse them).
+
+Refusals are `artifact_invalid` with `details.reason` from a closed list: `too_large`,
+`xml_invalid`, `xml_doctype`, `pages_unsupported`, `diagram_invalid`, `cell_invalid`,
+`duplicate_id`, `structure_invalid`, `geometry_invalid`, `markup_label`, `text_invalid`,
+`unmodeled_value`, `boxes_overlap`, `frame_outside`, `arrow_hidden`, `text_extent`, `constraint`. `check` on a `.drawio`
+file drawn by hand is therefore strict until artifact mode (Must 3) decides otherwise; every legal
+state the adapter writes reads as the host's own export. The request format
+`drawio` names it; a `.drawio` file for an Excalidraw world, or the reverse, is refused.
+
+**Declared structural constraints.** An application may declare constraints its files cannot
+break, from a closed list beside the world table (`src/world/constraints.ts`):
+`group-within-one-frame` (the live members of one group share one frame, or all have none) and
+`xml-text` (labels and frame names consist of XML 1.0 characters: tab, LF, CR, U+0020–U+D7FF,
+U+E000–U+FFFD, U+10000–U+10FFFF). draw.io declares both; Excalidraw none. For a world whose
+application declares one, the core refuses a transition whose result breaks it with
+`constraint_refused` (the state and its hash unchanged; the message names the constraint and the
+remedy, `details.constraint` names it), world validation refuses an initial state that breaks it in
+any variant case (`E_WORLD_INVALID`), the checker refuses such a history or submission
+(`artifact_invalid`, reason `constraint`), and the adapter refuses before writing.
+
 **Tasks from two scenes.** `practonaut tasks from-scenes <start> <goal> --out <dir>` (and the
 Player's Create workspace) derives a world/2 task: the goal is the exact multiset of step
 signatures (label, shape, colours, frame, grouped), arrows by their end labels and frames by name,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveAdapter } from '../../src/adapters/registry.ts';
-import type { ExcalidrawAdapter } from '../../src/adapters/excalidraw/index.ts';
+import type { MirrorAdapter } from '../../src/adapters/types.ts';
 import { runOracle, type OracleStep } from '../../src/authoring/from-scenes.ts';
 import { checkSubmission } from '../../src/checker/index.ts';
 import { Session } from '../../src/core/index.ts';
@@ -11,7 +11,7 @@ import type { World } from '../../src/world/types.ts';
 // Every reference solution and near miss of the library runs through the real pinned engine.
 // The verdict comes from the engine's own native export, read by the independent checker.
 const { world, library } = loadLibrary();
-async function play(adapter: ExcalidrawAdapter, slice: World, seed: number, taskId: string, steps: readonly OracleStep[]): Promise<string> {
+async function play(adapter: MirrorAdapter, slice: World, seed: number, taskId: string, steps: readonly OracleStep[]): Promise<string> {
   const resolved = runOracle(slice, seed, taskId, steps);
   assert.equal(resolved.ok, true, `${taskId}: sequence runs in the core`);
   if (!resolved.ok) return '';

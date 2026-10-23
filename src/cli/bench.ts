@@ -4,7 +4,7 @@ import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
 import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
-import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
+import { libraryPrefix, loadLibraryOf, type LibraryApp } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent, type AgentSpec } from '../bench/agents.ts';
 import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../bench/run.ts';
 import { existsSync } from 'node:fs';
@@ -62,6 +62,8 @@ export interface BenchArguments {
   agent: string;
   /** Library task ids (resolved here), or with `--world` the requested ids or `all` (resolved once the world is loaded). */
   tasks: string[] | 'all';
+  /** Without `--world`: the library the tasks name by their prefix (`drawio/`; none or `excalidraw/` is Excalidraw's). */
+  library?: LibraryApp;
   world?: string; oracles: string[];
   seeds: number[]; repeats: number; timeoutSeconds: number; maxActions: number; mirror: 'auto' | 'required' | 'off'; keepEnv: string[]; label?: string; out?: string;
   /** `--checks <n>`: checks allowed per run (a task's own limit can only be lowered). */
@@ -85,10 +87,14 @@ export function parseBenchArguments(args: string[]): BenchArguments {
   if (oracles.length && world === undefined) throw new RuntimeError('usage', cliText('benchOracleNeedsWorld'));
   const requested = parsed.flags['--tasks'] ?? 'all';
   const named = requested === 'all' ? 'all' as const : requested.split(',').map(value => value.trim()).filter(Boolean);
-  let tasks: string[] | 'all';
+  let tasks: string[] | 'all', libraryApp: LibraryApp | undefined;
   if (world === undefined) {
-    const library = loadLibrary().library.tasks.map(task => task.id);
-    tasks = named === 'all' ? library : named.map(value => value.startsWith(LIBRARY_PREFIX) ? value.slice(LIBRARY_PREFIX.length) : value);
+    // Each task names its library by prefix (PADR-0049 decision 8.2); a bench stores one world, so one library.
+    const prefixed = named === 'all' ? [{ app: 'excalidraw' as const, rest: 'all' }] : named.map(libraryPrefix);
+    if (new Set(prefixed.map(entry => entry.app)).size > 1) throw new RuntimeError('usage', cliText('benchLibraryMixed'));
+    libraryApp = prefixed[0]?.app ?? 'excalidraw';
+    const library = loadLibraryOf(libraryApp).library.tasks.map(task => task.id);
+    tasks = prefixed.length === 1 && prefixed[0]!.rest === 'all' ? library : prefixed.map(entry => entry.rest);
     for (const task of tasks) if (!library.includes(task)) throw new RuntimeError('task_unknown', cliText('tasksUnknown', { id: safeText(task) }));
     if (!tasks.length || new Set(tasks).size !== tasks.length) throw new RuntimeError('usage', cliText('benchTasks'));
   } else {
@@ -105,7 +111,7 @@ export function parseBenchArguments(args: string[]): BenchArguments {
   const label = parsed.flags['--label'];
   if (label !== undefined && label.length > MAX_LABEL) throw new RuntimeError('usage', cliText('benchLabel', { max: MAX_LABEL }));
   return {
-    agent: parsed.flags['--agent']!, tasks, ...(world !== undefined ? { world } : {}), oracles, seeds,
+    agent: parsed.flags['--agent']!, tasks, ...(world !== undefined ? { world } : {}), ...(libraryApp !== undefined ? { library: libraryApp } : {}), oracles, seeds,
     repeats: positiveInteger(parsed.flags['--repeats'], 1, '--repeats', 1000), timeoutSeconds: positiveInteger(parsed.flags['--timeout'], 300, '--timeout', 86_400),
     maxActions: positiveInteger(parsed.flags['--max-actions'], 50, '--max-actions', 10_000), mirror, keepEnv, ...(label !== undefined ? { label } : {}), ...(parsed.flags['--out'] ? { out: parsed.flags['--out'] } : {}),
     ...(parsed.flags['--checks'] !== undefined ? { checks: checksOption(parsed.flags['--checks']) } : {}),
@@ -117,10 +123,11 @@ export function parseBenchArguments(args: string[]): BenchArguments {
 
 /** The world, the benched tasks and their validated references. An own world's oracle files are read,
  * matched to its tasks and accepted only after the checker passes each for every planned seed. */
-export async function prepareBench(options: Pick<BenchArguments, 'world' | 'tasks' | 'oracles' | 'seeds'>, agent: { kind: string; name: string }): Promise<{ world: BenchWorld; tasks: string[]; references: Map<string, BenchReference> }> {
+export async function prepareBench(options: Pick<BenchArguments, 'world' | 'tasks' | 'oracles' | 'seeds' | 'library'>, agent: { kind: string; name: string }): Promise<{ world: BenchWorld; tasks: string[]; references: Map<string, BenchReference> }> {
   if (options.world === undefined) {
-    const tasks = options.tasks === 'all' ? loadLibrary().library.tasks.map(task => task.id) : options.tasks;
-    return { world: await libraryBenchWorld(), tasks, references: libraryReferences(tasks) };
+    const app = options.library ?? 'excalidraw';
+    const tasks = options.tasks === 'all' ? loadLibraryOf(app).library.tasks.map(task => task.id) : options.tasks;
+    return { world: await libraryBenchWorld(app), tasks, references: libraryReferences(tasks, app) };
   }
   const world = await ownBenchWorld(options.world);
   const tasks = resolveWorldTasks(world.world, options.tasks);
@@ -161,7 +168,7 @@ export async function commandBench(args: string[]): Promise<number> {
   // World, tasks and references are settled (and an own oracle checked) before anything starts.
   const prepared = await prepareBench(options, agent);
   if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
-  const mirror = await resolveMirror(options.mirror);
+  const mirror = await resolveMirror(options.mirror, undefined, prepared.world.world);
   process.stderr.write(fallbackNotice(mirror));
   // Seeds that pick the same variant would inflate n without a board of their own: said, not refused.
   const notice = seedVariantNotice(prepared.world.world, prepared.tasks, options.seeds);
@@ -361,6 +368,14 @@ export async function commandReport(args: string[]): Promise<number> {
   return 0;
 }
 
+/** The values of `pending`, which run at once. When some fail, the first failure in their order is
+ * thrown, whichever failed first in time, so a refusal never depends on which one was quicker. */
+export async function inOrder<T>(pending: readonly Promise<T>[]): Promise<T[]> {
+  const settled = await Promise.allSettled(pending);
+  for (const result of settled) if (result.status === 'rejected') throw result.reason;
+  return settled.map(result => (result as PromiseFulfilledResult<T>).value);
+}
+
 /** practonaut compare <baseline.json> <candidate.json> [--html <out.html>] [--fail-on-regression]
  * [--verify] [--json]: compares two reports by the rules of PADR-0039 C. Incomparable reports are
  * refused naming every difference; with --fail-on-regression an instance regression exits 2. */
@@ -373,7 +388,10 @@ export async function commandCompare(args: string[]): Promise<number> {
   // Each side goes by its label, else its file name (the page title says which is which).
   const named = (report: BenchReportView, path: string): string => report.label ?? basename(path).replace(/\.json$/i, '');
   const views = { baseline: toView(baseline), candidate: toView(candidate) };
-  const sides = { baseline: { report: views.baseline, verification: await level(baseline, baselinePath), name: named(views.baseline, baselinePath) }, candidate: { report: views.candidate, verification: await level(candidate, candidatePath), name: named(views.candidate, candidatePath) } };
+  // With --verify both sides are re-verified at once, each re-judging its runs in the checker's own
+  // processes; a side that fails is named as before, the baseline before the candidate.
+  const [baselineLevel, candidateLevel] = await inOrder([level(baseline, baselinePath), level(candidate, candidatePath)]) as [VerificationDetail, VerificationDetail];
+  const sides = { baseline: { report: views.baseline, verification: baselineLevel, name: named(views.baseline, baselinePath) }, candidate: { report: views.candidate, verification: candidateLevel, name: named(views.candidate, candidatePath) } };
   const language = getCliLanguage();
   const html = parsed.flags['--html'];
   let comparison;

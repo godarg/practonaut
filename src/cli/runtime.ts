@@ -1,4 +1,5 @@
-import { cliText } from './messages.ts';
+import { cliText, getCliLanguage } from './messages.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { chromiumCheck } from './doctor.ts';
 import { headlessShellDownload } from './chromium-download.ts';
 import { browserAdvice, chromiumStarts, sandboxFallbackNotice } from './browser-start.ts';
@@ -14,12 +15,17 @@ import { withClose } from "../adapters/browser/close.ts";
 import type { ApplicationAdapter } from "../adapters/types.ts";
 import type { Action, CheckerData, CheckerVerdict, Failure, World } from "../world/types.ts";
 import {ERROR_CODES} from "../world/types.ts";
+import {DRAWIO_REFUSALS} from "../checker/drawio.ts";
+import {CheckerError} from "../checker/errors.ts";
 import { loadCheckerBundle } from "../checker/bundle.ts";
 import type { ConditionTrace, TraceEntry } from "../checker/trace.ts";
 import { safeJson } from "./output.ts";
 import { canonicalJson, sha256Hex } from "../canonical/index.ts";
 import {buildExportEnvelope,nativeMatchesState,parseExportPair,ExportPairError} from '../host/export-pair.ts';
+import {nativeFormat,type NativeReading} from '../checker/formats.ts';
 import { inlineOptionValues } from './options.ts';
+import { resolvedDataPaths } from '../platform/paths.ts';
+import { appRuntimeFailure, appRuntimeMessage } from './app-runtime.ts';
 export class RuntimeError extends Error {
   readonly code: string;
   constructor(code:string,message:string){super(message);this.name="RuntimeError";this.code=code;}
@@ -40,7 +46,7 @@ export async function traceInProcess(world:World,session:string,timeline:readonl
  return result.trace;
 }
 /** OS process boundary: evaluator receives only data, with a V8 heap cap and a wall deadline. */
-export async function checkInProcess(world:World,input:string,settings:{seed?:number;taskId?:string;bundle?:CheckerData;trace?:readonly TraceEntry[]}={}):Promise<CheckerVerdict>{
+export async function checkInProcess(world:World,input:string,settings:{seed?:number;taskId?:string;bundle?:CheckerData;trace?:readonly TraceEntry[];reading?:NativeReading}={}):Promise<CheckerVerdict>{
  const extension=import.meta.url.endsWith(".ts")?"ts":"js";
  const worker=fileURLToPath(new URL(`../checker/main.${extension}`,import.meta.url));
  return new Promise((resolve,reject)=>{
@@ -52,7 +58,10 @@ export async function checkInProcess(world:World,input:string,settings:{seed?:nu
   child.stdout.on("data",(chunk:Buffer)=>{if(failure)return;size+=chunk.length;if(size>1024*1024)fail(new RuntimeError("checker_invalid",cliText("checkerOutput")));else stdout.push(chunk);});
   child.stderr.on("data",()=>{ /* Drain upstream diagnostics; never echo unknown content. */ });
   child.on("exit",()=>{if(failure){child.stdin.destroy();child.stdout.destroy();child.stderr.destroy();}});
-  child.on("close",code=>{if(settled)return;settled=true;clearTimeout(timer);if(failure){reject(failure);return;}try{const result=JSON.parse(Buffer.concat(stdout).toString()) as CheckerVerdict|{ok:false;error:Failure};if(!result.ok){const admitted=ERROR_CODES.includes(result.error?.code)?result.error.code:"checker_invalid";reject(new RuntimeError(admitted,cliText("checkerRejected",{code:admitted})));}else if(code!==0)reject(new RuntimeError("checker_invalid",cliText("checkerProcess")));else resolve(result);}catch{reject(new RuntimeError("checker_invalid",cliText("checkerProcess")));}});
+  child.on("close",code=>{if(settled)return;settled=true;clearTimeout(timer);if(failure){reject(failure);return;}try{const result=JSON.parse(Buffer.concat(stdout).toString()) as CheckerVerdict|{ok:false;error:Failure};if(!result.ok){const admitted=ERROR_CODES.includes(result.error?.code)?result.error.code:"checker_invalid";
+   // A .drawio refusal keeps its name from the closed list (PADR-0049 decision 6.8); nothing else is echoed.
+   const reason=(result.error?.details as {reason?:unknown}|undefined)?.reason,named=typeof reason==="string"&&(DRAWIO_REFUSALS as readonly string[]).includes(reason)?`${admitted}: ${reason}`:admitted;
+   reject(new RuntimeError(admitted,cliText("checkerRejected",{code:named})));}else if(code!==0)reject(new RuntimeError("checker_invalid",cliText("checkerProcess")));else resolve(result);}catch{reject(new RuntimeError("checker_invalid",cliText("checkerProcess")));}});
   child.stdin.on("error",()=>{});child.stdin.end(JSON.stringify({world,input,options:settings}));
  });
 }
@@ -69,15 +78,18 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
  const mirror=flags["--mirror"]??"required";if(mirror!=="required"&&mirror!=="off")throw new RuntimeError("usage",cliText("mirrorUsage"));
  if(flags["--export"]&&mirror==="off")throw new RuntimeError("usage",cliText("nativeExport"));
  if(mirror==='required'){
-  if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', headlessShellDownload()));
-  const started=await chromiumStarts();if(!started.ok&&started.budget)throw started.budget;if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
+  // A downloaded app runtime is checked first, before any browser check or start (PADR-0049 decision 1.3).
+  if(registration.runtime==='downloaded'){const status=await registration.runtimeStatus!((await resolvedDataPaths()).home);if(!status.ok)throw new RuntimeError(status.code,appRuntimeMessage(registration,status));}
+  if(!(await chromiumCheck(true)).ok)throw new RuntimeError('browser_runtime_missing',cliText('browserRuntimeMissing', { ...headlessShellDownload(), app: appDisplayName(registration.id, getCliLanguage()) }));
+  const started=await chromiumStarts(undefined,registration.sandbox);if(!started.ok&&started.budget)throw started.budget;if(!started.ok)throw new RuntimeError('browser_start_failed',cliText('browserStartFailed',{app:appDisplayName(registration.id,getCliLanguage()),detail:started.detail,advice:browserAdvice()}));process.stderr.write(sandboxFallbackNotice(started));
  }
  let adapter:ApplicationAdapter|undefined;
  const steps:Array<{step:number;hash:string}>=[];
  // The close runs under the close contract (PADR-0050): an abandoned close does not fail a run that
  // succeeded, and a close that fails or is abandoned never replaces the run's own failure (issue #64).
  return withClose(async()=>{
-  if(mirror==="required")adapter=await registration.create(session.state);
+  // The adapter's own start checks the runtime again; a runtime changed since is reported by its code.
+  if(mirror==="required")adapter=await registration.create(session.state).catch((error:unknown)=>{const runtime=appRuntimeFailure(error,registry);throw runtime?new RuntimeError(runtime.code,runtime.message):error;});
   for(const input of raw){const action=input as Action;const before=session.state;const tentative=apply(session.world,before,action,{seed,prefix:session.log.map(e=>e.action)});
    if(!tentative.ok)throw new RuntimeError(tentative.error.code,tentative.error.message);
    if(adapter){const real=await adapter.apply({before,after:tentative.state,action});if(!real.ok)throw new RuntimeError(real.error.code,real.error.message);}
@@ -88,10 +100,11 @@ export async function commandRun(args:string[],registry:AdapterRegistry=ADAPTER_
   const data=session.serialize();if(flags["--state-out"])await atomicFile(flags["--state-out"],JSON.stringify(data)+"\n");
   let exported:Record<string,string>|undefined;
   if(adapter&&flags["--export"]){const artifact=await adapter.exportArtifact();const prefix=flags["--export"];
-   if(!nativeMatchesState(world,artifact.native,data.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
-   const pair=buildExportEnvelope(data,steps.length,artifact.native);
-   await atomicFile(prefix+".excalidraw",artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
-   exported={native:prefix+".excalidraw",svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
+   if(!nativeMatchesState(world,artifact.native,data.state,'own-export'))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+   // The native file keeps its app's own extension (`.excalidraw`, `.drawio`; PADR-0049 decision 10.1).
+   const pair=buildExportEnvelope(data,steps.length,artifact.native,world.app),extension=nativeFormat(world.app).extension;
+   await atomicFile(prefix+extension,artifact.native);await atomicFile(prefix+".svg",artifact.svg);await atomicFile(prefix+".session.json",pair.session.utf8);
+   exported={native:prefix+extension,svg:prefix+".svg",pair:prefix+".session.json",nativeSha256:artifact.nativeSha256,svgSha256:artifact.svgSha256,pairSha256:pair.session.sha256};}
   process.stdout.write(safeJson({ok:true,world:{id:world.id,version:world.version},taskId,seed,mode:mirror==="required"?"real-engine":"model-only",initialHash,steps,endHash:session.hash,state:data,...(exported?{exported}:{})})+"\n");return 0;
  },deadline=>adapter?.close(deadline));
 }
@@ -100,17 +113,29 @@ export async function commandCheck(args:string[]):Promise<number>{
  if(!flags["--world"])throw new RuntimeError("usage",cliText("checkUsage"));
  const world=loadWorldPackage(await readWorldPackageFile(flags["--world"]));
  const input=await readArchiveFile(path);const bundle=flags["--bundle"]?await loadCheckerBundle(flags["--bundle"],world):undefined;
- const parsed=parseJsonEntry(input,"submission.json",64) as Record<string,unknown>;
+ // A draw.io file is XML and never a session file; anything else is bounded JSON (PADR-0049 decision 6).
+ const xml=nativeFormat(world.app).id==='drawio'&&/^\s*</.test(input.subarray(0,64).toString('utf8'));
+ const parsed=xml?undefined:parseJsonEntry(input,"submission.json",64) as Record<string,unknown>;
+ /** The world app's own native file, without Practonaut's annotation. */
+ const native=xml||(nativeFormat(world.app).id==='excalidraw'&&parsed?.type==='excalidraw'&&parsed.practonaut===undefined);
  if(flags['--pair']) {
-  if(!parsed||parsed.type!=='excalidraw'||parsed.practonaut!==undefined)throw new RuntimeError('artifact_invalid',cliText('pairNativeRequired'));
+  if(!native)throw new RuntimeError('artifact_invalid',cliText('pairNativeRequired',{app:appDisplayName(world.app.adapterId,getCliLanguage())}));
   let pair;
   try{pair=parseExportPair(await readArchiveFile(flags['--pair']),world,input);}catch(error){if(error instanceof ExportPairError)throw new RuntimeError(error.code,cliText('pairInvalid'));throw error;}
   if((flags['--seed']!==undefined&&integer(flags['--seed'])!==pair.seed)||(flags['--task']!==undefined&&flags['--task']!==pair.taskId))throw new RuntimeError('artifact_invalid',cliText('exportContradiction'));
-  if(!nativeMatchesState(world,input,pair.session.state))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
   const settings={seed:pair.seed,taskId:pair.taskId,...(bundle?{bundle}:{})};
-  // This separate process runs the independent history interpreter, not the production Session replay.
+  // The session first: this separate process runs the independent history interpreter, not the
+  // production Session replay, so its state is one the world reaches by legal actions.
   await checkInProcess(world,canonicalJson(pair.session),settings);
-  const verdict=await checkInProcess(world,input.toString('utf8'),settings);
+  // The pair's native file is read as the session's own export (PADR-0049 decision 6.8, review m4): it
+  // must be exactly that replayed state, so its verdict is the session's, and the host's own download of
+  // a legal state checks. A file the reader refuses says why by name; one that reads as another state
+  // is a mismatch. Without --pair a .drawio file is read in submission mode.
+  try{nativeFormat(world.app).parse(world.schema,input,'own-export');}
+  catch(error){if(!(error instanceof CheckerError)||error.code!=='artifact_invalid')throw error;const reason=(error.details as {reason?:unknown}|undefined)?.reason;
+   throw new RuntimeError('artifact_invalid',cliText('checkerRejected',{code:typeof reason==='string'&&(DRAWIO_REFUSALS as readonly string[]).includes(reason)?`artifact_invalid: ${reason}`:'artifact_invalid'}));}
+  if(!nativeMatchesState(world,input,pair.session.state,'own-export'))throw new RuntimeError('artifact_invalid',cliText('pairStateMismatch'));
+  const verdict=await checkInProcess(world,input.toString('utf8'),{...settings,reading:'own-export'});
   process.stdout.write(safeJson({...verdict,binding:{kind:'export-pair',revision:pair.revision,hash:pair.hash,sessionSha256:pair.sessionSha256,nativeSha256:pair.nativeSha256,origin:'unattested'}})+'\n');return verdict.passed?0:2;
  }
  let routing:{seed:number;taskId:string}|undefined;
@@ -121,8 +146,9 @@ export async function commandCheck(args:string[]):Promise<number>{
   if((flags["--seed"]!==undefined&&integer(flags["--seed"])!==routing.seed)||(flags["--task"]!==undefined&&flags["--task"]!==routing.taskId))throw new RuntimeError("artifact_invalid",cliText("exportContradiction"));
  }
  const settings={...(routing??{}),...(flags["--seed"]===undefined?{}:{seed:integer(flags["--seed"])}),...(flags["--task"]===undefined?{}:{taskId:flags["--task"]}),...(bundle===undefined?{}:{bundle})};
- if(parsed?.type==='excalidraw'&&!routing&&(flags['--seed']===undefined||flags['--task']===undefined))throw new RuntimeError('artifact_invalid',cliText('nativeRoutingRequired'));
+ const nativeFile=xml||parsed?.type==='excalidraw';
+ if(nativeFile&&!routing&&(flags['--seed']===undefined||flags['--task']===undefined))throw new RuntimeError('artifact_invalid',cliText('nativeRoutingRequired'));
  const verdict=await checkInProcess(world,input.toString("utf8"),settings);
- const binding=parsed?.type==='excalidraw'?{kind:'manual-unbound',origin:'unattested'}:{kind:'session-history',origin:'unattested'};
+ const binding=nativeFile?{kind:'manual-unbound',origin:'unattested'}:{kind:'session-history',origin:'unattested'};
  process.stdout.write(safeJson({...verdict,binding})+"\n");return verdict.passed?0:2;
 }

@@ -72,7 +72,7 @@ test('no rate is shown finer than 1/n, in the terminal or on the page, in Englis
   }
 });
 
-test('engine SVG: only geometry and paint survive; scripts, links, styles, fonts and foreign content are dropped; text is escaped', () => {
+test('engine SVG: only geometry, paint and font names survive; scripts, links, styles, font files and foreign content are dropped; text is escaped', () => {
   // The shape of Excalidraw 0.18's export (as written by the pinned engine), with hostile additions.
   const exported = '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 130" width="820" height="130" onload="alert(1)"><!-- svg-source:excalidraw --><metadata></metadata>'
     + '<defs><style class="style-fonts">@font-face { font-family: Cascadia; src: url(data:font/woff2;base64,AAAA); }</style><mask id="m"><rect x="0" y="0" width="10" height="10" fill="#fff"/></mask></defs>'
@@ -80,7 +80,7 @@ test('engine SVG: only geometry and paint survive; scripts, links, styles, fonts
     + '<g stroke-linecap="round" transform="translate(20 20) rotate(0 90 45)" mask="url(#m)"><path d="M0 0 C36 0, 72 0, 180 0" stroke="#1e1e1e" stroke-width="2" fill="none" style="fill: red"></path></g>'
     + '<a href="https://example.invalid/"><text>link</text></a><image href="https://example.invalid/x.png"/>'
     + '<g transform="translate(80.7 53) rotate(0 29.3 12)"><text x="29.3" y="18.9" font-family="Cascadia, Segoe UI Emoji" font-size="20px" fill="#1e1e1e" text-anchor="middle" style="white-space: pre;">&lt;img src=x onerror=alert(3)&gt; &amp; &#60;b&#62;</text></g>'
-    + '<text x="1" y="1">evil&#x202E;txt.exe</text>'
+    + '<text x="1" y="1">evil&#x202E;txt.exe</text><text x="2" y="2" font-family="url(https://example.invalid/f.woff)">u</text><text x="3" y="3" font-family="&apos;Evil&apos;">q</text>'
     + '<rect x="1" y="1" width="2" height="2" fill="url(https://example.invalid/p)" stroke="javascript:alert(4)" xlink:href="#m"/></svg>';
   const markup = engineSvgMarkup(exported, { prefix: 'run1', label: 'Final "board" <b>', classes: 'engine-board' });
   // Its size class sets the floor (0.6 px per board unit) and the cap (1 px per unit) of an 820-unit picture.
@@ -90,13 +90,16 @@ test('engine SVG: only geometry and paint survive; scripts, links, styles, fonts
   // Placed in a shared viewBox: the drawing moves by the offset, the viewBox and size class are the pair's.
   const placed = engineSvgMarkup(exported, { prefix: 'run1', label: 'x', classes: 'engine-board', offset: [80, -20], viewBox: { x: 0, y: -20, width: 1250, height: 400 } });
   assert.match(placed, /^<svg viewBox="0 -20 1250 400" class="engine-board pw-13" role="img" aria-label="x"><g transform="translate\(80 -20\)"><defs>/);
-  for (const forbidden of ['<script', 'onload', 'alert(2)', '<foreignObject', 'html', 'style', 'data:', '<a ', 'link', '<image', 'https:', 'javascript', 'xlink', 'font-family', '<metadata']) assert.equal(markup.includes(forbidden), false, forbidden);
+  for (const forbidden of ['<script', 'onload', 'alert(2)', '<foreignObject', 'html', 'style', 'data:', '<a ', 'link', '<image', 'https:', 'javascript', 'xlink', '@font-face', 'Evil', '<metadata']) assert.equal(markup.includes(forbidden), false, forbidden);
+  // A font name is kept as the app wrote it (review D1-F5: draw.io's picture keeps its own font); the page
+  // loads no font file, and a value that is not a plain name (a URL, a quoted name) is dropped.
+  assert.match(markup, /<text x="2" y="2">u<\/text><text x="3" y="3">q<\/text>/);
   assert.match(markup, /<mask id="run1-m">/); assert.match(markup, /mask="url\(#run1-m\)"/);
   // The export's background (a rectangle over the whole viewBox) is paper, not content: left out.
   assert.equal(markup.includes('width="820" height="130" fill="#ffffff"'), false);
   assert.match(markup, /<rect x="0" y="0" width="10" height="10" fill="#fff"><\/rect><\/mask>/, 'a rectangle inside the drawing stays');
   assert.match(markup, /<path d="M0 0 C36 0, 72 0, 180 0" stroke="#1e1e1e" stroke-width="2" fill="none"><\/path>/);
-  assert.match(markup, /<text x="29.3" y="18.9" font-size="20px" fill="#1e1e1e" text-anchor="middle">&lt;img src=x onerror=alert\(3\)&gt; &amp; &lt;b&gt;<\/text>/);
+  assert.match(markup, /<text x="29.3" y="18.9" font-family="Cascadia, Segoe UI Emoji" font-size="20px" fill="#1e1e1e" text-anchor="middle">&lt;img src=x onerror=alert\(3\)&gt; &amp; &lt;b&gt;<\/text>/);
   // A reference to anything but a local id is dropped, the element stays.
   assert.match(markup, /<rect x="1" y="1" width="2" height="2"><\/rect>/);
   // CSS names functions in any letter case: URL(…) and Url(…) are references too; only local ones stay,

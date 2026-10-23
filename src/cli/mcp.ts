@@ -10,7 +10,7 @@ import { safeText } from './output.ts';
 import { startHost } from '../host/server.ts';
 import { HOST_LIMITS } from '../host/limits.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
-import type { RunningHost } from '../host/protocol.ts';
+import type { HostView, RunningHost } from '../host/protocol.ts';
 import { inlineOptionValues } from './options.ts';
 import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
 import { deferCommandEnd } from './browser-exit.ts';
@@ -76,7 +76,7 @@ export async function commandMcp(args: string[]): Promise<number> {
     if (parsed.start) {
       const { world, taskId } = await resolvePracticeSource(parsed.start.task, parsed.start.taskId);
       const paths = await resolvedDataPaths(), seed = parsed.start.seed;
-      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror), (mode, notice) => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home, ...(notice ? { modelOnly: notice } : {}), ...(parsed.start!.checks !== undefined ? { checks: parsed.start!.checks } : {}) }));
+      const started = await startHostWithMirror(parsed.start.mirror, await resolveMirror(parsed.start.mirror, undefined, world), (mode, notice) => startHost(world, { seed, taskId, mirror: mode, tokenDirectory: paths.host, localDirectory: paths.home, ...(notice ? { modelOnly: notice } : {}), ...(parsed.start!.checks !== undefined ? { checks: parsed.start!.checks } : {}) }));
       host = started.host; const mirror = started.mirror;
       process.stderr.write(fallbackNotice(mirror));
       // The session credential stays in this process; the one-use watch link goes to stderr only.
@@ -88,10 +88,15 @@ export async function commandMcp(args: string[]): Promise<number> {
       config = { host: parsed.attach!.host!, ...(parsed.attach!.tokenFile === undefined ? {} : { tokenFile: parsed.attach!.tokenFile }), ...(token === undefined ? {} : { token }) };
     }
     const bridge = await createBridge(config);
-    // The act tool lists exactly the session world's actions; without a host reply the generic
-    // vocabulary stays and the host still rejects anything its world does not define.
-    const listed = await bridge.call("list_actions", {});
-    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined), ...(listed.ok ? { actions: listed.value } : {}), ...(parsed.callLog ? { callLog: parsed.callLog } : {}) });
+    // One start-up read of the host's view (the bench counts exactly one): the act tool lists exactly
+    // the session world's actions, and the instructions name the app the world names (PADR-0049
+    // decision 1.5). Without a host reply the generic vocabulary stays, no app is named, and the host
+    // still rejects anything its world does not define.
+    const viewed = await bridge.call("observe", { detail: "full", lang: "both", history: 0 });
+    const view = viewed.ok ? viewed.value as unknown as HostView : undefined;
+    const listed = view ? { ok: true as const, value: view.actions } : { ok: false as const };
+    const adapterId = view?.world.adapterId;
+    const handle = startMcpStdio(bridge, { onerror: () => { process.stderr.write(cliText("mcpInput")); }, schemas: toolSchemasFor(listed.ok ? listed.value : undefined), ...(listed.ok ? { actions: listed.value } : {}), ...(typeof adapterId === 'string' ? { adapterId } : {}), ...(parsed.callLog ? { callLog: parsed.callLog } : {}) });
     let launcher: Awaited<ReturnType<typeof writePreferredLauncher>> | undefined;
     if (parsed.start?.open && host) {
       try {

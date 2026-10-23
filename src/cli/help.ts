@@ -31,13 +31,14 @@ Usage:
 
 Practice:
   play [world|task]  start a practice session and open it in your browser
-  tasks list|show    the bundled Excalidraw task library (play <task-id> opens one)
+  tasks list|show    the bundled Excalidraw task library (play <task-id> opens one; drawio/<task-id>: on draw.io)
   serve [world]      same as play; for scripts use --no-open
   mcp --task <task>  MCP server (stdio) with its own session, for any MCP agent
   bench --agent <a>  score an agent on the task library or your own world (independent checker)
   report <file>      show a bench report as a table, an HTML page, JUnit XML or a result card
   compare <a> <b>    compare two bench reports instance by instance (instance regressions, McNemar)
   setup              download the Chromium headless shell once for the real Excalidraw mirror
+                     (--app drawio: also the pinned draw.io release, on request)
   doctor             check the environment
 
 Worlds and results:
@@ -63,13 +64,14 @@ Verwendung:
 
 Üben:
   play [Welt|Aufgabe] Übungssitzung starten und im Browser öffnen
-  tasks list|show    die mitgelieferte Excalidraw-Aufgabenbibliothek (play <Aufgaben-ID> öffnet eine)
+  tasks list|show    die mitgelieferte Excalidraw-Aufgabenbibliothek (play <Aufgaben-ID> öffnet eine; drawio/<Aufgaben-ID>: auf draw.io)
   serve [Welt]       wie play; für Skripte --no-open verwenden
   mcp --task <Aufg.> MCP-Server (stdio) mit eigener Sitzung, für jeden MCP-Agenten
   bench --agent <a>  Agenten an der Aufgabenbibliothek oder eigener Welt bewerten (unabhängiger Prüfer)
   report <Datei>     Bench-Bericht als Tabelle, HTML-Seite, JUnit-XML oder Ergebniskarte zeigen
   compare <a> <b>    zwei Bench-Berichte Instanz für Instanz vergleichen (Instanz-Regressionen, McNemar)
   setup              Chromium Headless Shell einmalig für die echte Excalidraw-Spiegelung laden
+                     (--app drawio: auf Wunsch auch das gepinnte draw.io-Release)
   doctor             Umgebung prüfen
 
 Welten und Ergebnisse:
@@ -129,26 +131,28 @@ Ctrl+C beendet die Sitzung. Exporte sind normale Browser-Downloads.`,
 };
 
 const TASKS: Text = {
-  en: `Usage: practonaut tasks list [--json]
-       practonaut tasks show <task-id> [--oracle] [--json]
+  en: `Usage: practonaut tasks list [drawio/all] [--json]
+       practonaut tasks show [drawio/]<task-id> [--oracle] [--json]
        practonaut tasks from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>
                                     [--task <id>] [--layout relative] [--align] [--tolerance <px>]
                                     [--force] [--json]
 
 list and show describe the bundled Excalidraw task library; --oracle adds the reference solution.
+drawio/all and drawio/<task-id> name the same tasks in the draw.io library (play drawio/<task-id>).
 from-scenes turns two drawings into a task: the difference becomes the goal (counts, labels, shapes,
 colours, frames, groups and arrows by their end labels; --layout relative adds left-to-right order,
 --align keeps aligned rows and columns within --tolerance, default 8 px), with error classes, a
 reference solution and near misses. It writes <dir>/world/world.json (practise it with
 practonaut play <dir>/world) and <dir>/oracle.json beside it. The goal scene must pass the
 independent checker and the start scene must fail, or nothing is written.`,
-  de: `Verwendung: practonaut tasks list [--json]
-            practonaut tasks show <Aufgaben-ID> [--oracle] [--json]
+  de: `Verwendung: practonaut tasks list [drawio/all] [--json]
+            practonaut tasks show [drawio/]<Aufgaben-ID> [--oracle] [--json]
             practonaut tasks from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>
                                          [--task <id>] [--layout relative] [--align] [--tolerance <px>]
                                          [--force] [--json]
 
 list und show beschreiben die mitgelieferte Excalidraw-Aufgabenbibliothek; --oracle zeigt die Referenzlösung.
+drawio/all und drawio/<Aufgaben-ID> nennen dieselben Aufgaben in der draw.io-Bibliothek (play drawio/<Aufgaben-ID>).
 from-scenes macht aus zwei Zeichnungen eine Aufgabe: Der Unterschied wird zum Ziel (Anzahlen, Beschriftungen,
 Formen, Farben, Rahmen, Gruppen und Pfeile über die Beschriftungen ihrer Enden; --layout relative ergänzt die
 Reihenfolge von links nach rechts, --align hält ausgerichtete Zeilen und Spalten innerhalb von --tolerance,
@@ -336,16 +340,28 @@ Lauf enthält. --verify rechnet jeden Bericht zuerst aus seinem eigenen Ordner n
 statische Seite (auch für Berichte, die sich nicht vergleichen lassen).`,
   },
   setup: {
-    en: `Usage: practonaut setup
+    en: `Usage: practonaut setup [--app drawio [--from <file>]]
 
 Downloads the one thing the real Excalidraw mirror needs, Playwright's pinned Chromium headless shell
 (about 105 to 130 MB depending on the platform; the exact size is printed first), or reuses its cache.
-Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.`,
-    de: `Verwendung: practonaut setup
+Without it, practice runs model-only. Installing Practonaut never downloads a browser by itself.
+
+--app drawio also downloads the pinned, unmodified draw.io release (draw.war, 48,442,174 bytes), or
+checks a copy given with --from, and keeps it only when its size and SHA-256 match the pin. Nothing
+else ever downloads it. draw.io's mirror needs the Chromium sandbox; setup says when this system
+refuses it. draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or
+sponsored by draw.io Ltd or draw.io AG.`,
+    de: `Verwendung: practonaut setup [--app drawio [--from <Datei>]]
 
 Lädt das Einzige, was die echte Excalidraw-Spiegelung braucht: Playwrights gepinnte Chromium Headless Shell
 (etwa 105 bis 130 MB je nach Plattform; die genaue Größe steht vorher da), oder nutzt den Cache.
-Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.`,
+Ohne sie läuft Übung nur im Modell. Die Installation von Practonaut lädt nie selbst einen Browser.
+
+--app drawio lädt zusätzlich das gepinnte, unveränderte draw.io-Release (draw.war, 48.442.174 Bytes)
+oder prüft eine mit --from übergebene Kopie und behält es nur, wenn Größe und SHA-256 dem Pin
+entsprechen. Nichts anderes lädt es je. Die draw.io-Spiegelung braucht die Chromium-Sandbox; setup
+sagt, wenn dieses System sie verweigert. draw.io ist eine eingetragene Marke; Practonaut ist mit
+draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert.`,
   },
   doctor: {
     en: `Usage: practonaut doctor [--adapter] [--dev] [--json]

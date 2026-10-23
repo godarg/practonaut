@@ -16,8 +16,16 @@ import { launchBrowser } from "./browser.ts";
 import { startHost } from "../../src/host/server.ts";
 import { validateWorld } from "../../src/world/schema.ts";
 import { TOKEN_HEADER, type DemonstrationStatus, type HostReply, type HostView, type ModelOnlyNotice, type RunningHost } from "../../src/host/protocol.ts";
-import type { World } from "../../src/world/types.ts";
+import type { State, World } from "../../src/world/types.ts";
 import { v2Task, v2World } from "./world-v2.ts";
+import { createPracticeController, type PracticeSessionOptions } from "../../src/host/session.ts";
+import { createProductionMirror, type MirrorFactory, type PracticeMirror } from "../../src/host/mirror.ts";
+import { ADAPTER_REGISTRY, type AdapterRegistry } from "../../src/adapters/registry.ts";
+import { createDrawioAdapter } from "../../src/adapters/drawio/index.ts";
+import { FILL_HEX, FRAME_PAD, FRAME_TITLE, STROKE_HEX, freshMemory, modelXml, writeCells } from "../../src/adapters/drawio/writer.ts";
+import { CLOSED } from "../../src/adapters/browser/close.ts";
+import { substituteTokens, variantIndex, variantTokens } from "../../src/world/variant.ts";
+import { drawioAvailability, drawioLibrary, type DrawioAvailability } from "./drawio.ts";
 
 export type Theme = "light" | "dark";
 export type Language = "en" | "de";
@@ -66,12 +74,16 @@ export interface PlayerSession {
 /** Host with the editor and the create flow (phase3), Chromium with reduced motion, offline. Like
  * `npx practonaut`, the bundled example offers its demonstration, and a model-only session says why;
  * another `world` (a task with limits) has no demonstration. */
-export async function startPlayer(options: { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off'; modelOnly?: ModelOnlyNotice; world?: World; taskId?: string; checks?: number } = {}): Promise<PlayerSession> {
+export interface PlayerOptions { width?: number; height?: number; theme?: Theme; browser?: Browser;phase3?:boolean;mirror?:'required'|'off'; modelOnly?: ModelOnlyNotice; world?: World; taskId?: string; checks?: number;
+  /** The mirror the host starts instead of the registry's (the draw.io states' stand-in or seamed runtime). */
+  mirrorFactory?: MirrorFactory }
+export async function startPlayer(options: PlayerOptions = {}): Promise<PlayerSession> {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "pn-design-"));
   const world = options.world ?? validateWorld(JSON.parse(readFileSync("examples/worlds/flow-diagram/world.json", "utf8")));
   const gate = demonstrationGate(), mirror = options.mirror ?? 'required';
   const host = await startHost(world, { phase3: options.phase3??true,mirror,taskId: options.taskId ?? "T3", seed: 42, localDirectory: directory, tokenDirectory: join(directory, "credentials"), requireOffline: process.env.PN_REQUIRE_OFFLINE === "1",
-    demonstration: true, demonstrationPause: gate.pause, ...(mirror === 'off' ? { modelOnly: options.modelOnly ?? MISSING_CHROMIUM } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) });
+    demonstration: true, demonstrationPause: gate.pause, ...(mirror === 'off' ? { modelOnly: options.modelOnly ?? MISSING_CHROMIUM } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}),
+    ...(options.mirrorFactory ? { controllerFactory: (value: World, serve?: object) => createPracticeController(value, (serve ?? {}) as PracticeSessionOptions, options.mirrorFactory!) } : {}) });
   const browser = options.browser ?? await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: options.width ?? 1280, height: options.height ?? 900 }, colorScheme: options.theme ?? "light", reducedMotion: "reduce", serviceWorkers: "block" });
   const external: string[] = [];
@@ -781,6 +793,179 @@ export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',labe
 } },
 { id: 'demo-running-model-only', label: 'Demonstration playing in a model-only session', workspace: 'board', view: '.canvas', async enter(s) { await modelBaseline(s); await demonstrate(s, 'running'); } },
 { id: 'demo-finished-model-only', label: 'Demonstration finished in a model-only session', workspace: 'board', view: '[data-testid=check-result]', async enter(s) { await modelBaseline(s); await demonstrate(s, 'finished'); } }];
+
+// ---------------------------------------------------------------------------------------------
+// draw.io sessions (PADR-0049): the committed draw.io library on its rename-frame task (a frame, two
+// steps and an arrow). Mirrored by the real draw.io where draw.war is installed for the tests
+// (PN_DRAWIO_HOME, default `.local/drawio-home/`, as for the draw.io layer); elsewhere, as on CI, by a
+// stand-in that keeps the confirmed state, writes the adapter's own model as the native file and draws
+// a picture that says it is a stand-in. The session says which (`picture`); only `drawio-real-tool`
+// shows that picture.
+// ---------------------------------------------------------------------------------------------
+export const DRAWIO_TASK = "rename-frame";
+/** What `npx practonaut play drawio/<task>` without draw.war tells the Player (src/cli/serve.ts). */
+export const MISSING_DRAWIO: ModelOnlyNotice = { reason: "missing", command: "npx practonaut setup --app drawio", download: { name: "draw.io 32.4.1", megabytes: 48 } };
+export type DrawioPicture = { kind: "drawio" } | { kind: "stand-in"; reason: string };
+export interface DrawioSession extends PlayerSession { picture: DrawioPicture | null }
+
+let drawioRuntime: Promise<DrawioAvailability> | undefined;
+/** draw.io sessions on the Player: mirrored (the default) or model-only with `modelOnly`'s notice. */
+export async function startDrawioPlayer(options: Omit<PlayerOptions, "world" | "phase3" | "mirrorFactory" | "browser"> = {}): Promise<DrawioSession> {
+  const mirrored = (options.mirror ?? "required") === "required";
+  const browser = await chromium.launch({ headless: true });
+  try {
+    let picture: DrawioPicture | null = null, mirrorFactory: MirrorFactory | undefined;
+    if (mirrored) {
+      const found = await (drawioRuntime ??= drawioAvailability());
+      if (found.ok) {
+        const runtimePath = found.runtime.runtimePath;
+        const registry: AdapterRegistry = { ...ADAPTER_REGISTRY, drawio: { ...ADAPTER_REGISTRY.drawio, create: (initial, adapterOptions, probe) => createDrawioAdapter(initial, adapterOptions, probe, { runtimePath }) } };
+        mirrorFactory = (state, world, start) => createProductionMirror(state, undefined, world, registry, start?.signal);
+        picture = { kind: "drawio" };
+      } else {
+        mirrorFactory = async state => standInDrawioMirror(state, next => standInPng(browser, next));
+        picture = { kind: "stand-in", reason: found.skip };
+      }
+    }
+    const s = await startPlayer({ ...options, world: drawioLibrary().world, taskId: options.taskId ?? DRAWIO_TASK, phase3: false, browser,
+      ...(mirrorFactory ? { mirrorFactory } : { modelOnly: options.modelOnly ?? MISSING_DRAWIO }) });
+    return { ...s, picture, async close() { try { await s.close(); } finally { await browser.close(); } } };
+  } catch (error) { await browser.close(); throw error; }
+}
+
+/** The draw.io mirror's stand-in: the confirmed state kept, the adapter's own model as the native file. */
+function standInDrawioMirror(initial: State, picture: (state: State) => Promise<Uint8Array>): PracticeMirror {
+  let state = structuredClone(initial);
+  const confirmed = (next: State) => { state = structuredClone(next); return { ok: true as const, state: structuredClone(next), warnings: [] }; };
+  return {
+    readBack: "live",
+    apply: async transition => confirmed(transition.after),
+    replace: async next => confirmed(next),
+    snapshot: async () => structuredClone(state),
+    png: async () => picture(state),
+    exportNative: async () => `<mxfile><diagram id="p">${modelXml(writeCells(state, freshMemory()))}</diagram></mxfile>`,
+    recover: async next => { state = structuredClone(next); },
+    close: async () => CLOSED,
+  };
+}
+const xmlText = (text: string): string => text.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+/** The stand-in picture: the live steps, frames and arrows in the colours the adapter writes, and a
+ * caption that says it is not draw.io's picture. */
+function standInSvg(state: State): string {
+  const live = Object.values(state.objects).filter(object => !object.deleted);
+  const steps = live.flatMap(object => object.type === "step" ? [object] : []);
+  const box = (ids: readonly string[]) => {
+    const members = steps.filter(step => ids.includes(step.id));
+    const x = Math.min(...members.map(m => m.x)), y = Math.min(...members.map(m => m.y));
+    return { x: x - FRAME_PAD, y: y - FRAME_PAD - FRAME_TITLE, width: Math.max(...members.map(m => m.x + m.width)) - x + 2 * FRAME_PAD, height: Math.max(...members.map(m => m.y + m.height)) - y + 2 * FRAME_PAD + FRAME_TITLE };
+  };
+  const frames = live.flatMap(object => object.type === "frame" && steps.some(step => step.frameId === object.id) ? [{ name: object.name, ...box(steps.filter(step => step.frameId === object.id).map(step => step.id)) }] : []);
+  const all = [...steps, ...frames];
+  const left = (all.length ? Math.min(...all.map(item => item.x)) : 0) - 20, top = (all.length ? Math.min(...all.map(item => item.y)) : 0) - 20;
+  const width = Math.max(left + 560, ...all.map(item => item.x + item.width + 20)) - left, height = Math.max(top + 40, ...all.map(item => item.y + item.height)) - top + 64;
+  const parts: string[] = [`<rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#ffffff"/>`];
+  for (const frame of frames) parts.push(`<rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" fill="none" stroke="#000000"/><line x1="${frame.x}" y1="${frame.y + FRAME_TITLE}" x2="${frame.x + frame.width}" y2="${frame.y + FRAME_TITLE}" stroke="#000000"/><text x="${frame.x + frame.width / 2}" y="${frame.y + 20}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold">${xmlText(frame.name)}</text>`);
+  for (const arrow of live) {
+    if (arrow.type !== "arrow") continue;
+    const from = steps.find(step => step.id === arrow.from), to = steps.find(step => step.id === arrow.to);
+    if (!from || !to) continue;
+    const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y), forward = horizontal ? to.x >= from.x : to.y >= from.y;
+    const [x1, y1, x2, y2] = horizontal ? [forward ? from.x + from.width : from.x, from.y + from.height / 2, forward ? to.x : to.x + to.width, to.y + to.height / 2] : [from.x + from.width / 2, forward ? from.y + from.height : from.y, to.x + to.width / 2, forward ? to.y : to.y + to.height];
+    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#000000" marker-end="url(#end)"/>`);
+  }
+  for (const step of steps) {
+    const stroke = "stroke" in step ? STROKE_HEX[step.stroke] : "#000000", fill = "fill" in step && step.fill !== "none" ? FILL_HEX[step.fill] : "#ffffff", shape = "shape" in step ? step.shape : "rectangle";
+    const cx = step.x + step.width / 2, cy = step.y + step.height / 2;
+    parts.push(shape === "ellipse" ? `<ellipse cx="${cx}" cy="${cy}" rx="${step.width / 2}" ry="${step.height / 2}" fill="${fill}" stroke="${stroke}"/>`
+      : shape === "diamond" ? `<path d="M ${cx} ${step.y} L ${step.x + step.width} ${cy} L ${cx} ${step.y + step.height} L ${step.x} ${cy} Z" fill="${fill}" stroke="${stroke}"/>`
+      : `<rect x="${step.x}" y="${step.y}" width="${step.width}" height="${step.height}" fill="${fill}" stroke="${stroke}"/>`,
+      `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12">${xmlText(step.label)}</text>`);
+  }
+  parts.push(`<text x="${left + 12}" y="${top + height - 16}" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="bold" fill="#555555">Stand-in picture: draw.io is not installed for this run</text>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} ${top} ${width} ${height}" width="${width}" height="${height}"><defs><marker id="end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z"/></marker></defs>${parts.join("")}</svg>`;
+}
+async function standInPng(browser: Browser, state: State): Promise<Uint8Array> {
+  const page = await browser.newPage();
+  try { await page.setContent(`<!doctype html><body style="margin:0">${standInSvg(state)}</body>`); return await page.locator("svg").screenshot(); }
+  finally { await page.close(); }
+}
+
+/** A fresh attempt in a draw.io session (mirrored or model-only): no sheet, no export, no check. */
+async function drawioBaseline(s: PlayerSession): Promise<void> {
+  await releaseExport(s); await closeSheets(s.page);
+  const view = await s.observe();
+  if (view.world.adapterId !== "drawio") throw new Error("draw.io states need startDrawioPlayer");
+  if (view.step || view.hintsOpened || view.log.length) { const reply = await s.post("reset", { confirmed: true }); if (!reply.ok) throw new Error(`reset refused: ${JSON.stringify(reply)}`); }
+  await s.page.reload(); await s.page.getByTestId("board").waitFor(); await settle(s.page);
+}
+/** The library's reference solution of the task, with the session's variant labels. */
+async function solveDrawio(s: PlayerSession): Promise<void> {
+  const { world, library } = drawioLibrary(), view = await s.observe();
+  const task = library.tasks.find(entry => entry.id === DRAWIO_TASK)!, tokens = variantTokens(world.variants.cases[variantIndex(world, view.seed)]!);
+  for (const step of task.oracle.steps) await act(s, { name: step.name, params: Object.fromEntries(Object.entries(step.params).map(([key, value]) => [key, typeof value === "string" ? substituteTokens(value, tokens) : value])) });
+}
+async function mirroredDrawio(s: PlayerSession): Promise<void> {
+  await drawioBaseline(s);
+  if ((await s.observe()).mirror !== "required") throw new Error("needs a mirrored draw.io session");
+}
+/** A mirrored draw.io session (`startDrawioPlayer()`), in this order or any other. */
+export const DRAWIO_STATES: StateDef[] = [
+  { id: "drawio-practice", label: "draw.io session, mirrored: the board, the workspace control and How this is checked", workspace: "board", async enter(s) { await mirroredDrawio(s); } },
+  { id: "drawio-workspaces", label: "draw.io session: the draw.io and Create segments unavailable (aria-disabled), the reason of the first read by keyboard", workspace: "board", view: ".shell-modes", async enter(s) {
+    await mirroredDrawio(s);
+    for (const id of ["mode-editor", "mode-author"]) if (await s.page.getByTestId(id).getAttribute("aria-disabled") !== "true") throw new Error(`${id} is offered in a draw.io session`);
+    if ((await s.page.getByTestId("mode-editor").innerText()).trim() !== "draw.io") throw new Error("the app segment does not name draw.io");
+    // Reached by keyboard, so its reason (its accessible name) is read; the focus ring shows it.
+    await s.page.getByTestId("mode-editor").focus(); await s.page.keyboard.press("Shift+Tab"); await s.page.keyboard.press("Tab");
+    if (await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset?.testid) !== "mode-editor") throw new Error("the draw.io segment is not reachable by keyboard");
+  } },
+  { id: "drawio-real-tool", label: "The real tool's picture: draw.io's own PNG at its own size on its light ground, or the stand-in picture where draw.war is not installed", workspace: "board", view: "[data-testid=tool-picture]", async enter(s) {
+    await mirroredDrawio(s); await s.page.getByTestId("show-tool").click(); await s.page.locator(".tool-image").waitFor();
+    await s.page.waitForFunction(() => { const image = document.querySelector<HTMLImageElement>(".tool-image"); return !!image && image.complete && image.naturalWidth > 0; });
+    await settle(s.page);
+  } },
+  { id: "drawio-constraint-refused", label: "A group across frames refused by draw.io's declared constraint: the board unchanged, the reason in words", workspace: "board", view: ".notice.error", async enter(s) {
+    await mirroredDrawio(s);
+    // b leaves the frame in membership and in place (below it, clear of it); then the Player's own group
+    // tool asks to group a (in the frame) with b, and the refusal is awaited, never raced (review D2-F5).
+    const b = (await s.observe()).state.objects.b as { x: number; y: number };
+    await act(s, { name: "set_frame", params: { id: "b", frameId: null } });
+    await act(s, { name: "move_step", params: { id: "b", x: b.x, y: b.y + 260 } });
+    await s.page.waitForFunction(() => document.querySelectorAll("[data-testid=history-entry]").length === 2);
+    await s.page.locator('[data-object-id="a"]').first().click(); await s.page.getByTestId("action-group").click();
+    await s.page.getByTestId("cancel-preview").waitFor();
+    await s.page.locator('[data-object-id="b"]').first().click();
+    await s.page.locator(".notice.error").waitFor({ timeout: 15_000 });
+    await s.page.getByTestId("cancel-preview").first().waitFor({ state: "hidden" });
+    await settle(s.page);
+  } },
+  { id: "drawio-rules-open", label: "Rules and origins open in a draw.io session: the rules and, last, the interim notice", workspace: "board", view: "[data-testid=app-notice]", async enter(s) {
+    await mirroredDrawio(s);
+    await s.page.locator("[data-testid=how-checked] details > summary").first().click();
+    await s.page.getByTestId("app-notice").waitFor();
+    await settle(s.page);
+  } },
+  { id: "drawio-check-pass", label: "Solved in a mirrored draw.io session: history confirmed by draw.io, the verdict", workspace: "board", view: "[data-testid=check-result]", async enter(s) {
+    await mirroredDrawio(s); await solveDrawio(s); await checkResult(s, "pass");
+  } },
+  { id: "drawio-export-ready", label: "Both export files ready: the session and practonaut.drawio", workspace: "board", view: "[data-testid=export-panel]", async enter(s) {
+    await mirroredDrawio(s); await s.page.getByTestId("export-prepare").click(); await s.page.getByTestId("export-ready").waitFor();
+    const download = s.page.waitForEvent("download"); await s.page.getByTestId("export-native").click();
+    const name = (await download).suggestedFilename();
+    if (name !== "practonaut.drawio") throw new Error(`the native file is ${name}`);
+  } },
+];
+const drawioBanner = (id: string, label: string): StateDef => ({ id, label, workspace: "board", async enter(s) { await drawioBaseline(s); await s.page.getByTestId("model-only-banner").waitFor(); } });
+/** Model-only draw.io sessions, one per notice the CLI gives (`startDrawioPlayer({ mirror: 'off', modelOnly: notice })`). */
+export const DRAWIO_MODEL_ONLY_SESSIONS: Array<{ notice: ModelOnlyNotice; states: StateDef[] }> = [
+  { notice: MISSING_DRAWIO, states: [
+    drawioBanner("drawio-model-only-runtime", "draw.war not installed: not yet checked against the real draw.io, setup --app drawio and its 48 MB download"),
+    { id: "drawio-export-model-only", label: "Model-only draw.io session refuses the native/session pair", workspace: "board", view: "[data-testid=export-panel]", async enter(s) { await drawioBaseline(s); await s.page.getByTestId("export-model-only").waitFor(); } },
+  ] },
+  { notice: MISSING_CHROMIUM, states: [drawioBanner("drawio-model-only-chromium", "draw.io session without Chromium: plain setup and its download")] },
+  { notice: { reason: "start", command: "npx practonaut doctor --adapter" }, states: [drawioBanner("drawio-model-only-start", "draw.io session whose sandboxed Chromium did not start")] },
+  { notice: { reason: "off" }, states: [drawioBanner("drawio-model-only-off", "draw.io session started with --mirror off")] },
+];
 
 /** Shell states need a fresh page whose bootstrap is held (loading) or already spent (failure). */
 export async function shellStates(s: PlayerSession, theme: Theme, language: Language, viewport: { width: number; height: number }, visit: (state: "shell-loading" | "shell-error", page: Page) => Promise<void>): Promise<void> {

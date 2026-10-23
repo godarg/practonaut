@@ -1,6 +1,9 @@
 import { stateHash } from "../canonical/index.ts";
 import { validateWorld, WorldError } from "./schema.ts";
 import type { Variant, World } from "./types.ts";
+import { substituteTokens, variantTokens } from "./tokens.ts";
+
+export { substituteTokens, variantTokens } from "./tokens.ts";
 
 /** The id and version a seed's variant choice is keyed by (PADR-0044 decision 3): the world/2 task set
  * when the world names one, else the world's own id and version. Both parts are hashed, so the default
@@ -12,29 +15,6 @@ export function variantKey(world: Pick<World, "id" | "version" | "taskSet">): { 
 export function variantIndex(world: World, seed: number): number {
   if (!Number.isSafeInteger(seed)) throw new WorldError("seed must be a safe integer");
   return parseInt(stateHash({ world: variantKey(world), seed }).slice(0, 8), 16) % world.variants.cases.length;
-}
-/** {{token}} values of one case: labels, the world/1 insertion position and world/2 params. */
-export function variantTokens(variant: Variant): Record<string, string> {
-  const tokens: Record<string, string> = { ...variant.labels };
-  if (variant.insertPosition !== undefined) tokens.insertPosition = String(variant.insertPosition);
-  for (const [key, value] of Object.entries(variant.params ?? {})) tokens[key] = String(value);
-  return tokens;
-}
-/** Exact single-pass token substitution; text inside a substituted value is never re-read. */
-export function substituteTokens(s: string, tokens: Record<string, string>): string {
-  let out = "";
-  let cursor = 0;
-  while (cursor < s.length) {
-    const open = s.indexOf("{{", cursor);
-    if (open < 0) return out + s.slice(cursor);
-    const close = s.indexOf("}}", open + 2);
-    if (close < 0) return out + s.slice(cursor);
-    out += s.slice(cursor, open);
-    const key = s.slice(open + 2, close);
-    out += Object.hasOwn(tokens, key) ? tokens[key]! : s.slice(open, close + 2);
-    cursor = close + 2;
-  }
-  return out;
 }
 export function selectVariant(world: World, seed: number): Variant {
   return structuredClone(world.variants.cases[variantIndex(world, seed)]!);

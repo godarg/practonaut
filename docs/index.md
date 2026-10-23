@@ -7,6 +7,7 @@
 | [Getting started](getting-started.md) | install, first task in the browser, the real-engine mirror, first agent, first bench |
 | [Agent guide](agent-guide.md) | connecting MCP agents, the seven tools, practice vs. bench |
 | [Benchmarks](benchmarks/README.md) | `practonaut bench` and `report`: options, agents, scoring, isolation, report format |
+| [draw.io acceptance evidence](benchmarks/drawio/README.md) | three runs of the draw.io layer, both libraries benched by the oracle with the real mirrors, and their comparison by task identity |
 | [Challenge tier, round 1](benchmarks/challenge/README.md) | the ladder gate of the five candidate families: [repair](benchmarks/challenge/repair-round1.md), [injection](benchmarks/challenge/injection-round1.md), [long-horizon](benchmarks/challenge/long-horizon-round1.md), [limited-checks](benchmarks/challenge/limited-checks-round1.md), [tight-budget](benchmarks/challenge/tight-budget-round1.md); none passes |
 | [Authoring guide](authoring-guide.md) | making tasks from two drawings or from a demonstration |
 | [Glossary](glossary.md) | terms used in code and docs |
@@ -20,6 +21,7 @@
 | [Session host](session-host.md) | local HTTP/SSE protocol, authentication, budgets, authoring routes, exports |
 | [Threat model](security/threat-model.md) | assets, boundaries, controls, limits, what is not promised |
 | [Excalidraw engine assets](adapters/excalidraw-assets.md) | engine build, patches, fonts and licenses |
+| [draw.io adapter](adapters/drawio.md) | `setup --app drawio`, the runtime check, serving, protocol, mapping, constraints, the `.drawio` reader, licence, platform status |
 
 ## Contribute
 
@@ -57,6 +59,7 @@
 · [0046](adr/0046-vendor-neutral-presets.md) Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream (proposed).
 · [0047](adr/0047-bounded-spatial-predicates.md) Bounded spatial predicates: six layout operators over the judged geometry (proposed).
 · [0048](adr/0048-co-actor-scenario.md) Co-actor scenario: a scripted colleague edits the board mid-run (proposed).
+· [0049](adr/0049-drawio-adapter.md) draw.io as application #2: a verified download behind the shared shell, the embed protocol only, declared structural constraints, and an independent `.drawio` reader (proposed).
 · [0050](adr/0050-browser-close-is-a-bounded-request.md) A browser close is a bounded request on top of Playwright's own forced end (accepted).
 
 [Archive](adr/archive/README.md): [0009](adr/archive/0009-release-and-publication.md) · [0021](adr/archive/0021-supported-unsealed-evaluation.md) · [0027](adr/archive/0027-private-player-bootstrap-handoff.md).

@@ -98,7 +98,7 @@ test('shell: a launch that rejects keeps its slot and its sink for 35 s after th
 test('start check: the answer comes at the close deadline with the close abandoned; the slot stays until the end is proven', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const ledger = new BrowserLedger(), fake = fakeChromium(new FakeBrowser('held'));
-  const { value, atMs } = await timed(t, chromiumStarts(30_000, { chromium: fake.chromium, ledger }));
+  const { value, atMs } = await timed(t, chromiumStarts(30_000, 'linux-fallback', { chromium: fake.chromium, ledger }));
   assert.deepEqual(value, { ok: true, sandbox: true }, 'the start check\'s own answer'); around(atMs, CLOSE_DEADLINE_MS);
   assert.deepEqual([ledger.unreleased(), ledger.records()[0]!.callers.abandoned], [1, 1]);
   fake.browser.closing.finish(); await flush();

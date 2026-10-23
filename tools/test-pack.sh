@@ -54,10 +54,16 @@ if(types.length!==names.length||types.some(line=>!['-','d'].includes(line[0])))t
 const entries=names.filter(p=>!p.endsWith('/'));
 if(entries.some(p=>!p.startsWith('package/')||p.includes('..'))||new Set(entries).size!==entries.length)throw Error('Unexpected or duplicate tarball member');
 const files=entries.map(p=>p.slice('package/'.length)).sort();
-const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.startsWith("schemas/") || p.startsWith("examples/worlds/flow-diagram/") || p.startsWith("tasks/excalidraw/") || ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md"].includes(p);
+const allowed = (p) => p === "package.json" || p.startsWith("dist/") || p.startsWith("schemas/") || p.startsWith("examples/worlds/flow-diagram/") || p.startsWith("tasks/excalidraw/") || p.startsWith("tasks/drawio/") || ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md"].includes(p);
 const extra = files.filter((p) => !allowed(p));
-const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "schemas/bench.v2.json", "schemas/bench.v3.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/bench/report.css", "dist/bench/card.css", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
+const required = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "dist/cli/main.js", "dist/index.js", "schemas/world-package-manifest.v1.schema.json", "schemas/checker-bundle-manifest.v1.schema.json", "schemas/world.v1.schema.json", "schemas/world.v2.schema.json", "schemas/bench.v1.json", "schemas/bench.v2.json", "schemas/bench.v3.json", "tasks/excalidraw/world/world.json", "tasks/excalidraw/library.json", "tasks/drawio/world/world.json", "tasks/drawio/library.json", "dist/adapters/excalidraw/engine/engine.js", "dist/adapters/excalidraw/engine/fonts/Cascadia/LICENSE", "dist/player/assets/player.js", "dist/player/assets/player.css", "dist/player/assets/tokens.css", "dist/player/assets/index.html", "dist/bench/report.css", "dist/bench/card.css", "dist/host/server.js", "examples/worlds/flow-diagram/world.json"];
 const missing = required.filter((p) => !files.includes(p));
+// No app release travels with the package (PADR-0049 decision 9.4): no .war name and no zip archive by
+// content, read from the tarball after the entry checks above.
+const unpacked=fs.mkdtempSync(require('node:path').join(require('node:path').dirname(process.argv[2]),'inventory-'));
+execFileSync('tar',['-xzf',tgzName,'-C',require('node:path').basename(unpacked)],tarIn);
+const archives=files.filter(p=>{if(/\.war$/i.test(p))return true;const fd=fs.openSync(require('node:path').join(unpacked,'package',p),'r');const head=Buffer.alloc(4);const n=fs.readSync(fd,head,0,4,0);fs.closeSync(fd);return n===4&&head[0]===0x50&&head[1]===0x4b&&[0x03,0x05,0x07].includes(head[2]);});
+fs.rmSync(unpacked,{recursive:true,force:true});
 const packageMetadata = JSON.parse(execFileSync('tar',['-xOzf',tgzName,'package/package.json'],{...tarIn,encoding:'utf8',maxBuffer:1024*1024}));
 // prepack builds dist/ before npm pack/publish; nothing may run when a user installs the package.
 const lifecycle = ['preinstall', 'install', 'postinstall', 'prepare'].filter(name => Object.hasOwn(packageMetadata.scripts ?? {}, name));
@@ -70,6 +76,7 @@ let bad = false;
 if (lifecycle.length) { console.error(`test:pack: FAIL install-time lifecycle scripts: ${lifecycle.join(', ')}`); bad = true; } else console.log('test:pack: ok   no install-time lifecycle scripts');
 if (extra.length) { console.error(`test:pack: FAIL files outside the allowlist: ${extra.join(", ")}`); bad = true; } else console.log("test:pack: ok   only allowlisted files in the tarball");
 if (missing.length) { console.error(`test:pack: FAIL required files missing from the tarball: ${missing.join(", ")}`); bad = true; } else console.log("test:pack: ok   all required files present");
+if (archives.length) { console.error(`test:pack: FAIL .war or zip archives in the tarball: ${archives.join(", ")}`); bad = true; } else console.log("test:pack: ok   no .war and no zip archive in the tarball");
 process.exit(bad ? 1 : 0);
 NODE
 

@@ -158,7 +158,15 @@ td.text code{overflow-wrap:anywhere}
 .board-figure figcaption{margin-bottom:var(--pn-space-2);max-width:var(--pn-measure);color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .board-figure .figure-title{display:block;color:var(--pn-color-text);font-size:var(--pn-text-subhead);line-height:var(--pn-leading-subhead);font-weight:var(--pn-weight-semibold)}
 .board-scroll{overflow-x:auto;border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-canvas)}
-.schematic,.engine-board{display:block;width:100%;height:auto;margin:0 auto}
+/* draw.io's own picture: the frame is its light picture ground in both themes, with space-2 padding
+   around the centred picture (design review D2-F2). The frame does not scroll: an inner, bare scroller
+   does and carries the faded edge, so the frame's corners and hairline stay whole (D3-F1). A board
+   drawn at its exact width is measured against its figure (a container) for its line and faded edge. */
+.board-picture{border:var(--pn-stroke-hairline) solid var(--pn-color-separator);border-radius:var(--pn-radius-md);background:var(--pn-color-picture-ground);padding:var(--pn-space-2)}
+.board-scroll.board-scroll--bare{border:0;border-radius:0;background:none}
+.board-figure{container-type:inline-size}
+.schematic,.engine-board{display:block;height:auto;margin:0 auto}
+.schematic:not(.pu),.engine-board:not(.pu){width:100%}
 .scroll-hint{display:none;margin:var(--pn-space-2) 0 0;color:var(--pn-color-text-secondary);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .scroll-hint.overflows-desktop{display:block}
 .board-scroll.overflows-desktop{mask-image:linear-gradient(to right,var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)}
@@ -176,13 +184,19 @@ td.text code{overflow-wrap:anywhere}
 .legend{margin-top:var(--pn-space-2);font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote)}
 .legend-title{margin:var(--pn-space-3) 0 0;font-size:var(--pn-text-footnote);line-height:var(--pn-leading-footnote);font-weight:var(--pn-weight-semibold)}
 
-/* The real engine's export keeps its own paint; in dark mode it gets Excalidraw's own dark-mode filter,
+/* Excalidraw's export keeps its own paint; in dark mode it gets Excalidraw's own dark-mode filter,
    which the content tokens of the schematic reproduce, so a pair shows one palette. Its text keeps
    Excalidraw's monospace look, like the schematic's step labels. */
-.engine-board text{font-family:var(--pn-font-mono)}
+.engine-board:not(.engine-board--drawio) text{font-family:var(--pn-font-mono)}
 .engine-board .sch-group-label{font-family:var(--pn-font-sans)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board{filter:invert(93%) hue-rotate(180deg)}}
-:root[data-theme="dark"] .engine-board{filter:invert(93%) hue-rotate(180deg)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .engine-board:not(.engine-board--drawio){filter:invert(93%) hue-rotate(180deg)}}
+:root[data-theme="dark"] .engine-board:not(.engine-board--drawio){filter:invert(93%) hue-rotate(180deg)}
+/* draw.io's export is shown as draw.io drew it: its own font and colours, on a light ground in both
+   themes (picture tokens, design-language §7.2); the judged state's group outline over it uses the
+   light accent. */
+.engine-board--drawio{background:var(--pn-color-picture-ground);color:var(--pn-color-picture-ink)}
+.engine-board--drawio .sch-group-outline{fill:var(--pn-color-picture-accent);stroke:var(--pn-color-picture-accent)}
+.engine-board--drawio .sch-group-label{fill:var(--pn-color-picture-accent-text)}
 
 /* Schematic of a judged state: content tokens carry Excalidraw's own palette; corners are sharp and
    arrows black, as Excalidraw draws them here. */
@@ -279,3 +293,6 @@ td.text code{overflow-wrap:anywhere}
 .pw-58{min-width:217.5rem;max-width:362.5rem}
 .pw-59{min-width:221.25rem;max-width:368.75rem}
 .pw-60{min-width:225rem;max-width:375rem}
+/* With draw.io's own picture (12-unit text) a pair is exactly one px per unit: its width attribute,
+   which the width rule above leaves alone (schematic.ts pictureSizing). */
+.pu{max-width:none}

@@ -1,7 +1,7 @@
 // Challenge-tier tooling for maintainers (PADR-0040). Candidate families are not part of the CLI
 // until they pass their gate; this tool generates, checks, declares and gates them from a checkout.
 //
-//   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
+//   node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] [--app excalidraw|drawio] --out <dir> [--force]
 //   node tools/challenge.ts generate <family> --set heldout --declaration <file.declaration.json> --out <dir> [--force]
 //   node tools/challenge.ts verify <dir>
 //   node tools/challenge.ts args <dir> [--tasks <id,…>]   the set's bench arguments on one line (for some tasks: to resume)
@@ -16,13 +16,13 @@
 // held-out ≥ 1000000, derived from the round's committed and pushed declaration only.
 import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { SEED_RANGES, generateSet, type SeedSet } from '../src/challenge/build.ts';
+import { CHALLENGE_APPS, SEED_RANGES, generateSet, type ChallengeApp, type SeedSet } from '../src/challenge/build.ts';
 import { declarationHash } from '../src/challenge/declaration.ts';
 import { FAMILIES, type Difficulty, type Family } from '../src/challenge/families.ts';
 import { committedDeclaration, declareFromFiles, gateFromFiles, heldOutSet, preflightFromFiles, readDeclaration, setArgs, verifySet, writeSet } from '../src/challenge/files.ts';
 
 const usage = `usage:
-  node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] --out <dir> [--force]
+  node tools/challenge.ts generate <family> --set dev|check [--seed <n>] [--count <k>] [--difficulty 1|2|3|mixed] [--app excalidraw|drawio] --out <dir> [--force]
   node tools/challenge.ts generate <family> --set heldout --declaration <file> --out <dir> [--force]
   node tools/challenge.ts verify <dir>
   node tools/challenge.ts args <dir> [--tasks <id,…>]   (the set's bench arguments, for: practonaut bench --agent <a> $(…) in a POSIX shell)
@@ -65,7 +65,10 @@ async function refuseExisting(out: string, force: boolean): Promise<void> {
 }
 
 async function generate(args: string[]): Promise<void> {
-  const { values, flags, positional } = options(args, ['--set', '--round', '--seed', '--count', '--difficulty', '--out', '--declaration', '--dev-runs'], ['--force']);
+  const { values, flags, positional } = options(args, ['--set', '--round', '--seed', '--count', '--difficulty', '--out', '--declaration', '--dev-runs', '--app'], ['--force']);
+  // --app drawio writes the same instances, generatedBy unchanged, into a draw.io world (PADR-0049 decision 8.5).
+  const app = (values['--app'] ?? 'excalidraw') as ChallengeApp;
+  if (!CHALLENGE_APPS.includes(app)) fail(`--app must be ${CHALLENGE_APPS.join(' or ')}`);
   const family = positional[0] as Family;
   if (positional.length !== 1 || !FAMILIES.includes(family)) fail('name one family');
   const set = values['--set'] as SeedSet;
@@ -76,7 +79,7 @@ async function generate(args: string[]): Promise<void> {
     // A held-out set is the declaration's: its seeds, difficulty, round and bench settings come from
     // it alone, and only once it is committed and pushed (second review B-B).
     if (values['--declaration'] === undefined) fail('a held-out set is generated from its round declaration: --declaration <file> (commit and push it first)');
-    for (const name of ['--seed', '--count', '--difficulty', '--round', '--dev-runs']) if (values[name] !== undefined) fail(`${name} is fixed by the declaration`);
+    for (const name of ['--seed', '--count', '--difficulty', '--round', '--dev-runs', '--app']) if (values[name] !== undefined) fail(`${name} is fixed by the declaration`);
     const declaration = await readDeclaration(values['--declaration']!);
     if (declaration.family !== family) fail(`the declaration is for ${declaration.family}, not ${family}`);
     const { commit } = committedDeclaration(values['--declaration']!);
@@ -96,7 +99,7 @@ async function generate(args: string[]): Promise<void> {
   if (first < low || first + count - 1 > high) fail(`--set ${set} uses seeds ${low} to ${high}; ${first}…${first + count - 1} is outside`);
   const difficulty = difficultyOf(values['--difficulty']);
   const seeds = Array.from({ length: count }, (_, index) => first + index);
-  const generated = generateSet(family, seeds, difficulty, set);
+  const generated = generateSet(family, seeds, difficulty, set, app);
   const written = await writeSet(generated, out, { family, set, difficulty: String(difficulty), seeds }, flags.has('--force'));
   const lengths = generated.instances.map(instance => instance.oracle.steps.length);
   process.stdout.write(`${family}: ${count} instances, seeds ${first}…${first + count - 1}, difficulty ${difficulty}, world ${generated.world.id}\n`);

@@ -10,7 +10,7 @@
  * the reader cannot parse is refused (the report then draws its schematic instead).
  */
 import { readableText } from '../cli/output.ts';
-import { pictureSizeClass, type Box } from './schematic.ts';
+import { PICTURE_FLOOR, pictureSizing, type Box } from './schematic.ts';
 
 /** The largest SVG read (Excalidraw's export of a three-step board is about 8 KB). */
 export const MAX_SVG_BYTES = 4 * 1024 * 1024;
@@ -20,7 +20,7 @@ const ELEMENTS = new Set(['svg', 'g', 'path', 'rect', 'ellipse', 'circle', 'line
 const TEXT_ELEMENTS = new Set(['text', 'tspan']);
 const ATTRIBUTES = new Set(['id', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'd', 'points', 'transform', 'viewBox',
   'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-opacity', 'stroke-miterlimit',
-  'fill-opacity', 'fill-rule', 'clip-rule', 'opacity', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline', 'direction',
+  'fill-opacity', 'fill-rule', 'clip-rule', 'opacity', 'font-family', 'font-size', 'font-weight', 'font-style', 'text-anchor', 'dominant-baseline', 'direction',
   'clip-path', 'mask', 'maskUnits', 'clipPathUnits', 'maskContentUnits']);
 /** Plain values: numbers, words, colours, transforms and path data; nothing that could open markup or a URL. */
 const VALUE = /^[A-Za-z0-9 #.,%()+\-_]*$/;
@@ -159,17 +159,55 @@ export function readEngineSvg(text: string, prefix: string): EngineSvg {
 const numeral = (value: number): string => String(Math.round(value * 100) / 100);
 
 /**
+ * Where a draw.io SVG export lies in board units (PADR-0049), so its picture can share one viewBox with
+ * the target schematic beside it. draw.io draws every cell at its board position less the drawing's
+ * top-left corner, in one coordinate system, and marks each cell's group with `data-cell-id`; the
+ * adapter's cells carry the steps' own ids. The first given step whose shape is found (a rectangle,
+ * an ellipse or a rhombus path) gives the shift; the result is the export's viewBox in board units, or
+ * null when no step is found or the shift is not a bounded number. Only numbers are read from the
+ * (hostile) file: nothing of it reaches the page through this.
+ */
+export function drawioPlacement(text: string, steps: ReadonlyArray<{ id: string; x: number; y: number }>): Box | null {
+  if (Buffer.byteLength(text, 'utf8') > MAX_SVG_BYTES) return null;
+  const view = /<svg\b[^>]*?\sviewBox="(-?[0-9.]+) (-?[0-9.]+) ([0-9.]+) ([0-9.]+)"/.exec(text);
+  if (!view) return null;
+  const [x, y, width, height] = view.slice(1).map(Number) as [number, number, number, number];
+  const number = (tag: string, name: string): number => Number(new RegExp(`\\s${name}="(-?[0-9.]+)"`).exec(tag)?.[1] ?? NaN);
+  for (const step of steps) {
+    if (!IDENT.test(step.id)) continue;
+    const at = text.indexOf(`data-cell-id="${step.id}"`);
+    if (at < 0) continue;
+    const next = text.indexOf('data-cell-id="', at + 14), part = text.slice(at, next < 0 ? undefined : next);
+    const shape = /<(rect|ellipse|path)\b[^>]*>/.exec(part);
+    if (!shape) continue;
+    let left = NaN, top = NaN;
+    if (shape[1] === 'rect') { left = number(shape[0], 'x'); top = number(shape[0], 'y'); }
+    else if (shape[1] === 'ellipse') { left = number(shape[0], 'cx') - number(shape[0], 'rx'); top = number(shape[0], 'cy') - number(shape[0], 'ry'); }
+    else {
+      const values = (/\sd="([^"]*)"/.exec(shape[0])?.[1] ?? '').match(/-?[0-9]+(?:\.[0-9]+)?/g)?.map(Number) ?? [];
+      const xs = values.filter((_, i) => i % 2 === 0), ys = values.filter((_, i) => i % 2 === 1);
+      if (xs.length && ys.length) { left = Math.min(...xs); top = Math.min(...ys); }
+    }
+    const dx = left - step.x, dy = top - step.y;
+    if (![x, y, width, height, dx, dy].every(Number.isFinite) || Math.abs(dx) > 1_000_000 || Math.abs(dy) > 1_000_000) continue;
+    return { x: x - dx, y: y - dy, width, height };
+  }
+  return null;
+}
+
+/**
  * The export's drawing as inline SVG markup: `<svg viewBox class role aria-label>` around the
  * allowlisted content. `label` becomes the accessible name (escaped here); `classes` the class list.
  * With `offset` the drawing is moved by that many board units and shown in `viewBox` (the union with
  * the picture beside it), so a pair shares one coordinate system and one scale; `overlay` (trusted
  * markup the report draws, never from the file) is laid over it in those units.
  */
-export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string }): string {
+export function engineSvgMarkup(text: string | EngineSvg, options: { prefix: string; label: string; classes: string; offset?: [number, number]; viewBox?: Box; overlay?: string; floor?: number }): string {
   const read = typeof text === 'string' ? readEngineSvg(text, options.prefix) : text;
   const view = options.viewBox ?? (options.offset ? { ...read.box, x: read.box.x + options.offset[0], y: read.box.y + options.offset[1] } : read.box);
   const label = readableText(options.label).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
   // `overlay` is the report's own markup (the judged state's group outline), in the shared viewBox's units.
+  const sizing = pictureSizing(view.width, options.floor ?? PICTURE_FLOOR);
   const content = (options.offset ? `<g transform="translate(${numeral(options.offset[0])} ${numeral(options.offset[1])})">${read.content}</g>` : read.content) + (options.overlay ?? '');
-  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${pictureSizeClass(view.width)}" role="img" aria-label="${label}">${content}</svg>`;
+  return `<svg viewBox="${numeral(view.x)} ${numeral(view.y)} ${numeral(view.width)} ${numeral(view.height)}" class="${options.classes} ${sizing.classes}"${sizing.attributes} role="img" aria-label="${label}">${content}</svg>`;
 }

@@ -98,7 +98,7 @@ export interface WorldApp { adapterId: AdapterId; versionRange: AppVersion }
 export type Era = 1 | 2;
 export const worldEra = (world: Pick<World, "schema">): Era => world.schema === "practonaut.world/2" ? 2 : 1;
 export const isStepV2 = (step: Step): step is StepV2 => Object.hasOwn(step, "shape");
-export const ERROR_CODES = ["E_WORLD_INVALID", "E_ADAPTER_UNKNOWN", "E_ADAPTER_VERSION_UNSUPPORTED", "E_ADAPTER_SCHEMA_UNSUPPORTED", "invalid_argument", "precondition_failed", "limit_exceeded", "stale_base", "unmodeled", "replay_mismatch", "checker_fuel_exhausted", "checker_timeout", "checker_invalid", "counterprobe_failed", "artifact_invalid", "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "integrity_failed", "cancelled"] as const;
+export const ERROR_CODES = ["E_WORLD_INVALID", "E_ADAPTER_UNKNOWN", "E_ADAPTER_VERSION_UNSUPPORTED", "E_ADAPTER_SCHEMA_UNSUPPORTED", "invalid_argument", "precondition_failed", "limit_exceeded", "stale_base", "unmodeled", "replay_mismatch", "checker_fuel_exhausted", "checker_timeout", "checker_invalid", "counterprobe_failed", "artifact_invalid", "real_tool_disagrees", "mirror_timeout", "mirror_unavailable", "integrity_failed", "cancelled", "constraint_refused"] as const;
 export type ErrorCode = typeof ERROR_CODES[number];
 export interface Failure { code: ErrorCode; message: string; details: Record<string, Scalar> }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: Failure };

@@ -1,0 +1,1 @@
+{"schema":"practonaut.condition-trace/1","taskId":"reorder","seed":2,"conditions":["goal-1","goal-2","goal-3","goal-4","goal-5","goal-6","goal-7","goal-8","goal-9"],"start":"111111101","points":[{"seq":0,"step":1,"met":"111111101"},{"seq":1,"step":2,"met":"111111101"},{"seq":2,"step":3,"met":"111111110"},{"seq":3,"step":4,"met":"111111111"}]}

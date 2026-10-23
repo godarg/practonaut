@@ -1,0 +1,5 @@
+{"seq":0,"op":"act","action":{"name":"move_step","params":{"id":"a","x":100,"y":200},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"act","action":{"name":"move_step","params":{"id":"b","x":400,"y":200},"baseStep":1},"client":"practonaut-bench","outcome":"accepted","step":2,"revision":2,"actor":"agent"}
+{"seq":2,"op":"act","action":{"name":"move_step","params":{"id":"c","x":700,"y":200},"baseStep":2},"client":"practonaut-bench","outcome":"accepted","step":3,"revision":3,"actor":"agent"}
+{"seq":3,"op":"act","action":{"name":"move_step","params":{"id":"d","x":1000,"y":200},"baseStep":3},"client":"practonaut-bench","outcome":"accepted","step":4,"revision":4,"actor":"agent"}
+{"seq":4,"op":"check","client":null,"outcome":"accepted","step":4,"revision":4,"actor":"agent"}

@@ -25,6 +25,7 @@ import {HOST_TRANSACTION_MS} from './mirror.ts';
 import { EXCLUSIVE_CREATE, isPrivateFile } from '../platform/private-fs.ts';
 import { dataPaths, sourceBuildDirectory } from '../platform/paths.ts';
 import { CLOSE_BOUND_MS } from '../adapters/browser/bounded.ts';
+import { ADAPTER_REGISTRY } from '../adapters/registry.ts';
 import { BrowserBudgetError } from '../adapters/browser/ledger.ts';
 import { CANCELLED, CLOSE_SAFETY_MS, CloseRequested, closeAfterFailure, closeBy, closeDeadline, type CloseResult, type Closing } from '../adapters/browser/close.ts';
 import { AdapterInitializationError } from '../adapters/browser/shell.ts';
@@ -278,6 +279,9 @@ export async function probeOfflineNetwork(): Promise<Record<string, string>> {
   return result;
 }
 export async function startHost(world: World, options: HostOptions = {}): Promise<RunningHost> {
+  // The editor and author workspaces embed Excalidraw: only a world whose app has them gets them
+  // (PADR-0049 decision 10.1); any other world gets the board workspace only.
+  if (options.phase3 && !(Object.hasOwn(ADAPTER_REGISTRY, world.app.adapterId) && ADAPTER_REGISTRY[world.app.adapterId as keyof typeof ADAPTER_REGISTRY].editor)) options = { ...options, phase3: false };
   if (options.requireOffline) await probeOfflineNetwork();
   const assetDir = options.assetDirectory ?? (import.meta.url.endsWith(".ts") ? sourceBuildDirectory("player") : fileURLToPath(new URL("../player/assets/", import.meta.url)));
   const assets = new Map<string, { bytes: Buffer; mime: string }>();

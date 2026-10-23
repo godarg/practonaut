@@ -10,6 +10,10 @@ import { isDeepStrictEqual } from 'node:util';
 import { refuseUnknownApp, type KnownApp } from '../world/apps.ts';
 import type { AdapterId, AppVersion, State, WorldApp, WorldSchemaId } from '../world/types.ts';
 import type { EngineLifecycleProbe } from './browser/shell.ts';
+import type { AdapterSandboxPolicy } from './browser/chromium.ts';
+import { createDrawioAdapter } from './drawio/index.ts';
+import { DRAWIO_PIN } from './drawio/pin.ts';
+import { drawioRuntimePath, drawioRuntimeStatus } from './drawio/runtime.ts';
 import { createExcalidrawAdapter } from './excalidraw/index.ts';
 import type { AdapterOptions, MirrorAdapter } from './types.ts';
 
@@ -21,20 +25,40 @@ export type RuntimeKind = 'bundled' | 'downloaded';
  * objects, so the core alone holds the tombstones).
  */
 export type ReadBackComparison = 'full' | 'live';
+/** A downloaded runtime's state: present and verified, or the named reason it is not. */
+export type RuntimeStatus = { ok: true } | { ok: false; code: 'app_runtime_missing' | 'app_runtime_unverified'; detail: string };
 export interface AdapterRegistration<A extends MirrorAdapter = MirrorAdapter> extends KnownApp {
   readonly id: AdapterId;
   readonly appVersions: readonly AppVersion[];
   readonly schemas: readonly WorldSchemaId[];
   readonly runtime: RuntimeKind;
   readonly readBack: ReadBackComparison;
+  /** How its browser may start (PADR-0049 decision 7). */
+  readonly sandbox: AdapterSandboxPolicy;
+  /** Whether the Player's editor and author workspaces are offered: they embed Excalidraw, so a world of
+   * another app gets the board workspace only (PADR-0049 decision 10.1). */
+  readonly editor: boolean;
+  /** A `downloaded` runtime: what `setup --app <id>` fetches, and its check under a Practonaut home
+   * (present, then size and SHA-256 against the pin), run before any browser starts (PADR-0049 decision 1.3). */
+  readonly download?: Readonly<{ name: string; product: string; bytes: number }>;
+  runtimeStatus?(home: string): Promise<RuntimeStatus>;
   create(initial: State, options?: AdapterOptions, probe?: EngineLifecycleProbe): Promise<A>;
 }
 
 const EXCALIDRAW = Object.freeze({
   id: 'excalidraw', appVersions: Object.freeze(['0.18.1'] as const), schemas: Object.freeze(['practonaut.world/1', 'practonaut.world/2'] as const),
-  runtime: 'bundled', readBack: 'full', create: createExcalidrawAdapter,
+  runtime: 'bundled', readBack: 'full', sandbox: 'linux-fallback', editor: true, create: createExcalidrawAdapter,
 } as const);
-export const ADAPTER_REGISTRY = Object.freeze({ excalidraw: EXCALIDRAW } satisfies { readonly [K in AdapterId]: AdapterRegistration });
+// draw.io: downloaded by `setup --app drawio`, compared on live objects (it keeps no deleted cells),
+// world/2 only (PADR-0049 decision 1.1).
+const DRAWIO = Object.freeze({
+  id: 'drawio', appVersions: Object.freeze(['32.4.1'] as const), schemas: Object.freeze(['practonaut.world/2'] as const),
+  runtime: 'downloaded', readBack: 'live', sandbox: 'required', editor: false, create: createDrawioAdapter,
+  // `name` with the file for the terminal; `product` for the Player's sentence (review D1-F11).
+  download: Object.freeze({ name: `draw.io ${DRAWIO_PIN.version} (${DRAWIO_PIN.asset})`, product: `draw.io ${DRAWIO_PIN.version}`, bytes: DRAWIO_PIN.size }),
+  runtimeStatus: (home: string): Promise<RuntimeStatus> => drawioRuntimeStatus(drawioRuntimePath(home)),
+} as const);
+export const ADAPTER_REGISTRY = Object.freeze({ excalidraw: EXCALIDRAW, drawio: DRAWIO } satisfies { readonly [K in AdapterId]: AdapterRegistration });
 export type AdapterRegistry = Readonly<Record<string, AdapterRegistration>>;
 
 /**

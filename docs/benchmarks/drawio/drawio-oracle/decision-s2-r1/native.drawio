@@ -1,0 +1,31 @@
+<mxfile host="drawio.practonaut.invalid">
+  <diagram id="2hmedAoi9Xh2iOwYL641" name="Page-1">
+    <mxGraphModel dx="1094" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="pn:root" />
+        <mxCell id="pn:layer" parent="pn:root" />
+        <mxCell id="a" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Run tests" vertex="1">
+          <mxGeometry height="90" width="180" x="100" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="s-04eb7606b2ef54f21856b51f28862976f924069630bc3f95b2e52657e6ac" parent="pn:layer" style="rhombus;html=0;strokeColor=#000000;fillColor=none;" value="Tests green?" vertex="1">
+          <mxGeometry height="120" width="200" x="400" y="185" as="geometry" />
+        </mxCell>
+        <mxCell id="s-73062d5da236bb54b05bcbd8caaf631fc61041266f514e14c9ba74d4faae" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Deploy" vertex="1">
+          <mxGeometry height="90" width="180" x="740" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s-73366c3c3073c1fa93c666f1950ad9e4bb59dff68ef98f663a31a9f7b1b6" parent="pn:layer" style="rounded=0;html=0;strokeColor=#000000;fillColor=none;" value="Fix bug" vertex="1">
+          <mxGeometry height="90" width="180" x="740" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="a-34e532a699fdf9853912c534d74b830d0c277e224accc850a3a044da88f8" edge="1" parent="pn:layer" source="a" style="endArrow=classic;html=0;" target="s-04eb7606b2ef54f21856b51f28862976f924069630bc3f95b2e52657e6ac" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-3560935be81feb60b5b9b027f3e6e313cdd9a6abca5f909b9903cfb91181" edge="1" parent="pn:layer" source="s-04eb7606b2ef54f21856b51f28862976f924069630bc3f95b2e52657e6ac" style="endArrow=classic;html=0;" target="s-73366c3c3073c1fa93c666f1950ad9e4bb59dff68ef98f663a31a9f7b1b6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a-ba64e1f155f4045478e9db189c5bed169de177442551635d7490b087f95d" edge="1" parent="pn:layer" source="s-04eb7606b2ef54f21856b51f28862976f924069630bc3f95b2e52657e6ac" style="endArrow=classic;html=0;" target="s-73062d5da236bb54b05bcbd8caaf631fc61041266f514e14c9ba74d4faae" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

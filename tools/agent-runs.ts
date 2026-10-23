@@ -84,7 +84,7 @@ export function assertSingleGoalAction(before: HostView, final: HostView, events
   const proof = assertSingleAction(before, final, events, tools);
   const fail = (message: string): never => { throw Error('Single goal action: ' + message); };
   const same = (left: unknown, right: unknown): boolean => canonicalJson(left) === canonicalJson(right);
-  if (!same({ id: world.id, version: world.version }, before.world)) fail('goal world differs from the observed world');
+  if (!same({ id: world.id, version: world.version, adapterId: world.app.adapterId }, before.world)) fail('goal world differs from the observed world');
   const task = generateVariant(world, before.seed).tasks.find(task => task.id === before.task.id);
   if (!task) return fail('original public task goal is unavailable');
   // Keep every original top-level argument, including predicates with no UI narration.
@@ -169,7 +169,7 @@ async function currentExport(host:RunningHost,world:World,expected:HostView,dire
   const pair=parseExportPair(value.session.utf8,world,value.native.utf8);
   assert.equal(value.revision,expected.revision);assert.equal(pair.revision,expected.revision);
   assert.equal(value.hash,expected.hash);assert.equal(pair.hash,expected.hash);
-  assert.deepEqual(value.world,expected.world);assert.equal(value.seed,expected.seed);assert.equal(value.taskId,expected.task.id);
+  assert.deepEqual(value.world,{id:expected.world.id,version:expected.world.version});assert.equal(value.seed,expected.seed);assert.equal(value.taskId,expected.task.id);
   assert.equal(stateHash(parseExcalidraw(value.native.utf8)),expected.hash);
   // A separate checker process executes the independent history interpreter.
   await checkInProcess(world,canonicalJson(pair.session),{seed:pair.seed,taskId:pair.taskId});

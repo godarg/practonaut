@@ -6,6 +6,7 @@ import { isDisplayText } from '../world/display-text.ts';
 import type { Action, Arrow, EffectKind, Parameter, Predicate, SessionData, State, Step, StepV2, Task, World } from '../world/types.ts';
 import { invalid } from './errors.ts';
 import { validateSubmissionState } from './state.ts';
+import { refuseConstraintViolation } from './constraints.ts';
 
 // The checker implements the seven specified world/1 transitions separately from
 // their producer. Shared dependencies are data contracts, canonical JSON and predicates.
@@ -130,7 +131,10 @@ function successorV2(world: World, state: State, action: Action, seed: number, p
     const frames = ends.map(end => (result.objects[end] as StepV2).frameId);
     object.frameId = frames.every(frame => frame === frames[0]) ? frames[0]! : null;
   }
-  return validateSubmissionState(result, undefined, 2);
+  const valid = validateSubmissionState(result, undefined, 2);
+  // A step into a state the world's application cannot hold is no valid transition (PADR-0049 decision 5.2).
+  refuseConstraintViolation(valid, world.app.adapterId);
+  return valid;
 }
 function successor(world: World, state: State, action: Action, seed: number, prefix: Action[]): State {
   if (world.schema === 'practonaut.world/2') return successorV2(world, state, action, seed, prefix);

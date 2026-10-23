@@ -1,0 +1,2 @@
+{"seq":0,"op":"act","action":{"name":"set_style","params":{"id":"b","shape":"rectangle","stroke":"red","fill":"red"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"check","client":null,"outcome":"accepted","step":1,"revision":1,"actor":"agent"}

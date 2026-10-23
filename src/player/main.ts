@@ -1,7 +1,7 @@
 import type { Action, Arrow, Frame, Localized, Step, StepV2, WorldObject } from '../world/types.ts';
 import type { DemonstrationStatus, HostEvent, HostReply, HostView, ModelOnlyNotice, MutationReply, PublicCheck, ResumeReply } from '../host/protocol.ts';
 import { createPhase3 } from './phase3.ts';
-import { catalogs } from './messages.ts';
+import { appName, appNotices, catalogs, naturalPictureApps, workspaceApps } from './messages.ts';
 import type { Language, Message } from './messages.ts';
 import { clearTabSession, readTabSession, writeTabSession } from './tab-session.ts';
 import { banner, button, card, chip, disclosure, evidence, h, icon, listPicker, openSheet, segmented, selectField, statusIcon, textField } from './ui/components.ts';
@@ -26,6 +26,10 @@ let showFormal = false, showRuleOrigins = false;
 let boardResize = new ResizeObserver(() => {});
 let streamPaused = false;
 let working = false, announcement = '', errorCode: string | undefined, lastCheck: PublicCheck | undefined, toolUrl: string | undefined;
+/** The real tool's picture is being fetched: its button stays focusable and says it is busy (§11). */
+let toolBusy = false;
+/** "Rules and origins" in How this is checked, as the reader left it. */
+let rulesOpen = false;
 // Entrance motion only for what just happened, never for a plain re-render.
 let freshVerdict = false, previousHints = 0, previousHistory = 0;
 // Where each step was drawn last, so a step glides to its new place instead of jumping.
@@ -39,7 +43,9 @@ function demoRunning(): boolean { return demoAttempt() && demo!.state === 'runni
 function locked(): boolean { return working || demoRunning(); }
 
 function cacheSession(): void { if (token&&current) reloadAvailable = writeTabSession({ schema: 'practonaut.tab-session/2', token, ...(authorToken?{authorToken}:{}),sessionId:current.sessionId,language, theme, workspace }); }
-const msg = (key: Message): string => catalogs[language][key];
+/** `{app}` is the running app's fixed display name from the Player's catalog, by the adapter id the host
+ * sends (PADR-0049 decision 1.5); the texts that use it are shown only with a view. */
+const msg = (key: Message): string => catalogs[language][key].replaceAll('{app}', appName(current?.world.adapterId ?? 'excalidraw', language));
 const exportControl=createExportControl({current:()=>current,request:expectedRevision=>request('export',{expectedRevision}),message:msg,working:()=>locked(),demonstration:()=>demoAttempt(),setWorking:value=>{working=value;},render,announce:say});
 const text = (value: Localized): string => value[language];
 const tagged = <T extends Element>(node: T, id: string): T => { node.setAttribute('data-testid', id); return node; };
@@ -124,6 +130,8 @@ function styleText(step: Step): string {
   if (step.groupId !== null) parts.push(msg('grouped'));
   const frame = step.frameId === null ? undefined : current!.state.objects[step.frameId];
   if (frame?.type === 'frame' && frames().length > 1) parts.push(msg('inFrame').replace('{frame}', frame.name));
+  // The board draws one frame around every step (§10.2): a step outside every frame says so in words.
+  else if (step.frameId === null && frames().length > 0) parts.push(msg('noFrameShort'));
   return parts.join(', ');
 }
 function focusObject(id: string): void {
@@ -197,6 +205,11 @@ async function request<T>(route: string, payload?: unknown, signal?:AbortSignal,
     return await response.json() as HostReply<T>;
   } catch { return { ok: false, error: { code: 'mirror_unavailable', message: 'Host unavailable' } }; }
 }
+/** The catalog key for a refusal: a known limit of the application names its constraint (PADR-0049). */
+function rejectionMessage(error: { code: string; details?: Record<string, unknown> }): string {
+  if (error.code !== 'constraint_refused') return error.code;
+  return error.details?.constraint === 'group-within-one-frame' ? 'constraintGroupWithinOneFrame' : error.details?.constraint === 'xml-text' ? 'constraintXmlText' : 'constraint_refused';
+}
 function rejected(code: string): void {
   pending = undefined; errorCode = code; render(); restoreFocus(selected);
   say(msg(Object.hasOwn(catalogs.en, code) ? code as Message : 'genericError'));
@@ -217,7 +230,7 @@ async function mutate(route: string, extra: Record<string, unknown> = {}, feedba
   working = false;
   if (!reply.ok) {
     if (reply.error.code === 'stale_base') { const latest = await request<HostView>('observe'); if (latest.ok) absorb(latest.value); }
-    rejected(reply.error.code); return;
+    rejected(rejectionMessage(reply.error)); return;
   }
   absorb(reply.value.view);
   const added = Object.values(current!.state.objects).find(object => !oldIds.has(object.id) && !object.deleted);
@@ -378,12 +391,18 @@ async function check(): Promise<void> {
   if (!reply.ok) { rejected(reply.error.code); return; } lastCheck = reply.value; freshVerdict = true; render(); (document.querySelector('[data-testid="check-result"]') as HTMLElement)?.focus(); say(msg(reply.value.passed ? 'passed' : 'failed'));
 }
 async function showTool(): Promise<void> {
-  if (working) return; working = true; render();
+  if (working) return; working = true; toolBusy = true; render();
   try {
     const response = await fetch('/api/tool.png', { headers: { 'X-Practonaut-Token': token }, cache: 'no-store', credentials: 'omit' });
     if (!response.ok || response.headers.get('content-type') !== 'image/png') throw new Error('image unavailable');
-    if (toolUrl) URL.revokeObjectURL(toolUrl); toolUrl = URL.createObjectURL(await response.blob()); working = false; render();
-  } catch { working = false; rejected('mirror_unavailable'); }
+    if (toolUrl) URL.revokeObjectURL(toolUrl); toolUrl = URL.createObjectURL(await response.blob()); working = false; toolBusy = false; render();
+    // The picture arrives below the button, which keeps the focus: it is brought into view and named.
+    const picture = document.querySelector<HTMLElement>('[data-testid="tool-picture"]');
+    const reveal = (): void => picture?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const image = picture?.querySelector('img');
+    if (image && !image.complete) image.addEventListener('load', reveal, { once: true }); else reveal();
+    say(msg('toolShown'));
+  } catch { working = false; toolBusy = false; rejected('mirror_unavailable'); }
 }
 
 // ---------- Demonstration (bundled example only) ----------
@@ -708,11 +727,46 @@ function howCheckedCard(): HTMLElement {
   // attempt is never practice evidence, yet its actions were confirmed when the mirror ran.
   const mirrored = c.mirrorHealth.status === 'available';
   root.append(h('p', { class: 't-subhead' }, evidence(mirrored ? 'confirmed' : 'observed', msg(mirrored ? 'evidence' : 'noEvidence'))));
-  root.append(button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || locked() }));
-  if (toolUrl) root.append(h('img', { class: 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } }));
+  // While the picture is fetched the button stays focusable and busy (aria-busy), so the focus stays on it.
+  const toolButton = button({ label: msg('tool'), icon: 'image', variant: 'secondary', block: true, testid: 'show-tool', busy: toolBusy, onClick: () => { void showTool(); }, disabled: c.mirror === 'off' || (locked() && !toolBusy) });
+  if (toolBusy) toolButton.setAttribute('aria-disabled', 'true');
+  root.append(toolButton);
+  if (toolUrl) {
+    // The picture lies on a light ground in every theme (the app's own ink), inset in its rounded frame.
+    // An app whose picture is its export at one px per unit is shown at its own size and scrolls sideways.
+    const natural = naturalPictureApps.includes(c.world.adapterId);
+    const image = h('img', { class: natural ? 'tool-image tool-image--natural' : 'tool-image', attrs: { src: toolUrl, alt: msg('toolAlt') } });
+    // The rounded ground is the outer element; a picture at its own size scrolls in an unrounded inner
+    // region, so the curve never cuts it, with a faded edge where more lies beyond (design review D2-F4).
+    const scroller = natural ? h('div', { class: 'tool-picture__scroll', testid: 'tool-scroll', attrs: { role: 'region', 'aria-label': msg('toolPicture'), tabindex: '0' } }, image) : undefined;
+    const picture = h('div', { class: 'tool-picture', testid: 'tool-picture' }, scroller ?? image);
+    root.append(picture);
+    if (scroller) {
+      const hint = h('p', { class: 'tool-scroll-hint', testid: 'tool-scroll-hint', text: msg('toolScroll') });
+      hint.hidden = true;
+      const measure = (): void => {
+        const wider = scroller.scrollWidth > scroller.clientWidth + 1;
+        hint.hidden = !wider;
+        scroller.classList.toggle('is-clipped-start', wider && scroller.scrollLeft > 2);
+        scroller.classList.toggle('is-clipped-end', wider && scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 2);
+      };
+      scroller.addEventListener('scroll', measure, { passive: true });
+      new ResizeObserver(measure).observe(scroller);
+      if (image.complete) requestAnimationFrame(measure); else image.addEventListener('load', measure, { once: true });
+      root.append(hint);
+    }
+  }
   const rules = h('div', { class: 'rule-list' });
   for (const rule of c.rules) rules.append(h('div', { class: 'rule-item' }, h('span', { class: 't-footnote t-medium', text: `${msg('confirmed')} · ${rule.id}` }), h('small', { class: 'rule-origin', text: `${msg('origin')}: ${rule.evidence.map(evidence => `${evidence.run} / ${evidence.case}`).join('; ')}` })));
-  root.append(disclosure({ summary: msg('rules') }, rules));
+  // A world without rules says so, so the disclosure never opens on the notice alone (review D3-F4).
+  if (!c.rules.length) rules.append(h('p', { class: 'rules-none', testid: 'rules-none', text: msg('noRules') }));
+  // An app whose name needs the interim notice (PADR-0049 9.2) gets it once, off the working surface.
+  const notice = Object.hasOwn(appNotices, c.world.adapterId) ? appNotices[c.world.adapterId]! : undefined;
+  if (notice) rules.append(h('p', { class: 'app-notice', testid: 'app-notice', text: msg(notice) }));
+  // Open stays open across redraws, so a reader is not closed out by the next event.
+  const rulesDisclosure = disclosure({ summary: msg('rules'), open: rulesOpen }, rules);
+  rulesDisclosure.addEventListener('toggle', () => { rulesOpen = rulesDisclosure.open; });
+  root.append(rulesDisclosure);
   return root;
 }
 /** The demonstration in three lines, the way every result is made: actions land on the board, the
@@ -764,7 +818,8 @@ function inspector(): HTMLElement {
   const points = c.errors.map(error => text(error.explanation));
   const consequence = last ? banner({ tone: 'accent', title: msg('consequence'), text: text(last.description), class: 'notice consequence', testid: 'consequence' },
     ...(points.length ? [h('p', { class: 'consequence-open', text: msg('stillToFix') }), h('ul', { class: 'consequence-list' }, ...points.map(point => h('li', { text: point })))] : [])) : undefined;
-  side.append(notices, ...(demoAttempt() ? [demonstrationCard()] : []), goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(),inviteCard());
+  // Create records in the app's own editor: a session of an app without one (draw.io) is not invited to it.
+  side.append(notices, ...(demoAttempt() ? [demonstrationCard()] : []), goalCard(), ...(consequence ? [consequence] : []), hintsCard(), historyCard(), howCheckedCard(), exportControl.view(), ...(workspaceApps.includes(c.world.adapterId) ? [inviteCard()] : []));
   freshVerdict = false;
   const edges = (): void => { side.classList.toggle('is-clipped-top', side.scrollTop > 2); side.classList.toggle('is-clipped-bottom', side.scrollHeight - side.clientHeight - side.scrollTop > 2); };
   side.addEventListener('scroll', edges, { passive: true });
@@ -783,16 +838,20 @@ function renderBar(): void {
   controls.append(themeSelect);
   const nodes: Node[] = [brand];
   // The same three workspaces on every route; one that this window cannot open says why (tooltip and accessible name).
+  // The middle one is the session's app; an app Practonaut does not open as a workspace (draw.io) offers
+  // neither it nor Create, and says so (design-language §10.1).
   if (current) {
-    const mode = phase3?.mode() ?? 'board';
-    const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, items: (['board', 'editor', 'author'] as const).map(id => {
+    const mode = phase3?.mode() ?? 'board', ownWorkspace = workspaceApps.includes(current.world.adapterId);
+    const modes = segmented({ key: 'modes', label: msg('modes'), value: mode, onChange: id => { if (phase3) void phase3.select(id as Workspace).catch(error => say(String(error))); }, onUnavailable: item => say(item.ariaLabel ?? item.label), items: (['board', 'editor', 'author'] as const).map(id => {
       // The current workspace is never shown disabled: it is where you are (R4-03).
       const label = msg(id === 'board' ? 'modePractice' : id === 'editor' ? 'modeEditor' : 'modeAuthor');
       const unavailable = id !== 'board' && (!phase3 || (id === 'author' && !authorAvailable));
-      const disabled = id !== mode && (unavailable || !phase3!.canSelect(id));
+      // An unavailable workspace stays reachable by keyboard (aria-disabled) so its reason can be read;
+      // one that waits for the drawing surface is disabled for that moment (design-language §10.1).
+      const disabled = id !== mode && !unavailable && !phase3!.canSelect(id);
       // A segment that waits for the drawing surface says so, never just greys out.
-      const ariaLabel = unavailable ? msg(id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
-      return { id, label, testid: `mode-${id}`, disabled, ...(ariaLabel ? { ariaLabel } : {}) };
+      const ariaLabel = unavailable ? msg(!ownWorkspace ? (id === 'editor' ? 'modeNoWorkspace' : 'modeNoCreate') : id === 'editor' ? 'modeUnavailableEditor' : 'modeUnavailableAuthor') : disabled ? msg('modeWaiting').replace('{mode}', label) : id === 'editor' ? msg('modeEditorTitle') : undefined;
+      return { id, label, testid: `mode-${id}`, disabled, unavailable: id !== mode && unavailable, ...(ariaLabel ? { ariaLabel } : {}) };
     }) });
     // While another workspace is being prepared the current one stays pressed (it is where you are);
     // a click on it is kept and brings you back as soon as the preparation has ended, never dropped.
@@ -807,9 +866,13 @@ function renderBar(): void {
 function modelOnlyBanner(): HTMLElement {
   const notice = modelOnlyNotice;
   const key: Message = !notice ? 'modelOnlyUnknown' : notice.reason === 'missing' ? 'modelOnlyMissing' : notice.reason === 'start' ? 'modelOnlyStart' : 'modelOnlyOff';
-  const sentence = msg(key).replace('{name}', notice?.download?.name ?? '').replace('{size}', String(notice?.download?.megabytes ?? ''));
+  // A product and its version stay on one line (a no-break space before the version number).
+  const sentence = msg(key).replace('{name}', (notice?.download?.name ?? '').replace(/ (?=\d)/g, '\u00a0')).replace('{size}', String(notice?.download?.megabytes ?? ''));
   const [before, after] = sentence.split('{command}');
-  const body = after !== undefined && notice?.command ? h('p', {}, before, h('code', { class: 'model-only-banner__command', text: notice.command }), after) : h('p', { text: sentence });
+  // The command wraps only at its spaces: each word stays whole (a longer one, such as
+  // `setup --app drawio`, would otherwise run past the banner at 320 px).
+  const command = (text: string): HTMLElement => h('code', { class: 'model-only-banner__command' }, ...text.split(' ').flatMap((word, index) => [...(index ? [' '] : []), h('span', { class: 'model-only-banner__word', text: word })]));
+  const body = after !== undefined && notice?.command ? h('p', {}, before, command(notice.command), after) : h('p', { text: sentence });
   return banner({ tone: 'warning', title: msg('modelOnlyTitle'), class: 'notice model-only-banner', testid: 'model-only-banner' }, body);
 }
 function centered(glyph: IconName, title: string, body: string, danger = false): HTMLElement {
@@ -831,7 +894,11 @@ function render(): void {
   if (streamPaused) nodes.push(banner({tone:'warning',text:msg('streamRecovering'),class:'notice',testid:'stream-recovering'}));
   if (!reloadAvailable) nodes.push(banner({ tone: 'warning', text: msg('reloadUnavailable'), class: 'notice' }));
   nodes.push(practiceHead(), boardSection(), trayNode(), inspector());
+  // The inspector is drawn anew: it keeps where its reader had scrolled to.
+  const inspectorScroll = practiceMount.querySelector('.practice-inspector')?.scrollTop ?? 0;
   practiceMount.replaceChildren(...nodes); phase3?.update();
+  const side = practiceMount.querySelector('.practice-inspector');
+  if (side && inspectorScroll) side.scrollTop = inspectorScroll;
   if (focusedObject) focusObject(focusedObject); else if (focusedId) (document.querySelector(`[data-testid="${focusedId}"]`) as HTMLElement | null)?.focus();
 }
 let eventLifetime = new AbortController();

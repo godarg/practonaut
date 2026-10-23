@@ -321,6 +321,23 @@ Drawing-content floor for the orange outline, target 2:1, both themes:
 |---|---|---|
 | U14 | content-line-orange | object-bg, canvas (two pairs) |
 
+**App pictures.** The real tool's picture in the Player and draw.io's export in a bench report keep a
+light ground in both themes (`picture-ground`), so the app's own dark ink (`picture-ink`, draw.io's
+black) stays readable and nothing of the picture is recoloured. The report's group outline drawn over
+draw.io's export uses the light accent (`picture-accent`, `picture-accent-text`) on that ground.
+
+App-picture text, target 4.5:1, both themes:
+
+| ID | Foreground | Background |
+|---|---|---|
+| T12 | picture-ink, picture-accent-text | picture-ground (two pairs) |
+
+App-picture outlines, target 3:1, both themes:
+
+| ID | Foreground | Background |
+|---|---|---|
+| U15 | picture-accent | picture-ground |
+
 Excalidraw's orange (`#F08C00`) stays below 3:1 on the light surfaces. It is kept as it is because
 the hue *is* the content the learner sets and must match the editor (SC 1.4.11 exception: a
 particular presentation is essential to the information). The colour is never the only carrier:
@@ -413,7 +430,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Component | Kit | Purpose, anatomy, rules |
 |---|---|---|
 | Button | `button()` | Capsule, 40 px (sm 32, lg 48). Variants: **primary** (accent fill; one per surface), **secondary** (default), **tinted** (accent wash), **plain** (accent text), **quiet** (secondary text), **tool** / **tool-danger** (inside the palette), **danger** (red wash), **danger-solid** (confirm a destructive sheet). Optional leading icon; icon-only needs a label (becomes name and tooltip). States: rest, hover, pressed (scale), focus, disabled (loses fill), busy (spinner), pressed-toggle (`aria-pressed`). |
-| Segmented control | `segmented()` | Choose one view or mode. Capsule track, sliding thumb, equal columns, `aria-pressed` on buttons. 2 to 4 items. Never for actions. |
+| Segmented control | `segmented()` | Choose one view or mode. Capsule track, sliding thumb, equal columns, `aria-pressed` on buttons. 2 to 4 items. Never for actions. An item that can never open here is `unavailable` (`aria-disabled`, reachable, its reason as its name); one that waits is `disabled`. |
 | Chip | `chip()` | A small fact, never an action. Tones: neutral, accent, success, danger, warning, unknown, record. |
 | Banner | `banner()` | A statement about the situation, with tone, icon, optional title. `role="status"` or `alert` when it appears dynamically. Unknown tone carries the hatched band. |
 | Card | `card()` | Rounded rectangle on `surface` with the raised shadow, a header with title and quiet actions. |
@@ -445,6 +462,18 @@ Erstellen**), language (EN/DE) and appearance (System/Light/Dark) on the right. 
 becomes two rows: brand and settings, then the workspace control full width. While a picked
 workspace is being prepared, the current one stays pressed (it is where you are) and a click on it is
 kept, never dropped: once the preparation has ended, the person is back where they clicked.
+The middle segment names the session's app. A session of an app that Practonaut does not open as
+a workspace (draw.io; the editor and Create embed Excalidraw) keeps all three segments, so the bar
+does not change shape between apps: **Practice · draw.io · Create**, with draw.io and Create
+disabled, each saying why in its tooltip and accessible name, which contain the visible label ("draw.io
+does not open as a workspace in Practonaut. Practice on the board." / "Create is not available for
+draw.io."; DE "draw.io öffnet sich in Practonaut nicht als Arbeitsbereich. Übe auf der Arbeitsfläche."
+/ "Erstellen gibt es für draw.io nicht."). Such a session never names Excalidraw, and its
+inspector has no invitation to create an exercise. A segment that can never open in this window is
+*unavailable*, not disabled: it is `aria-disabled`, so the keyboard reaches it and its reason is read;
+pressing it changes nothing and its reason is spoken in the live region (reviews D1-F8, D2-F7). Only a segment that waits for the drawing surface is
+disabled, for that moment. Whether a session of an app without workspaces shows the control at all is
+a rule question to the maintainer ([PADR-0049](../adr/0049-drawio-adapter.md) decision 9.3).
 
 Below the bar is the **stage**: one CSS grid with named areas. Nodes that must never move in the DOM
 (the real editor iframe) and nodes that are re-rendered share the stage as siblings and are placed by
@@ -481,7 +510,20 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   and Reset in the header, Reset disabled until there is something to reset; numbered entries, the
   consequence in context, an evidence mark per action), **How this is checked** (evidence mark and
   statement, "Show in the real tool", rules behind a disclosure) and a quiet invitation card to
-  create an exercise (secondary button, never filled).
+  create an exercise (secondary button, never filled; not in a session of an app without Create,
+  §10.1).
+- **The real tool's picture** ("Show in the real tool") is the app's own picture, never recoloured:
+  it lies on the light picture ground in both themes (§7.2), inset in its rounded frame so the curve
+  never cuts the drawing. draw.io's PNG is its export at one px per unit, so it is shown at that size
+  (its 12-unit text at 12 px) in a labelled, unrounded region inside the rounded ground that scrolls
+  sideways, with a faded edge and a line when it is wider than the panel; Excalidraw's is a screenshot
+  of its canvas and takes the panel's width. While the picture is fetched the button stays focusable and busy (§11); when it arrives the
+  focus is still on the button, the picture is brought into view and announced, and the inspector
+  keeps its scroll position across redraws. In a draw.io session the interim notice (PADR-0049 9.2)
+  stands once, last, under "Rules and origins", off the working surface; that disclosure stays as the
+  reader left it across redraws. A world without rules says so there first ("This exercise's world has
+  no rules: an action changes only what it names, with no further consequence."), so the disclosure
+  never opens on the notice alone.
 - **Goal**: the world states a goal as one verdict; its sentences are shown as separate short lines
   under one status icon (the first in primary text, the rest secondary). Before a check the ring
   is empty and there is no verdict; after a check one short verdict banner ("All conditions met." /
@@ -495,9 +537,10 @@ Below the bar is the **stage**: one CSS grid with named areas. Nodes that must n
   is reserved for "not met", a rejected action and loose ends; "not yet modelled" is the hatched
   unknown banner with a short title and one explanatory sentence.
 - **Model only.** A session without the real tool says so once, above the head and the inspector
-  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" with
-  one sentence on what gets the real engine (the command in the mono voice, the one download named
-  with its size; or why Chromium did not start; or that `--mirror off` was chosen). It stays for the
+  (the stage's `status` row): a warning banner "Not yet checked against the real Excalidraw" (the
+  session's app) with one sentence on what gets the real engine (the command in the mono voice,
+  wrapping only at its spaces, the one download named with its size; or why Chromium did not start;
+  or that `--mirror off` was chosen). It stays for the
   whole session. One wording family everywhere: the banner, the line under the board ("This is a
   practice model. In this session the real Excalidraw does not check it.") and "How this is checked"
   say the same thing in plain words, never "mirrored" or "evidence".
@@ -533,7 +576,10 @@ connection in accent; **picked up** = card lifts 4 units with a deep shadow and 
 **pending connection** = dashed accent line with flowing dashes; **bound start** = a small anchor
 dot on the card edge and an arrowhead that touches the target; **loose end** = hollow ring in
 danger (the negative counterpart of the anchor); **focus** = a wider ring in the focus colour.
-Selection is never a colour change alone.
+Selection is never a colour change alone. The board draws one frame around every step, named with
+every frame's name; world/2 frames are not drawn one by one. A step's frame is therefore said in words:
+its chip and accessible name say "in „Name“" when the world has several frames, and "no frame" /
+"ohne Rahmen" for a step outside every frame (review D3-F2).
 
 ### 10.3 Excalidraw workspace
 
@@ -600,8 +646,13 @@ shows its states by name (one item, one colon), the goal conditions with status 
 board above an example target, the trajectory and call log; identifiers, codes and hashes fold under
 "Technical details". The board is the real engine's export or a schematic in the content tokens, always
 captioned with which one it is; the pair shares one viewBox (one scale), its text is never drawn below
-12 px (a wider board scrolls in its frame, with a faded edge and a line that says so), and in dark mode
-the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
+12 px (a wider board scrolls in its frame, with a faded edge and a line that says so; a pair with
+draw.io's own export, whose text is 12 units, is drawn at exactly one px per unit at any width), and in dark mode
+Excalidraw's export gets Excalidraw's own dark-mode filter so the pair shows one palette. draw.io's
+export is shown as draw.io drew it: its own font and colours on the light picture ground in both
+themes, no filter, the frame itself that ground with `space-2` around the centred picture; the note under the pair says how the target, Practonaut's schematic, differs from
+it (larger labels and lines, frames as named boxes, Practonaut's shades, the page's colours in dark
+mode). A page that names draw.io carries the interim notice once in its closing notes. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
 Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.
 Below 40 rem tables stack into one block per row; the page never scrolls sideways.
@@ -757,6 +808,24 @@ The task-limit states of 0.2.0 (changes and checks left, a failed check used, ev
 used) were looked at on captures, light and dark, at 1280 and 390 px with German, on 2026-10-15: one
 must-fix (with every change used, the refused "New variant" was still the primary button) was fixed
 and checked on new captures ([pull request #32](https://github.com/godarg/practonaut/pull/32)).
+
+The draw.io surfaces of 0.3.0 ([PADR-0049](../adr/0049-drawio-adapter.md): the Player in a draw.io
+session with its model-only notices and its constraint refusal, the draw.io bench report, the compare
+page across both apps) were reviewed by an independent reviewer on captures of every registered
+state, light and dark, EN and DE, at 1280 and 320 px. Round D1 (2026-10-20, commit 93e629e) failed:
+one blocker (the real tool's picture could not be read in dark mode), five majors (that picture drawn
+below one px per unit; focus and scroll lost after "Show in the real tool"; the interim trademark
+notice missing; draw.io's picture altered in the report; captures that ignored a state's anchor) and
+seven minors. All were fixed and checked on new captures. Round D2 (2026-10-20, commit 1cb8ff3) was
+conditional: no blocker, two majors (a refusal whose advice did not work in this Player; a hard white
+slab for a narrow draw.io picture in a dark report card) and seven minors. Both majors and five minors
+were fixed; two were consciously not done as proposed: the board still draws one frame around every
+step, so a step taken out of its frame still lies inside the drawn frame (D2-F5's geometry), and an
+unavailable workspace's reason is spoken when pressed, not shown (D2-F7). Round D3 (2026-10-20, commit
+4d36d07, 16 captures) passed: no blocker, no major, four minors (the report's faded edge dissolving the
+frame of draw.io's picture, a step outside the only frame not named in words, this record, rules and
+origins opening on the notice alone), all fixed and checked on new captures
+([pull request #70](https://github.com/godarg/practonaut/pull/70)).
 
 Round R1 of the bench report v3 pages of 0.3.0 (the artifact-judged report, a report whose client
 values were not re-derived, the compare pages across worlds and the refusals of the regression gate

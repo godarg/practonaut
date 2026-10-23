@@ -5,11 +5,12 @@
  * appear only under "Technical details"; the normal path uses these words.
  */
 import type { Language } from './rates.ts';
+import { appDisplayName } from '../world/apps.ts';
 
 const en = {
   title: 'Practonaut bench', agent: 'Agent', model: 'model', modelSelf: 'model {model} (self-reported)', modelSelfClient: 'model {model} (self-reported, client-attested)', modelSelfCommand: 'model {model} (self-reported, from the command output)', modelNone: 'model not reported',
   worldContentHash: 'World content hash (SHA-256)',
-  mirrorOn: 'real Excalidraw mirror', mirrorOff: 'model only (no mirror)', provenance: 'How these runs were made',
+  mirrorOn: 'real {app} mirror', mirrorOff: 'model only (no mirror)', provenance: 'How these runs were made',
   summary: 'Summary', runs: 'runs', runsLabel: 'Runs', passed: 'passed',
   runCount: '{n} {n:run|runs}', actionCount: '{n} {n:action|actions}', seedCount: '{n} {n:seed|seeds}', repeatCount: '{n} {n:repeat|repeats}', taskCount: '{n} {n:task|tasks}', instanceCount: '{n} {n:instance|instances}',
   passAt1: 'pass@1', passHat: 'pass^{k}', meanActions: 'mean actions', meanActionsPassed: 'mean actions when passed', whenPassed: 'when passed: {value}',
@@ -33,7 +34,7 @@ const en = {
   noVerdict: 'no verdict', noVerdictCounted: 'no verdict, counted as not passed', whyNoVerdict: 'Why there is no verdict',
   selfReported: 'Not re-checked by report --verify: what the runner counted while the agent worked (rejected, undo, reset, host calls, time) and how the agent ended, what the client said about itself (model, API key source, tokens, turns, cost), and the call log the agent’s own bridge wrote.',
   errors: 'error classes', time: 'time', none: '—', environment: 'Environment', settings: 'Settings',
-  note: 'How runs are judged: after the agent stops, a separate checker process judges the host’s final session (its history replayed independently) and, with the mirror, the real Excalidraw export. The agent’s own output never decides a verdict. A model name is what the client reported about itself and is not verified. Rates are shown as fractions; a percentage appears only from 100 runs. The interval is a 95 % Wilson interval over instances (task × seed).',
+  note: 'How runs are judged: after the agent stops, a separate checker process judges the host’s final session (its history replayed independently) and, with the mirror, the real {app} export. The agent’s own output never decides a verdict. A model name is what the client reported about itself and is not verified. Rates are shown as fractions; a percentage appears only from 100 runs. The interval is a 95 % Wilson interval over instances (task × seed).',
   commandLabel: 'Command', kindBuiltin: 'built-in baseline', kindPreset: 'preset', kindCommand: 'command template',
   tasksSeeds: '{plan}, timeout {timeout} s, at most {actions} act, undo or reset calls per run',
   isolation: 'Isolation', isolationBuiltin: 'built-in baseline: no language model, MCP only', isolationPreset: 'tool-restricted preset', isolationTemplate: 'template: tools not restricted by Practonaut', isolationUnrecorded: 'isolation not recorded (bench/1)',
@@ -58,9 +59,9 @@ const en = {
   conditionMet: 'Met', conditionUnmet: 'Not met', conditionUnknown: 'Not evaluated', formal: 'Formal',
   conditionsMissing: 'The conditions cannot be shown: {reason}.', traceMissing: 'No history: the checker could not trace this run, so only the state at the end is shown.',
   missingNotRecorded: 'not recorded in this report', missingChanged: 'the file differs from the hash the report binds', missingUnreadable: 'the file cannot be read', missingNotJudged: 'the run was not judged',
-  finalBoard: 'Final board', finalEngine: 'Exported by the real Excalidraw {version} at the end of the run. report --verify checks only the hash of this picture, not what it shows.',
-  groupOverlay: 'The group outline is drawn from the judged state: an export shows no groups.', finalSchematic: 'Schematic of the judged state, not the real Excalidraw.', reasonModelOnly: 'The bench ran model only (no mirror).', reasonNoPicture: 'No picture of the real Excalidraw was taken.', reasonPictureUnreadable: 'The real Excalidraw’s picture could not be read safely.', reasonPictureChanged: 'The real Excalidraw’s picture differs from the hash the report binds.',
-  pairNote: 'Both pictures share one scale and Excalidraw’s colours; in dark mode, Excalidraw’s own dark-mode colours.', scrollHint: 'The board is wider than the page: scroll sideways to see all of it. The list below names every object.',
+  finalBoard: 'Final board', finalEngine: 'Exported by the real {app} {version} at the end of the run. report --verify checks only the hash of this picture, not what it shows.',
+  groupOverlay: 'The group outline is drawn from the judged state: an export shows no groups.', finalSchematic: 'Schematic of the judged state, not the real {app}.', reasonModelOnly: 'The bench ran model only (no mirror).', reasonNoPicture: 'No picture of the real {app} was taken.', reasonPictureUnreadable: 'The real {app}’s picture could not be read safely.', reasonPictureChanged: 'The real {app}’s picture differs from the hash the report binds.',
+  pairNote: 'Both pictures share one scale and Excalidraw’s colours; in dark mode, Excalidraw’s own dark-mode colours.', pairNoteOther: 'Both pictures share one scale. {app}’s picture is shown as {app} exported it, on a light ground. The target is Practonaut’s schematic of the same board: its labels and lines are drawn larger, frames are named boxes, each palette colour is shown in Practonaut’s shade ({app}’s can look different), and in dark mode it takes the page’s colours.', noticeDrawio: 'draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.', scrollHint: 'The board is wider than the page: scroll sideways to see all of it. The list below names every object.',
   target: 'Example target', targetCaption: 'One board that meets every condition: a schematic of the checked reference solution for this seed.', noTargetTitle: 'No example target', noTarget: 'This task has no validated reference.', targetUnreadable: 'The stored reference cannot be read.',
   objectsTitle: 'On the board (labels in full)', arrowLine: 'arrow {from} → {to}', stepGeometry: '{width} × {height} at ({x}, {y})', stepLine: 'line {stroke}', stepFill: 'fill {fill}', stepNoFill: 'no fill', stepFrame: 'in frame {name}',
   groups: 'Groups (an export does not show them)', noGroups: 'No groups.', group: 'Group', frames: 'Frames', frameMembers: '{name}: {members}', emptyFrame: '{name}: no steps', loose: 'loose end',
@@ -73,9 +74,9 @@ const en = {
   clientLine: 'Self-reported by the client: {parts}.', clientModel: 'model {model}',
   // Refusals of the host, in words.
   code_precondition_failed: 'the action did not fit the board at that moment', code_invalid_argument: 'a parameter was outside the action’s contract', code_invalid_request: 'the call did not match the tool’s input schema',
-  code_stale_base: 'the call named an outdated step or revision', code_action_budget_exhausted: 'the run’s action budget was used up', code_unmodeled: 'no confirmed rule covers this action',
-  code_limit_exceeded: 'a limit of the world was reached', code_real_tool_disagrees: 'the real Excalidraw did not confirm the action', code_mirror_timeout: 'the real Excalidraw did not answer in time',
-  code_mirror_unavailable: 'the real Excalidraw was not available', code_session_busy: 'another change was still in progress',
+  code_stale_base: 'the call named an outdated step or revision', code_action_budget_exhausted: 'the run’s action budget was used up', code_unmodeled: 'no confirmed rule covers this action', code_constraint_refused: 'the application cannot hold the result',
+  code_limit_exceeded: 'a limit of the world was reached', code_real_tool_disagrees: 'the real {app} did not confirm the action', code_mirror_timeout: 'the real {app} did not answer in time',
+  code_mirror_unavailable: 'the real {app} was not available', code_session_busy: 'another change was still in progress',
   failuresHead: 'Failures ({n} of {runs})', moreFailures: '… and {n} more (practonaut report <report.json> --html <out.html>)',
   // compare
   compareTitle: 'Practonaut compare', compareHeading: '{baseline} (baseline) → {candidate} (candidate)', baseline: 'Baseline', candidate: 'Candidate', compareSummary: 'Verdict', compareSides: 'Sides',
@@ -108,7 +109,7 @@ const en = {
   cardWordsPassed: 'passed', cardWordsInstances: '{n:instance|instances} passed', cardIntervalOnce: '95 % interval {low}–{high} % over {instances} (one\u00a0run\u00a0each)', cardRunsPassed: '{runs}, {fraction} passed',
   cardInstanceRule: 'An instance passed when at least half of all its runs passed.',
   cardReverified: 'Re-verified: every judged run re-judged by the checker from its artifacts', cardConsistency: 'Consistency-checked only: the runs were not re-judged',
-  cardMirrorOn: 'Real Excalidraw mirror: every action confirmed in the real app', cardMirrorOff: 'Model only: not checked against the real Excalidraw',
+  cardMirrorOn: 'Real {app} mirror: every action confirmed in the real app', cardMirrorOff: 'Model only: not checked against the real {app}',
   cardIsolationBuiltin: 'Built-in baseline: no language model, MCP only', cardIsolationPreset: 'Tool-restricted preset: only Practonaut’s MCP tools', cardIsolationTemplate: 'Template: tools not restricted by Practonaut', cardIsolationUnrecorded: 'Isolation not recorded (bench/1)',
   cardModelClient: 'Model, self-reported by the client: {model}', cardModelCommand: 'Model, self-reported in the command output: {model}', cardModelNone: 'Model not reported',
   cardUnjudged: '{n} {n:run|runs} without a verdict, counted as not passed', cardInterrupted: 'Interrupted: {runs} of {planned} planned runs finished',
@@ -185,7 +186,7 @@ type Catalog = { readonly [K in keyof typeof en]: string };
 const de: Catalog = {
   title: 'Practonaut-Bench', agent: 'Agent', model: 'Modell', modelSelf: 'Modell {model} (Selbstauskunft)', modelSelfClient: 'Modell {model} (Selbstauskunft des Clients)', modelSelfCommand: 'Modell {model} (Selbstauskunft, aus der Ausgabe des Befehls)', modelNone: 'Modell nicht gemeldet',
   worldContentHash: 'Inhalts-Hash der Welt (SHA-256)',
-  mirrorOn: 'echte Excalidraw-Spiegelung', mirrorOff: 'nur Modell (keine Spiegelung)', provenance: 'Wie diese Läufe entstanden',
+  mirrorOn: 'echte {app}-Spiegelung', mirrorOff: 'nur Modell (keine Spiegelung)', provenance: 'Wie diese Läufe entstanden',
   summary: 'Übersicht', runs: 'Läufe', runsLabel: 'Läufe', passed: 'bestanden',
   runCount: '{n} {n:Lauf|Läufe}', actionCount: '{n} {n:Aktion|Aktionen}', seedCount: '{n} {n:Seed|Seeds}', repeatCount: '{n} {n:Wiederholung|Wiederholungen}', taskCount: '{n} {n:Aufgabe|Aufgaben}', instanceCount: '{n} {n:Instanz|Instanzen}',
   passAt1: 'pass@1', passHat: 'pass^{k}', meanActions: 'Aktionen im Mittel', meanActionsPassed: 'Aktionen im Mittel, wenn bestanden', whenPassed: 'wenn bestanden: {value}',
@@ -209,7 +210,7 @@ const de: Catalog = {
   noVerdict: 'kein Urteil', noVerdictCounted: 'kein Urteil, als nicht bestanden gezählt', whyNoVerdict: 'Warum es kein Urteil gibt',
   selfReported: 'Von report --verify nicht nachgeprüft: was der Runner zählte, während der Agent arbeitete (abgelehnt, Rückg., Neustart, Host-Aufrufe, Zeit), wie der Agent endete, die Selbstauskunft des Clients (Modell, Quelle des API-Schlüssels, Tokens, Runden, Kosten) und das Aufrufprotokoll, das die Bridge des Agenten schrieb.',
   errors: 'Fehlerklassen', time: 'Zeit', none: '—', environment: 'Umgebung', settings: 'Einstellungen',
-  note: 'So wird bewertet: Nach dem Ende des Agenten beurteilt ein getrennter Prüfprozess die letzte Sitzung des Hosts (ihre Historie unabhängig nachgerechnet) und, mit Spiegelung, den echten Excalidraw-Export. Die Ausgabe des Agenten fließt nie in die Bewertung ein. Ein Modellname ist die Selbstauskunft des Clients und nicht geprüft. Raten stehen als Brüche; einen Prozentwert gibt es erst ab 100 Läufen. Das Intervall ist ein 95‑%-Wilson-Intervall über Instanzen (Aufgabe × Seed).',
+  note: 'So wird bewertet: Nach dem Ende des Agenten beurteilt ein getrennter Prüfprozess die letzte Sitzung des Hosts (ihre Historie unabhängig nachgerechnet) und, mit Spiegelung, den echten {app}-Export. Die Ausgabe des Agenten fließt nie in die Bewertung ein. Ein Modellname ist die Selbstauskunft des Clients und nicht geprüft. Raten stehen als Brüche; einen Prozentwert gibt es erst ab 100 Läufen. Das Intervall ist ein 95‑%-Wilson-Intervall über Instanzen (Aufgabe × Seed).',
   commandLabel: 'Befehl', kindBuiltin: 'eingebaute Vergleichsbasis', kindPreset: 'Voreinstellung', kindCommand: 'Befehlsvorlage',
   tasksSeeds: '{plan}, Zeitlimit {timeout} s, höchstens {actions} Aufrufe von act, undo oder reset je Lauf',
   isolation: 'Isolation', isolationBuiltin: 'eingebaute Vergleichsbasis: kein Sprachmodell, nur MCP', isolationPreset: 'Voreinstellung mit eingeschränkten Werkzeugen', isolationTemplate: 'Vorlage: Werkzeuge nicht von Practonaut eingeschränkt', isolationUnrecorded: 'Isolation nicht erfasst (bench/1)',
@@ -233,9 +234,9 @@ const de: Catalog = {
   conditionMet: 'Erfüllt', conditionUnmet: 'Nicht erfüllt', conditionUnknown: 'Nicht ausgewertet', formal: 'Formal',
   conditionsMissing: 'Die Bedingungen lassen sich nicht zeigen: {reason}.', traceMissing: 'Kein Verlauf: Der Prüfer konnte diesen Lauf nicht nachverfolgen, gezeigt wird nur der Stand am Ende.',
   missingNotRecorded: 'in diesem Bericht nicht aufgezeichnet', missingChanged: 'die Datei weicht vom Hash ab, den der Bericht bindet', missingUnreadable: 'die Datei lässt sich nicht lesen', missingNotJudged: 'der Lauf wurde nicht bewertet',
-  finalBoard: 'Arbeitsfläche am Ende', finalEngine: 'Exportiert vom echten Excalidraw {version} am Ende des Laufs. report --verify prüft nur den Hash dieses Bildes, nicht, was es zeigt.',
-  groupOverlay: 'Der Gruppenumriss stammt aus dem beurteilten Zustand; ein Export zeigt keine Gruppen.', finalSchematic: 'Schema des beurteilten Zustands, nicht das echte Excalidraw.', reasonModelOnly: 'Die Bench lief nur mit dem Modell (keine Spiegelung).', reasonNoPicture: 'Es wurde kein Bild des echten Excalidraw aufgenommen.', reasonPictureUnreadable: 'Das Bild des echten Excalidraw ließ sich nicht sicher lesen.', reasonPictureChanged: 'Das Bild des echten Excalidraw weicht vom Hash ab, den der Bericht bindet.',
-  pairNote: 'Beide Bilder haben einen gemeinsamen Maßstab und die Farben von Excalidraw; im dunklen Modus dessen eigene Farben für den dunklen Modus.', scrollHint: 'Die Arbeitsfläche ist breiter als die Seite: seitlich scrollen, um sie ganz zu sehen. Die Liste darunter nennt jedes Objekt.',
+  finalBoard: 'Arbeitsfläche am Ende', finalEngine: 'Exportiert vom echten {app} {version} am Ende des Laufs. report --verify prüft nur den Hash dieses Bildes, nicht, was es zeigt.',
+  groupOverlay: 'Der Gruppenumriss stammt aus dem beurteilten Zustand; ein Export zeigt keine Gruppen.', finalSchematic: 'Schema des beurteilten Zustands, nicht das echte {app}.', reasonModelOnly: 'Die Bench lief nur mit dem Modell (keine Spiegelung).', reasonNoPicture: 'Es wurde kein Bild des echten {app} aufgenommen.', reasonPictureUnreadable: 'Das Bild des echten {app} ließ sich nicht sicher lesen.', reasonPictureChanged: 'Das Bild des echten {app} weicht vom Hash ab, den der Bericht bindet.',
+  pairNote: 'Beide Bilder haben einen gemeinsamen Maßstab und die Farben von Excalidraw; im dunklen Modus dessen eigene Farben für den dunklen Modus.', pairNoteOther: 'Beide Bilder haben einen gemeinsamen Maßstab. Das Bild aus {app} erscheint so, wie {app} es exportiert hat, auf hellem Grund. Das Ziel ist Practonauts Schema derselben Arbeitsfläche: Beschriftungen und Linien sind größer, Rahmen sind benannte Kästen, jede Palettenfarbe erscheint in Practonauts Farbton (in {app} kann sie anders aussehen), und im dunklen Modus nimmt es die Farben der Seite an.', noticeDrawio: 'draw.io ist eine eingetragene Marke; Practonaut ist mit draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert.', scrollHint: 'Die Arbeitsfläche ist breiter als die Seite: seitlich scrollen, um sie ganz zu sehen. Die Liste darunter nennt jedes Objekt.',
   target: 'Beispielziel', targetCaption: 'Eine Arbeitsfläche, die jede Bedingung erfüllt: ein Schema der geprüften Referenzlösung für diesen Seed.', noTargetTitle: 'Kein Beispielziel', noTarget: 'Diese Aufgabe hat keine geprüfte Referenz.', targetUnreadable: 'Die gespeicherte Referenz lässt sich nicht lesen.',
   objectsTitle: 'Auf der Arbeitsfläche (Beschriftungen vollständig)', arrowLine: 'Pfeil {from} → {to}', stepGeometry: '{width} × {height} bei ({x}, {y})', stepLine: 'Linie {stroke}', stepFill: 'Füllung {fill}', stepNoFill: 'keine Füllung', stepFrame: 'im Rahmen {name}',
   groups: 'Gruppen (ein Export zeigt sie nicht)', noGroups: 'Keine Gruppen.', group: 'Gruppe', frames: 'Rahmen', frameMembers: '{name}: {members}', emptyFrame: '{name}: keine Schritte', loose: 'loses Ende',
@@ -247,9 +248,9 @@ const de: Catalog = {
   callsMissingNone: 'die Bridge des Agenten hat keines geschrieben', callsNote: 'Aufgezeichnet vom Bridge-Prozess des Agenten selbst: ein Beleg über den Lauf, kein Beweis.',
   clientLine: 'Selbstauskunft des Clients: {parts}.', clientModel: 'Modell {model}',
   code_precondition_failed: 'die Aktion passte in dem Moment nicht zur Arbeitsfläche', code_invalid_argument: 'ein Parameter lag außerhalb des Vertrags der Aktion', code_invalid_request: 'der Aufruf passte nicht zum Eingabeschema des Werkzeugs',
-  code_stale_base: 'der Aufruf nannte einen veralteten Schritt oder eine veraltete Revision', code_action_budget_exhausted: 'das Aktionsbudget des Laufs war aufgebraucht', code_unmodeled: 'keine bestätigte Regel deckt diese Aktion ab',
-  code_limit_exceeded: 'eine Grenze der Welt war erreicht', code_real_tool_disagrees: 'das echte Excalidraw hat die Aktion nicht bestätigt', code_mirror_timeout: 'das echte Excalidraw hat nicht rechtzeitig geantwortet',
-  code_mirror_unavailable: 'das echte Excalidraw war nicht verfügbar', code_session_busy: 'eine andere Änderung lief noch',
+  code_stale_base: 'der Aufruf nannte einen veralteten Schritt oder eine veraltete Revision', code_action_budget_exhausted: 'das Aktionsbudget des Laufs war aufgebraucht', code_unmodeled: 'keine bestätigte Regel deckt diese Aktion ab', code_constraint_refused: 'die Anwendung kann das Ergebnis nicht speichern',
+  code_limit_exceeded: 'eine Grenze der Welt war erreicht', code_real_tool_disagrees: 'das echte {app} hat die Aktion nicht bestätigt', code_mirror_timeout: 'das echte {app} hat nicht rechtzeitig geantwortet',
+  code_mirror_unavailable: 'das echte {app} war nicht verfügbar', code_session_busy: 'eine andere Änderung lief noch',
   failuresHead: 'Nicht bestanden ({n} von {runs})', moreFailures: '… und {n} weitere (practonaut report <bericht.json> --html <out.html>)',
   compareTitle: 'Practonaut-Vergleich', compareHeading: '{baseline} (Basis) → {candidate} (Kandidat)', baseline: 'Basis', candidate: 'Kandidat', compareSummary: 'Urteil', compareSides: 'Seiten',
   verdictImprovement: 'Verbesserung: Der Kandidat besteht mehr Instanzen (exakter McNemar-Test p = {p}; {c} nur beim Kandidaten, {b} nur bei der Basis)',
@@ -279,7 +280,7 @@ const de: Catalog = {
   cardWordsPassed: 'bestanden', cardWordsInstances: '{n:Instanz|Instanzen} bestanden', cardIntervalOnce: '95-%-Intervall {low}–{high} % über {instances} (je\u00a0ein\u00a0Lauf)', cardRunsPassed: '{runs}, {fraction} bestanden',
   cardInstanceRule: 'Eine Instanz gilt als bestanden, wenn mindestens die Hälfte all ihrer Läufe bestand.',
   cardReverified: 'Nachgerechnet: Jeder bewertete Lauf wurde vom Prüfer aus seinen Artefakten neu beurteilt', cardConsistency: 'Nur auf Stimmigkeit geprüft: Die Läufe wurden nicht neu beurteilt',
-  cardMirrorOn: 'Echte Excalidraw-Spiegelung: jede Aktion in der echten App bestätigt', cardMirrorOff: 'Nur Modell: nicht mit dem echten Excalidraw geprüft',
+  cardMirrorOn: 'Echte {app}-Spiegelung: jede Aktion in der echten App bestätigt', cardMirrorOff: 'Nur Modell: nicht mit dem echten {app} geprüft',
   cardIsolationBuiltin: 'Eingebaute Vergleichsbasis: kein Sprachmodell, nur MCP', cardIsolationPreset: 'Voreinstellung mit eingeschränkten Werkzeugen: nur die MCP-Werkzeuge von Practonaut', cardIsolationTemplate: 'Vorlage: Werkzeuge nicht von Practonaut eingeschränkt', cardIsolationUnrecorded: 'Isolation nicht erfasst (bench/1)',
   cardModelClient: 'Modell laut Selbstauskunft des Clients: {model}', cardModelCommand: 'Modell laut Selbstauskunft in der Ausgabe des Befehls: {model}', cardModelNone: 'Modell nicht gemeldet',
   cardUnjudged: '{n} {n:Lauf|Läufe} ohne Urteil, als nicht bestanden gezählt', cardInterrupted: 'Abgebrochen: {runs} von {planned} geplanten Läufen beendet',
@@ -355,6 +356,11 @@ export type Words = Catalog;
 export const TEXT: Readonly<Record<Language, Words>> = { en, de };
 
 /** Fills `{name}` from values and `{n:one|other}` by the plural rule of the language. */
+/** A text that names the report's application: `{app}` becomes the application's fixed display name from
+ * the world table, by the report's adapter id, never a literal (PADR-0049 decision 1.5). */
+export function appText(text: string, adapterId: string): string { return text.replaceAll('{app}', appDisplayName(adapterId)); }
+/** The interim notice an app's name needs once on a page that names it (PADR-0049 decision 9.2), or ''. */
+export function appNotice(t: { noticeDrawio: string }, adapterIds: readonly string[]): string { return adapterIds.includes('drawio') ? t.noticeDrawio : ''; }
 export function fill(language: Language, template: string, values: Record<string, string | number> = {}): string {
   const plural = new Intl.PluralRules(language);
   return template

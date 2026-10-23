@@ -20,16 +20,16 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { packWorld, readWorldPackage } from '../package/index.ts';
 import { loadWorldPackage } from '../world/index.ts';
-import { loadLibrary, LIBRARY_WORLD_DIR, type LibraryEntry } from '../library/index.ts';
+import { LIBRARIES, loadLibraryOf, type LibraryApp, type LibraryEntry } from '../library/index.ts';
 import { startHost } from '../host/server.ts';
-import { createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
+import { createPracticeController, createPracticeSession, type PracticeSessionOptions } from '../host/session.ts';
+import type { MirrorFactory } from '../host/mirror.ts';
 import type { ActRequest, Actor, ControllerFactory, HostReply, MirrorMode, MutationReply, PracticeController, RunningHost } from '../host/protocol.ts';
 import { ensurePrivateDirectory } from '../platform/private-fs.ts';
 import { resolvedDataPaths } from '../platform/paths.ts';
 import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
 import { PACKAGE_VERSION } from '../version.ts';
 import { sha256Hex } from '../canonical/index.ts';
-import { EXCALIDRAW_APP_VERSION } from '../adapters/excalidraw/index.ts';
 import type { CheckerVerdict, SessionData, World } from '../world/types.ts';
 import type { TaskOracle } from '../authoring/from-scenes.ts';
 import { analyseLengthForSeeds } from '../authoring/minimal-length.ts';
@@ -67,6 +67,8 @@ export interface BenchOptions {
   /** Aborted on Ctrl+C, SIGTERM or SIGHUP: the running agent is stopped, its session closed, and the
    * report holds the runs that finished. */
   signal?: AbortSignal;
+  /** Test seam: the mirror each run's host starts instead of the registry's (the CLI never sets it). */
+  mirrorFactory?: MirrorFactory;
 }
 export interface RunCounters { observe: number; act: number; accepted: number; rejected: number; undoCalls: number; undos: number; resetCalls: number; resets: number; check: number; mutations: number }
 
@@ -134,9 +136,12 @@ export function benchId(now = new Date()): string { return now.toISOString().rep
 /** The bundled library as a bench/1 report names it: `report --verify` of a /1 report re-judges
  * against this (PADR-0030); /2 reports carry their own stored world. `contentHash` is the SHA-256 of
  * the world's canonical JSON. */
-export async function libraryWorld(): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
-  const world = loadWorldPackage(await readWorldPackage(await packWorld(LIBRARY_WORLD_DIR)));
-  return { world, entries: new Map(loadLibrary().library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
+export async function libraryWorld(app: string = 'excalidraw'): Promise<{ world: World; entries: Map<string, LibraryEntry>; contentHash: string }> {
+  // The library this Practonaut ships for an application (PADR-0049 decision 8.2); /1 reports name Excalidraw's.
+  if (!Object.hasOwn(LIBRARIES, app)) throw new Error(`no bundled library for ${app}`);
+  const library = LIBRARIES[app as LibraryApp];
+  const world = loadWorldPackage(await readWorldPackage(await packWorld(library.worldDir)));
+  return { world, entries: new Map(loadLibraryOf(library.app).library.tasks.map(entry => [entry.id, entry])), contentHash: worldContentHash(world) };
 }
 
 /** The public limits of the benched tasks that have them (PADR-0040), as a report records them. */
@@ -357,7 +362,10 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
     const counters: RunCounters = { observe: 0, act: 0, accepted: 0, rejected: 0, undoCalls: 0, undos: 0, resetCalls: 0, resets: 0, check: 0, mutations: 0 };
     const recorder = new MutationRecorder('v3'), clientCalls: ClientCall[] = [];
     let inner: PracticeController | undefined; let host: RunningHost | undefined;
-    const factory: ControllerFactory = async (value, settings) => { inner = await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions); return countingController(inner, counters, options.maxActions, recorder); };
+    const factory: ControllerFactory = async (value, settings) => {
+      inner = options.mirrorFactory ? await createPracticeController(value, (settings ?? {}) as PracticeSessionOptions, options.mirrorFactory) : await createPracticeSession(value, (settings ?? {}) as PracticeSessionOptions);
+      return countingController(inner, counters, options.maxActions, recorder);
+    };
     let outcome: AgentOutcome; let checker: SessionRunV3['checker'] = null; let artifacts: SessionRunV3['artifacts']; let wallMs = 0; let finalActions = 0;
     let evidence: ClientEvidence | undefined; let logs: SessionRunV3['logs']; let logsTried = false;
     const refusedBefore = processLedger.refusals;
@@ -402,7 +410,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
       if (outcome.status === 'infra_error') throw new ClientInfraError(outcome);
       // Judge the host's committed session, independently, in separate checker processes.
       const view = inner!.view(); finalActions = view.log.length;
-      const session: SessionData = { schema: 'practonaut.session/1', world: view.world, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
+      // The session names its world by id and version only; the view's adapter id is not session data.
+      const session: SessionData = { schema: 'practonaut.session/1', world: { id: view.world.id, version: view.world.version }, seed: view.seed, taskId: view.task.id, toolVersion: PACKAGE_VERSION, log: view.log, state: view.state, hash: view.hash };
       const sessionText = JSON.stringify(session);
       const sessionRaw = await checkInProcess(world, sessionText, { seed: item.seed, taskId: item.taskId });
       let nativeText: string | null = null, nativeRaw: CheckerVerdict | null = null;
@@ -410,7 +419,8 @@ export async function runBench(options: BenchOptions): Promise<{ report: Session
         const exported = await inner!.export({ expectedRevision: view.revision });
         if (!exported.ok) throw new Error(`native export failed: ${exported.error.code}`);
         nativeText = exported.value.native.utf8;
-        nativeRaw = await checkInProcess(world, nativeText, { seed: item.seed, taskId: item.taskId });
+        // The app's export from this run's own host, equal to the session state (PADR-0049 6.8).
+        nativeRaw = await checkInProcess(world, nativeText, { seed: item.seed, taskId: item.taskId, reading: 'own-export' });
       }
       // The judged artifacts stay in the run directory and the report binds their hashes, so
       // `practonaut report --verify` can re-run the checker on them later.
@@ -500,7 +510,8 @@ async function assembleReport(input: {
     verdictLevel: 'session',
     environment: {
       practonaut: PACKAGE_VERSION, node: process.version, os: { platform: process.platform, release: release(), arch: arch() },
-      app: { adapterId: world.app.adapterId, version: EXCALIDRAW_APP_VERSION }, mirror: input.mirror,
+      // The pinned app version the world names (the world table refuses any other, PADR-0045), not Excalidraw's.
+      app: { adapterId: world.app.adapterId, version: world.app.versionRange }, mirror: input.mirror,
       world: { source: prepared.source, worldId: world.id, version: world.version, contentHash: prepared.contentHash, package: { path: BENCH_WORLD_FILE, sha256: worldSha256 }, generated, ...(limits.length ? { limits } : {}) },
     },
     toolchain: { kind: 'practonaut', id: 'practonaut', tools: [...BRIDGE_TOOLS] },

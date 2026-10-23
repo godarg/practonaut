@@ -5,13 +5,14 @@ import { evaluate } from "../predicate/index.ts";
 import type { CheckerData, CheckerVerdict, Predicate, State, Task, World } from "../world/types.ts";
 import { CheckerError } from "./errors.ts";
 import { validateSubmissionState, parseSession } from "./state.ts";
-import { nativeFormat, type NativeFormatId } from "./formats.ts";
+import { nativeFormat, type NativeFormatId, type NativeReading } from "./formats.ts";
 import { validateCheckerData } from "./bundle.ts";
 import { verifySessionHistory } from './replay.ts';
+import { refuseConstraintViolation } from "./constraints.ts";
 export { CheckerError } from "./errors.ts";
 export { parseExcalidraw } from "./excalidraw.ts";
 export { parseScene, type SceneReport, type Unmodeled } from "./scene.ts";
-export { NATIVE_FORMATS, NATIVE_FORMAT_IDS, nativeFormat, type NativeFormat, type NativeFormatId } from "./formats.ts";
+export { NATIVE_FORMATS, NATIVE_FORMAT_IDS, nativeFormat, type NativeFormat, type NativeFormatId, type NativeReading } from "./formats.ts";
 export { parseSession, validateSubmissionState } from "./state.ts";
 export { loadCheckerBundle, checkerDataFromBundle, validateCheckerData } from "./bundle.ts";
 export interface CheckOptions { seed?: number; taskId?: string; bundle?: CheckerData; fuel?: number }
@@ -60,6 +61,7 @@ export function checkState(world: World, input: State, options: CheckOptions = {
   const bundle = options.bundle ? generateCheckerVariant(validated, options.bundle, seed) : undefined;
   const v2 = validated.schema === "practonaut.world/2";
   const state = validateSubmissionState(input, v2 ? undefined : variant.app.fontFamilies, v2 ? 2 : 1);
+  if (v2) refuseConstraintViolation(state, validated.app.adapterId);
   const allTasks = [...variant.tasks, ...(bundle?.heldOutTasks ?? [])];
   const tasks = options.taskId ? allTasks.filter(t => t.id === options.taskId) : variant.tasks;
   if (tasks.length === 0) throw new CheckerError("checker_invalid", "unknown task");
@@ -91,11 +93,13 @@ export function checkState(world: World, input: State, options: CheckOptions = {
   });
   return { ok: true, scope: "end-state-only", passed: judgments.every(t => t.passed), tasks: judgments, counterprobes: { empty: false, unchanged: false, wrongArtifact: false } };
 }
-export function checkSubmission(world: World, input: string | Uint8Array, options: CheckOptions & { format?: "session" | NativeFormatId } = {}): CheckerVerdict {
+export function checkSubmission(world: World, input: string | Uint8Array, options: CheckOptions & { format?: "session" | NativeFormatId; reading?: NativeReading } = {}): CheckerVerdict {
   const bytes = typeof input === "string" ? Buffer.from(input) : input;
   if (bytes.length > 16 * 1024 * 1024) throw new CheckerError("artifact_invalid", "submission exceeds 16 MiB");
   let isSession = options.format === "session";
-  if (options.format === undefined) {
+  // An XML document (a .drawio file) is never a session file; anything else must be bounded JSON.
+  const xml = /^\s*</.test(Buffer.from(bytes.subarray(0, 64)).toString("utf8"));
+  if (options.format === undefined && !xml) {
     let raw: unknown;
     try { raw = parseJsonEntry(bytes, "submission.json", 64); } catch { throw new CheckerError("artifact_invalid", "submission is not bounded valid JSON"); }
     isSession = raw !== null && typeof raw === "object" && !Array.isArray(raw) && (raw as Record<string, unknown>).schema === "practonaut.session/1";
@@ -115,5 +119,5 @@ export function checkSubmission(world: World, input: string | Uint8Array, option
   // For Excalidraw, world/2 accepts any drawing through the tolerant parser; world/1 keeps its strict format.
   const format = nativeFormat(world?.app);
   if (options.format !== undefined && options.format !== format.id) throw new CheckerError("artifact_invalid", `a ${options.format} file is not the native format of this world's adapter (${format.id})`);
-  return checkState(world, format.parse(world.schema, input), options);
+  return checkState(world, format.parse(world.schema, input, options.reading ?? "submission"), options);
 }

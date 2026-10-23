@@ -75,7 +75,8 @@ test('without Chromium: the Player opens at once, says what is not checked yet, 
     const { page } = watched;
     const banner = page.getByTestId('model-only-banner');
     assert.equal(await banner.getByText('Not yet checked against the real Excalidraw').count(), 1);
-    assert.match(await banner.innerText(), new RegExp(`run practonaut setup once \\(one download: Chromium headless shell, about ${size} MB\\), then start Practonaut again`));
+    // The size keeps its unit on its line (a no-break space; review D1-F11).
+    assert.match(await banner.innerText(), new RegExp(`run practonaut setup once \\(one download of about ${size} MB: Chromium headless shell\\), then start Practonaut again`));
     assert.equal(await page.getByTestId('task-picker').innerText().then(text => text.includes('Build the flow')), true, 'the example opens on its first task');
     assert.equal(await steps(page).count(), 0, 'the board starts empty');
 

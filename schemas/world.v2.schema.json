@@ -60,13 +60,15 @@
         "adapterId": {
           "type": "string",
           "enum": [
-            "excalidraw"
+            "excalidraw",
+            "drawio"
           ]
         },
         "versionRange": {
           "type": "string",
           "enum": [
-            "0.18.1"
+            "0.18.1",
+            "32.4.1"
           ]
         },
         "fontFamilies": {
@@ -1251,7 +1253,8 @@
         "appVersion": {
           "type": "string",
           "enum": [
-            "0.18.1"
+            "0.18.1",
+            "32.4.1"
           ]
         },
         "compileToolVersion": {

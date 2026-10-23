@@ -132,7 +132,10 @@ A family becomes a challenge tier only after it passes a preregistered ladder ga
 
 16 tasks for Excalidraw 0.18.1, each in English and German with three label variants, a reference
 solution and near misses. List them with `npx practonaut tasks list`; open one with
-`npx practonaut play <task>`; address them as `excalidraw/<task>` in `mcp` and `bench`.
+`npx practonaut play <task>`; address them as `excalidraw/<task>` in `mcp` and `bench`. The same
+16 tasks run on draw.io as `drawio/<task>` (`tasks list drawio/all`, `bench --tasks drawio/all`) after
+`npx practonaut setup --app drawio`; every instance pairs with its Excalidraw twin in `compare`
+([draw.io evidence](docs/benchmarks/drawio/README.md)).
 
 | Task | Level | Reference actions | Goal |
 |---|---|---|---|
@@ -171,8 +174,11 @@ reference solution, the near misses and held-out checker data never reach it ove
 
 ## Limits
 
-- **One application.** Excalidraw 0.18.1 is the only app so far. The adapter contract is meant for
-  more ([adapter guide](docs/adapter-guide.md)); none exists yet.
+- **Two applications.** Excalidraw 0.18.1 is bundled. Practonaut also works with draw.io 32.4.1 for
+  worlds that name it, after an explicit `npx practonaut setup --app drawio` (one 48.4 MB download of
+  the unmodified release, checked against its SHA-256; [the draw.io adapter](docs/adapters/drawio.md)).
+  draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or sponsored by
+  draw.io Ltd or draw.io AG. The task library and its scores so far are Excalidraw's.
 - **Semantic actions, not pixels.** Agents act through Practonaut's actions (add a step, connect,
   rename, …), not by clicking a screen. This measures whether an agent can reach a goal in the app's
   model, not whether it can operate the GUI.
@@ -191,7 +197,8 @@ reference solution, the near misses and held-out checker data never reach it ove
 
 - Node.js ≥ 22.18 and npm.
 - Optional: `npx practonaut setup` downloads Playwright's Chromium headless shell once for the real
-  engine. Nothing is downloaded on install; the package has no install script.
+  engine; `setup --app drawio` also downloads the draw.io release. Nothing is downloaded on install;
+  the package has no install script.
 - Local data lives in `~/.practonaut` (or `PRACTONAUT_HOME`). No telemetry, no account. Practonaut's
   own process makes no network calls while practising (`npx` fetches the package and `setup` fetches
   Chromium, each once); an agent you connect talks to its own model provider.

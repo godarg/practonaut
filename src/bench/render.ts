@@ -19,7 +19,8 @@ import { asView, type ArtifactReportView, type BenchReportView, type ReportInput
 import { readableText } from '../cli/output.ts';
 import { aggregateInstance } from './stats.ts';
 import { intervalPercent, number, rateText, type Language } from './rates.ts';
-import { fill, sentence, TEXT, type Words } from './report-text.ts';
+import { appNotice, appText, fill, sentence, TEXT, type Words } from './report-text.ts';
+import { appDisplayName } from '../world/apps.ts';
 import { explanationKey, type ConditionDetail, type ReportDetails, type RunDetail, type TrajectoryRow } from './details.ts';
 import type { BoardObject } from './schematic.ts';
 import { styleNames } from '../world/style-names.ts';
@@ -80,8 +81,8 @@ const esc = escapeHtml;
  * in mono like every command; a flag stays on one line, so a reader who copies it gets it whole. */
 const COMMAND = String.raw`(?:practonaut )?(?:report|compare|bench)(?= --)|practonaut (?:report|compare|bench|challenge)\b|--[a-z][a-z-]*`;
 /** Proper names the page's hyphenation must not split ("Prac-tonaut", "McNe-mar", "Wil-son"). */
-export const PROPER_NAMES: readonly string[] = ['Practonaut', 'McNemar', 'Excalidraw', 'Wilson'];
-const NAMES = String.raw`(?<![\p{L}\p{N}])(?:${PROPER_NAMES.join('|')})(?![\p{L}\p{N}])`;
+export const PROPER_NAMES: readonly string[] = ['Practonaut', 'McNemar', 'Excalidraw', 'draw.io', 'Wilson'];
+const NAMES = String.raw`(?<![\p{L}\p{N}])(?:${PROPER_NAMES.map(name => name.replaceAll('.', '\\.')).join('|')})(?![\p{L}\p{N}])`;
 /** The longest word kept on one line: an identifier up to this length never breaks, not even at its own
  * hyphens (design-language \u00a710.5, design review R2); a longer one, such as a hash, may wrap. */
 export const ID_MAX = 32;
@@ -97,6 +98,8 @@ export function dataWords(value: string, tag: 'data' | 'code' = 'data'): string 
 /** Escaped prose whose quoted parts (labels, names) and the given ids are data, and whose commands and
  * flags are code: never hyphenated; ids, commands and flags each word on one line. `code`: the ids are set as code (mono), as
  * a table or a compare list names a task. Proper names are never hyphenated either. */
+/** The interim notice once in a page's closing notes, when the page names an app that needs it. */
+export function noticeHtml(t: { noticeDrawio: string }, adapterIds: readonly string[]): string { const notice = appNotice(t, adapterIds); return notice ? `<p class="note">${prose(notice)}</p>` : ''; }
 export function prose(value: string, ids: readonly string[] = [], idTag: 'data' | 'code' = 'data'): string {
   const names = [...new Set(ids)].filter(Boolean).sort((a, b) => b.length - a.length).map(id => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   // An id is matched as a whole word, never inside another (a task "T" is not the T of "The").
@@ -181,9 +184,8 @@ function worldText(report: BenchReportView, t: Words): string {
  * reports. The short form is a chip or a value in a sentence; the long one explains it in the settings. */
 export const levelText = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifact;
 export const levelShort = (level: VerdictLevel, language: Language): string => level === 'session' ? TEXT[language].levelSession : TEXT[language].levelArtifactShort;
-/** Applications by adapter id, as their own names spell them; another adapter shows its id. */
-const APP_NAMES: Readonly<Record<string, string>> = Object.freeze({ excalidraw: 'Excalidraw', drawio: 'draw.io' });
-export const appName = (adapterId: string): string => APP_NAMES[adapterId] ?? adapterId;
+/** Applications by adapter id, by their fixed display names from the world table; another adapter shows its id. */
+export const appName = (adapterId: string): string => appDisplayName(adapterId);
 /** A foreign MCP server's code runs as the same OS user, without a sandbox (PADR-0043 decision 8): every
  * surface says so — the report page in a warning banner, a compare side as a chip. */
 export const noSandbox = (report: Pick<BenchReportView, 'toolchain'>, language: Language): string[] => report.toolchain.kind === 'foreign-mcp' ? [TEXT[language].chipNoSandbox] : [];
@@ -217,7 +219,7 @@ export function headlineResult(report: BenchReportView, language: Language): str
  * foreign server's missing sandbox is the page's warning banner and its own terminal line. */
 export function provenance(report: BenchReportView, language: Language, verification: VerificationInput): string[] {
   const t = TEXT[language], v = verificationFacts(verification);
-  const mirror = report.verdictLevel === 'session' ? [report.environment.mirror === 'required' ? t.mirrorOn : t.mirrorOff] : [];
+  const mirror = report.verdictLevel === 'session' ? [report.environment.mirror === 'required' ? appText(t.mirrorOn, report.environment.app.adapterId) : t.mirrorOff] : [];
   const parts = [levelShort(report.verdictLevel, language), v.level === 're-verified' ? (v.claims ? t.reverifiedClaimsShort : t.reverifiedShort) : t.consistencyShort, ...mirror, isolationText(report, t)];
   if (report.agent.kind !== 'builtin') parts.push(modelHeadline(report, language));
   return parts;
@@ -331,7 +333,7 @@ const historyText = (history: ConditionDetail['history'], language: Language): s
     case 'unknown': return t.historyUnknown;
   }
 };
-const codeText = (code: string, t: Words): string => (t as unknown as Record<string, string>)[`code_${code}`] ?? '';
+const codeText = (code: string, t: Words, adapterId: string): string => appText((t as unknown as Record<string, string>)[`code_${code}`] ?? '', adapterId);
 export const errorClassesOf = (run: ViewRun): string[] => run.verdictLevel === 'artifact' ? [...(run.checker?.artifact.errorClasses ?? [])] : [...new Set([...(run.checker?.session.errorClasses ?? []), ...(run.checker?.native?.errorClasses ?? [])])];
 /** An error class's explanation: the run's stored checker output, else the bundled library's. */
 function explanationOf(run: Pick<ViewRun, 'taskId' | 'seed'>, id: string, detail: RunDetail | undefined, details: ReportDetails | undefined, language: Language): string | null {
@@ -348,7 +350,7 @@ export function runStates(run: ViewSessionRun, detail: RunDetail | undefined, de
   if (run.status === 'agent_failed') states.push({ name: t.stateAgentFailed, why: run.agentExitCode === null ? t.stateAgentNoStart : fill(language, t.stateAgentFailedWhy, { code: run.agentExitCode }) });
   if (run.status === 'infra_error') states.push({ name: t.stateUnjudged, why: t.stateUnjudgedWhy });
   if (run.status !== 'infra_error' && run.acceptedActions === 0) states.push({ name: t.stateEmpty, why: t.stateEmptyWhy });
-  if (run.rejectedActions > 0) states.push({ name: t.stateRejected, why: fill(language, t.stateRejectedWhy, { n: run.rejectedActions, m: run.toolCalls.act }), list: (detail?.rejected ?? []).map(([code, count]) => fill(language, t.rejectedItem, { reason: codeText(code, t) || t.rejectedOther, n: count })) });
+  if (run.rejectedActions > 0) states.push({ name: t.stateRejected, why: fill(language, t.stateRejectedWhy, { n: run.rejectedActions, m: run.toolCalls.act }), list: (detail?.rejected ?? []).map(([code, count]) => fill(language, t.rejectedItem, { reason: codeText(code, t, report.environment.app.adapterId) || t.rejectedOther, n: count })) });
   if (detail && detail.clients.length > 1) states.push({ name: t.stateClients, why: fill(language, t.stateClientsWhy, { n: detail.clients.length, names: detail.clients.join(', ') }) });
   const actionText = (number: number): string => detail?.trajectory?.find(row => row.number === number)?.text ?? '';
   let unmet = 0;
@@ -424,8 +426,14 @@ export function reportStylesheet(): string {
 }
 
 /** One static page: the hashed style is the only thing the CSP allows. */
-export function page(language: Language, title: string, tokensCss: string, body: string): string {
-  const style = tokensCss + reportStylesheet(), hash = createHash('sha256').update(style).digest('base64');
+/** The rules for boards drawn at an exact width: below that frame width (a container query on the
+ * board's figure) the line shows and the edge fades; at or above it the board fits and neither shows. */
+export function fitRules(widths: Iterable<number>): string {
+  const fade = (side: string): string => `mask-image:linear-gradient(to ${side},var(--pn-color-text) calc(100% - var(--pn-space-6)),transparent)`;
+  return [...new Set(widths)].sort((a, b) => a - b).map(width => `@container (max-width:${width - 0.5}px){.scroll-hint.fit-${width}{display:block}.board-scroll.fit-${width}{${fade('right')}}.board-scroll.fit-${width}.from-end{${fade('left')}}}`).join('\n');
+}
+export function page(language: Language, title: string, tokensCss: string, body: string, extraCss = ''): string {
+  const style = tokensCss + reportStylesheet() + extraCss, hash = createHash('sha256').update(style).digest('base64');
   return `<!doctype html>
 <html lang="${language}">
 <head>
@@ -486,26 +494,36 @@ export function objectLines(objects: readonly BoardObject[], language: Language)
 function boardHtml(detail: RunDetail, report: SessionReportView, language: Language): string {
   const t = TEXT[language], picture = detail.picture;
   const quoted = (value: string): string => language === 'de' ? `„${value}“` : `“${value}”`;
-  const reason = picture?.kind === 'schematic' ? { 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason] : '';
-  const caption = picture?.kind === 'engine' ? `${fill(language, t.finalEngine, { version: report.environment.app.version })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${t.finalSchematic} ${reason}`;
+  const app = report.environment.app.adapterId;
+  const reason = picture?.kind === 'schematic' ? appText({ 'model-only': t.reasonModelOnly, 'no-picture': t.reasonNoPicture, 'picture-unreadable': t.reasonPictureUnreadable, 'picture-changed': t.reasonPictureChanged }[picture.reason], app) : '';
+  const caption = picture?.kind === 'engine' ? `${fill(language, appText(t.finalEngine, app), { version: report.environment.app.version })}${detail.groupOverlay ? ` ${t.groupOverlay}` : ''}` : `${appText(t.finalSchematic, app)} ${reason}`;
   const list = (title: string, items: string[]): string => `<p class="legend-title">${esc(title)}</p><ul class="legend">${items.map(item => `<li>${prose(item)}</li>`).join('')}</ul>`;
   // A picture wider than the column scrolls inside its frame; a faded edge and a line say so. When the
   // first difference from the target lies in the right half, both frames open at that end (F3).
   const overflow = { none: 'fits', narrow: 'overflows-phone', wide: 'overflows-desktop' }[detail.overflow];
   const end = detail.overflow !== 'none' && detail.fromEnd ? ' from-end' : '';
-  const frame = (markup: string, label: string): string => `<div class="board-scroll ${overflow}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>${detail.overflow === 'none' ? '' : `<p class="scroll-hint ${overflow}">${esc(t.scrollHint)}</p>`}`;
+  // A pair at its exact width (draw.io) says so only where its frame is narrower: a container query per
+  // width (fitRules); draw.io's own picture lies on the light picture ground, padded, in its frame.
+  // draw.io's own picture: the frame is its padded light ground and does not scroll; an inner, bare
+  // scroller carries the faded edge, so the ground's corners and hairline stay whole (review D3-F1).
+  const frame = (markup: string, label: string, fit?: number, own = false): string => {
+    const sizing = fit !== undefined ? `fit-${fit}` : overflow;
+    const scroller = `<div class="board-scroll ${sizing}${own ? ' board-scroll--bare' : ''}${end}" role="region" tabindex="0" aria-label="${esc(label)}">${markup}</div>`;
+    return `${own ? `<div class="board-picture">${scroller}</div>` : scroller}${fit === undefined && detail.overflow === 'none' ? '' : `<p class="scroll-hint ${sizing}">${esc(t.scrollHint)}</p>`}`;
+  };
   const legend: string[] = [];
   if (detail.objects.length) legend.push(list(t.objectsTitle, objectLines(detail.objects, language)));
   legend.push(detail.groups.length ? list(t.groups, detail.groups.map(group => `${group.name}: ${group.members.map(quoted).join(', ')}`)) : `<p class="legend-title">${esc(t.groups)}</p><p class="meta">${esc(t.noGroups)}</p>`);
   if (detail.frames.length) legend.push(list(t.frames, detail.frames.map(item => item.members.length ? fill(language, t.frameMembers, { name: quoted(item.name), members: item.members.map(quoted).join(', ') }) : fill(language, t.emptyFrame, { name: quoted(item.name) }))));
-  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard)}${legend.join('')}</figure>` : '';
+  const final = picture ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.finalBoard)}</span>${prose(caption)}</figcaption>${frame(picture.markup, t.finalBoard, detail.fit?.final, picture.kind === 'engine' && detail.fit !== undefined)}${legend.join('')}</figure>` : '';
   const target = detail.target
-    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
+    ? `<figure class="board-figure"><figcaption><span class="figure-title">${esc(t.target)}</span>${esc(t.targetCaption)}</figcaption>${frame(detail.target, t.target, detail.fit?.target)}${detail.targetObjects.length ? list(t.objectsTitle, objectLines(detail.targetObjects, language)) : ''}</figure>`
     : banner('neutral', t.noTargetTitle, `<p>${esc(detail.targetMissing === 'unreadable' ? t.targetUnreadable : t.noTarget)}</p>`);
-  return `<div class="boards">${final}${target}</div>${picture && detail.target ? `<p class="note">${esc(t.pairNote)}</p>` : ''}`;
+  // The target is drawn in Practonaut's colours, which are Excalidraw's; for another app the note says they can differ.
+  return `<div class="boards">${final}${target}</div>${picture && detail.target ? `<p class="note">${esc(app === 'excalidraw' ? t.pairNote : appText(t.pairNoteOther, app))}</p>` : ''}`;
 }
 
-function trajectoryHtml(detail: RunDetail, language: Language): string {
+function trajectoryHtml(detail: RunDetail, language: Language, adapterId: string): string {
   const t = TEXT[language];
   if (!detail.trajectory) {
     const reason = detail.trajectoryMissing === 'changed' ? t.missingChanged : detail.trajectoryMissing === 'unreadable' ? t.missingUnreadable : t.missingNotRecorded;
@@ -517,7 +535,7 @@ function trajectoryHtml(detail: RunDetail, language: Language): string {
   const conditionList = (template: string, items: readonly number[]): string => { const text = fill(language, template, { list: items.join(', ') }); return items.length === 1 ? text.replace(': ', ':\u00a0') : text; };
   const row = (entry: TrajectoryRow): string[] => {
     // The result takes a full stacked row (R4), so its counted phrase stays whole ("(revision 1)", R5).
-    const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t) || t.rejectedOther }))}`;
+    const outcome = entry.outcome === 'accepted' ? esc(fill(language, t.accepted, { revision: entry.revision })) : `${statusIcon('fail')}${esc(fill(language, t.rejectedAs, { reason: codeText(entry.code ?? '', t, adapterId) || t.rejectedOther }))}`;
     const met = entry.met === null ? t.none : [fill(language, t.metAfter, { met: entry.met, total }), ...(entry.gained.length ? [conditionList(t.gained, entry.gained)] : []), ...(entry.lost.length ? [conditionList(t.lost, entry.lost)] : [])].join(' · ');
     return [String(entry.number), ...(byClient ? [entry.client ? dataWords(entry.client) : esc(t.none)] : []), `<code>${esc(entry.text)}</code>`, `<span class="outcome">${outcome}</span>`, esc(met)];
   };
@@ -562,7 +580,7 @@ function runHtml(run: ViewSessionRun, report: SessionReportView, details: Report
   if (detail) {
     parts.push(`<h3>${esc(t.conditions)}</h3>${conditionsHtml(detail, language)}`);
     if (detail.picture || detail.target || detail.targetMissing) parts.push(`<h3>${esc(t.board)}</h3>${boardHtml(detail, report, language)}`);
-    parts.push(`<h3>${esc(t.trajectory)}</h3>${trajectoryHtml(detail, language)}`, `<h3>${esc(t.toolCalls)}</h3>${callsHtml(detail, language)}`);
+    parts.push(`<h3>${esc(t.trajectory)}</h3>${trajectoryHtml(detail, language, report.environment.app.adapterId)}`, `<h3>${esc(t.toolCalls)}</h3>${callsHtml(detail, language)}`);
   } else parts.push(`<p class="note">${esc(t.cardNoFolder)}</p>`);
   parts.push(clientHtml(run, language));
   // Identifiers and codes: under Technical details, never in the normal path.
@@ -626,8 +644,8 @@ ${partial}<section aria-labelledby="summary"><h2 id="summary">${esc(t.summary)}<
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 ${limitFacts(report, t, language).map(([label, value]) => `<dt>${prose(label)}</dt><dd>${prose(value, (report.environment.world.limits ?? []).map(entry => entry.taskId))}</dd>\n`).join('')}<dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.note)}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p></section>`;
-  return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(appText(t.note, e.app.adapterId))}</p><p class="note">${prose(report.readFrom === BENCH_SCHEMA_V3 && !verificationFacts(verification).claims ? t.selfReportedV3 : t.selfReported)}</p>${noticeHtml(t, [e.app.adapterId])}</section>`;
+  return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body, fitRules([...(details?.runs.values() ?? [])].flatMap(detail => detail.fit ? [detail.fit.final, detail.fit.target] : [])));
 }
 
 /** A run's failure as identifiers (Technical details): reason, the parser and the client's own code. */
@@ -742,7 +760,7 @@ ${banner('warning', t.cardNoSandbox, `<p>${prose(t.noSandbox)}</p>`)}
 <dt>${esc(t.toolchain)}</dt><dd>${prose(toolchainText(report, language), toolchainIds(report))}</dd>
 <dt>${esc(t.world)}</dt><dd>${prose(worldText(report, t), [report.environment.world.worldId])}</dd>
 <dt>${esc(t.environment)}</dt><dd>${esc(environmentLine(report))}</dd>
-</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p></section>`;
+</dl>${technical(t, technicalFacts(report, t))}<p class="note">${prose(t.noteArtifact)}</p><p class="note">${prose(t.selfReportedArtifact)}</p>${noticeHtml(t, [report.environment.app.adapterId])}</section>`;
   return page(language, `${t.title}: ${report.agent.name}`, tokensCss, body);
 }
 

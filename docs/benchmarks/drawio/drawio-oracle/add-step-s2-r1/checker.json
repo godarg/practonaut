@@ -1,0 +1,1 @@
+{"session":{"ok":true,"scope":"end-state-only","passed":true,"tasks":[{"taskId":"add-step","passed":true,"errors":[]}],"counterprobes":{"empty":false,"unchanged":false,"wrongArtifact":false}},"native":{"ok":true,"scope":"end-state-only","passed":true,"tasks":[{"taskId":"add-step","passed":true,"errors":[]}],"counterprobes":{"empty":false,"unchanged":false,"wrongArtifact":false}}}

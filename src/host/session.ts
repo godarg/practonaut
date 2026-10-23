@@ -16,6 +16,7 @@ import { interpretEditorGesture, reconcileCreatedIdentity } from './editor-input
 import { createPracticeMirror, MirrorFault,HOST_TRANSACTION_MS,MIN_MIRROR_REMAINING_MS } from './mirror.ts';
 import type { MirrorFactory, PracticeMirror } from './mirror.ts';
 import {buildExportEnvelope,nativeMatchesState,type CurrentSessionExport} from './export-pair.ts';
+import { STRUCTURAL_CONSTRAINTS } from '../world/constraints.ts';
 import {HOST_LIMITS} from './limits.ts';
 import { CLOSED, closeAfterFailure, closeBy, closeDeadline, type CloseResult } from '../adapters/browser/close.ts';
 import { libraryTaskInfo } from '../library/index.ts';
@@ -262,7 +263,7 @@ export async function createPracticeController(input: World, options: PracticeSe
     const selectedTask = candidate.world.tasks.find(value => value.id === candidate.taskId)!;
     const limits = limitsOf(candidate, counts.actions, counts.checks);
     return structuredClone({
-      schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version },
+      schema: 'practonaut.host/1', sessionId, revision, world: { id: original.id, version: original.version, adapterId: original.app.adapterId },
       seed: candidate.seed, variantId: selectVariant(original, candidate.seed).id,
       task: { id: selectedTask.id, title: selectedTask.title, prompt: selectedTask.prompt, conditions: publicConditions(selectedTask).map(({ id, text, formalText }) => ({ id, text, ...(formalText ? { formalText } : {}) })), hintCount: selectedTask.hints.length },
       tasks: candidate.world.tasks.filter(({ id }) => !options.singleTask || id === candidate.taskId).map(({ id, title }) => ({ id, title, ...(listInfo[id] ? { level: listInfo[id].level, referenceActions: listInfo[id].referenceActions } : {}) })), state: candidate.state, hash: candidate.hash, step: candidate.step,
@@ -397,6 +398,10 @@ export async function createPracticeController(input: World, options: PracticeSe
       // A step that no longer matches (the core's baseStep check) is as stale as an old revision:
       // name what is current, as the revision guard does.
       if (!timedOut && failure.code === 'stale_base') return rejected({ ok: false, error: { code: 'stale_base', message: `${failure.message ?? 'Board changed since this request'}; the current step is ${session.step} and the current revision ${revision}`, details: { step: session.step, revision } } });
+      // A known limit of the world's application keeps the one detail that names it, so the Player and
+      // MCP give the same explanation (PADR-0049 decision 5.2).
+      const constraint = (failure as { details?: { constraint?: unknown } }).details?.constraint;
+      if (!timedOut && failure.code === 'constraint_refused' && (STRUCTURAL_CONSTRAINTS as readonly unknown[]).includes(constraint)) return rejected({ ok: false, error: { code: 'constraint_refused', message: failure.message ?? 'The application cannot hold the result', details: { constraint: constraint as string } } });
       return rejected(reject(timedOut?'mirror_timeout':failure.code ?? 'replay_mismatch',timedOut?'Transaction deadline reached; committed board restored or mirror disposed':failure.message ?? 'Transaction failed'));
     } finally { busy = false; }
   };
@@ -487,11 +492,12 @@ export async function createPracticeController(input: World, options: PracticeSe
         const native=await mirror.exportNative(context);deadline(context);
         if(Buffer.byteLength(native,'utf8')>HOST_LIMITS.replyBytes)throw {code:'result_too_large'};
         // Parse the exact adapter bytes through the separate checker import path (the era's parser).
-        if(session.hash!==boundHash||!nativeMatchesState(session.world,native,session.state))throw {code:'real_tool_disagrees'};
+        // The app's export from this host's own mirror: it must equal the session state (PADR-0049 6.8).
+        if(session.hash!==boundHash||!nativeMatchesState(session.world,native,session.state,'own-export'))throw {code:'real_tool_disagrees'};
         deadline(context);if(!agrees(await mirror.snapshot(context),session.state))throw {code:'real_tool_disagrees'};deadline(context);
         const replay=session.checkReplay({continue:()=>continues(context)});deadline(context);if(!replay.ok)throw replay.error;
         const data=session.serialize({continue:()=>continues(context)});deadline(context);
-        const envelope=buildExportEnvelope(data,boundRevision,native);
+        const envelope=buildExportEnvelope(data,boundRevision,native,session.world.app);
         // The picture is taken from the same confirmed scene and read back again before it is published.
         let value:CurrentSessionExport=envelope;
         if(options?.picture){

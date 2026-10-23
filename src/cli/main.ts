@@ -281,7 +281,7 @@ export async function main(argv: string[]): Promise<number> {
     if (e instanceof RuntimeError || e instanceof AuthoringError || e instanceof CheckerError || e instanceof WorldError || (e instanceof Error && "code" in e && (WORLD_ERROR_CODES as readonly unknown[]).includes(e.code))) {
       const code = String((e as Error & { code: string }).code);
       reportError(code, e.message);
-      return code === 'browser_runtime_missing' || code === 'browser_start_failed' || code === 'browser_budget_exhausted' ? EXIT.ENVIRONMENT : code === "usage" ? EXIT.USAGE : EXIT.REJECTED;
+      return ['browser_runtime_missing', 'browser_start_failed', 'browser_budget_exhausted', 'app_runtime_missing', 'app_runtime_unverified', 'app_download_failed', 'app_download_mismatch', 'app_install_busy'].includes(code) ? EXIT.ENVIRONMENT : code === "usage" ? EXIT.USAGE : EXIT.REJECTED;
     }
     if (e instanceof Error && /^(recording_|replay_mismatch:)/.test(e.message)) {
       reportError(e.message.split(':')[0]!, e.message);

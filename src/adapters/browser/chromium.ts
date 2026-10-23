@@ -10,7 +10,8 @@
  * default is to launch without the sandbox.
  *
  * `PRACTONAUT_CHROMIUM_SANDBOX=require` forbids the fallback: a sandbox failure is then the start
- * failure. Any other non-empty value is refused, so a typo can never mean "less isolation".
+ * failure. Any other non-empty value is refused, so a typo can never mean "less isolation". An
+ * adapter whose policy is `required` (draw.io, PADR-0049 decision 7) never falls back.
  * No other platform falls back, and no other start failure (missing libraries, a damaged download)
  * does.
  */
@@ -21,7 +22,11 @@ export type SandboxPolicy = 'auto' | 'require';
 export interface ChromiumLaunch { browser: Browser; sandbox: boolean }
 /** Process-wide memory of a sandbox fallback that already happened (separate state for tests). */
 export interface SandboxMemo { unavailable: boolean }
-export interface LaunchContext { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; memo?: SandboxMemo }
+/** How an adapter's browser may start (PADR-0049 decision 7): `linux-fallback` is PADR-0032's rule;
+ * `required` never starts without the sandbox, on any platform, whatever the environment or an earlier
+ * fallback of this process says. */
+export type AdapterSandboxPolicy = 'linux-fallback' | 'required';
+export interface LaunchContext { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform; memo?: SandboxMemo; sandbox?: AdapterSandboxPolicy }
 
 const PROCESS_MEMO: SandboxMemo = { unavailable: false };
 
@@ -60,7 +65,9 @@ export function chromiumSandboxFallbackActive(memo: SandboxMemo = PROCESS_MEMO):
  * the launch timeout from its own remaining deadline.
  */
 export async function launchChromium(chromium: { launch(options?: LaunchOptions): Promise<Browser> }, options: () => LaunchOptions = () => ({}), context: LaunchContext = {}): Promise<ChromiumLaunch> {
-  const policy = chromiumSandboxPolicy(context.env ?? process.env);
+  // The environment can only tighten: an invalid value is still refused, `required` ignores it.
+  const fromEnvironment = chromiumSandboxPolicy(context.env ?? process.env);
+  const policy: SandboxPolicy = context.sandbox === 'required' ? 'require' : fromEnvironment;
   const platform = context.platform ?? process.platform, memo = context.memo ?? PROCESS_MEMO;
   if (policy === 'auto' && memo.unavailable) return { browser: await chromium.launch({ ...options(), chromiumSandbox: false }), sandbox: false };
   try {

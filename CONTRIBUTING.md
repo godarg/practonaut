@@ -26,12 +26,20 @@ Run the CLI from source with `node src/cli/main.ts …` or from the build with
 | Anything | `npm run check` (types, schemas, docs links, design rules, task library) and `npm test` |
 | Core, world format, predicates, checker | + `npm run demo`, `npm run test:integration` |
 | Excalidraw adapter or engine build | + `npm run test:adapter` |
+| draw.io adapter, its setup or the `.drawio` reader | + `npm run test:drawio` (needs the draw.io runtime, see below) |
 | Host, Player, Create flow | + `npm run test:integration`, `npm run test:e2e`, `npm run test:a11y` |
 | MCP bridge or bench | + `npm run test:mcp`, `npm run test:integration` |
 | Package contents, CLI install path | + `npm run build`, `npm run test:pack` |
 
 The layers after `npm test` need Chromium (installed by `bootstrap`). CI runs all of them; details
 in [docs/testing.md](docs/testing.md). Say in your pull request which layers you ran.
+
+The draw.io layer also needs the draw.io release, which `bootstrap` never downloads. Fetch it once
+into the repository's ignored test home:
+`PRACTONAUT_HOME="$PWD/.local/drawio-home" node src/cli/main.ts setup --app drawio` (or `--from
+<file>` with a copy you have). The layer reads it through `PN_DRAWIO_HOME` (default
+`.local/drawio-home/`) and skips by name without it; `PN_DRAWIO_REQUIRED=1` makes a missing runtime or
+a refused sandboxed start a failure. Never commit, upload or cache `draw.war`.
 
 ## Ground rules
 

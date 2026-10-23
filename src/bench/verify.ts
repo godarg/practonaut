@@ -43,7 +43,7 @@
  */
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { sha256Hex } from '../canonical/index.ts';
+import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { safeText } from '../cli/output.ts';
 import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
@@ -94,8 +94,10 @@ async function rejudge(run: BenchRun | SessionRunV3, world: World, directory: st
   try { sessionRaw = await checkInProcess(world, sessionText, settings); }
   catch { throw new BenchReportError(cliText('verifyCheckerSession', { run: run.id })); }
   if (nativeText !== null) {
-    if (!nativeMatchesState(world, nativeText, session.state)) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
-    try { nativeRaw = await checkInProcess(world, nativeText, settings); }
+    // A bench's native file is its host's own export: re-judged as the run judged it, once it equals the
+    // session state the checker has just replayed (PADR-0049 6.8).
+    if (!nativeMatchesState(world, nativeText, session.state, 'own-export')) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
+    try { nativeRaw = await checkInProcess(world, nativeText, { ...settings, reading: 'own-export' }); }
     catch { throw new BenchReportError(cliText('verifyCheckerNative', { run: run.id })); }
   }
   const stored = (() => { try { return parseJsonEntry(Buffer.from(checkerText), RUN_ARTIFACTS.checker, 64); } catch { return undefined; } })();
@@ -209,6 +211,16 @@ export function libraryAnchor(bound: { worldId: string; version: string; content
   if (bound.contentHash !== shipped.contentHash)
     throw new BenchReportError(cliText('verifyLibraryContent', { world: safeText(bound.worldId), version: safeText(bound.version), hash: bound.contentHash, shipped: shipped.contentHash }), 'bench_world_changed');
   return { status: 'same' };
+}
+
+/** Why stored library references are not the shipped library's reference solutions, or null. */
+export function libraryReferenceProblem(stored: ReadonlyArray<{ taskId: string; source: string; steps: unknown }>, entries: ReadonlyMap<string, LibraryEntry>): string | null {
+  for (const entry of stored) {
+    if (entry.source !== 'library') continue;
+    const shipped = entries.get(entry.taskId);
+    if (!shipped || canonicalJson(shipped.oracle.steps) !== canonicalJson(entry.steps)) return cliText('verifyReferenceLibrary', { task: safeText(entry.taskId) });
+  }
+  return null;
 }
 
 /** bench/2: the stored world, as the report binds it. */
@@ -357,10 +369,12 @@ function verifyClientValues(report: BenchReportV3, run: SessionRunV3, read: Clie
  * reads from each stdout, the stored references against the stored world, then every judged run
  * re-judged against that world. Throws a named `BenchReportError` on the first difference.
  */
-export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string, shippedLibrary: () => Promise<{ world: World; contentHash: string }>): Promise<VerificationResultV3> {
+export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string, shippedLibrary: (adapterId: string) => Promise<{ world: World; contentHash: string; entries?: ReadonlyMap<string, LibraryEntry> }>): Promise<VerificationResultV3> {
   if (report.verdictLevel !== 'session') throw new BenchReportError(cliText('verifyArtifactLevel'));
   const world = await storedWorld(report, runsDirectory), changed = (message: string): never => { throw new BenchReportError(message, 'bench_world_changed'); };
   if (report.environment.app.adapterId !== world.app.adapterId) changed(cliText('verifyWorldApp', { given: safeText(report.environment.app.adapterId), stored: safeText(world.app.adapterId) }));
+  // The version a page shows ("exported by the real draw.io 32.4.1") is the stored world's pin (review m2c).
+  if (report.environment.app.version !== world.app.versionRange) changed(cliText('verifyWorldAppVersion', { given: safeText(String(report.environment.app.version)), stored: safeText(world.app.versionRange) }));
   if (report.environment.world.scenarios !== undefined) throw new BenchReportError(cliText('verifyCoActor', { run: report.environment.world.scenarios[0]?.taskId ?? '' }));
   const identityOf = identityCache(world);
   for (const entry of report.instances) {
@@ -368,13 +382,16 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
     try { identity = identityOf(entry.taskId, entry.seed); } catch { return changed(cliText('verifyIdentity', { task: safeText(entry.taskId), seed: entry.seed })); }
     if (identity !== entry.identity) changed(cliText('verifyIdentity', { task: safeText(entry.taskId), seed: entry.seed }));
   }
-  let library: LibraryAnchor | undefined;
+  let library: LibraryAnchor | undefined, shippedEntries: ReadonlyMap<string, LibraryEntry> | undefined;
   if (report.environment.world.source === 'library') {
-    // The bundled library is the Excalidraw adapter's; a library bench of another adapter has none here.
-    const shipped = await shippedLibrary();
+    // The library this Practonaut ships for the stored world's application (PADR-0049 decision 8.2).
+    const shipped = await shippedLibrary(report.environment.app.adapterId);
     library = report.environment.app.adapterId === shipped.world.app.adapterId ? libraryAnchor(report.environment.world, { id: shipped.world.id, version: shipped.world.version, contentHash: shipped.contentHash }) : { status: 'other', shipped: { id: shipped.world.id, version: shipped.world.version } };
+    shippedEntries = library.status === 'same' ? shipped.entries : undefined;
   }
   const stored = await storedReferences(report, runsDirectory);
+  // A bench of the shipped library binds its references to that library's oracle file.
+  if (shippedEntries) { const problem = libraryReferenceProblem(stored, shippedEntries); if (problem !== null) throw new BenchReportError(problem, 'bench_reference_invalid'); }
   const runs = report.runs as SessionRunV3[], nativeName = nativeFile(report.environment.app.adapterId);
   const spec = { kind: report.agent.kind, name: report.agent.name, command: report.agent.command } as AgentSpec;
   const tools = report.toolchain.kind === 'practonaut' ? report.toolchain.tools : [];

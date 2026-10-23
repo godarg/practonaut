@@ -13,7 +13,7 @@ import type { State } from '../../src/world/types.ts';
 const step = (id: string, label: string, deleted = false) => ({ id, type: 'step' as const, frameId: 'f', label, x: 0, y: 0, width: 100, height: 50, deleted });
 const check: PublicCheck = { scope: 'end-state-only', hash: 'h1', revision: 3, passed: false, conditions: [{ id: 'goal-1', text: { en: 'A is first', de: 'A ist zuerst' }, formalText: { en: 'exists a', de: 'es gibt a' }, met: true }], errors: [{ id: 'loose', explanation: { en: 'Loose end', de: 'Loses Ende' } }], mode: 'model-only', practiceEvidence: false };
 const view = {
-  schema: 'practonaut.host/1', sessionId: 's', revision: 3, world: { id: 'w', version: '1' }, seed: 1, variantId: 'v',
+  schema: 'practonaut.host/1', sessionId: 's', revision: 3, world: { id: 'w', version: '1', adapterId: 'excalidraw' }, seed: 1, variantId: 'v',
   task: { id: 'T1', title: { en: 'Title', de: 'Titel' }, prompt: { en: 'Do it', de: 'Mach es' }, conditions: [{ id: 'goal-1', text: { en: 'A is first', de: 'A ist zuerst' }, formalText: { en: 'exists a', de: 'es gibt a' } }], hintCount: 2 },
   tasks: [{ id: 'T1', title: { en: 'Title', de: 'Titel' }, level: 1, referenceActions: 3 }],
   state: { objects: { f: { id: 'f', type: 'frame', name: 'Flow', deleted: false }, a: step('a', 'A'), z: step('z', 'Gone', true) } }, hash: 'h1', step: 7,

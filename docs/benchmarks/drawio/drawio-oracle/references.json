@@ -1,0 +1,435 @@
+{
+  "schema": "practonaut.bench-references/1",
+  "references": [
+    {
+      "taskId": "add-step",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "add_step",
+          "params": {
+            "frameId": null,
+            "label": "{{add-step-l3}}",
+            "x": 700,
+            "y": 200,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "connect",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "connect",
+          "params": {
+            "from": "a",
+            "to": "b"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "disconnect",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "disconnect",
+          "params": {
+            "id": "ac"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "recolor",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "b",
+            "shape": "rectangle",
+            "stroke": "red",
+            "fill": "red"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "remove-step",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "delete_step",
+          "params": {
+            "id": "b"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "rename-frame",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "rename_frame",
+          "params": {
+            "id": "f",
+            "name": "{{rename-frame-l1}}"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "rename-step",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "rename_step",
+          "params": {
+            "id": "a",
+            "label": "{{rename-step-l2}}"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "align",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "move_step",
+          "params": {
+            "id": "a",
+            "x": 100,
+            "y": 200
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "b",
+            "x": 400,
+            "y": 200
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "c",
+            "x": 700,
+            "y": 200
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "close-chain",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "connect",
+          "params": {
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "group",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "group_steps",
+          "params": {
+            "id": "b",
+            "with": "a"
+          }
+        },
+        {
+          "name": "group_steps",
+          "params": {
+            "id": "c",
+            "with": "a"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "insert-between",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "disconnect",
+          "params": {
+            "id": "ac"
+          }
+        },
+        {
+          "name": "add_step",
+          "params": {
+            "frameId": null,
+            "label": "{{insert-between-l2}}",
+            "x": 400,
+            "y": 200,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "a",
+            "to": {
+              "created": 1
+            }
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": {
+              "created": 1
+            },
+            "to": "c"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "reconnect",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "reconnect_end",
+          "params": {
+            "id": "x",
+            "end": "start",
+            "target": "b"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "reorder",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "move_step",
+          "params": {
+            "id": "a",
+            "x": 100,
+            "y": 200
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "b",
+            "x": 400,
+            "y": 200
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "c",
+            "x": 700,
+            "y": 200
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "d",
+            "x": 1000,
+            "y": 200
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "decision",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "add_step",
+          "params": {
+            "frameId": null,
+            "label": "{{decision-l2}}",
+            "x": 400,
+            "y": 185,
+            "width": 200,
+            "height": 120,
+            "shape": "diamond"
+          }
+        },
+        {
+          "name": "add_step",
+          "params": {
+            "frameId": null,
+            "label": "{{decision-l4}}",
+            "x": 740,
+            "y": 340,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle"
+          }
+        },
+        {
+          "name": "add_step",
+          "params": {
+            "frameId": null,
+            "label": "{{decision-l3}}",
+            "x": 740,
+            "y": 60,
+            "width": 180,
+            "height": 90,
+            "shape": "rectangle"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "a",
+            "to": {
+              "created": 0
+            }
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": {
+              "created": 0
+            },
+            "to": {
+              "created": 1
+            }
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": {
+              "created": 0
+            },
+            "to": {
+              "created": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "restyle-flow",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "set_style",
+          "params": {
+            "id": "a",
+            "shape": "ellipse",
+            "stroke": "black",
+            "fill": "none"
+          }
+        },
+        {
+          "name": "resize_step",
+          "params": {
+            "id": "b",
+            "width": 260,
+            "height": 120
+          }
+        },
+        {
+          "name": "move_step",
+          "params": {
+            "id": "c",
+            "x": 780,
+            "y": 200
+          }
+        },
+        {
+          "name": "set_style",
+          "params": {
+            "id": "c",
+            "shape": "ellipse",
+            "stroke": "black",
+            "fill": "green"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "a",
+            "to": "b"
+          }
+        },
+        {
+          "name": "connect",
+          "params": {
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ]
+    },
+    {
+      "taskId": "two-frames",
+      "source": "library",
+      "worldId": "drawio-library",
+      "steps": [
+        {
+          "name": "set_frame",
+          "params": {
+            "id": "a",
+            "frameId": "fs"
+          }
+        },
+        {
+          "name": "set_frame",
+          "params": {
+            "id": "b",
+            "frameId": "fs"
+          }
+        },
+        {
+          "name": "set_frame",
+          "params": {
+            "id": "c",
+            "frameId": "fd"
+          }
+        },
+        {
+          "name": "set_frame",
+          "params": {
+            "id": "d",
+            "frameId": "fd"
+          }
+        }
+      ]
+    }
+  ]
+}

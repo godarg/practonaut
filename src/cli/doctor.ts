@@ -7,6 +7,12 @@ import { basename, dirname, join } from "node:path";
 import { spawnable } from "../platform/spawnable.ts";
 import { browserAdvice, chromiumStarts, type StartResult } from "./browser-start.ts";
 import { headlessShellDownload } from "./chromium-download.ts";
+import { ADAPTER_REGISTRY, type AdapterRegistration, type AdapterRegistry, type RuntimeStatus } from "../adapters/registry.ts";
+import type { AdapterSandboxPolicy } from "../adapters/browser/chromium.ts";
+import { DRAWIO_CONFORMANCE_PLATFORMS } from "../adapters/drawio/pin.ts";
+import { resolvedDataPaths } from "../platform/paths.ts";
+import { appValues } from "./app-runtime.ts";
+import { safeText } from "./output.ts";
 
 export const MIN_NODE: readonly [number, number] = [22, 18];
 
@@ -59,7 +65,9 @@ export async function chromiumCheck(required: boolean): Promise<Check> {
   }
 }
 
-export async function runChecks(profile: "runtime" | "dev", cwd: string = process.cwd(), adapter = false, starts: () => Promise<StartResult> = () => chromiumStarts()): Promise<Check[]> {
+/** Seams for an adapter's downloaded runtime and its own start check (tests pass fakes). */
+export interface AppProbes { registry?: AdapterRegistry; runtime?(registration: AdapterRegistration): Promise<RuntimeStatus>; platform?: NodeJS.Platform }
+export async function runChecks(profile: "runtime" | "dev", cwd: string = process.cwd(), adapter = false, starts: (policy?: AdapterSandboxPolicy) => Promise<StartResult> = policy => chromiumStarts(undefined, policy), apps: AppProbes = {}): Promise<Check[]> {
   const checks: Check[] = [
     { name: "node", required: true, ok: nodeVersionOk(process.version), detail: cliText("nodeRequired", { version: process.version, minimum: MIN_NODE.join(".") }) },
   ];
@@ -81,11 +89,27 @@ export async function runChecks(profile: "runtime" | "dev", cwd: string = proces
     const started = await starts();
     checks.push({ name: 'chromium start', required: adapter, ok: started.ok, detail: started.ok ? cliText(started.sandbox ? 'chromiumStarts' : 'chromiumStartsUnsandboxed') : cliText('chromiumStartFails', { detail: started.detail }) + ' — ' + browserAdvice().trim() });
   }
+  // Each adapter with a downloaded runtime (PADR-0049 decision 1.4): the runtime, and Chromium started
+  // under that adapter's own sandbox policy. Optional: the download is opt-in.
+  if (adapter) for (const registration of Object.values(apps.registry ?? ADAPTER_REGISTRY) as AdapterRegistration[]) {
+    if (registration.runtime !== 'downloaded') continue;
+    const values = appValues(registration);
+    const status = await (apps.runtime ? apps.runtime(registration) : registration.runtimeStatus!((await resolvedDataPaths()).home));
+    const platform = apps.platform ?? process.platform;
+    const unverified = registration.id === 'drawio' && !(DRAWIO_CONFORMANCE_PLATFORMS as readonly string[]).includes(platform) ? cliText('appUnverifiedPlatform') : '';
+    checks.push({ name: `app runtime ${registration.id}`, required: false, ok: status.ok, detail: (status.ok ? cliText('appRuntimeOk', values) : status.code === 'app_runtime_missing' ? cliText('appRuntimeAbsent', values) : cliText('appRuntimeBad', { ...values, detail: safeText(status.detail) })) + unverified });
+    if (installed.ok && registration.sandbox === 'required') {
+      const started = await starts('required');
+      checks.push({ name: `app start ${registration.id}`, required: false, ok: started.ok, detail: started.ok ? cliText('appStarts') : cliText('appStartFails', { ...values, detail: started.detail }) + ' — ' + browserAdvice().trim() });
+    }
+  }
   return checks;
 }
 
 export function formatChecks(checks: Check[]): string {
-  const displayName = (name: string): string => name === 'playwright chromium (cache)' ? cliText('chromiumName') : name === 'chromium start' ? cliText('chromiumStartName') : name === 'docker (optional)' ? cliText('dockerName') : name === 'gitleaks (optional)' ? cliText('gitleaksName') : name;
+  const app = (name: string, prefix: string): string | undefined => name.startsWith(prefix) ? name.slice(prefix.length) : undefined;
+  const displayName = (name: string): string => name === 'playwright chromium (cache)' ? cliText('chromiumName') : name === 'chromium start' ? cliText('chromiumStartName') : name === 'docker (optional)' ? cliText('dockerName') : name === 'gitleaks (optional)' ? cliText('gitleaksName')
+    : app(name, 'app runtime ') !== undefined ? cliText('appRuntimeName', appValues({ id: app(name, 'app runtime ')! })) : app(name, 'app start ') !== undefined ? cliText('appStartName', appValues({ id: app(name, 'app start ')! })) : name;
   const w = Math.max(...checks.map(c => displayName(c.name).length));
   const lines = checks.map(c => `${c.ok ? cliText('checkOk') : c.required ? cliText('checkFail') : cliText('checkWarn')}  ${displayName(c.name).padEnd(w)}  ${c.detail}`);
   const failed = checks.filter((c) => c.required && !c.ok).length;

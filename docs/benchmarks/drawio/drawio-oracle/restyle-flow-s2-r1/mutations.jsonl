@@ -1,0 +1,7 @@
+{"seq":0,"op":"act","action":{"name":"set_style","params":{"id":"a","shape":"ellipse","stroke":"black","fill":"none"},"baseStep":0},"client":"practonaut-bench","outcome":"accepted","step":1,"revision":1,"actor":"agent"}
+{"seq":1,"op":"act","action":{"name":"resize_step","params":{"id":"b","width":260,"height":120},"baseStep":1},"client":"practonaut-bench","outcome":"accepted","step":2,"revision":2,"actor":"agent"}
+{"seq":2,"op":"act","action":{"name":"move_step","params":{"id":"c","x":780,"y":200},"baseStep":2},"client":"practonaut-bench","outcome":"accepted","step":3,"revision":3,"actor":"agent"}
+{"seq":3,"op":"act","action":{"name":"set_style","params":{"id":"c","shape":"ellipse","stroke":"black","fill":"green"},"baseStep":3},"client":"practonaut-bench","outcome":"accepted","step":4,"revision":4,"actor":"agent"}
+{"seq":4,"op":"act","action":{"name":"connect","params":{"from":"a","to":"b"},"baseStep":4},"client":"practonaut-bench","outcome":"accepted","step":5,"revision":5,"actor":"agent"}
+{"seq":5,"op":"act","action":{"name":"connect","params":{"from":"b","to":"c"},"baseStep":5},"client":"practonaut-bench","outcome":"accepted","step":6,"revision":6,"actor":"agent"}
+{"seq":6,"op":"check","client":null,"outcome":"accepted","step":6,"revision":6,"actor":"agent"}

@@ -45,11 +45,8 @@ test('setup explicitly provisions Chromium and propagates installer failure at t
   const dir = await mkdtemp(join(tmpdir(), '_npx-pn-setup-boundary-'));
   try {
     await mkdir(join(dir, 'node_modules/playwright-core'), { recursive: true });
-    await cp(new URL('../../src/cli/setup.ts', import.meta.url), join(dir, 'setup.ts'));
-    await cp(new URL('../../src/cli/messages.ts', import.meta.url), join(dir, 'messages.ts'));
-    await cp(new URL('../../src/cli/invocation.ts', import.meta.url), join(dir, 'invocation.ts'));
-    await cp(new URL('../../src/cli/output.ts', import.meta.url), join(dir, 'output.ts'));
-    await cp(new URL('../../src/cli/chromium-download.ts', import.meta.url), join(dir, 'chromium-download.ts'));
+    // Plain setup's modules only, in their own layout: the CLI's and the world table's display names.
+    for (const file of ['cli/setup.ts', 'cli/messages.ts', 'cli/invocation.ts', 'cli/output.ts', 'cli/chromium-download.ts', 'world/apps.ts', 'world/preflight.ts', 'world/limits.ts']) await cp(new URL(`../../src/${file}`, import.meta.url), join(dir, file));
     await writeFile(join(dir, 'package.json'), '{"type":"module"}');
     await writeFile(join(dir, 'node_modules/playwright-core/package.json'), '{"name":"playwright-core","type":"module","exports":{".":"./index.js","./package.json":"./package.json"}}');
     // Where Playwright would put the headed browser and, beside it, the headless shell: 100,000,000
@@ -66,7 +63,7 @@ test('setup explicitly provisions Chromium and propagates installer failure at t
       console.log('installer-boundary:' + JSON.stringify(process.argv.slice(2)));
       process.exitCode = process.argv.includes('--dry-run') ? 0 : Number(process.env.PN_TEST_INSTALL_EXIT);
     `);
-    await writeFile(join(dir, 'entry.ts'), "import {commandSetup} from './setup.ts'; process.exitCode=await commandSetup(process.argv.slice(2));");
+    await writeFile(join(dir, 'entry.ts'), "import {commandSetup} from './cli/setup.ts'; process.exitCode=await commandSetup(process.argv.slice(2));");
     const run = (exit: number, args: string[] = []) => spawnSync(process.execPath, [join(dir, 'entry.ts'), ...args], {
       env: { ...process.env, PN_TEST_INSTALL_EXIT: String(exit) }, encoding: 'utf8', timeout: 10_000,
     });

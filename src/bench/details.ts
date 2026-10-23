@@ -26,8 +26,8 @@ import { libraryReferences, MAX_REFERENCES_BYTES, readRegularFile, ReferencesFil
 import { BENCH_REFERENCES_FILE, BENCH_SCHEMA_V3, BENCH_WORLD_FILE } from './report.ts';
 import { asView, nativeFileOf, type BenchReportView, type ReportInput, type SessionReportView, type ViewSessionRun } from './view.ts';
 import { MAX_LOG_BYTES, parseCallLog, parseMutations, RUN_EVIDENCE, type CallRecord, type MutationRecord } from './evidence.ts';
-import { engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
-import { boardObjects, framesOf, groupOutlines, groupsOf, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
+import { drawioPlacement, engineSvgMarkup, MAX_SVG_BYTES, readEngineSvg, type EngineSvg } from './svg.ts';
+import { boardObjects, framesOf, groupOutlines, groupsOf, PICTURE_FLOOR, PICTURE_FLOOR_DRAWIO, pictureOverflow, schematicBounds, schematicSvg, unionBox, type BoardObject, type Box, type FrameLegend, type GroupLegend } from './schematic.ts';
 
 /** File names of the judged artifacts in a run folder (as `run.ts` writes them). */
 const ARTIFACT = Object.freeze({ session: 'session.json', native: 'native.excalidraw', checker: 'checker.json' });
@@ -61,6 +61,9 @@ export interface RunDetail {
   targetObjects: BoardObject[];
   /** Whether the pictures (one shared width) are wider than a phone or a desktop column. */
   overflow: 'none' | 'narrow' | 'wide';
+  /** A pair drawn at its exact width (draw.io's export, one px per unit): the frame width each picture
+   * needs, so its line and faded edge appear only where its frame is narrower (design review D2-F3). */
+  fit?: { final: number; target: number };
   /** The first object where the final board and the target differ lies in the right half of the
    * shared viewBox: a picture that scrolls opens at that end. */
   fromEnd: boolean;
@@ -198,7 +201,10 @@ async function libraryExplanations(report: BenchReportView): Promise<Map<string,
   const explanations = new Map<string, Localized>();
   if (report.environment.world.source !== 'library') return explanations;
   const { libraryWorld } = await import('./run.ts');
-  const library = await libraryWorld();
+  // The library of the report's application (a /1 or /2 report names Excalidraw's).
+  const adapterId = (report.environment as { app?: { adapterId?: unknown } }).app?.adapterId;
+  const library = await libraryWorld(typeof adapterId === 'string' ? adapterId : 'excalidraw').catch(() => undefined);
+  if (!library) return explanations;
   if (library.contentHash !== report.environment.world.contentHash) return explanations;
   for (const seed of new Set((report.runs as ReadonlyArray<{ seed: number }>).map(run => run.seed))) {
     for (const task of generateVariant(library.world, seed).tasks) for (const error of task.errorClasses) explanations.set(explanationKey(task.id, seed, error.id), error.explanation);
@@ -257,6 +263,7 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
   if (report.verdictLevel === 'artifact') return { folder: 'read', runs, explanations };
   if (folder === null) return { folder: 'missing', runs, explanations };
   const logFormat = report.readFrom === BENCH_SCHEMA_V3 ? 'v3' : 'v2', nativeName = nativeFileOf(report);
+  const drawio = report.environment.app.adapterId === 'drawio';
   const found = await boundWorld(report, folder);
   if ('problem' in found) return { folder: found.problem, runs, explanations };
   const world = found.world, references = await boundReferences(report, folder);
@@ -333,9 +340,16 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
       if ('text' in read) {
         try {
           const svg = readEngineSvg(read.text, `run${index}-engine`);
-          let scene: Box | null = null;
-          if (run.artifacts.native) { const native = await bound(folder, run.id, nativeName, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
-          engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
+          if (drawio) {
+            // draw.io's export lies at the board's coordinates less its own top-left corner: the judged
+            // steps' shapes in it give the shift (PADR-0049), so the pair shares one viewBox.
+            const live = Object.values(state.objects).flatMap(object => object.type === 'step' && !object.deleted ? [{ id: object.id, x: object.x, y: object.y }] : []);
+            engine = { read: svg, box: drawioPlacement(read.text, live) };
+          } else {
+            let scene: Box | null = null;
+            if (run.artifacts.native) { const native = await bound(folder, run.id, nativeName, run.artifacts.native); if ('text' in native) { try { scene = sceneBounds(native.text); } catch { scene = null; } } }
+            engine = { read: svg, box: scene ? { x: scene.x - (svg.box.width - scene.width) / 2, y: scene.y - (svg.box.height - scene.height) / 2, width: svg.box.width, height: svg.box.height } : null };
+          }
         } catch { reason = 'picture-unreadable'; }
       } else reason = read.missing === 'changed' ? 'picture-changed' : 'no-picture';
     } else reason = mirror === 'required' ? 'no-picture' : 'model-only';
@@ -359,14 +373,18 @@ export async function loadReportDetails(input: ReportInput, folder: string | nul
     // outline is laid over it when the two share coordinates; when they cannot, neither picture draws
     // groups (the legend under each still names them).
     const placed = !engine || engine.box !== null;
+    // draw.io's own picture draws its text at 12 units: the pair is never drawn below one px per unit.
+    const floor = engine && drawio ? PICTURE_FLOOR_DRAWIO : PICTURE_FLOOR;
     if (engine) {
       const offset: [number, number] | undefined = engine.box ? [engine.box.x - engine.read.box.x, engine.box.y - engine.read.box.y] : undefined;
       const overlay = engine.box ? groupOutlines(state, words) : '';
       detail.groupOverlay = overlay !== '';
-      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: 'engine-board', ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
+      detail.picture = { kind: 'engine', markup: engineSvgMarkup(engine.read, { prefix: `run${index}-engine`, label: words.finalBoard, classes: drawio ? 'engine-board engine-board--drawio' : 'engine-board', floor, ...(offset ? { offset } : {}), ...(overlay ? { overlay } : {}), viewBox: engine.box ? finalView : { ...engine.read.box, width: finalView.width, height: finalView.height } }) };
     } else detail.picture = { kind: 'schematic', reason: reason!, markup: schematicSvg(state, { prefix: `run${index}-final`, label: words.finalBoard, words, viewBox: finalView }) };
-    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed }); detail.targetObjects = boardObjects(target); }
-    detail.overflow = pictureOverflow(finalView.width);
+    if (target) { detail.target = schematicSvg(target, { prefix: `run${index}-target`, label: words.target, words, viewBox: targetView!, groups: placed, floor }); detail.targetObjects = boardObjects(target); }
+    detail.overflow = pictureOverflow(finalView.width, floor);
+    // draw.io's picture lies on its ground with space-2 (8 px) padding inside the frame's 1 px hairline.
+    if (floor >= PICTURE_FLOOR_DRAWIO) detail.fit = { final: Math.ceil(finalView.width) + 2 * 8 + 2, target: Math.ceil(finalView.width) + 2 };
     // Where a scrolling pair opens: at the end where the first difference lies (only when they share coordinates).
     const difference = target && placed ? firstDifference(state, target) : null;
     detail.fromEnd = difference !== null && difference > finalView.x + finalView.width / 2;

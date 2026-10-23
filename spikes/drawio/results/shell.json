@@ -1,0 +1,395 @@
+{
+ "schema": "practonaut.drawio-shell-measurement/2",
+ "record": "PADR-0049",
+ "measured": "2026-10-18",
+ "note": "A precursor of the acceptance protocol (PADR-0049 decision 8.4): the decided mapping, written with load and read with export through the shared shell; verdicts by the spike reader on the app's own final export, not by the product reader; every run a fresh Node process and browser.",
+ "pin": {
+  "tag": "v32.4.1",
+  "asset": "draw.war",
+  "bytes": 48442174,
+  "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+ },
+ "environment": {
+  "node": "v22.22.3",
+  "platform": "darwin",
+  "arch": "arm64",
+  "os": "27.0.0",
+  "cpu": "Apple M4",
+  "cores": 10,
+  "memoryBytes": 17179869184,
+  "loadAverage1m": 12.6,
+  "playwrightCore": "1.64.0",
+  "chromium": "156.0.8078.4",
+  "sandbox": true,
+  "drawio": {
+   "tag": "v32.4.1",
+   "sha256": "b83663313ccdecef6581476a7eaa96750bccf1bfdc3768981eb5d95e94be7820"
+  }
+ },
+ "download": {
+  "source": "https://github.com/jgraph/drawio/releases/download/v32.4.1/draw.war",
+  "finalHost": "release-assets.githubusercontent.com",
+  "bytes": 48442174,
+  "seconds": 7.9
+ },
+ "archive": {
+  "audit": {
+   "localHeaderMismatches": 0,
+   "localMethodMismatches": 0,
+   "inflatedSizeMismatches": 0,
+   "crcMismatches": 0,
+   "filesInflated": 3154,
+   "actualInflatedBytes": 115503243,
+   "allowlistDeclaredBytes": 20279361,
+   "ms": 257.2
+  },
+  "facts": {
+   "entries": 3318,
+   "files": 3154,
+   "directories": 164,
+   "links": 0,
+   "duplicateNames": 0,
+   "encrypted": 0,
+   "methods": {
+    "0": 164,
+    "8": 3154
+   },
+   "maxEntryBytes": 19861682,
+   "maxEntryName": "js/integrate.min.js",
+   "totalInflatedBytes": 115503243,
+   "maxRatio": 16.8,
+   "maxRatioName": "shapes/mxArrows.js",
+   "markdownFiles": 12,
+   "markdownOutsideWebInf": [
+    "js/cryptojs/README.md",
+    "js/deflate/README.md",
+    "js/diagramly/CLAUDE.md",
+    "js/diagramly/sidebar/CLAUDE.md",
+    "js/diagramly/vsdx/CLAUDE.md",
+    "js/freehand/README.md",
+    "js/grapheditor/CLAUDE.md",
+    "js/libavoid-js/CLAUDE.md",
+    "js/libavoid-js/README.md",
+    "js/rough/README.md",
+    "resources/CONTRIBUTING.md",
+    "resources/README.md"
+   ]
+  },
+  "indexHtml": "no CSP meta element",
+  "loadedBytesByExtension": {
+   ".html": 4134,
+   ".css": 90315,
+   ".js": 20080485,
+   ".txt": 99159,
+   ".svg": 5268
+  },
+  "medianMs": {
+   "readMs": 7.1,
+   "hashMs": 39.7,
+   "indexMs": 488.3,
+   "inflateMs": 46.8
+  },
+  "runs": 5,
+  "nodeAfterBytes": {
+   "rss": 376029184,
+   "heapUsed": 18371328,
+   "external": 167994051,
+   "arrayBuffers": 158420309
+  }
+ },
+ "coldStartFreshProcess": {
+  "definition": "each start a fresh Node process: processToFirstLoadMs from the process time origin, archiveMs = read + SHA-256 + index of the in-memory archive, shellToFirstLoadMs = startShell call -> load event of the first (empty) diagram",
+  "median": {
+   "processToFirstLoadMs": 1312.3,
+   "archiveMs": 184.9,
+   "shellToFirstLoadMs": 941.3
+  },
+  "range": {
+   "processToFirstLoadMs": [
+    1297.6,
+    1454
+   ],
+   "shellToFirstLoadMs": [
+    938.8,
+    1093.9
+   ]
+  },
+  "perStart": [
+   {
+    "processToFirstLoadMs": 1342.7,
+    "archiveMs": 144.8,
+    "shellToFirstLoadMs": 1027.8,
+    "refused": 0,
+    "nodeRssBytes": 296026112
+   },
+   {
+    "processToFirstLoadMs": 1297.6,
+    "archiveMs": 186.4,
+    "shellToFirstLoadMs": 938.8,
+    "refused": 0,
+    "nodeRssBytes": 278904832
+   },
+   {
+    "processToFirstLoadMs": 1301.7,
+    "archiveMs": 160.7,
+    "shellToFirstLoadMs": 941.3,
+    "refused": 0,
+    "nodeRssBytes": 246300672
+   },
+   {
+    "processToFirstLoadMs": 1454,
+    "archiveMs": 185.4,
+    "shellToFirstLoadMs": 1093.9,
+    "refused": 0,
+    "nodeRssBytes": 278495232
+   },
+   {
+    "processToFirstLoadMs": 1312.3,
+    "archiveMs": 184.9,
+    "shellToFirstLoadMs": 939.4,
+    "refused": 0,
+    "nodeRssBytes": 214679552
+   }
+  ],
+  "servedFiles": 14,
+  "servedBytes": 20279361
+ },
+ "replay": [
+  {
+   "run": 1,
+   "order": "forward",
+   "totals": {
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 3.5,
+    "exportMedianMs": 1.1
+   },
+   "wallSeconds": 27.6,
+   "loadAverage1m": 12.6,
+   "peakChromiumRssBytes": 656949248,
+   "peakNodeRssBytes": 492978176,
+   "nodeEnd": {
+    "rss": 345325568,
+    "heapUsed": 196790712,
+    "external": 60411425,
+    "arrayBuffers": 49304196
+   },
+   "archiveBufferBytes": 48442174,
+   "peakProcesses": 4,
+   "samples": 78,
+   "refused": 0,
+   "servedFiles": 14,
+   "failures": 0,
+   "firstFailures": [],
+   "consoleErrors": 0
+  },
+  {
+   "run": 2,
+   "order": "reverse",
+   "totals": {
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 8.6,
+    "exportMedianMs": 3.1
+   },
+   "wallSeconds": 120.5,
+   "loadAverage1m": 106.7,
+   "peakChromiumRssBytes": 567214080,
+   "peakNodeRssBytes": 354041856,
+   "nodeEnd": {
+    "rss": 248643584,
+    "heapUsed": 55567080,
+    "external": 60164294,
+    "arrayBuffers": 48842284
+   },
+   "archiveBufferBytes": 48442174,
+   "peakProcesses": 4,
+   "samples": 173,
+   "refused": 0,
+   "servedFiles": 14,
+   "failures": 0,
+   "firstFailures": [],
+   "consoleErrors": 0
+  },
+  {
+   "run": 3,
+   "order": "shuffle",
+   "totals": {
+    "sequences": 213,
+    "sequencesOk": 213,
+    "roundTrips": 672,
+    "starts": 48,
+    "startsFailed": 48,
+    "references": 48,
+    "referencesPassed": 48,
+    "nearMisses": 117,
+    "nearMissesFailed": 117
+   },
+   "latency": {
+    "loadMedianMs": 8.1,
+    "exportMedianMs": 3
+   },
+   "wallSeconds": 131.5,
+   "loadAverage1m": 119.9,
+   "peakChromiumRssBytes": 510427136,
+   "peakNodeRssBytes": 316194816,
+   "nodeEnd": {
+    "rss": 263913472,
+    "heapUsed": 102891488,
+    "external": 60057335,
+    "arrayBuffers": 48950106
+   },
+   "archiveBufferBytes": 48442174,
+   "peakProcesses": 5,
+   "samples": 169,
+   "refused": 0,
+   "servedFiles": 14,
+   "failures": 0,
+   "firstFailures": [],
+   "consoleErrors": 0
+  }
+ ],
+ "servingPathCheck": {
+  "run": 4,
+  "order": "forward",
+  "totals": {
+   "sequences": 213,
+   "sequencesOk": 213,
+   "roundTrips": 672,
+   "starts": 48,
+   "startsFailed": 48,
+   "references": 48,
+   "referencesPassed": 48,
+   "nearMisses": 117,
+   "nearMissesFailed": 117
+  },
+  "failures": 0,
+  "refused": 0,
+  "loadAverage1m": 99.3,
+  "differFromRun1": 0
+ },
+ "replayRunsAgree": {
+  "sequences": 213,
+  "comparedPerSequence": "raw export after every step (diagram id normalised), final PNG bytes, verdict and error classes",
+  "disagreements": 0,
+  "pngDisagreements": 0,
+  "firstDisagreements": []
+ },
+ "probes": {
+  "servedLang_de": [
+   "images/github-logo.svg",
+   "index.html",
+   "js/PostConfig.js",
+   "js/PreConfig.js",
+   "js/app.min.js",
+   "js/bootstrap.js",
+   "js/extensions.min.js",
+   "js/main.js",
+   "js/shapes-14-6-5.min.js",
+   "js/stencils.min.js",
+   "mxgraph/css/common.css",
+   "resources/dia_de.txt",
+   "styles/grapheditor.css",
+   "styles/high-contrast.css"
+  ],
+  "servedLang_en": [
+   "images/github-logo.svg",
+   "index.html",
+   "js/PostConfig.js",
+   "js/PreConfig.js",
+   "js/app.min.js",
+   "js/bootstrap.js",
+   "js/extensions.min.js",
+   "js/main.js",
+   "js/shapes-14-6-5.min.js",
+   "js/stencils.min.js",
+   "mxgraph/css/common.css",
+   "resources/dia.txt",
+   "styles/grapheditor.css",
+   "styles/high-contrast.css"
+  ],
+  "refusedLang": [
+   0,
+   0
+  ],
+  "emptyPng": {
+   "ok": true,
+   "bytes": 88
+  },
+  "originGeometryReadBack": [
+   "<mxGeometry height=\"70\" width=\"460\" x=\"100\" y=\"100\" as=\"geometry\" />",
+   "<mxGeometry height=\"70\" width=\"160\" as=\"geometry\" />",
+   "<mxGeometry height=\"70\" width=\"160\" x=\"300\" as=\"geometry\" />"
+  ],
+  "idsFullWriteCheck": [],
+  "fileAttributes": {
+   "mxfile": [
+    "host"
+   ],
+   "diagram": [
+    "id",
+    "name"
+   ],
+   "mxGraphModel": [
+    "dx",
+    "dy",
+    "grid",
+    "gridSize",
+    "guides",
+    "tooltips",
+    "connect",
+    "arrows",
+    "fold",
+    "page",
+    "pageScale",
+    "pageWidth",
+    "pageHeight",
+    "math",
+    "shadow"
+   ]
+  },
+  "mxfileHost": "drawio.practonaut.invalid",
+  "png": {
+   "signature": true,
+   "bytes": 8519,
+   "identical": true
+  },
+  "svg": {
+   "bytes": 2747,
+   "foreignObject": 0,
+   "svgText": 3,
+   "script": false,
+   "externalHosts": [],
+   "identical": false,
+   "identicalAfterRootId": true
+  },
+  "svgWithWrap": {
+   "bytes": 4464,
+   "foreignObject": 2,
+   "svgText": 4,
+   "script": false,
+   "externalHosts": [
+    "www.drawio.com"
+   ]
+  },
+  "refused": 0
+ }
+}

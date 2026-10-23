@@ -97,6 +97,22 @@ or still closing ([PADR-0050](adr/0050-browser-close-is-a-bounded-request.md)): 
 15 s for one to close, it stops with `browser_budget_exhausted`, the counts and the remedy (wait, or
 restart Practonaut); `--mirror auto` goes on model-only. When a command ends while a browser is
 still closing, it says "Waiting for N browsers to close"; Playwright ends them within 30 s.
+### draw.io (optional, opt-in)
+
+Practonaut also works with draw.io, for worlds whose `app.adapterId` is `drawio`. draw.io is a
+registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or
+draw.io AG. Its mirror needs the unmodified draw.io release, which is never part of the package and
+never downloaded unless you ask:
+
+```bash
+npx practonaut setup --app drawio
+```
+
+It does what plain `setup` does, then names `draw.war` of draw.io v32.4.1 with its source, its size
+(48,442,174 bytes) and its SHA-256 before fetching it, and keeps it only when both match. Without a
+network route to GitHub, fetch the file yourself and use `--from <file>`. draw.io's mirror always
+runs Chromium with its sandbox: on a Linux system that refuses it (see above), draw.io sessions run
+model-only until the restriction is lifted. Details: [the draw.io adapter](adapters/drawio.md).
 
 ## 3. Let an agent practise
 

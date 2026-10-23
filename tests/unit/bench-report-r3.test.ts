@@ -53,7 +53,7 @@ test('R3-F3: proper names in notes and notices are never hyphenated (each sits i
     }
   }
   assert.ok(seen >= 10, `names seen: ${seen}`);
-  assert.deepEqual([...PROPER_NAMES].sort(), ['Excalidraw', 'McNemar', 'Practonaut', 'Wilson']);
+  assert.deepEqual([...PROPER_NAMES].sort(), ['Excalidraw', 'McNemar', 'Practonaut', 'Wilson', 'draw.io']);
   // The refusal page's rules name McNemar; the artifact page's notice and note name Practonaut and Wilson.
   assert.match(renderIncomparableHtml(side(s.excalidraw, 'a'), side(s.drawio, 'b'), differences(s.excalidraw, s.drawio), tokens), /exact <span class="name">McNemar<\/span> test/u);
   assert.match(renderHtml(s.artifact, tokens, 'en'), /<div class="banner-body"><p class="banner-title">Foreign MCP server: no sandbox<\/p><p>The foreign MCP server’s code runs as the same OS user as <span class="name">Practonaut<\/span>, without a sandbox\.<\/p>/u);

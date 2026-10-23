@@ -36,13 +36,14 @@ every change keeps. Security view: [threat model](security/threat-model.md). Ter
 |---|---|---|
 | `src/canonical` | canonical JSON, SHA-256 state hash | Node built-ins |
 | `src/package` | safe reader, manifests, limits, deterministic packer | canonical, yauzl, zod |
-| `src/world` | world content schemas v1 and the additive v2, the table of applications a world may name (`apps.ts`, refusal by name, PADR-0045), loading, finite seeded variant generation; trusted freeze tooling verifies solvability | canonical, package, zod |
+| `src/world` | world content schemas v1 and the additive v2, the table of applications a world may name (`apps.ts`, refusal by name, PADR-0045; each entry with its display name and its declared structural constraints, checked by pure functions in `constraints.ts`, PADR-0049), loading, finite seeded variant generation; trusted freeze tooling verifies solvability | canonical, package, zod |
 | `src/predicate` | goal-predicate language with step budget (no regex, no code) | canonical, world |
 | `src/core` | `apply`, sessions (log, undo, reset, replay), structured errors | canonical, world, predicate |
 | `src/checker` | independent result check on final state or export with its own export parsers, chosen by the world's adapter through its own format table (`formats.ts`); counter-probes; the condition trace of a run's mutations (PADR-0039) | canonical, package, predicate, world — **never** `src/core` or `src/adapters` |
-| `src/adapters` | the registry (`registry.ts`: adapters by the world's `app.adapterId`, with app versions, world schemas, runtime kind and read-back comparison, PADR-0045) and the contracts (`types.ts`: PADR-0007's `ApplicationAdapter`, the mirror's `MirrorAdapter`) | canonical, world, the adapter folders |
+| `src/adapters` | the registry (`registry.ts`: adapters by the world's `app.adapterId`, with app versions, world schemas, runtime kind (`bundled` or `downloaded` with its check), read-back comparison, sandbox policy and whether the Player's editor workspaces apply, PADR-0045, PADR-0049); `prediction.ts`, each adapter's own prediction of an action and the contracts (`types.ts`: PADR-0007's `ApplicationAdapter`, the mirror's `MirrorAdapter`) | canonical, world, the adapter folders |
 | `src/adapters/browser` | the shared browser shell: the one Chromium start (PADR-0032), the process-wide browser ledger and budget and the one close contract every browser owner uses (deadline down, outcome up; PADR-0050), launch and start deadlines and abort, the network boundary (HTTP routing over named origins, every WebSocket closed, a content security policy on every served response, no WebRTC UDP, a sink proxy that refuses every connection the browser opens itself, no host resolution), operations that end on timeout and roll back on a fresh page, PNG capture, artifact hashes | canonical, world; Playwright |
 | `src/adapters/excalidraw` | PADR-0007 capabilities for the pinned app: read, write, projection, integrity, SVG, recorder | canonical, world, package, the browser shell; browser automation only in its node-side harness |
+| `src/adapters/drawio` | the pinned draw.io release ([adapter page](adapters/drawio.md), PADR-0049): its verified download, the archive read whole into memory and served from an allowlist, a host page that relays the embed JSON protocol, the writer, the full write check, integrity and projection | canonical, world, platform, the browser shell; never `src/checker` |
 | `src/host` | session host, HTTP+SSE guard, token handling, limits, step transaction with the host-side live mirror (PADR-0011) | core, world, package, adapters; data-only EN/DE history catalog |
 | `src/player` | browser UI from `design/`, i18n catalogs EN/DE, board mode; shows the host-rendered mirror image; editor mode embeds the engine as untrusted input only | browser APIs; host API only (never verifies or writes state itself) |
 | `src/authoring` | recordings, hypotheses, model questions, confirmation, compile; `from-scenes`: a world/2 task from two drawings, verified by the checker | world, adapters, package, checker, core; optional model provider |
@@ -61,7 +62,8 @@ only through the host API.
 
 `apply(world, state, action)` is pure and atomic. Results: `ok` with new state and effects,
 `unmodeled` (no confirmed rule covers the action or one of its effects), or a structured error
-(`invalid_argument`, `precondition_failed`, `limit_exceeded`, `stale_base`, …). State is integer
+(`invalid_argument`, `precondition_failed`, `limit_exceeded`, `stale_base`, `constraint_refused`
+when the result would break a structural constraint the world's application declares, PADR-0049, …). State is integer
 JSON keyed by semantic ids; deleted objects stay as tombstones. Session = world version + seed +
 action log. The CLI records a hash after every step and verifies full replay before writing any result.
 Semantic IDs depend on the seed and complete creating-action prefix; undo followed by a different
@@ -94,7 +96,8 @@ Engine bundling and fonts: [PADR-0012](adr/0012-excalidraw-bundling.md),
 | Browser → host | HTTP requests from any page | token, Host/Origin, JSON-only, CSP (PADR-0005) |
 | Agent → host | tool calls, arguments | schema validation, limits, rate limits; same `Session.act` |
 | Host → checker | final state, exported file | separate process, checker parses exports itself |
-| Adapter ↔ real app | app state and events | pinned version, read-back after every write, integrity check |
+| Adapter ↔ real app | app state and events | pinned version, read-back after every write, integrity check; draw.io: the embed protocol only, the full write check, the sandbox required (PADR-0049) |
+| Download → app runtime | a downloaded release (`setup --app drawio`) | pinned size and SHA-256, checked again at every start, served from memory and an allowlist (PADR-0049) |
 | Model provider → authoring | model output | schema validation; output only becomes hypotheses (PADR-0008) |
 | Recording → world | demonstration data | explicit start, local storage, review before compile, rights metadata |
 
@@ -183,6 +186,13 @@ A change that breaks one of these is a release blocker. Tests guard each of them
   action leaves the state hash unchanged.
 - **Explicit unknowns.** An action, attribute or effect no confirmed rule covers yields
   `unmodeled`. The runtime never invents a successor state.
+- **Declared constraints, not adapter ids.** A structural limit of an application (draw.io: a group
+  within one frame, XML text) is data in the world table; core, world validation, checker and
+  adapter each refuse a violating state by name (`constraint_refused`), and no module tests an
+  adapter id to decide one.
+- **No redistribution of a downloaded app.** A downloaded release is fetched only on the user's
+  request, never shipped in the package, a CI artifact or a cache, and served only from memory after
+  its hash is checked.
 - **Evidence-backed rules.** Every rule in a compiled world references a confirming observation or
   conformance run. Hypotheses never execute.
 - **Hidden data stays hidden.** Reference solutions, near misses and held-out tasks are not in the

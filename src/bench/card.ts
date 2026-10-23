@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { asView, type BenchReportView, type ReportInput, type ViewRun } from './view.ts';
 import { intervalPercent, rateText, type Language } from './rates.ts';
-import { fill, TEXT, type Words } from './report-text.ts';
+import { appText, fill, TEXT, type Words } from './report-text.ts';
 import { headline, instanceOutcome, noSandbox, verificationFacts, type VerificationInput } from './render.ts';
 import { displayText, xmlEscape } from './junit.ts';
 
@@ -204,7 +204,7 @@ function facts(report: BenchReportView, verification: VerificationInput, languag
   out.push(v.level === 're-verified' ? { kind: 'confirmed', text: t.cardReverified } : { kind: 'open', text: t.cardConsistency });
   // Values a parser this Practonaut does not ship read stay the report's claims: never a confirmed mark.
   if (v.claims) out.push({ kind: 'open', text: t.cardClientClaims });
-  if (report.verdictLevel === 'session') out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: t.cardMirrorOn } : { kind: 'open', text: t.cardMirrorOff });
+  if (report.verdictLevel === 'session') out.push(report.environment.mirror === 'required' ? { kind: confirmed, text: appText(t.cardMirrorOn, report.environment.app.adapterId) } : { kind: 'open', text: appText(t.cardMirrorOff, report.environment.app.adapterId) });
   if (report.toolchain.kind === 'foreign-mcp') out.push({ kind: 'open', text: t.cardNoSandbox });
   const isolation = report.agent.isolation, presetConfirmed = v.claims ? 'open' : confirmed;
   out.push(isolation === 'builtin-baseline' ? { kind: confirmed, text: t.cardIsolationBuiltin } : isolation === 'tool-restricted-preset' ? { kind: presetConfirmed, text: t.cardIsolationPreset }

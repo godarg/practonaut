@@ -55,8 +55,94 @@ All notable changes are recorded here. The format follows
   too (a rollback that fails closes the shell, and the host's mirror starts a new one); PNG
   capture and artifact hashes. The Excalidraw adapter keeps read, write, projection, integrity and
   SVG.
+- **draw.io as application #2** (PADR-0049, proposed; roadmap 0.3.0 Must 2; [adapter
+  page](docs/adapters/drawio.md)): worlds whose `app.adapterId` is `drawio` (32.4.1, world/2 only)
+  are practised, mirrored and checked like Excalidraw worlds. draw.io is a registered trademark;
+  Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.
+  - `practonaut setup --app drawio [--from <file>]` downloads the unmodified `draw.war` (48,442,174
+    bytes) only on request, names file, source, size and SHA-256 first, and keeps it only when both
+    match (redirect, scheme, stall, deadline and retry limits; a lock per version that appears whole,
+    that only one setup takes over when stale and only its own setup removes, also on homes without
+    hard links; atomic keep and a re-hash; `--from` hashes a file of any size, so
+    a mismatch names both SHA-256 values). New codes, exit 3: `app_download_failed`, `app_download_mismatch`, `app_install_busy`,
+    and before any browser starts `app_runtime_missing` and `app_runtime_unverified`; with `--mirror
+    auto` such a session runs model-only and names the setup command. `doctor --adapter` lists the
+    runtime and the sandboxed start.
+  - The adapter serves the archive from memory through an allowlist of 14 files, with zip limits
+    and one capped, CRC-checked inflation per file; talks to draw.io only through its embed JSON
+    protocol; and after every write requires the declared set, a full write check of every attribute
+    and child element, and integrity; every read, `snapshot()` included, also runs integrity over
+    every attribute and compares the app with the last confirmed write. Chromium always runs with its
+    sandbox for draw.io, and every conformance run records that none of its processes ran with
+    `--no-sandbox`. Frames have unfilled title bands, arrows with a live end are drawn above every
+    frame and step, and empty frames get their own places, so draw.io's picture keeps connected arrows
+    and frame names visible.
+  - The checker has its own allowlist-based `.drawio` reader: it reads only the cells, attributes,
+    style names, keys and values the adapter writes, and only well-formed XML with draw.io's own file
+    attributes; it refuses everything else by a reason from a closed list. The caller says what the file
+    is. The host's own export (the export pair, a bench run, `run --export`, `report --verify`,
+    `check --pair` once the pair's session replays, conformance) must equal the session state and is
+    read as written: every legal state the adapter writes reads (a property test reads 5,151 random
+    legal states), and the Player's download of a legal state checks with `--pair`. Any other file,
+    `practonaut check` without `--pair` among them, is refused by name where something read could be
+    hidden or misread (`boxes_overlap`, `frame_outside`, `arrow_hidden` with room for draw.io's end
+    marker, `text_extent`; each threshold met within a millionth of a pixel, so exact values pass
+    however their coordinates round), so a file drawn by hand is strict until artifact mode (Must 3)
+    decides otherwise; a refusal names its reason (`artifact_invalid: boxes_overlap`).
+  - Declared structural constraints in the world table (`group-within-one-frame`, `xml-text`), refused
+    by name in the core (`constraint_refused`), world validation, the checker and the adapter.
+  - The draw.io conformance layer (`npm run test:drawio`, `tests/adapter/drawio/`), run in CI on Linux
+    after the AppArmor restriction is lifted, with the test-only variables `PN_DRAWIO_HOME` and
+    `PN_DRAWIO_REQUIRED`: the library and every challenge family on seeds 1–3, three fresh runs in
+    three recorded orders that must agree.
+  - The draw.io library (`tasks/drawio/`): the Excalidraw library's 16 tasks in a draw.io world of the
+    same task set, with the same references, near misses and seeds re-verified there. Libraries are a
+    table by adapter id: `drawio/<task>` names it in `play`, `mcp --task`, `bench --tasks` (`drawio/all`)
+    and `tasks list|show`; a bench mixing prefixes is refused; `report --verify` anchors a library bench
+    to the library of its application and binds its references to that library's oracle file; it
+    refuses a bench/3 report whose `environment.app.version` is not the stored world's pin.
+  - The challenge generator writes a family for draw.io (`node tools/challenge.ts generate … --app
+    drawio`): the same instances, `generatedBy` unchanged, so their identities pair.
+  - The draw.io adapter follows the browser close contract (PADR-0050): its browser and its start
+    check's take budget slots, its close and terminate pass the caller's deadline down and report the
+    outcome, and a mirror close stops a recovery's replacement start through its abort.
+  - Bench report: a draw.io run's final-board picture is placed in board coordinates by its judged
+    steps (draw.io exports from its drawing's top-left corner), so it shares one viewBox with the
+    target schematic as an Excalidraw run's does, and group outlines are drawn over it. Such a pair is
+    drawn at exactly one px per board unit at any width, so draw.io's 12-unit text is never below 12 px (it was
+    11.8 px at 1280 px and 7.8 px at 320 px wide). draw.io's picture is shown as draw.io drew it, its
+    own font on a light ground in both themes, with no dark-mode filter; the note under the pair says
+    how the target schematic differs. A report or compare page that names draw.io, and a draw.io
+    session's Player under "Rules and origins", carry the interim trademark notice once, EN and DE.
+  - Committed evidence in `docs/benchmarks/drawio/`: the three-run summary, both libraries benched by
+    the oracle with `--mirror required`, and their comparison (48 of 48 identities paired, no
+    difference); `tools/drawio-evidence.ts` rebuilds it on a clean release commit and refuses a summary
+    (schema `practonaut.drawio-conformance/2`, with the Chromium version and the observed sandbox) made
+    on another commit, from a dirty checkout or over fewer sequences than planned.
+- A workflow check in `npm run check` (`tools/check-workflows.ts`): every cache and upload path and
+  release asset must be listed in `.github/workflow-allowlist.json`, every other action must be on its
+  list and pinned by SHA, and the draw.io CI steps must share one home and run without
+  `PRACTONAUT_CHROMIUM_SANDBOX`. `test:pack` refuses a `.war` or zip archive in the tarball.
 
 ### Changed
+
+- `compare --verify` re-verifies its two reports at once instead of one after the other, so it takes
+  about one report's re-verification; a refusal still names the baseline's failure before the
+  candidate's.
+- Texts that name the running app take its fixed display name from the world's adapter id: the MCP
+  instructions (built per session from the host's view, which now carries `world.adapterId`), the
+  Player's mirror, model-only and evidence texts, and the CLI's setup and mirror messages. The
+  Player's workspace control names the session's app in its middle segment (Practice · draw.io ·
+  Create): in a draw.io session that segment and Create are disabled and say why, and the
+  invitation to create an exercise is not shown; texts about the embedded Excalidraw editor keep
+  naming it and appear in an Excalidraw session only, whose texts are unchanged. A model-only
+  banner's command wraps at its spaces, so `setup --app drawio` stays within the page at 320 px.
+- Bench report texts about the mirror, the engine picture and the mirror's failures name the
+  report's application (`environment.app.adapterId`); `environment.app.version` is the version the
+  world pins (a draw.io bench said 0.18.1).
+- The native export file is named by its app's format: `practonaut.excalidraw` or `practonaut.drawio`
+  (Player download, `run --export`). A world whose app has no editor workspaces (draw.io) gets the
+  board workspace only.
 
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
   Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
@@ -96,6 +182,42 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- "Show in the real tool" (design review D1): the picture lies on a light ground in both themes (in
+  dark mode draw.io's transparent PNG showed black ink on near-black, 1.22:1), inset in its rounded
+  frame; draw.io's picture is shown at its own size (one px per unit, 12 px text) in a labelled region
+  that scrolls sideways. The button keeps the focus while the picture is fetched, the picture is
+  brought into view and announced, and the inspector keeps its scroll position across redraws (it
+  jumped to its top and the focus fell to the page). The picture's text alternative says what it shows.
+- The workspace control's segments that can never open in a window (draw.io and Create in a draw.io
+  session, Create in a practice window) are `aria-disabled`, so the keyboard reaches them and their
+  reason is read, and spoken when one is pressed.
+- The refusal of a group across frames names the way forward with the tools that take it ("put the
+  steps into one frame first, or ungroup them before you change a step's frame"), for the person and
+  the agent; it advised moving the steps, which never changes a frame.
+- Bench report, draw.io: the frame of draw.io's picture is the picture's light ground, padded around
+  the centred picture (a narrow picture was a white slab in a dark frame); a board's scroll line and
+  faded edge appear only where its frame is narrower than it; the interim notice comes last in the
+  closing notes. "Rules and origins" stays open across redraws, and in a world without rules says so
+  before the notice. The frame of draw.io's picture keeps its corners and hairline when the picture
+  scrolls (the faded edge is on an inner scroller). A step outside every frame says "no frame" in its
+  chip and accessible name, since the board draws one frame around every step.
+- The model-only banner names one download with its size first and keeps number and unit, and a
+  product and its version, together ("one download of about 48 MB: draw.io 32.4.1"); the file name
+  stays in the terminal. German names a frame "Rahmen" in the group refusal.
+- `setup --app drawio` on a home without hard links: any `link()` failure other than an existing lock
+  takes the exclusive-create path, so a Windows FAT or exFAT volume (EISDIR) installs too.
+- The start check (`doctor --adapter`, `setup --app drawio`, `run --mirror required`) is tested to
+  start Chromium under the adapter's sandbox policy.
+- `tools/drawio-evidence.ts` checks after its benches and the compare that HEAD and every file outside
+  its output are as before, and refuses to report otherwise.
+- `setup --app drawio`: a wait cut short by the download's absolute deadline is reported as the
+  deadline, not as a stall or a connect timeout (a timer can fire a fraction of a millisecond early).
+- `setup --app drawio`: a retry wait keeps the process alive, so a failed first request is retried
+  instead of ending the process with exit 13; a setup that has created its lock but not yet written
+  it is no longer taken over by a second setup; `app_runtime_unverified` names the exact download
+  size.
+- draw.io mirror: the PNG of a state no longer depends by a pixel on the diagram the browser showed
+  before (every write starts from the empty model).
 - A browser that closes slowly no longer fails work that succeeded (issue #64,
   [PADR-0050](docs/adr/0050-browser-close-is-a-bounded-request.md)). Every browser Practonaut starts
   — the mirror's, the start check's, the render check's, the report card's — closes through one

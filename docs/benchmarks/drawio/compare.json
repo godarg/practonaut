@@ -1,0 +1,1740 @@
+{
+  "ok": true,
+  "baseline": {
+    "schema": "practonaut.bench/3",
+    "verdictLevel": "session",
+    "verification": "re-verified"
+  },
+  "candidate": {
+    "schema": "practonaut.bench/3",
+    "verdictLevel": "session",
+    "verification": "re-verified"
+  },
+  "comparison": {
+    "pairing": "identity",
+    "pairs": [
+      {
+        "taskId": "add-step",
+        "seed": 0,
+        "identity": "e04a778888297d25295b4e483d561030bfcb15c58e973bffb466cbd09cdd0f96",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "add-step",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "add-step",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "add-step",
+        "seed": 2,
+        "identity": "4e138296733f659d1ea204c7813f3fcd34a717c4ec1e4fbfcf80192fa267f36b",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "add-step",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "add-step",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "add-step",
+        "seed": 4,
+        "identity": "cc550eff87e8cc7e51e50e6fde8668270ed534098b9fcf275759d9cb3ae898f9",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "add-step",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "add-step",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "connect",
+        "seed": 0,
+        "identity": "4e05b9713639c930e9b7a29ff8721001258d8804ab50146cd99156ae0cd9c434",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "connect",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "connect",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "connect",
+        "seed": 2,
+        "identity": "f4b9f812ab99e6c6431a6f22f7865778cf631721bae2ae00cd46b4cf56cb9624",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "connect",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "connect",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "connect",
+        "seed": 4,
+        "identity": "9d84514628d02b9b99b22bc9f67c39235671e1a3d65d30152d1498812d9544aa",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "connect",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "connect",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "disconnect",
+        "seed": 0,
+        "identity": "bfa2629accf0d8c56b63c8b84970f8383cc22ddfb76f3d1b5a5e9a8ddd931de7",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "disconnect",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "disconnect",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "disconnect",
+        "seed": 2,
+        "identity": "135cb19f01d843dfe4a005d9f65342efacaa14b46cb28e9bcaacf1a5d4689d2c",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "disconnect",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "disconnect",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "disconnect",
+        "seed": 4,
+        "identity": "363bcd96d26c6682335dba10db56ac8a19ce09fd773d78f1086cfc8f0f1e6469",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "disconnect",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "disconnect",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "recolor",
+        "seed": 0,
+        "identity": "85e990745a3ddd9214d11fe805ab209ceeabe6996c5dd7e6e81bc4e5d802e8d5",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "recolor",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "recolor",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "recolor",
+        "seed": 2,
+        "identity": "77875435dabcc2a5a38336de2f2db07df95171ae2d6602460577917c586beb62",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "recolor",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "recolor",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "recolor",
+        "seed": 4,
+        "identity": "529a0f33e3425bed45e11b340dd02768134e191c65d89a2f9e2eb011c9a2c987",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "recolor",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "recolor",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "remove-step",
+        "seed": 0,
+        "identity": "4f2c71f07fdd9872f711f6f841a9d28bfcaed85226a639b708548aae8f43ac4f",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "remove-step",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "remove-step",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "remove-step",
+        "seed": 2,
+        "identity": "91126d4c9bb127d278e4f678b6fc54e85e3fae8e445a632e18f0e3f1bfd6f84d",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "remove-step",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "remove-step",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "remove-step",
+        "seed": 4,
+        "identity": "1d8ec9483cd52c3f178c6ed21e011544e18ea8773696de968348652bff2ced5c",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "remove-step",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "remove-step",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-frame",
+        "seed": 0,
+        "identity": "16cd5c9b2c1a5e28028aa7103eb358b0f54f35ed884d3b4b21c30e777e832771",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-frame",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-frame",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-frame",
+        "seed": 2,
+        "identity": "7709ad62d39ba33ecafa5d62ba0e5b7f238d0429d280fa4b26e6d1b9c7303f33",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-frame",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-frame",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-frame",
+        "seed": 4,
+        "identity": "cca5d959da930d415a51481c932fdefdbf457daa0160c1500905f48a51e72538",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-frame",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-frame",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-step",
+        "seed": 0,
+        "identity": "4227f6eebee5b4f7d5a103ae3c2ff1de6610bbc15a8c1ffb333d040cd4aa03e1",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-step",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-step",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-step",
+        "seed": 2,
+        "identity": "d375de432ba09a14249d014105d153cfc8d36293981e00052d5d4af5db264e62",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-step",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-step",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "rename-step",
+        "seed": 4,
+        "identity": "8648195a6a0f8caff605459e50608a83664acb1a184b62bb3dbb47e52a1747a5",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "rename-step",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "rename-step",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "align",
+        "seed": 0,
+        "identity": "5d17bafb9f7161397ea34e62337e2dde660969085aa4cc0ca34b52765d531fb9",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "align",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "align",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "align",
+        "seed": 2,
+        "identity": "dcee79215dfe90a2b528b97c4b3fff2481d00128910cc814f47727fd36563f77",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "align",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "align",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "align",
+        "seed": 4,
+        "identity": "c556b4a71fa9bd134ae2b5b7543a4ab1359929ae57462a4bdf569a18b04d96f8",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "align",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "align",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "close-chain",
+        "seed": 0,
+        "identity": "16e593fe50cce9b6f07c94b158114fc98c673a0fcf8e52e7fbaafaa5a5bfc0bc",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "close-chain",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "close-chain",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "close-chain",
+        "seed": 2,
+        "identity": "cd665d6c5d3248c39b80f53b72aa23849e345da9c97d9b1def15f914a495fc1c",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "close-chain",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "close-chain",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "close-chain",
+        "seed": 4,
+        "identity": "b9506753e17027b3d195052b7c51027d367f2c5abc80a21c929d84a0be0b8b69",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "close-chain",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "close-chain",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "group",
+        "seed": 0,
+        "identity": "dbb420b108f212565abf7ecf42a207caf038b0676dc809bea5a937d15e61b4cc",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "group",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "group",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "group",
+        "seed": 2,
+        "identity": "28b99fc255fea931fe16729c2d8d6edf31fd8398bbd99fe2f496bee3499737de",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "group",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "group",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "group",
+        "seed": 4,
+        "identity": "2e87cc06a31261b16a0dd7cb03a3875abf0e26c85ab9b57181257ea5d5fd5cd8",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "group",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "group",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "insert-between",
+        "seed": 0,
+        "identity": "ccd58b05b9200967fd6463ccc29a501d643c68c3749967f0775f28d44bcf9820",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "insert-between",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "insert-between",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "insert-between",
+        "seed": 2,
+        "identity": "b8acb021a39355ac565b8449c5874c8ee90c77d059f9e31cdbd0ee1571f35196",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "insert-between",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "insert-between",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "insert-between",
+        "seed": 4,
+        "identity": "781c7a33dd1f048cf3c9d47bc0e86a71a69b39d66dbaaf24de16c87d0a0a67fb",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "insert-between",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "insert-between",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reconnect",
+        "seed": 0,
+        "identity": "6b3409fc0f7269c5ecc6d4cd2b5e6673fc00f0a4abd6ad2e99a367329e26479f",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reconnect",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reconnect",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reconnect",
+        "seed": 2,
+        "identity": "9cd93db208721cf44164ad4440ae8ee43f72f4930ee0895f0fb5d41af0677b52",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reconnect",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reconnect",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reconnect",
+        "seed": 4,
+        "identity": "908325d2ab6ddd28742ce6535d19e7dd0a6fac592a58951f0c93e84808c7a6fc",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reconnect",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reconnect",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reorder",
+        "seed": 0,
+        "identity": "fb041c4e266b6a0d6461a1d5a2a4b01ab1263611cd0290d2a7bd3233492aa9e3",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reorder",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reorder",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reorder",
+        "seed": 2,
+        "identity": "4b7001076a503c4496c9eaee8699ef8dc72e36cfc83a181c6e943653027daa3c",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reorder",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reorder",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "reorder",
+        "seed": 4,
+        "identity": "61b25afa90784bc2267fe5f572abb57ba467b0fd2a849bc2da089d2fff25d21a",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "reorder",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "reorder",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "decision",
+        "seed": 0,
+        "identity": "5e0bed6d93c5c56e386180dc4e7b69e5cb412cabd2e14a5d85792e81d91227ac",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "decision",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "decision",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "decision",
+        "seed": 2,
+        "identity": "d460293bf4b92653ad5f13ffc8d41c20bbb0d0b4fa9d8fa058130aec908739e0",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "decision",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "decision",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "decision",
+        "seed": 4,
+        "identity": "ce3d39973f087d175dd7c7dc3c0a16fbcb09f8eb68f99ff154506e4a6c4e137e",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "decision",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "decision",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "restyle-flow",
+        "seed": 0,
+        "identity": "19e380f98d2747b75cc1746002c67173604f2a1b621e94ed57bd33a99ad25872",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "restyle-flow",
+        "seed": 2,
+        "identity": "8bc121c69c37b05332c8d3a5d01e9badb7186ed2b2d175379a74ba6bf09b0847",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "restyle-flow",
+        "seed": 4,
+        "identity": "af5532bc3ab6d73698ed0bbd97fc70e6fff0f330cdfa6ab1a7280283f467b295",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "restyle-flow",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "two-frames",
+        "seed": 0,
+        "identity": "2bfef9cca8eabbf564a881ac622377298c6ee0ee4bbaf735071d48b47a6da6c1",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "two-frames",
+              "seed": 0
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "two-frames",
+              "seed": 0
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "two-frames",
+        "seed": 2,
+        "identity": "ac6d81a01905c4070aa2c79e6a45d35acedab6536dc7e6db5367fba0812a8a04",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "two-frames",
+              "seed": 2
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "two-frames",
+              "seed": 2
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      },
+      {
+        "taskId": "two-frames",
+        "seed": 4,
+        "identity": "d90dbbd9c748480796d6375b1fe85d0ca1c635a5db89675cfc6dbd7764acaf33",
+        "names": {
+          "baseline": [
+            {
+              "taskId": "two-frames",
+              "seed": 4
+            }
+          ],
+          "candidate": [
+            {
+              "taskId": "two-frames",
+              "seed": 4
+            }
+          ]
+        },
+        "kind": "paired",
+        "baseline": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "candidate": {
+          "repeats": 1,
+          "judged": 1,
+          "unjudged": 0,
+          "passed": 1,
+          "outcome": "pass"
+        },
+        "flip": null
+      }
+    ],
+    "paired": 48,
+    "baseline": {
+      "passed": 48,
+      "instances": 48,
+      "interval": {
+        "low": 0.9258998703338824,
+        "high": 1
+      },
+      "noVerdict": 0
+    },
+    "candidate": {
+      "passed": 48,
+      "instances": 48,
+      "interval": {
+        "low": 0.9258998703338824,
+        "high": 1
+      },
+      "noVerdict": 0
+    },
+    "discordant": {
+      "baselineOnly": 0,
+      "candidateOnly": 0
+    },
+    "p": 1,
+    "alpha": 0.05,
+    "verdict": "not_distinguishable",
+    "regressions": [],
+    "fixes": [],
+    "singleFlips": [],
+    "changedFlips": [],
+    "configFlips": [],
+    "notCompared": [],
+    "withUnjudged": [],
+    "incomplete": [],
+    "regressionSignal": false,
+    "caveats": [
+      {
+        "field": "identityPairing",
+        "baseline": "excalidraw-library 1.1.0",
+        "candidate": "drawio-library 1.1.0"
+      }
+    ]
+  }
+}

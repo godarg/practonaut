@@ -4,19 +4,38 @@
  * live in `src/adapters` (the registry), and the checker keeps its own format table; unit tests keep
  * all three equal. A world naming anything else is refused by name before anything starts.
  */
+import type { StructuralConstraint } from "./constraints.ts";
 import { WorldError } from "./preflight.ts";
 import type { WorldSchemaId } from "./types.ts";
 
 export interface KnownApp { readonly appVersions: readonly string[]; readonly schemas: readonly WorldSchemaId[] }
+/** A world-table entry: besides versions and schemas, the structural constraints the application
+ * imposes (PADR-0049 decision 1.2) and its fixed display name (decision 1.5). Both are project text
+ * and data, never taken from a world. */
+export interface AppEntry extends KnownApp {
+  readonly structural: readonly StructuralConstraint[];
+  readonly displayName: Readonly<{ en: string; de: string }>;
+}
 export const KNOWN_APPS = Object.freeze({
-  excalidraw: Object.freeze({ appVersions: Object.freeze(["0.18.1"] as const), schemas: Object.freeze(["practonaut.world/1", "practonaut.world/2"] as const) }),
-});
+  excalidraw: Object.freeze({ appVersions: Object.freeze(["0.18.1"] as const), schemas: Object.freeze(["practonaut.world/1", "practonaut.world/2"] as const), structural: Object.freeze([] as StructuralConstraint[]), displayName: Object.freeze({ en: "Excalidraw", de: "Excalidraw" }) }),
+  // draw.io keeps one parent per cell and stores text as XML (PADR-0049 decision 5.2).
+  drawio: Object.freeze({ appVersions: Object.freeze(["32.4.1"] as const), schemas: Object.freeze(["practonaut.world/2"] as const), structural: Object.freeze(["group-within-one-frame", "xml-text"] as StructuralConstraint[]), displayName: Object.freeze({ en: "draw.io", de: "draw.io" }) }),
+} satisfies Record<string, AppEntry>);
 export type AdapterId = keyof typeof KNOWN_APPS;
 export type AppVersion = (typeof KNOWN_APPS)[AdapterId]["appVersions"][number];
 export const ADAPTER_IDS = Object.freeze(Object.keys(KNOWN_APPS) as AdapterId[]);
 /** The adapters that run worlds of `schema`, and every app version among them (the schemas' value lists). */
 export const adapterIdsFor = (schema: WorldSchemaId): AdapterId[] => ADAPTER_IDS.filter(id => (KNOWN_APPS[id].schemas as readonly string[]).includes(schema));
 export const appVersionsFor = (schema: WorldSchemaId): AppVersion[] => [...new Set(adapterIdsFor(schema).flatMap(id => KNOWN_APPS[id].appVersions))];
+/** The structural constraints a world's application declares (none for an id the table lacks, which
+ * world validation refuses before anything runs). */
+export function structuralConstraintsOf(adapterId: string): readonly StructuralConstraint[] {
+  return Object.hasOwn(KNOWN_APPS, adapterId) ? KNOWN_APPS[adapterId as AdapterId].structural : [];
+}
+/** The fixed display name of an application, for every text that names the running app. */
+export function appDisplayName(adapterId: string, language: "en" | "de" = "en"): string {
+  return Object.hasOwn(KNOWN_APPS, adapterId) ? KNOWN_APPS[adapterId as AdapterId].displayName[language] : adapterId;
+}
 
 /** Quoted, shortened world text for a message (the CLI escapes it again when printing). */
 const shown = (value: string): string => JSON.stringify(value.length > 64 ? value.slice(0, 64) + "…" : value);

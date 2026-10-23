@@ -1,0 +1,2046 @@
+{
+  "schema": "practonaut.library/1",
+  "worldId": "drawio-library",
+  "version": "1.1.0",
+  "tasks": [
+    {
+      "id": "add-step",
+      "difficulty": 1,
+      "title": {
+        "en": "Add a step",
+        "de": "Einen Schritt hinzufügen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "add-step",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "add_step",
+            "params": {
+              "frameId": null,
+              "label": "{{add-step-l3}}",
+              "x": 700,
+              "y": 200,
+              "width": 180,
+              "height": 90,
+              "shape": "rectangle"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "misordered",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{add-step-l3}}",
+                  "x": -300,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "wrong-label",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{add-step-l3}} 2",
+                  "x": 700,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              }
+            ],
+            "violates": [
+              2,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "connect",
+      "difficulty": 1,
+      "title": {
+        "en": "Connect two steps",
+        "de": "Zwei Schritte verbinden"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "connect",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "connect",
+            "params": {
+              "from": "a",
+              "to": "b"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "connect",
+                "params": {
+                  "from": "b",
+                  "to": "a"
+                }
+              }
+            ],
+            "violates": [
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "disconnect",
+      "difficulty": 1,
+      "title": {
+        "en": "Remove a shortcut arrow",
+        "de": "Einen Abkürzungspfeil entfernen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "disconnect",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "disconnect",
+            "params": {
+              "id": "ac"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-arrow-removed",
+            "steps": [
+              {
+                "name": "disconnect",
+                "params": {
+                  "id": "ab"
+                }
+              }
+            ],
+            "violates": [
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "recolor",
+      "difficulty": 1,
+      "title": {
+        "en": "Mark the error step",
+        "de": "Den Fehlerschritt markieren"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "recolor",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "set_style",
+            "params": {
+              "id": "b",
+              "shape": "rectangle",
+              "stroke": "red",
+              "fill": "red"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-colour",
+            "steps": [
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "b",
+                  "shape": "rectangle",
+                  "stroke": "red",
+                  "fill": "green"
+                }
+              }
+            ],
+            "violates": [
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "remove-step",
+      "difficulty": 1,
+      "title": {
+        "en": "Remove a step",
+        "de": "Einen Schritt entfernen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "remove-step",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "delete_step",
+            "params": {
+              "id": "b"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-step-removed",
+            "steps": [
+              {
+                "name": "delete_step",
+                "params": {
+                  "id": "a"
+                }
+              }
+            ],
+            "violates": [
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rename-frame",
+      "difficulty": 1,
+      "title": {
+        "en": "Name the frame",
+        "de": "Den Rahmen benennen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "rename-frame",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "rename_frame",
+            "params": {
+              "id": "f",
+              "name": "{{rename-frame-l1}}"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-frame-name",
+            "steps": [
+              {
+                "name": "rename_frame",
+                "params": {
+                  "id": "f",
+                  "name": "{{rename-frame-l1}} 2"
+                }
+              }
+            ],
+            "violates": [
+              3,
+              4,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rename-step",
+      "difficulty": 1,
+      "title": {
+        "en": "Fix a label",
+        "de": "Eine Beschriftung korrigieren"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "rename-step",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "rename_step",
+            "params": {
+              "id": "a",
+              "label": "{{rename-step-l2}}"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-label",
+            "steps": [
+              {
+                "name": "rename_step",
+                "params": {
+                  "id": "a",
+                  "label": "{{rename-step-l2}} 2"
+                }
+              }
+            ],
+            "violates": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "align",
+      "difficulty": 2,
+      "title": {
+        "en": "Align a row",
+        "de": "Eine Zeile ausrichten"
+      },
+      "actions": 3,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "align",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "move_step",
+            "params": {
+              "id": "a",
+              "x": 100,
+              "y": 200
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "b",
+              "x": 400,
+              "y": 200
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "c",
+              "x": 700,
+              "y": 200
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "misplaced",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 260
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              5
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "missing-move-step",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              5
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "misplaced",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 260
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "missing-move-step",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "close-chain",
+      "difficulty": 2,
+      "title": {
+        "en": "Close the gap in a chain",
+        "de": "Eine Lücke in der Kette schließen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "close-chain",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "connect",
+            "params": {
+              "from": "b",
+              "to": "c"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "connect",
+                "params": {
+                  "from": "c",
+                  "to": "b"
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "group",
+      "difficulty": 2,
+      "title": {
+        "en": "Group a sub-process",
+        "de": "Einen Teilprozess gruppieren"
+      },
+      "actions": 2,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "group",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "group_steps",
+            "params": {
+              "id": "b",
+              "with": "a"
+            }
+          },
+          {
+            "name": "group_steps",
+            "params": {
+              "id": "c",
+              "with": "a"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-group-member",
+            "steps": [
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "c",
+                  "with": "a"
+                }
+              },
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "c",
+                  "with": "a"
+                }
+              }
+            ],
+            "violates": [
+              3,
+              6
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "missing-group-steps",
+            "steps": [
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "c",
+                  "with": "a"
+                }
+              }
+            ],
+            "violates": [
+              3,
+              6
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "wrong-group-member",
+            "steps": [
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "b",
+                  "with": "a"
+                }
+              },
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "b",
+                  "with": "a"
+                }
+              }
+            ],
+            "violates": [
+              2,
+              6
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "missing-group-steps",
+            "steps": [
+              {
+                "name": "group_steps",
+                "params": {
+                  "id": "b",
+                  "with": "a"
+                }
+              }
+            ],
+            "violates": [
+              2,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "insert-between",
+      "difficulty": 2,
+      "title": {
+        "en": "Insert a step between two others",
+        "de": "Einen Schritt dazwischen einfügen"
+      },
+      "actions": 4,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "insert-between",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "disconnect",
+            "params": {
+              "id": "ac"
+            }
+          },
+          {
+            "name": "add_step",
+            "params": {
+              "frameId": null,
+              "label": "{{insert-between-l2}}",
+              "x": 400,
+              "y": 200,
+              "width": 180,
+              "height": 90,
+              "shape": "rectangle"
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": "a",
+              "to": {
+                "created": 1
+              }
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": {
+                "created": 1
+              },
+              "to": "c"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "disconnect",
+                "params": {
+                  "id": "ac"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{insert-between-l2}}",
+                  "x": 400,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 1
+                  },
+                  "to": "a"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 1
+                  },
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "disconnect",
+                "params": {
+                  "id": "ac"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{insert-between-l2}}",
+                  "x": 400,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": {
+                    "created": 1
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "c",
+                  "to": {
+                    "created": 1
+                  }
+                }
+              }
+            ],
+            "violates": [
+              5
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "missing-connect",
+            "steps": [
+              {
+                "name": "disconnect",
+                "params": {
+                  "id": "ac"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{insert-between-l2}}",
+                  "x": 400,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 1
+                  },
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              1,
+              6
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "missing-connect",
+            "steps": [
+              {
+                "name": "disconnect",
+                "params": {
+                  "id": "ac"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{insert-between-l2}}",
+                  "x": 400,
+                  "y": 200,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": {
+                    "created": 1
+                  }
+                }
+              }
+            ],
+            "violates": [
+              1,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "reconnect",
+      "difficulty": 2,
+      "title": {
+        "en": "Rewire an arrow",
+        "de": "Einen Pfeil umhängen"
+      },
+      "actions": 1,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "reconnect",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "reconnect_end",
+            "params": {
+              "id": "x",
+              "end": "start",
+              "target": "b"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-end",
+            "steps": [
+              {
+                "name": "reconnect_end",
+                "params": {
+                  "id": "x",
+                  "end": "start",
+                  "target": "c"
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "other-end-moved",
+            "steps": [
+              {
+                "name": "reconnect_end",
+                "params": {
+                  "id": "x",
+                  "end": "end",
+                  "target": "b"
+                }
+              }
+            ],
+            "violates": [
+              5,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "reorder",
+      "difficulty": 2,
+      "title": {
+        "en": "Put the steps in order",
+        "de": "Die Schritte ordnen"
+      },
+      "actions": 4,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "reorder",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "move_step",
+            "params": {
+              "id": "a",
+              "x": 100,
+              "y": 200
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "b",
+              "x": 400,
+              "y": 200
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "c",
+              "x": 700,
+              "y": 200
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "d",
+              "x": 1000,
+              "y": 200
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "missing-move-step",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "d",
+                  "x": 1000,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "misordered",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": -600,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "d",
+                  "x": 1000,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "missing-move-step",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 700,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "d",
+                  "x": 1000,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "misordered",
+            "steps": [
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "a",
+                  "x": 100,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "b",
+                  "x": 400,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": -300,
+                  "y": 200
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "d",
+                  "x": 1000,
+                  "y": 200
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "decision",
+      "difficulty": 3,
+      "title": {
+        "en": "Build a decision with two exits",
+        "de": "Eine Entscheidung mit zwei Ausgängen bauen"
+      },
+      "actions": 6,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "decision",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "add_step",
+            "params": {
+              "frameId": null,
+              "label": "{{decision-l2}}",
+              "x": 400,
+              "y": 185,
+              "width": 200,
+              "height": 120,
+              "shape": "diamond"
+            }
+          },
+          {
+            "name": "add_step",
+            "params": {
+              "frameId": null,
+              "label": "{{decision-l4}}",
+              "x": 740,
+              "y": 340,
+              "width": 180,
+              "height": 90,
+              "shape": "rectangle"
+            }
+          },
+          {
+            "name": "add_step",
+            "params": {
+              "frameId": null,
+              "label": "{{decision-l3}}",
+              "x": 740,
+              "y": 60,
+              "width": 180,
+              "height": 90,
+              "shape": "rectangle"
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": "a",
+              "to": {
+                "created": 0
+              }
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": {
+                "created": 0
+              },
+              "to": {
+                "created": 1
+              }
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": {
+                "created": 0
+              },
+              "to": {
+                "created": 2
+              }
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l2}}",
+                  "x": 400,
+                  "y": 185,
+                  "width": 200,
+                  "height": 120,
+                  "shape": "diamond"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l4}}",
+                  "x": 740,
+                  "y": 340,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l3}}",
+                  "x": 740,
+                  "y": 60,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": "a"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 1
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 2
+                  }
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l2}}",
+                  "x": 400,
+                  "y": 185,
+                  "width": 200,
+                  "height": 120,
+                  "shape": "diamond"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l4}}",
+                  "x": 740,
+                  "y": 340,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l3}}",
+                  "x": 740,
+                  "y": 60,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": {
+                    "created": 0
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 1
+                  },
+                  "to": {
+                    "created": 0
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 2
+                  }
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "reversed-arrow",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l2}}",
+                  "x": 400,
+                  "y": 185,
+                  "width": 200,
+                  "height": 120,
+                  "shape": "diamond"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l4}}",
+                  "x": 740,
+                  "y": 340,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l3}}",
+                  "x": 740,
+                  "y": 60,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": {
+                    "created": 0
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 1
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 2
+                  },
+                  "to": {
+                    "created": 0
+                  }
+                }
+              }
+            ],
+            "violates": [
+              8
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "wrong-label",
+            "steps": [
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l2}}",
+                  "x": 400,
+                  "y": 185,
+                  "width": 200,
+                  "height": 120,
+                  "shape": "diamond"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l4}} 2",
+                  "x": 740,
+                  "y": 340,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "add_step",
+                "params": {
+                  "frameId": null,
+                  "label": "{{decision-l3}}",
+                  "x": 740,
+                  "y": 60,
+                  "width": 180,
+                  "height": 90,
+                  "shape": "rectangle"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": {
+                    "created": 0
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 1
+                  }
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": {
+                    "created": 0
+                  },
+                  "to": {
+                    "created": 2
+                  }
+                }
+              }
+            ],
+            "violates": [
+              4,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "restyle-flow",
+      "difficulty": 3,
+      "title": {
+        "en": "Turn a list into a styled flow",
+        "de": "Aus einer Liste einen gestalteten Ablauf machen"
+      },
+      "actions": 6,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "restyle-flow",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "set_style",
+            "params": {
+              "id": "a",
+              "shape": "ellipse",
+              "stroke": "black",
+              "fill": "none"
+            }
+          },
+          {
+            "name": "resize_step",
+            "params": {
+              "id": "b",
+              "width": 260,
+              "height": 120
+            }
+          },
+          {
+            "name": "move_step",
+            "params": {
+              "id": "c",
+              "x": 780,
+              "y": 200
+            }
+          },
+          {
+            "name": "set_style",
+            "params": {
+              "id": "c",
+              "shape": "ellipse",
+              "stroke": "black",
+              "fill": "green"
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": "a",
+              "to": "b"
+            }
+          },
+          {
+            "name": "connect",
+            "params": {
+              "from": "b",
+              "to": "c"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-colour",
+            "steps": [
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "a",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "red"
+                }
+              },
+              {
+                "name": "resize_step",
+                "params": {
+                  "id": "b",
+                  "width": 260,
+                  "height": 120
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 780,
+                  "y": 200
+                }
+              },
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "c",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "green"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": "b"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "b",
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              3
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "missing-set-style",
+            "steps": [
+              {
+                "name": "resize_step",
+                "params": {
+                  "id": "b",
+                  "width": 260,
+                  "height": 120
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 780,
+                  "y": 200
+                }
+              },
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "c",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "green"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": "b"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "b",
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              3
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "wrong-size",
+            "steps": [
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "a",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "none"
+                }
+              },
+              {
+                "name": "resize_step",
+                "params": {
+                  "id": "b",
+                  "width": 300,
+                  "height": 120
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 780,
+                  "y": 200
+                }
+              },
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "c",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "green"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": "b"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "b",
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "missing-resize-step",
+            "steps": [
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "a",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "none"
+                }
+              },
+              {
+                "name": "move_step",
+                "params": {
+                  "id": "c",
+                  "x": 780,
+                  "y": 200
+                }
+              },
+              {
+                "name": "set_style",
+                "params": {
+                  "id": "c",
+                  "shape": "ellipse",
+                  "stroke": "black",
+                  "fill": "green"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "a",
+                  "to": "b"
+                }
+              },
+              {
+                "name": "connect",
+                "params": {
+                  "from": "b",
+                  "to": "c"
+                }
+              }
+            ],
+            "violates": [
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "two-frames",
+      "difficulty": 3,
+      "title": {
+        "en": "Sort two sub-processes into frames",
+        "de": "Zwei Teilprozesse in Rahmen ordnen"
+      },
+      "actions": 4,
+      "oracle": {
+        "schema": "practonaut.task-oracle/1",
+        "worldId": "drawio-library",
+        "taskId": "two-frames",
+        "seeds": {
+          "drawn": 0,
+          "alt-1": 2,
+          "alt-2": 4
+        },
+        "steps": [
+          {
+            "name": "set_frame",
+            "params": {
+              "id": "a",
+              "frameId": "fs"
+            }
+          },
+          {
+            "name": "set_frame",
+            "params": {
+              "id": "b",
+              "frameId": "fs"
+            }
+          },
+          {
+            "name": "set_frame",
+            "params": {
+              "id": "c",
+              "frameId": "fd"
+            }
+          },
+          {
+            "name": "set_frame",
+            "params": {
+              "id": "d",
+              "frameId": "fd"
+            }
+          }
+        ],
+        "nearMisses": [
+          {
+            "id": "near-1",
+            "kind": "wrong-frame",
+            "steps": [
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "a",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "b",
+                  "frameId": "fs"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "c",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "d",
+                  "frameId": "fd"
+                }
+              }
+            ],
+            "violates": [
+              8
+            ]
+          },
+          {
+            "id": "near-2",
+            "kind": "missing-set-frame",
+            "steps": [
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "b",
+                  "frameId": "fs"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "c",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "d",
+                  "frameId": "fd"
+                }
+              }
+            ],
+            "violates": [
+              8
+            ]
+          },
+          {
+            "id": "near-3",
+            "kind": "wrong-frame",
+            "steps": [
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "a",
+                  "frameId": "fs"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "b",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "c",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "d",
+                  "frameId": "fd"
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          },
+          {
+            "id": "near-4",
+            "kind": "missing-set-frame",
+            "steps": [
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "a",
+                  "frameId": "fs"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "c",
+                  "frameId": "fd"
+                }
+              },
+              {
+                "name": "set_frame",
+                "params": {
+                  "id": "d",
+                  "frameId": "fd"
+                }
+              }
+            ],
+            "violates": [
+              6
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

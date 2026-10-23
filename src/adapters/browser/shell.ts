@@ -40,7 +40,7 @@ import { sha256Hex } from '../../canonical/index.ts';
 import type { Failure } from '../../world/types.ts';
 import type { AdapterResult, Artifact } from '../types.ts';
 import { BROWSER_BOUNDS, BrowserDeadlineError, bounded } from './bounded.ts';
-import { chromiumSandboxPolicy, launchChromium, type LaunchContext } from './chromium.ts';
+import { chromiumSandboxPolicy, launchChromium, type AdapterSandboxPolicy, type LaunchContext } from './chromium.ts';
 import { closeDeadline, closeErrorOf, deadlineOf, type CloseResult } from './close.ts';
 import { processLedger, type BrowserLease, type BrowserLedger } from './ledger.ts';
 
@@ -50,6 +50,12 @@ export const MAX_ADAPTER_MS = 10_000;
  * (PADR-0050): its slot wait ends when only this much is left. */
 export const LAUNCH_AFTER_WAIT_MS = 5_000;
 export class AdapterError extends Error { readonly code: Failure['code']; constructor(code: Failure['code'], message: string) { super(message); this.code = code; } }
+/** A downloaded app runtime that is absent or no longer matches its pin when the adapter itself starts
+ * (PADR-0049 decision 2.6): the mirror is unavailable, and the CLI reports the runtime's own code. */
+export class AppRuntimeFault extends AdapterError {
+  readonly adapterId: string; readonly runtimeCode: 'app_runtime_missing' | 'app_runtime_unverified';
+  constructor(adapterId: string, runtimeCode: AppRuntimeFault['runtimeCode'], message: string) { super('mirror_unavailable', message); this.adapterId = adapterId; this.runtimeCode = runtimeCode; }
+}
 /** Preserve startup failure separately from disposal failure for the owning attempt. */
 export class AdapterInitializationError extends AdapterError {
   readonly primaryError: unknown; readonly cleanupError: unknown; readonly networkAttempts: string[];
@@ -95,6 +101,8 @@ export interface ShellOptions {
   /** Test seams: a fake Playwright, shorter launch and start deadlines, a launch context (platform, env),
    * a ledger of the test's own (default: the process's, PADR-0050). */
   chromium?: ChromiumLike; launchMs?: number; initializeMs?: number; launchContext?: LaunchContext; ledger?: BrowserLedger;
+  /** The adapter's sandbox policy (PADR-0049 decision 7); `linux-fallback` when absent. */
+  sandbox?: AdapterSandboxPolicy;
 }
 /** How the adapter reads and writes its committed scene, for rollback. */
 export interface SceneIO<S> {
@@ -262,7 +270,9 @@ export async function startShell(options: ShellOptions, initialize: (shell: Brow
   try { sink = await startSink(); } catch (error) { await lease.close(); throw error; }
   lease.onRelease(() => sink.close());
   if (options.signal?.aborted) { await lease.close(); throw beforeLaunch(); }
-  const browser = await launchWithin(chromium, remaining, options.signal, options.launchContext, sink, lease);
+  // The adapter's own sandbox policy (PADR-0049 decision 7) on top of the launch context.
+  const launchContext: LaunchContext | undefined = options.sandbox === 'required' ? { ...options.launchContext, sandbox: 'required' } : options.launchContext;
+  const browser = await launchWithin(chromium, remaining, options.signal, launchContext, sink, lease);
   const named = Object.keys(options.origins), policy = shellPolicy(named);
   // The browser belongs to the shell before a ready adapter exists.
   let initializing = true, pendingInitializationOperations = 0, closed = false;

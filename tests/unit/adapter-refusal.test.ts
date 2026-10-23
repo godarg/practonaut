@@ -30,16 +30,16 @@ const code = (expected: string) => (error: unknown): boolean => {
 };
 
 test('world validation refuses an application this Practonaut does not have by name, before the schema runs', () => {
-  const drawio = flowRaw(); drawio.app.adapterId = 'drawio';
-  assert.throws(() => validateWorld(drawio), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_UNKNOWN' && /"drawio"/.test(error.message) && /excalidraw/.test(error.message));
+  const unknownApp = flowRaw(); unknownApp.app.adapterId = 'bpmnjs';
+  assert.throws(() => validateWorld(unknownApp), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_UNKNOWN' && /"bpmnjs"/.test(error.message) && /excalidraw/.test(error.message));
   // Named even when the rest of the world is something only that app would understand.
-  const foreign = flowRaw(); foreign.app = { adapterId: 'drawio', versionRange: '32.4.1', pageSize: 'A4' }; foreign.tasks = 'not a list';
+  const foreign = flowRaw(); foreign.app = { adapterId: 'bpmnjs', versionRange: '18.0.0', pageSize: 'A4' }; foreign.tasks = 'not a list';
   assert.throws(() => validateWorld(foreign), code('E_ADAPTER_UNKNOWN'));
   const version = flowRaw(); version.app.versionRange = '0.19.0';
   assert.throws(() => validateWorld(version), code('E_ADAPTER_VERSION_UNSUPPORTED'));
   const provenance = flowRaw(); provenance.provenance.appVersion = '0.17.0';
   assert.throws(() => validateWorld(provenance), (error: unknown) => (error as WorldError).code === 'E_ADAPTER_VERSION_UNSUPPORTED' && /provenance\.appVersion/.test(String(error)));
-  assert.throws(() => v2World({ app: { adapterId: 'drawio', versionRange: '32.4.1' } }), code('E_ADAPTER_UNKNOWN'));
+  assert.throws(() => v2World({ app: { adapterId: 'bpmnjs', versionRange: '18.0.0' } }), code('E_ADAPTER_UNKNOWN'));
   // Prototype names are not applications.
   for (const id of ['constructor', '__proto__', 'toString']) { const proto = flowRaw(); proto.app.adapterId = id; assert.throws(() => validateWorld(proto), code('E_ADAPTER_UNKNOWN'), id); }
   // Shapes the pre-check does not read stay ordinary schema errors.
@@ -50,7 +50,7 @@ test('world validation refuses an application this Practonaut does not have by n
 });
 
 test('a stub adapter that runs world/2 only is refused in a world/1 by name', () => {
-  // Test-only stub table: an adapter that runs world/2 only, as draw.io will (Must 2).
+  // Test-only stub table: an adapter that runs world/2 only, as draw.io does.
   const apps = { ...KNOWN_APPS, stub: { appVersions: ['1.0.0'], schemas: ['practonaut.world/2'] as const } };
   const world1 = flowRaw(); world1.app.adapterId = 'stub'; world1.app.versionRange = '1.0.0'; world1.provenance.appVersion = '1.0.0';
   assert.throws(() => checkWorldApp(world1, apps), (error: unknown) => error instanceof WorldError && error.code === 'E_ADAPTER_SCHEMA_UNSUPPORTED' && /"stub"/.test(error.message) && /practonaut\.world\/1/.test(error.message));
@@ -83,19 +83,19 @@ test('the checker reads exports through its own format table and refuses an adap
   const world = validateWorld(flowRaw());
   const native = JSON.stringify({ type: 'excalidraw', version: 2, files: {}, elements: [] });
   // An unvalidated world given to the API directly: the format table refuses it by name.
-  assert.throws(() => checkSubmission({ ...world, app: { ...world.app, adapterId: 'drawio' } } as unknown as World, native, { seed: 0, taskId: world.tasks[0]!.id }), (error: unknown) => error instanceof CheckerError && error.code === 'E_ADAPTER_UNKNOWN');
+  assert.throws(() => checkSubmission({ ...world, app: { ...world.app, adapterId: 'bpmnjs' } } as unknown as World, native, { seed: 0, taskId: world.tasks[0]!.id }), (error: unknown) => error instanceof CheckerError && error.code === 'E_ADAPTER_UNKNOWN');
   // The world's own format is the only native format accepted (an empty drawing is judged, and fails).
   assert.equal(checkSubmission(world, native, { seed: 0, taskId: world.tasks[0]!.id, format: 'excalidraw' }).passed, false);
-  assert.throws(() => checkSubmission(world, native, { seed: 0, taskId: world.tasks[0]!.id, format: 'drawio' as never }), (error: unknown) => error instanceof CheckerError && error.code === 'artifact_invalid' && /drawio/.test(error.message));
+  assert.throws(() => checkSubmission(world, native, { seed: 0, taskId: world.tasks[0]!.id, format: 'drawio' }), (error: unknown) => error instanceof CheckerError && error.code === 'artifact_invalid' && /drawio/.test(error.message));
 });
 
 test('the checker process answers a world naming an unknown adapter with the named code', { timeout: 60_000 }, async () => {
-  const world = flowRaw(); world.app.adapterId = 'drawio';
+  const world = flowRaw(); world.app.adapterId = 'bpmnjs';
   const request = JSON.stringify({ world, input: JSON.stringify({ type: 'excalidraw', version: 2, elements: [], files: {} }), options: { seed: 0 } });
   const child = spawnSync(process.execPath, [join(root, 'src/checker/main.ts')], { input: request, encoding: 'utf8', timeout: 30_000 });
   assert.equal(child.status, 1, child.stderr);
   const reply = JSON.parse(child.stdout.trim());
-  assert.equal(reply.ok, false); assert.equal(reply.error.code, 'E_ADAPTER_UNKNOWN'); assert.match(reply.error.message, /drawio/);
+  assert.equal(reply.ok, false); assert.equal(reply.error.code, 'E_ADAPTER_UNKNOWN'); assert.match(reply.error.message, /bpmnjs/);
   // The CLI's process boundary admits the named code instead of folding it into checker_invalid.
   await assert.rejects(checkInProcess(world as unknown as World, JSON.stringify({ type: 'excalidraw', version: 2, elements: [], files: {} }), { seed: 0 }), (error: unknown) => error instanceof RuntimeError && error.code === 'E_ADAPTER_UNKNOWN');
   const version = flowRaw(); version.app.versionRange = '0.19.0';
@@ -110,13 +110,13 @@ test('the checker process answers a world naming an unknown adapter with the nam
 test('validate, pack and play refuse a world naming an unknown adapter by name, before any browser check', { timeout: 120_000 }, async () => {
   const dir = mkdtempSync(join(realpathSync(tmpdir()), 'pn-adapter-refusal-'));
   try {
-    const source = join(dir, 'drawio'); cpSync(FLOW, source, { recursive: true });
-    const raw = flowRaw(); raw.app.adapterId = 'drawio'; writeFileSync(join(source, 'world.json'), JSON.stringify(raw));
+    const source = join(dir, 'bpmnjs'); cpSync(FLOW, source, { recursive: true });
+    const raw = flowRaw(); raw.app.adapterId = 'bpmnjs'; writeFileSync(join(source, 'world.json'), JSON.stringify(raw));
     // An empty browser directory: a command that checked or started Chromium first would answer
     // browser_runtime_missing (exit 3) instead of the world's refusal (exit 2).
     const browsers = join(dir, 'no-browsers');
     const cli = (...args: string[]) => spawnSync(process.execPath, [join(root, 'src/cli/main.ts'), ...args], { cwd: dir, encoding: 'utf8', timeout: 60_000, input: '', env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers } });
-    const refused = (result: ReturnType<typeof cli>, label: string, expected = 'E_ADAPTER_UNKNOWN', named = /drawio/): void => {
+    const refused = (result: ReturnType<typeof cli>, label: string, expected = 'E_ADAPTER_UNKNOWN', named = /bpmnjs/): void => {
       assert.equal(result.status, 2, `${label}: ${result.stdout}${result.stderr}`);
       const reply = JSON.parse((result.stdout || result.stderr).trim());
       assert.equal(reply.ok, false, label); assert.equal(reply.error.code, expected, label); assert.match(reply.error.message, named, label);
@@ -124,9 +124,9 @@ test('validate, pack and play refuse a world naming an unknown adapter by name, 
     const versioned = join(dir, 'excalidraw-0.19'); cpSync(FLOW, versioned, { recursive: true });
     const other = flowRaw(); other.app.versionRange = '0.19.0'; writeFileSync(join(versioned, 'world.json'), JSON.stringify(other));
     refused(cli('play', versioned, '--mirror', 'required', '--no-open', '--json'), 'play version', 'E_ADAPTER_VERSION_UNSUPPORTED', /0\.19\.0/);
-    refused(cli('pack', source, '--out', join(dir, 'drawio.pnworld'), '--json'), 'pack');
+    refused(cli('pack', source, '--out', join(dir, 'bpmnjs.pnworld'), '--json'), 'pack');
     // The archive primitive lets the test build the package the packer refuses to write.
-    const archive = join(dir, 'drawio-built.pnworld'); writeFileSync(archive, (await packWorldWithManifest(source)).bytes);
+    const archive = join(dir, 'bpmnjs-built.pnworld'); writeFileSync(archive, (await packWorldWithManifest(source)).bytes);
     refused(cli('validate', archive, '--json'), 'validate');
     refused(cli('play', archive, '--mirror', 'required', '--no-open', '--json'), 'play package');
     refused(cli('play', source, '--mirror', 'required', '--no-open', '--json'), 'play');

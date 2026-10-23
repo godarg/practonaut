@@ -18,8 +18,8 @@ export const CLI_CATALOG = {
     "de": "{path} existiert bereits; --force ersetzt die Datei"
   },
   "tasksListHead": {
-    "en": "Excalidraw task library: {count} {count:task|tasks} (world {world} {version})\n",
-    "de": "Excalidraw-Aufgabenbibliothek: {count} {count:Aufgabe|Aufgaben} (Welt {world} {version})\n"
+    "en": "{app} task library: {count} {count:task|tasks} (world {world} {version})\n",
+    "de": "{app}-Aufgabenbibliothek: {count} {count:Aufgabe|Aufgaben} (Welt {world} {version})\n"
   },
   "tasksAction": {
     "en": "action ",
@@ -30,8 +30,8 @@ export const CLI_CATALOG = {
     "de": "Aktionen"
   },
   "tasksListFoot": {
-    "en": "Difficulty ●○○ to ●●●; actions = length of the reference solution.\nOpen one: {cli} play <task-id>   Details: {cli} tasks show <task-id>\n",
-    "de": "Schwierigkeit ●○○ bis ●●●; Aktionen = Länge der Referenzlösung.\nÖffnen: {cli} play <Aufgaben-ID>   Details: {cli} tasks show <Aufgaben-ID>\n"
+    "en": "Difficulty ●○○ to ●●●; actions = length of the reference solution.\nOpen one: {cli} play {prefix}<task-id>   Details: {cli} tasks show {prefix}<task-id>\n",
+    "de": "Schwierigkeit ●○○ bis ●●●; Aktionen = Länge der Referenzlösung.\nÖffnen: {cli} play {prefix}<Aufgaben-ID>   Details: {cli} tasks show {prefix}<Aufgaben-ID>\n"
   },
   "tasksUnknown": {
     "en": "unknown library task: {id} (see {cli} tasks list)",
@@ -54,8 +54,8 @@ export const CLI_CATALOG = {
     "de": "Öffnen: {cli} play {id}\n"
   },
   "tasksUsage": {
-    "en": "usage: {cli} tasks list | show <task-id> [--oracle] | from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>",
-    "de": "Verwendung: {cli} tasks list | show <Aufgaben-ID> [--oracle] | from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>"
+    "en": "usage: {cli} tasks list [drawio/all] | show [drawio/]<task-id> [--oracle] | from-scenes <start.excalidraw> <goal.excalidraw> --out <dir>",
+    "de": "Verwendung: {cli} tasks list [drawio/all] | show [drawio/]<Aufgaben-ID> [--oracle] | from-scenes <start.excalidraw> <ziel.excalidraw> --out <Verzeichnis>"
   },
   "tasksScenesUsage": {
     "en": "usage: {cli} tasks from-scenes <start.excalidraw> <goal.excalidraw> --out <dir> [--task <id>] [--layout relative] [--align] [--tolerance <px>] [--force] [--json]",
@@ -91,7 +91,7 @@ export const CLI_CATALOG = {
   },
 
   "pairStateMismatch": {"en": "Native artifact does not encode the bound Session state", "de": "Nativer Export bildet den gebundenen Sitzungszustand nicht ab"},
-  "pairNativeRequired": {"en": "--pair requires an unannotated native Excalidraw artifact", "de": "--pair benötigt einen nativen Excalidraw-Export ohne nachträgliche Metadaten"},
+  "pairNativeRequired": {"en": "--pair requires an unannotated native {app} artifact", "de": "--pair benötigt einen nativen {app}-Export ohne nachträgliche Metadaten"},
   "pairInvalid": {"en": "Export pair manifest or artifact binding is invalid", "de": "Exportpaar-Manifest oder Artefaktbindung ist ungültig"},
   "nativeRoutingRequired": {"en": "Unbound native checks require explicit --seed and --task, or use --pair with the export manifest", "de": "Ungebundene native Prüfung benötigt --seed und --task; alternativ --pair mit dem Exportmanifest verwenden"},
   "languageInvalid": {
@@ -280,8 +280,8 @@ export const CLI_CATALOG = {
     "de": "--client benötigt einen absoluten Pfad"
   },
   "setupHelp": {
-    "en": "Usage: {cli} setup\nExplicitly download the Chromium headless shell for the real Excalidraw mirror, or reuse Playwright's cache.\n",
-    "de": "Verwendung: {cli} setup\nChromium Headless Shell für die echte Excalidraw-Spiegelung ausdrücklich herunterladen oder Playwrights Cache verwenden.\n"
+    "en": "Usage: {cli} setup [--app drawio [--from <file>]]\nExplicitly download the Chromium headless shell for the real mirror, or reuse Playwright's cache.\n--app drawio also downloads the pinned, unmodified draw.io release (about 48 MB, opt-in) or checks a copy given with --from, and keeps it only when its size and SHA-256 match.\n",
+    "de": "Verwendung: {cli} setup [--app drawio [--from <Datei>]]\nChromium Headless Shell für die echte Spiegelung ausdrücklich herunterladen oder Playwrights Cache verwenden.\n--app drawio lädt zusätzlich das gepinnte, unveränderte draw.io-Release (etwa 48 MB, nur auf Wunsch) oder prüft eine mit --from übergebene Kopie und behält es nur, wenn Größe und SHA-256 stimmen.\n"
   },
   "setupUsage": {
     "en": "{cli} setup takes no arguments.\n",
@@ -292,16 +292,108 @@ export const CLI_CATALOG = {
     "de": "setup: Gepinnte Playwright-Laufzeit fehlt. Gelockte Abhängigkeiten erneut installieren.\n"
   },
   "setupStart": {
-    "en": "setup: one download for the real Excalidraw mirror: {name} {version}, about {size} MB (nothing is fetched when Playwright's cache already has it). Sources and the cache folder follow.\n",
-    "de": "setup: ein Download für die echte Excalidraw-Spiegelung: {name} {version}, etwa {size} MB (nichts wird geladen, wenn Playwrights Cache sie schon hat). Quellen und Cache-Ordner folgen.\n"
+    "en": "setup: one download for the real {app} mirror: {name} {version}, about {size} MB (nothing is fetched when Playwright's cache already has it). Sources and the cache folder follow.\n",
+    "de": "setup: ein Download für die echte {app}-Spiegelung: {name} {version}, etwa {size} MB (nichts wird geladen, wenn Playwrights Cache sie schon hat). Quellen und Cache-Ordner folgen.\n"
   },
   "setupDoneAt": {
-    "en": "setup: the {name} is ready in {path} ({size} MB on disk). Practice now runs offline with the real Excalidraw mirror; start {cli} again.\n",
-    "de": "setup: Die {name} liegt bereit in {path} ({size} MB auf der Festplatte). Üben läuft nun offline mit echter Excalidraw-Spiegelung; {cli} neu starten.\n"
+    "en": "setup: the {name} is ready in {path} ({size} MB on disk). Practice now runs offline with the real {app} mirror; start {cli} again.\n",
+    "de": "setup: Die {name} liegt bereit in {path} ({size} MB auf der Festplatte). Üben läuft nun offline mit echter {app}-Spiegelung; {cli} neu starten.\n"
   },
   "setupDone": {
     "en": "setup: Chromium provisioning completed. Runtime may now operate offline.\n",
     "de": "setup: Chromium bereitgestellt. Die Laufzeit kann nun offline arbeiten.\n"
+  },
+  "setupAppUsage": {
+    "en": "{cli} setup takes no arguments, or --app drawio [--from <file>].\n",
+    "de": "{cli} setup nimmt keine Argumente an, oder --app drawio [--from <Datei>].\n"
+  },
+  "setupAppStart": {
+    "en": "setup: {app} {version}: the unmodified official release {asset}, {bytes} bytes, SHA-256 {hash}, from {source}. It is kept only when size and SHA-256 match. Practonaut never redistributes it.\n{notice}\n",
+    "de": "setup: {app} {version}: das unveränderte offizielle Release {asset}, {bytes} Bytes, SHA-256 {hash}, von {source}. Es wird nur behalten, wenn Größe und SHA-256 stimmen. Practonaut verbreitet es nie weiter.\n{notice}\n"
+  },
+  "setupAppFrom": {
+    "en": "setup: checking {path} against {app} {version}: {bytes} bytes, SHA-256 {hash}.\n{notice}\n",
+    "de": "setup: prüfe {path} gegen {app} {version}: {bytes} Bytes, SHA-256 {hash}.\n{notice}\n"
+  },
+  "setupAppNotice": {
+    "en": "draw.io is a registered trademark; Practonaut is not affiliated with, endorsed or sponsored by draw.io Ltd or draw.io AG.",
+    "de": "draw.io ist eine eingetragene Marke; Practonaut ist mit draw.io Ltd und draw.io AG nicht verbunden und wird von ihnen weder unterstützt noch gesponsert."
+  },
+  "setupAppSandbox": {
+    "en": "setup: Chromium does not start with its sandbox on this system ({detail}). {app} never starts without it, so {app} sessions run model-only here until that is fixed. The download continues.\n{advice}",
+    "de": "setup: Chromium startet auf diesem System nicht mit Sandbox ({detail}). {app} startet nie ohne sie, daher laufen {app}-Sitzungen hier nur im Modell, bis das behoben ist. Der Download geht weiter.\n{advice}"
+  },
+  "setupAppDone": {
+    "en": "setup: {app} {version} is ready in {path} ({bytes} bytes, verified). Practice with {app} now runs offline; nothing is fetched at runtime.\n",
+    "de": "setup: {app} {version} liegt bereit in {path} ({bytes} Bytes, geprüft). Üben mit {app} läuft nun offline; zur Laufzeit wird nichts geladen.\n"
+  },
+  "setupAppAlready": {
+    "en": "setup: {app} {version} is already kept in {path} and matches the pin; nothing was fetched.\n",
+    "de": "setup: {app} {version} liegt schon in {path} und stimmt mit dem Pin überein; nichts wurde geladen.\n"
+  },
+  "setupAppReplaced": {
+    "en": "setup: the file kept in {path} did not match the pin and was replaced by the verified download.\n",
+    "de": "setup: Die in {path} abgelegte Datei stimmte nicht mit dem Pin überein und wurde durch den geprüften Download ersetzt.\n"
+  },
+  "appDownloadFailed": {
+    "en": "setup: the {app} download stopped ({reason}): {detail}. Nothing was kept. Retry later, or download {source} yourself and run {cli} setup --app {id} --from <file>.",
+    "de": "setup: Der {app}-Download wurde abgebrochen ({reason}): {detail}. Nichts wurde behalten. Später erneut versuchen, oder {source} selbst laden und {cli} setup --app {id} --from <Datei> ausführen."
+  },
+  "appDownloadMismatch": {
+    "en": "setup: the file is not the pinned {app} release ({reason}): expected {expectedBytes} bytes and SHA-256 {expectedHash}, got {actualBytes} bytes and SHA-256 {actualHash}. Nothing was kept.",
+    "de": "setup: Die Datei ist nicht das gepinnte {app}-Release ({reason}): erwartet {expectedBytes} Bytes und SHA-256 {expectedHash}, erhalten {actualBytes} Bytes und SHA-256 {actualHash}. Nichts wurde behalten."
+  },
+  "appInstallBusy": {
+    "en": "setup: another setup of {app} {version} is running. Wait for it to finish, then retry.",
+    "de": "setup: Eine andere Einrichtung von {app} {version} läuft. Warten, bis sie fertig ist, dann erneut versuchen."
+  },
+  "appRuntimeMissing": {
+    "en": "{app} is not installed, but this command needs its real mirror. Run {cli} setup --app {id} once (an explicit download: {name}, {bytes} bytes), then retry, or use --mirror off for a model-only session.",
+    "de": "{app} ist nicht installiert, dieser Befehl braucht aber die echte Spiegelung. Einmal {cli} setup --app {id} ausführen (ausdrücklicher Download: {name}, {bytes} Bytes) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
+  },
+  "appRuntimeUnverified": {
+    "en": "The kept {app} release does not match the pin ({detail}). Run {cli} setup --app {id} again (an explicit download: {name}, {bytes} bytes), or use --mirror off for a model-only session.",
+    "de": "Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}). {cli} setup --app {id} erneut ausführen (ausdrücklicher Download: {name}, {bytes} Bytes), oder --mirror off für eine reine Modellsitzung."
+  },
+  "mirrorAppFallback": {
+    "en": "practonaut: {app} is not installed, so this session runs model-only: actions are not mirrored into the real {app} and results are never practice evidence. Run {cli} setup --app {id} once to enable the mirror (one download: {name}, about {size} MB).\n",
+    "de": "practonaut: {app} ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte {app} gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup --app {id} ausführen, um die Spiegelung einzuschalten (ein Download: {name}, etwa {size} MB).\n"
+  },
+  "mirrorAppUnverifiedFallback": {
+    "en": "practonaut: the kept {app} release does not match the pin ({detail}), so this session runs model-only. Run {cli} setup --app {id} again to replace it.\n",
+    "de": "practonaut: Das abgelegte {app}-Release stimmt nicht mit dem Pin überein ({detail}), daher läuft diese Sitzung nur im Modell. {cli} setup --app {id} erneut ausführen, um es zu ersetzen.\n"
+  },
+  "appRuntimeName": {
+    "en": "{app} runtime",
+    "de": "{app}-Laufzeit"
+  },
+  "appRuntimeOk": {
+    "en": "installed and verified ({bytes} bytes)",
+    "de": "installiert und geprüft ({bytes} Bytes)"
+  },
+  "appRuntimeAbsent": {
+    "en": "not installed — optional; {cli} setup --app {id} downloads it ({bytes} bytes)",
+    "de": "nicht installiert — optional; {cli} setup --app {id} lädt es ({bytes} Bytes)"
+  },
+  "appRuntimeBad": {
+    "en": "does not match the pin ({detail}) — {cli} setup --app {id} replaces it",
+    "de": "stimmt nicht mit dem Pin überein ({detail}) — {cli} setup --app {id} ersetzt es"
+  },
+  "appStartName": {
+    "en": "{app} chromium start (sandbox required)",
+    "de": "{app}-Chromium-Start (Sandbox nötig)"
+  },
+  "appStarts": {
+    "en": "starts with the sandbox",
+    "de": "startet mit Sandbox"
+  },
+  "appStartFails": {
+    "en": "does not start with the sandbox ({detail}); {app} sessions run model-only here",
+    "de": "startet nicht mit Sandbox ({detail}); {app}-Sitzungen laufen hier nur im Modell"
+  },
+  "appUnverifiedPlatform": {
+    "en": "; its mirror is not yet verified on this platform by a recorded conformance run",
+    "de": "; die Spiegelung ist auf dieser Plattform noch durch keinen festgehaltenen Konformitätslauf geprüft"
   },
   "mcpInput": {
     "en": "Practonaut MCP: protocol input rejected\n",
@@ -318,6 +410,10 @@ export const CLI_CATALOG = {
   "benchNumber": {
     "en": "{option} must be a whole number from 1 to {max}",
     "de": "{option} muss eine ganze Zahl von 1 bis {max} sein"
+  },
+  "benchLibraryMixed": {
+    "en": "--tasks names tasks of two libraries (excalidraw/ and drawio/); a bench runs one world, so bench each library on its own",
+    "de": "--tasks nennt Aufgaben zweier Bibliotheken (excalidraw/ und drawio/); ein Bench läuft auf einer Welt, also jede Bibliothek für sich benchen"
   },
   "benchTasks": {
     "en": "--tasks needs all or a comma-separated list of distinct library task ids",
@@ -759,6 +855,10 @@ export const CLI_CATALOG = {
     "en": "the report names application adapter {given}; the stored world is for {stored}",
     "de": "der Bericht nennt den Anwendungsadapter {given}; die gespeicherte Welt ist für {stored}"
   },
+  "verifyWorldAppVersion": {
+    "en": "the report names application version {given}; the stored world pins {stored}",
+    "de": "der Bericht nennt die Anwendungsversion {given}; die gespeicherte Welt pinnt {stored}"
+  },
   "verifyIdentity": {
     "en": "the task identity of {task} with seed {seed} is not the one the stored world gives",
     "de": "die Aufgabenidentität von {task} mit Seed {seed} ist nicht die, die die gespeicherte Welt ergibt"
@@ -810,6 +910,10 @@ export const CLI_CATALOG = {
   "verifyReferencesFormat": {
     "en": "the stored references {file} are not a practonaut.bench-references/1 file",
     "de": "die gespeicherten Referenzen {file} sind keine practonaut.bench-references/1-Datei"
+  },
+  "verifyReferenceLibrary": {
+    "en": "the stored reference of {task} is not the reference solution of the library this Practonaut ships",
+    "de": "die gespeicherte Referenz von {task} ist nicht die Referenzlösung der Bibliothek, die dieses Practonaut mitbringt"
   },
   "verifyReferenceTask": {
     "en": "the stored references do not hold exactly the tasks the report names (task {task})",
@@ -964,8 +1068,8 @@ export const CLI_CATALOG = {
     "de": "Der Link gilt einmal und läuft nach 5 Minuten ab. o und Enter erzeugt einen neuen Link; Ctrl+C beendet die Sitzung.\nAgent anbinden: {cli} mcp --host {origin} --token-file {path}\n"
   },
   "mirrorFallback": {
-    "en": "practonaut: Chromium is not installed, so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence. Run {cli} setup once to enable the mirror (one download: {name}, about {size} MB).\n",
-    "de": "practonaut: Chromium ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup ausführen, um die Spiegelung einzuschalten (ein Download: {name}, etwa {size} MB).\n"
+    "en": "practonaut: Chromium is not installed, so this session runs model-only: actions are not mirrored into the real {app} and results are never practice evidence. Run {cli} setup once to enable the mirror (one download: {name}, about {size} MB).\n",
+    "de": "practonaut: Chromium ist nicht installiert, daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte {app} gespiegelt und Ergebnisse sind nie Übungsbelege. Einmal {cli} setup ausführen, um die Spiegelung einzuschalten (ein Download: {name}, etwa {size} MB).\n"
   },
   "openFailed": {
     "en": "practonaut: could not open a browser; open this link yourself: {url}\n",
@@ -1021,12 +1125,12 @@ export const CLI_CATALOG = {
     "de": "Welt nicht gefunden: {path}"
   },
   "mirrorStartFallback": {
-    "en": "practonaut: Chromium is installed but did not start ({detail}), so this session runs model-only: actions are not mirrored into the real Excalidraw and results are never practice evidence.\n{advice}",
-    "de": "practonaut: Chromium ist installiert, startet aber nicht ({detail}), daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte Excalidraw gespiegelt und Ergebnisse sind nie Übungsbelege.\n{advice}"
+    "en": "practonaut: Chromium is installed but did not start ({detail}), so this session runs model-only: actions are not mirrored into the real {app} and results are never practice evidence.\n{advice}",
+    "de": "practonaut: Chromium ist installiert, startet aber nicht ({detail}), daher läuft diese Sitzung nur im Modell: Aktionen werden nicht ins echte {app} gespiegelt und Ergebnisse sind nie Übungsbelege.\n{advice}"
   },
   "browserStartFailed": {
-    "en": "Chromium is installed but did not start ({detail}), and this command needs the real Excalidraw mirror.\n{advice}Or use --mirror off for a model-only session.",
-    "de": "Chromium ist installiert, startet aber nicht ({detail}), und dieser Befehl braucht die echte Excalidraw-Spiegelung.\n{advice}Oder --mirror off für eine reine Modellsitzung."
+    "en": "Chromium is installed but did not start ({detail}), and this command needs the real {app} mirror.\n{advice}Or use --mirror off for a model-only session.",
+    "de": "Chromium ist installiert, startet aber nicht ({detail}), und dieser Befehl braucht die echte {app}-Spiegelung.\n{advice}Oder --mirror off für eine reine Modellsitzung."
   },
   "browserAdviceLinux": {
     "en": "On Linux this is usually one of two causes. Missing system libraries: run npx playwright install --with-deps chromium (needs sudo). The Chromium sandbox: Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor; see docs/getting-started.md, section \"Chromium does not start\". Check again with {cli} doctor --adapter.\n",
@@ -1069,16 +1173,16 @@ export const CLI_CATALOG = {
     "de": "Exit {status}"
   },
   "chromiumPresent": {
-    "en": "present (real Excalidraw mirror available)",
-    "de": "Vorhanden (echte Excalidraw-Spiegelung verfügbar)"
+    "en": "present (the real app mirror is available)",
+    "de": "Vorhanden (die echte App-Spiegelung ist verfügbar)"
   },
   "chromiumAbsent": {
     "en": "not installed: practice runs model-only (run {cli} setup; explicit download: {name}, about {size} MB)",
     "de": "Nicht installiert: Übung läuft nur im Modell ({cli} setup ausführen; ausdrücklicher Download: {name}, etwa {size} MB)"
   },
   "browserRuntimeMissing": {
-    "en": "Chromium is not installed, but this command needs the real Excalidraw mirror. Run {cli} setup once (an explicit download: {name}, about {size} MB), then retry, or use --mirror off for a model-only session.",
-    "de": "Chromium ist nicht installiert, dieser Befehl braucht aber die echte Excalidraw-Spiegelung. Einmal {cli} setup ausführen (ausdrücklicher Download: {name}, etwa {size} MB) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
+    "en": "Chromium is not installed, but this command needs the real {app} mirror. Run {cli} setup once (an explicit download: {name}, about {size} MB), then retry, or use --mirror off for a model-only session.",
+    "de": "Chromium ist nicht installiert, dieser Befehl braucht aber die echte {app}-Spiegelung. Einmal {cli} setup ausführen (ausdrücklicher Download: {name}, etwa {size} MB) und erneut versuchen, oder --mirror off für eine reine Modellsitzung."
   },
   "playwrightAbsent": {
     "en": "playwright-core not installed",
