@@ -12,9 +12,9 @@
 // measure-headless-shell:begin (written by tools/measure-headless-shell.ts --write)
 export const HEADLESS_SHELL = Object.freeze({
   name: 'Chromium headless shell',
-  playwright: '1.64.0',
+  playwright: '1.64.1',
   browserVersion: '156.0.8078.4',
-  measured: '2026-10-14',
+  measured: '2026-10-23',
   /** Bytes per platform: the sum of the archives Playwright downloads for `install --only-shell chromium`. */
   bytes: Object.freeze({
     'darwin-arm64': 103_778_487 + 1_430_308,
