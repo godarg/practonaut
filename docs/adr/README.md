@@ -25,7 +25,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0010](0010-isolation-claims.md) | What the project claims about isolation | accepted | 2026-10-03 |
 | [PADR-0011](0011-live-mirror-and-browser-runtime.md) | Live mirror runs host-side; the browser engine is an explicit runtime dependency | accepted | 2026-10-03 |
 | [PADR-0012](0012-excalidraw-bundling.md) | Bundle the pinned engine with esbuild and explicit local font assets | accepted | 2026-10-03 |
-| [PADR-0013](0013-bounded-predicates.md) | Bounded predicates over normalized state | accepted | 2026-10-03 |
+| [PADR-0013](0013-bounded-predicates.md) | Bounded predicates over normalized state (vocabulary amended by PADR-0047) | accepted | 2026-10-03 |
 | [PADR-0014](0014-player-bundle-and-transactions.md) | Static player bundle and revisioned practice transactions | accepted (credential lifetime superseded by PADR-0016) | 2026-10-04 |
 | [PADR-0015](0015-guided-repair-authoring.md) | Guided process-repair authoring and durable local projects | accepted | 2026-10-04 |
 | [PADR-0016](0016-native-boundaries-and-tab-resume.md) | Native input boundaries and authorised tab reload | accepted | 2026-10-04 |
@@ -55,6 +55,6 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0044](0044-bench-report-v3.md) | Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity | accepted | 2026-10-18 |
 | [PADR-0045](0045-adapter-registry-and-browser-shell.md) | Adapter registry, named refusal of unknown applications, and a shared browser shell | proposed | 2026-10-18 |
 | [PADR-0046](0046-vendor-neutral-presets.md) | Vendor-neutral presets: one registry, Codex and two loopback presets, client configuration that fails closed, and isolation only from each run's own stream | proposed | 2026-10-18 |
-| [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | proposed | 2026-10-18 |
+| [PADR-0047](0047-bounded-spatial-predicates.md) | Bounded spatial predicates: six layout operators over the judged geometry | accepted | 2026-10-20 |
 | [PADR-0048](0048-co-actor-scenario.md) | Co-actor scenario: a scripted colleague edits the board mid-run | proposed | 2026-10-18 |
 | [PADR-0050](0050-browser-close-is-a-bounded-request.md) | A browser close is a bounded request on top of Playwright's own forced end | accepted | 2026-10-19 |

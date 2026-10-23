@@ -102,6 +102,7 @@ change with a test and an update of this table. No environment variable disables
 | Objects in state; actions per session | 10,000; 10,000 | `limit_exceeded` | same |
 | Undo snapshots | 1,000 or 64 MiB, then replay | — | same |
 | Predicates | depth 32, 4,096 nodes, 10⁶ evaluation steps | `checker_fuel_exhausted` | same |
+| Layout clauses (PADR-0047) | a selection requires at most 256 objects, a frame name in it at most 256 characters; every box a clause reads within ±1,000,000, a start's steps also in every variant case and as far as `resize_step` grows them; each clause charged by formula from the number of objects and the count before it reads a position; a charge that is not a non-negative whole number is refused. Semantics, not runtime limits: `lowerLimits` never applies | world refused with `E_WORLD_INVALID`; a box out of range or a malformed charge `checker_invalid`; budget `checker_fuel_exhausted` | `src/world/limits.ts` (`LAYOUT_LIMITS`), `src/predicate/` |
 | Checker process | 10 s wall, 256 MiB V8 heap | `checker_timeout` | same |
 | HTTP request body / headers | 64 KiB / 16 KiB; header deadline 10 s, request 30 s | `body_too_large` / 431 | `src/host/limits.ts` |
 | Request rate | burst 200, refill 50/s per host | `rate_limited` | same |
@@ -117,7 +118,7 @@ change with a test and an update of this table. No environment variable disables
 | Run evidence read back | call and mutation logs 16 MiB and 100,000 lines each (budget refusals recorded up to 100, rejected strings cut at 256 characters); condition trace 20,000 timeline entries; `board.svg` 4 MiB, 50,000 nodes, depth 64 | a line that does not fit is dropped (call log) or refuses the file; `board.svg` refused → schematic instead; at `--verify` `bench_artifact_changed` / `bench_report_invalid` | `src/bench/evidence.ts`, `src/checker/trace.ts`, `src/bench/svg.ts` |
 | Task limits (a task's `limits`, `--checks`; PADR-0040) | at most 1,000 accepted changes and 1,000 checks per attempt; `--checks` 0–1,000 lowers a task's check limit, never raises it | `action_budget_exhausted` / `check_budget_exhausted`; a world with other values is refused when loaded, `--checks` outside 0–1,000 is `usage` | `src/world/schema.ts` (`TASK_LIMITS`), `src/host/session.ts` |
 | Minimal-length search | 250,000 search nodes, then "reference length" (no claim) | — | `src/authoring/minimal-length.ts` |
-| Challenge instances (generator, PADR-0040) | at most 56 live objects per board; a verdict on a stress board within half the 10⁶-step predicate budget; no limit is raised | instance redrawn, else `generation_failed` | `src/challenge/build.ts` |
+| Challenge instances (generator, PADR-0040) | at most 56 live objects per board; a verdict on a stress board within half the 10⁶-step predicate budget (the layout family also on its adversarial boards of 60 objects and the searched compositions of 60 objects with a 5 % margin, PADR-0047 decision 5.4); no limit is raised | instance redrawn, else `generation_failed` | `src/challenge/build.ts`, `src/challenge/layout.ts` |
 
 ## 5. Where the controls are tested
 

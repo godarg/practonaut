@@ -771,6 +771,24 @@ export const LIMIT_STATES: StateDef[] = [
   } },
 ];
 
+/** A layout task (PADR-0047): board mode draws the judged geometry (thin segments between step centres,
+ * a self-loop's centre ring, the boxes of ellipses and diamonds, the layout area with its corners) and
+ * each lane as its own frame, before and after a check; the real editor gets a note and a way to the
+ * board at the top of the Goal card instead.
+ * Needs `startPlayer({ world: layoutWorld(), taskId: 'tidy' })`. */
+export const LAYOUT_STATES: StateDef[] = [
+  { id: 'practice-layout', label: 'Layout task: the judged geometry on the board', workspace: 'board', async enter(s) {
+    if (!(await s.observe()).task.conditions.some(condition => condition.layout)) throw new Error('layout states need a layout task');
+    await mode(s.page, 'board'); await s.page.getByTestId('judged-canvas').waitFor(); await s.page.getByTestId('judged-note').waitFor();
+  } },
+  { id: 'practice-layout-checked', label: 'Layout task after a failed check', workspace: 'board', view: '[data-testid=check-result]', async enter(s) {
+    await mode(s.page, 'board'); await s.page.getByTestId('check').click(); await s.page.locator('.verdict.fail').waitFor();
+  } },
+  { id: 'editor-layout', label: 'Layout task in the Excalidraw workspace: a note and the way to the board', workspace: 'editor', view: '[data-testid=judged-editor]', async enter(s) {
+    await mode(s.page, 'editor'); await editorFrame(s.page); await s.page.getByTestId('judged-show-board').waitFor();
+  } },
+];
+
 export const MODEL_ONLY_STATES:StateDef[]=[{id:'practice-export-model-only',label:'Model-only host refuses the native/session pair',workspace:'board',view:'[data-testid=export-panel]',async enter(s){
   if((await s.observe()).mirror!=='off')throw new Error('model-only state requires a real model-only host');
   await s.page.getByTestId('export-model-only').waitFor();

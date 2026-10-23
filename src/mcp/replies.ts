@@ -7,7 +7,7 @@
  * formal form in every `observe` and `check_result`, in the chosen language, exactly as the Player
  * shows them.
  */
-import type { Actor, HostView, MutationDeltaReply, PracticeLimits, PublicCheck } from '../host/protocol.ts';
+import type { Actor, HostView, LayoutOverlay, MutationDeltaReply, PracticeLimits, PublicCheck } from '../host/protocol.ts';
 import type { Localized, State } from '../world/types.ts';
 
 export const LANGS = ['en', 'de', 'both'] as const;
@@ -33,7 +33,8 @@ export function localize<T>(value: T, lang: Lang): T {
   return walk(value) as T;
 }
 
-export interface CompactCondition { id: string; text: Text; formalText?: Text }
+/** A goal condition as the Player shows it; a layout clause carries its judged geometry (PADR-0047). */
+export interface CompactCondition { id: string; text: Text; formalText?: Text; layout?: LayoutOverlay }
 export interface CompactView {
   task: { id: string; title: Text; prompt: Text; conditions: CompactCondition[]; hintCount: number };
   /** Live objects only; deleted objects (tombstones) are left out. */

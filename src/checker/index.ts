@@ -10,7 +10,7 @@ import { validateCheckerData } from "./bundle.ts";
 import { verifySessionHistory } from './replay.ts';
 export { CheckerError } from "./errors.ts";
 export { parseExcalidraw } from "./excalidraw.ts";
-export { parseScene, type SceneReport, type Unmodeled } from "./scene.ts";
+export { parseScene, roundedSpan, type SceneGeometry, type SceneReport, type Unmodeled } from "./scene.ts";
 export { NATIVE_FORMATS, NATIVE_FORMAT_IDS, nativeFormat, type NativeFormat, type NativeFormatId } from "./formats.ts";
 export { parseSession, validateSubmissionState } from "./state.ts";
 export { loadCheckerBundle, checkerDataFromBundle, validateCheckerData } from "./bundle.ts";

@@ -104,6 +104,27 @@
 .board-svg--compact .edge-loose-label { font-size: var(--pn-text-title3); }
 .arrowhead { fill: var(--pn-color-line); }
 .arrowhead--selected, .arrowhead--pending { fill: var(--pn-color-accent); }
+/* What a layout task judges (PADR-0047): thin solid neutral lines, square-cornered, never the accent
+   (that is a pending preview), never dashed (dashes mean uncertainty, §7.4) and never a verdict; the
+   condition sentences and the line under the board say the same in words. A ringed step's label keeps a
+   halo in its card's own fill, so the ring under it never runs through its letters. */
+.judged { pointer-events: none; }
+.board-lane { pointer-events: none; }
+.judged-segment { stroke: var(--pn-color-text-secondary); stroke-width: 1.25; stroke-linecap: round; fill: none; }
+.judged-point { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.75; pointer-events: none; }
+.judged-box { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.25; pointer-events: none; }
+.judged-canvas { fill: none; stroke: var(--pn-color-text-secondary); stroke-width: 1.5; }
+.judged-canvas-label { fill: var(--pn-color-text-secondary); font: var(--pn-weight-medium) var(--pn-text-subhead) var(--pn-font-sans); letter-spacing: var(--pn-tracking-subhead); }
+.step-label--halo { paint-order: stroke; stroke: var(--pn-color-object-bg); stroke-width: 6px; stroke-linejoin: round; }
+.step:has(.step-box--fill-red) .step-label--halo { stroke: var(--pn-color-content-fill-red); }
+.step:has(.step-box--fill-green) .step-label--halo { stroke: var(--pn-color-content-fill-green); }
+.step:has(.step-box--fill-blue) .step-label--halo { stroke: var(--pn-color-content-fill-blue); }
+.step:has(.step-box--fill-yellow) .step-label--halo { stroke: var(--pn-color-content-fill-yellow); }
+.step.picked .step-label--halo { stroke: var(--pn-color-accent-tint); }
+.board-svg--compact .judged-segment, .board-svg--compact .judged-canvas { stroke-width: 2.5; }
+.board-svg--compact .judged-point, .board-svg--compact .judged-box { stroke-width: 2.5; }
+.board-svg--compact .judged-canvas-label { font-size: var(--pn-text-title3); }
+.board-svg--compact .step-label--halo { stroke-width: 10px; }
 
 /* ---------- Object tray: always-available text route to every object ---------- */
 .practice-tray { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pn-space-4); }
@@ -161,6 +182,8 @@
 .practice-head__actor { display: inline-flex; align-items: center; gap: var(--pn-space-2); }
 .history-origins-switch { justify-self: start; color: var(--pn-color-text-secondary); }
 .goal-note { color: var(--pn-color-text-secondary); font-size: var(--pn-text-footnote); line-height: var(--pn-leading-footnote); }
+/* In the Excalidraw workspace, a layout task's note and the way to the board, first in the Goal card. */
+.goal-judged { display: grid; gap: var(--pn-space-2); justify-items: start; padding-block-end: var(--pn-space-3); border-block-end: var(--pn-stroke-hairline) solid var(--pn-color-separator); }
 
 /* Hints */
 .hint-dots { display: inline-flex; gap: var(--pn-space-1); align-items: center; }

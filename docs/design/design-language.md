@@ -73,6 +73,7 @@ imperatives.
 | Task | Aufgabe | What to achieve, in plain words. |
 | Goal | Ziel | The short list of checkable statements about the result. Any result that meets them all counts. |
 | Board | Arbeitsfläche | The area where the objects lie and where you act. |
+| Layout area | Layoutbereich | The rectangle a layout condition names (PADR-0047 `within`): every box it selects must lie inside it. Never "canvas" (Excalidraw's own word for its drawing surface) and never "Arbeitsfläche" (the board). |
 | Drawing surface (real editor) | Zeichenfläche (echter Editor) | The embedded real Excalidraw in which demonstrations are recorded and practice can happen. "Engine" appears only behind Technical details. |
 | Object | Objekt | One thing on the board you can act on: a step or a connection. |
 | Step / Connection | Schritt / Verbindung | A box in the process / an arrow between two steps. |
@@ -367,7 +368,8 @@ colour. Always shown with its word (`evidence()` in the kit).
 | Not yet modelled | the world does not know and will not guess | hatched band beside the words, never behind text |
 
 Dashes mean uncertainty or "not committed yet" (hypothesis ring, pending connection preview).
-Dashes are never used for decoration, selection or dividers.
+Dashes are never used for decoration, selection or dividers. What a layout condition judges is
+certain, so it is drawn in thin solid neutral lines, never dashed (§10.2).
 
 ## 8. Shape, space, elevation, material, motion
 
@@ -431,7 +433,7 @@ add it to the kit, to the gallery and to this table first (section 13).
 | Stepper | `stepper()`, `step()` (`ui/stepper.ts`) | Vertical, numbered list of steps for a guided flow. Each step is a native `<details>` card with a marker (number, check when done, ring when current), a one-line summary when collapsed and a connecting line. Only the current step is open; the others stay editable. At most one filled button per open step. |
 | Step list | `stepList()` (`ui/stepper.ts`) | Static, numbered list of the parts of something that runs by itself (the demonstration): the stepper's marker grammar (number, ring when current, check when done) with a noun title and one line that says the state in words, so the marker never carries it alone. Not interactive; nothing opens. Shown in the gallery running and ended. |
 | Miniature diagram | `miniature()` (`ui/miniature.ts`) | Small read-only SVG of a process (steps with wrapped labels, arrows, loose ends as rings), used for before/after, the prepared case and examples. Always paired with a text alternative; never interactive. |
-| Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens. Player and gallery draw the same scene; behaviour is attached through `decorate`. |
+| Board drawing | `drawBoard()` (`ui/board-art.ts`) | The practice board: frame, step cards, connections, selection, lift, pending preview, bound anchors, loose ends, compact mode for narrow screens, and for a layout task the judged geometry (`JudgedLayer`, §10.2) and each lane as its own frame. Player and gallery draw the same scene; behaviour is attached through `decorate`. |
 
 Rule of thumb: if two surfaces show the same kind of thing, they show it with the same component.
 
@@ -533,7 +535,7 @@ connection in accent; **picked up** = card lifts 4 units with a deep shadow and 
 **pending connection** = dashed accent line with flowing dashes; **bound start** = a small anchor
 dot on the card edge and an arrowhead that touches the target; **loose end** = hollow ring in
 danger (the negative counterpart of the anchor); **focus** = a wider ring in the focus colour.
-Selection is never a colour change alone.
+Selection is never a colour change alone. **Judged geometry** (a task with layout conditions, PADR-0047): what the checker judges, in thin solid neutral lines (`text-secondary`, square-cornered; never the accent, which is a pending preview, and never dashed: it is certain, §7.4): each judged arrow as a straight segment between the centres of its steps, drawn over the cards but cut around the union of the label areas (a line through a label would read as struck through); a self-loop as a small ring at its step's centre, under its label, which keeps a halo in its card's own fill so the ring never runs through its letters; the box of every ellipse or diamond; each layout area as an outline with its corners as a quiet label under it, set like a frame's name (subhead, so it never sets the board's scale). Each lane (frame) is drawn as its own outline with its name, since the conditions are about lanes. It shows no verdict and no offending object, and one line under the board names each part it draws ("thin lines for the arrows, from step centre to step centre, a box around each ellipse and diamond, a ring at a step's centre for an arrow from the step to itself and the layout area"). In the Goal card the arrow rule two arrow conditions share word for word is shown under the first only. The Excalidraw workspace is never drawn over: the top of the Goal card names what is judged and the layout area and offers "Show on board" ("Auf Arbeitsfläche zeigen").
 
 ### 10.3 Excalidraw workspace
 
@@ -603,6 +605,16 @@ captioned with which one it is; the pair shares one viewBox (one scale), its tex
 12 px (a wider board scrolls in its frame, with a faded edge and a line that says so), and in dark mode
 the export gets Excalidraw's own dark-mode filter so the pair shows one palette. Groups appear as a
 solid tinted outline and a legend; a missing target or bench folder is a banner, never a dashed box.
+A layout task's judged geometry is drawn on both pictures in thin solid neutral lines like the Player's,
+cut around every text the picture writes (step labels, an export's frame names), with the layout area's
+corners placed clear of texts, outlines and steps and a ringed step's label drawn again over its ring
+with a halo. The export's dark filter applies to the export's own content only, never to this overlay.
+Each reason an unmet layout clause names is a mark labelled by its condition and its place ("7.1", a
+filled `danger-solid` capsule with its label in `text-on-accent`), explained by one legend line in
+words with the measured numbers. Each caption names what its judged layer shows and where it comes
+from (the final board's judged state; for the target, what the checker would judge on the reference
+board); the pair note says once how the checker judges. A picture that scrolls opens at the end of its
+own first difference when a phone's window there shows a step, else at its other end.
 Rates are fractions (PADR-0039 B.2). Long words hyphenate in the page's language; identifiers never do.
 Below 40 rem tables stack into one block per row; the page never scrolls sideways.
 

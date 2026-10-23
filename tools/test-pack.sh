@@ -114,8 +114,11 @@ if(entry.packageArguments.some(a=>a.type!=='positional'||typeof a.value!=='strin
 const args=entry.packageArguments.map(a=>a.value);
 if(args.join(' ')!=='mcp --task excalidraw/connect'){console.error('server.json arguments: '+args.join(' '));process.exit(1);}
 const child=spawn(command[0],[...command.slice(1),...args],{stdio:['pipe','pipe','pipe'],shell:process.platform==='win32'/* npx is npx.cmd there */});
-let out='',err='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
-const timer=setTimeout(()=>{console.error(err);child.kill('SIGKILL');process.exit(1);},90_000);
+let out='',err='',answered=false;const started=Date.now();child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
+// A failure says which answer was missing and what the server wrote so far (CI logs had only an empty line).
+const said=()=>`stderr: ${err.trim()||'(empty)'}\nstdout: ${out.trim().slice(0,2000)||'(empty)'}`;
+const timer=setTimeout(()=>{const got=out.split('\n').filter(Boolean).length;console.error(`no answer to ${got?'tools/list':'initialize'} within 90 s (npx resolves the tarball within this time; ${got} JSON-RPC line(s) so far)\n${said()}`);child.kill('SIGKILL');process.exit(1);},90_000);
+child.once('exit',(code,signal)=>{if(answered)return;console.error(`the server exited (${signal??`code ${code}`}) after ${Math.round((Date.now()-started)/1000)} s before answering initialize and tools/list\n${said()}`);process.exit(1);});
 const send=m=>child.stdin.write(JSON.stringify(m)+'\n');
 send({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'pack-smoke',version:'1'}}});
 const poll=setInterval(()=>{
@@ -128,7 +131,7 @@ const poll=setInterval(()=>{
   const names=tools.map(t=>t.name).sort().join(',');
   if(names!=='act,check_result,explain_result,list_actions,observe,reset,undo'){console.error('tools: '+names);process.exit(1);}
   if(lines.find(m=>m.id===1).result?.serverInfo?.name!=='practonaut'||!/#code=[0-9a-f]{32}/.test(err)||/#code=/.test(out)){console.error('initialize or watch link wrong');process.exit(1);}
-  child.once('exit',code=>{clearTimeout(timer);process.exit(0);});child.stdin.end();
+  answered=true;child.once('exit',code=>{clearTimeout(timer);process.exit(0);});child.stdin.end();
 },50);
 NODE
 RC=$?

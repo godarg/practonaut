@@ -8,6 +8,29 @@ All notable changes are recorded here. The format follows
 
 ### Added
 
+- Layout clauses in world/2 ([PADR-0047](docs/adr/0047-bounded-spatial-predicates.md), issue #48):
+  six operators — `noOverlap`, `aligned`, `evenlySpaced`, `within`, `arrowsNoCrossing`,
+  `arrowsClearOfSteps` — judged on boxes and on straight lines between step centres, in exact
+  integers, over closed selections (every object, outside every frame, or in a frame by name) with an
+  expected count. Each is charged by formula before it reads a position; world validation refuses them
+  in world/1, inside quantifiers and in preconditions, with another selection shape or a frame name over
+  256 characters, a layout area (`within`) with a layout offset, a start that a variant offset or
+  `resize_step` takes outside ±1,000,000, and a stated layout clause the start already satisfies. The
+  Player, the check result and MCP narrate each clause (sentence and formal text, EN/DE; the rectangle
+  `within` names is the "layout area" / "Layoutbereich") and carry its public overlay (`layout`); board
+  mode draws the judged geometry in thin solid lines (segments between step centres cut around every
+  label, a self-loop's ring under its label, ellipse and diamond boxes, the layout area) and each lane as
+  its own frame, and the Excalidraw workspace says first in the Goal card what is judged, with a way to
+  the board. Bench reports draw the same overlay on the final board and the example target, kept off
+  every text and outside the export's dark filter, with marks labelled by condition ("7.1") and a legend
+  with the measured numbers for unmet layout clauses.
+- The spatial-layout challenge family `layout` (generator `challenge-layout` 1.0.0, PADR-0047 decision
+  9): tidy a process diagram of one or two framed lanes; its fuel check adds adversarial boards and a
+  search over what 60 actions can add, and `node tools/challenge-self-check.ts` checks, per difficulty,
+  the distribution of its topology parts, lanes, stated clauses per lane and their combinations. The
+  0.2.0 round declaration keeps its five families.
+  `tasks from-scenes`' state-based core takes extra goal clauses and near-miss candidates.
+
 - Bench report `practonaut.bench/3` ([PADR-0044](docs/adr/0044-bench-report-v3.md), issue #46; schema
   `schemas/bench.v3.json`): `bench` writes it at the session verdict level. It names the verdict level
   (on every run, and on the header line, card, badge, JUnit properties and compare page), the
@@ -58,6 +81,11 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 
+- The world/2 Excalidraw reader rounds a step's box by its edges (PADR-0047 decision 10): a shared
+  edge stays one integer, so boxes that touch in the file touch when judged, and a negative width or
+  height keeps the box where it is drawn (before, x and width were rounded separately and a negative
+  size moved the box). Integer drawings and the bundled library are unchanged. The reader also lists
+  collapsed and rotated steps for the reading rules of a layout unit.
 - Plan for 0.3.0 "Two apps, your tools": the five 0.2.0 candidate families get no second round on
   Practonaut's own actions (zero-family branch, the bundled tasks are a library, not a challenge
   tier); headroom is sought per family and toolchain and in new family types, each behind a

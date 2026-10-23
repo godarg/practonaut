@@ -84,3 +84,52 @@ export function layoutDefects(): string[] {
   }
   return defects;
 }
+
+/**
+ * Defects of a report's board pictures, as rendered (design review L1-F4, L1-F5, L1-F6):
+ * - the report's own overlay text on a picture (the layout area's label, a mark's label) is never under
+ *   the export's dark filter, and its contrast is at least 4.5:1 against what it is set on;
+ * - no judged line runs through a text of its picture as the report draws it;
+ * - a picture that scrolls opens with at least one step's label in its window.
+ */
+export function pictureDefects(): string[] {
+  const defects: string[] = [];
+  const rgb = (value: string): [number, number, number] | null => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(value); return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null; };
+  const luminance = ([r, g, b]: [number, number, number]): number => { const c = (v: number): number => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b); };
+  const contrast = (a: [number, number, number], b: [number, number, number]): number => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p) as [number, number]; return (x + 0.05) / (y + 0.05); };
+  for (const text of document.querySelectorAll('.sch-judged-label, .sch-mark-number')) {
+    if (!text.getClientRects().length) continue;
+    for (let node: Element | null = text; node && node.tagName.toLowerCase() !== 'body'; node = node.parentElement) if (getComputedStyle(node).filter !== 'none') { defects.push(`overlay text "${text.textContent}" is under a filter`); break; }
+    const fill = rgb(getComputedStyle(text).fill);
+    const on = text.classList.contains('sch-mark-number') ? rgb(getComputedStyle(text.previousElementSibling!).fill) : rgb(getComputedStyle(text.closest('.board-scroll')!).backgroundColor);
+    if (fill && on && contrast(fill, on) < 4.5) defects.push(`overlay text "${text.textContent}" has contrast ${contrast(fill, on).toFixed(2)}:1`);
+  }
+  // No judged line (segment, box, layout area) shows inside a text of its picture, as rendered: the
+  // picture's own texts in the report's font, sampled along each line and tested against its clip.
+  for (const svg of document.querySelectorAll('svg.engine-board, svg.schematic')) {
+    if (!svg.getClientRects().length) continue;
+    const texts = [...svg.querySelectorAll('text')].filter(text => !text.closest('.sch-judged')).map(text => text.getBoundingClientRect()).filter(box => box.width > 0);
+    for (const element of svg.querySelectorAll('.sch-judged-segment, .sch-judged-canvas, .sch-judged-box')) {
+      const owner = element.closest('[clip-path]');
+      const d = owner ? svg.querySelector(`${(owner.getAttribute('clip-path') ?? '').replace(/^url\((#[^)]*)\)$/, '$1')} path`)?.getAttribute('d') ?? '' : '';
+      const rects = [...d.matchAll(/M (-?[\d.e+]+) (-?[\d.e+]+) h (-?[\d.e+]+) v (-?[\d.e+]+) h -?[\d.e+]+ Z/g)].map(m => m.slice(1, 5).map(Number));
+      const shows = (x: number, y: number): boolean => !owner || rects.filter(([rx, ry, w, h]) => x > rx! && x < rx! + w! && y > ry! && y < ry! + h!).length % 2 === 1;
+      const n = (name: string): number => Number(element.getAttribute(name));
+      const edges: Array<[number, number, number, number]> = element.tagName === 'line' ? [[n('x1'), n('y1'), n('x2'), n('y2')]]
+        : [[n('x'), n('y'), n('x') + n('width'), n('y')], [n('x'), n('y') + n('height'), n('x') + n('width'), n('y') + n('height')], [n('x'), n('y'), n('x'), n('y') + n('height')], [n('x') + n('width'), n('y'), n('x') + n('width'), n('y') + n('height')]];
+      const matrix = (element as SVGGraphicsElement).getScreenCTM();
+      if (!matrix) continue;
+      for (const [x1, y1, x2, y2] of edges) for (let i = 0; i <= 200; i++) {
+        const x = x1 + (x2 - x1) * i / 200, y = y1 + (y2 - y1) * i / 200, sx = matrix.a * x + matrix.c * y + matrix.e, sy = matrix.b * x + matrix.d * y + matrix.f;
+        if (shows(x, y) && texts.some(box => sx > box.left + 1 && sx < box.right - 1 && sy > box.top + 1 && sy < box.bottom - 1)) { defects.push(`a judged line (${element.getAttribute('class')}) runs through a text at ${Math.round(x)}, ${Math.round(y)}`); break; }
+      }
+    }
+  }
+  for (const frame of document.querySelectorAll('.board-scroll')) {
+    if (!frame.getClientRects().length || frame.scrollWidth <= frame.clientWidth + 1) continue;
+    const window = frame.getBoundingClientRect();
+    const labels = [...frame.querySelectorAll('svg.schematic text.sch-label, svg.engine-board .engine-content text')].filter(text => text.classList.contains('sch-label') || parseFloat(text.getAttribute('font-size') ?? '0') >= 18);
+    if (!labels.some(text => { const box = text.getBoundingClientRect(); return box.width > 0 && box.right > window.left && box.left < window.right; })) defects.push(`the picture "${frame.getAttribute('aria-label')}" opens without a step in view`);
+  }
+  return defects;
+}

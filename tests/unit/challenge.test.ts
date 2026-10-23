@@ -313,6 +313,7 @@ const GOLDEN: Readonly<Record<Family, { version: string; sha256: string; referen
   'long-horizon': { version: '1.0.0', sha256: '0ec4f8162c2b442b8dd0ca46d36e8527f8c7133aa0180171a1758068b72e300c', referenceActions: 26 },
   'limited-checks': { version: '1.0.0', sha256: '78a4bd9e5b117be0f059619aa911758f4904bec2922f45995f34b2aa3aee5c3b', referenceActions: 10 },
   'tight-budget': { version: '1.0.0', sha256: '00e513d366b046bf9175e2f3f609c008ebeea73e39d215c8f225a9736194d0f3', referenceActions: 6 },
+  layout: { version: '1.0.0', sha256: '5948ad0e57bb13a686cfe4e748a735b9199cbe6c5cf51e17b6065451aea90595', referenceActions: 3 },
 };
 test('golden instances: what each family generates changes only with its generator version (review nit e)', () => {
   for (const family of FAMILIES) {

@@ -109,7 +109,12 @@ its model. Extra input fields are rejected.
 | `check_result` | `expectedRevision`; optional `lang` | Public practice-goal verdict with every condition's sentence and formal form; with `lang: "both"` identical to the Player's check |
 
 The goal conditions — the sentence and the formal form of each — are in every `observe` and every
-`check_result`, in the chosen language, exactly as the Player shows them. The server also offers the
+`check_result`, in the chosen language, exactly as the Player shows them. A layout condition
+([PADR-0047](adr/0047-bounded-spatial-predicates.md)) also carries `layout`: its operator and
+parameters with each selection as `{ type, scope, count }` (`scope` is `{ "kind": "all" }`,
+`{ "kind": "outside" }` or `{ "kind": "frame", "name" }`) and, for `within`, the layout area (field `canvas`) — the same field
+the Player draws its judged geometry from. Layout conditions judge each step by its box and each arrow
+as the straight line between the centres of its two steps, however it is drawn. The server also offers the
 current task as the resource `practonaut://task` (title, prompt and conditions in English and
 German) and one task-neutral prompt, `practise`. Tool annotations mark `observe`, `list_actions`,
 `explain_result` and `check_result` read-only and `undo` and `reset` destructive; no tool reaches

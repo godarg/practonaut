@@ -8,6 +8,7 @@ import { HOST_ROUTES, HOST_ERROR_CODES, TOKEN_HEADER, type HostReply, type HostE
 import { parseJsonEntry } from "../package/json.ts";
 import { ActionDefinitionSchemaV2, AnyStateSchema, RuleSchemaV2, WorldSchema } from "../world/schema.ts";
 import { ERROR_CODES } from "../world/types.ts";
+import { LAYOUT_FRAME_NAME } from "../world/layout.ts";
 import { agentClientName, inputProblems, TOOL_SCHEMAS, type McpBridge, type McpCallContext, type McpBridgeConfig, type McpToolName, type McpToolInputs, type McpToolValues } from "./contracts.ts";
 import { checkResult, compactView, fullView, localize, mutationResult, type Lang } from "./replies.ts";
 import {HOST_TRANSACTION_MS} from '../host/mirror.ts';
@@ -57,7 +58,20 @@ export async function readSessionToken(path: string): Promise<string> {
 const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const localized = z.strictObject({ en: z.string().max(8192), de: z.string().max(8192) });
 const diagnosis = z.array(z.strictObject({ id: z.string(), explanation: localized }));
-const condition = z.strictObject({ id: z.string(), text: localized, formalText: localized.optional() });
+/** A layout clause's public overlay (PADR-0047 decision 7): operator, parameters and each selection as
+ * type, tagged scope and count, exactly as the host's `PublicCondition.layout` holds them. */
+const layoutScope = (type: "step" | "arrow") => z.strictObject({ type: z.literal(type), scope: z.union([z.strictObject({ kind: z.literal("all") }), z.strictObject({ kind: z.literal("outside") }), z.strictObject({ kind: z.literal("frame"), name: z.string().max(LAYOUT_FRAME_NAME) })]), count: integer });
+const whole = z.number().int().safe();
+const axis = z.enum(["x", "y"]);
+export const layoutOverlaySchema = z.union([
+  z.strictObject({ op: z.literal("noOverlap"), steps: layoutScope("step"), gap: integer }),
+  z.strictObject({ op: z.literal("aligned"), steps: layoutScope("step"), axis, anchor: z.enum(["start", "center", "end"]), tolerance: integer }),
+  z.strictObject({ op: z.literal("evenlySpaced"), steps: layoutScope("step"), axis, tolerance: integer }),
+  z.strictObject({ op: z.literal("within"), steps: layoutScope("step"), canvas: z.strictObject({ x: whole, y: whole, width: integer, height: integer }) }),
+  z.strictObject({ op: z.literal("arrowsNoCrossing"), arrows: layoutScope("arrow") }),
+  z.strictObject({ op: z.literal("arrowsClearOfSteps"), arrows: layoutScope("arrow"), steps: layoutScope("step") }),
+]);
+const condition = z.strictObject({ id: z.string(), text: localized, formalText: localized.optional(), layout: layoutOverlaySchema.optional() });
 const checkSchema = z.strictObject({ scope: z.literal("end-state-only"), hash: z.string(), revision: integer, passed: z.boolean(), conditions: z.array(condition.extend({ met: z.boolean() })), errors: diagnosis, mode: z.enum(["real-engine", "model-only"]), practiceEvidence: z.boolean(), checksRemaining: integer.optional(), demonstration: z.literal(true).optional() });
 /** The attempt's limits (PADR-0040): only the counts, never anything about the solution. */
 const limitCount = z.strictObject({ limit: integer, used: integer });

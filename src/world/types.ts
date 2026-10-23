@@ -41,7 +41,27 @@ export type Predicate =
   | { op: "near"; left: Value; right: Value; tolerance: number }
   /** world/2: exact, case-sensitive string tests. */
   | { op: "contains" | "startsWith"; left: Value; right: Value }
-  | { op: "exists" | "every"; type: ObjectType; as: string; where: Predicate };
+  | { op: "exists" | "every"; type: ObjectType; as: string; where: Predicate }
+  | LayoutPredicate;
+/** world/2 (PADR-0047): the objects a layout clause is about. `where` has one of three closed shapes
+ * (every live object of `type`; outside every frame; in a live frame with a given name), `count` is
+ * how many objects it must select; another number makes the clause false. */
+export interface Selection { type: "step" | "arrow"; as: string; where: Predicate; count: number }
+export type Axis = "x" | "y";
+export type Anchor = "start" | "center" | "end";
+/** The six layout operators (PADR-0047 decision 3): judged on boxes and on straight segments between
+ * step centres, in exact integers, charged by formula. Only a top-level goal clause or an error
+ * class's `when` (directly or under one `not`) may be one. */
+export const LAYOUT_OPS = ["noOverlap", "aligned", "evenlySpaced", "within", "arrowsNoCrossing", "arrowsClearOfSteps"] as const;
+export type LayoutOp = typeof LAYOUT_OPS[number];
+export type LayoutPredicate =
+  | { op: "noOverlap"; select: Selection; gap: number }
+  | { op: "aligned"; select: Selection; axis: Axis; anchor: Anchor; tolerance: number }
+  | { op: "evenlySpaced"; select: Selection; axis: Axis; tolerance: number }
+  | { op: "within"; select: Selection; x: number; y: number; width: number; height: number }
+  | { op: "arrowsNoCrossing"; select: Selection }
+  | { op: "arrowsClearOfSteps"; select: Selection; steps: Selection };
+export const isLayoutPredicate = (p: Predicate): p is LayoutPredicate => (LAYOUT_OPS as readonly string[]).includes(p.op);
 export const ACTION_NAMES = ["add_step", "rename_step", "move_step", "connect", "reconnect_end", "disconnect", "delete_step"] as const;
 /** world/2 adds actions closer to the real editor; the world/1 set stays closed. */
 export const V2_ACTION_NAMES = [...ACTION_NAMES, "resize_step", "set_style", "rename_frame", "group_steps", "ungroup", "set_frame"] as const;
