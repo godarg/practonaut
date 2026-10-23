@@ -28,9 +28,10 @@ export interface ButtonOptions {
   testid?: string | undefined;
   type?: 'button' | 'submit';
   describedBy?: string;
-  /** Keyboard shortcut shown as a key cap after the label (and appended to the accessible name). */
+  /** Keyboard shortcut shown as a key cap after the label. The accessible name is then the label and
+   *  the key as shown, and `title` is the tooltip and description (WCAG 2.5.3 Label in Name). */
   kbd?: string;
-  /** Full accessible name and tooltip for a button whose visible label is short. It must contain the visible label. */
+  /** Full accessible name and tooltip for a button whose visible label is short. It must contain the visible label as whole words. */
   title?: string;
   class?: string;
 }
@@ -41,7 +42,7 @@ export function button(options: ButtonOptions): HTMLButtonElement {
     testid: options.testid,
     attrs: {
       type: options.type ?? 'button',
-      'aria-label': options.iconOnly ? options.label : options.title,
+      'aria-label': options.iconOnly ? options.label : options.kbd ? undefined : options.title,
       title: options.iconOnly ? options.label : options.title,
       'aria-pressed': options.pressed === undefined ? undefined : String(options.pressed),
       'aria-busy': options.busy ? 'true' : undefined,
@@ -50,7 +51,8 @@ export function button(options: ButtonOptions): HTMLButtonElement {
   });
   if (options.icon) node.append(icon(options.icon));
   if (!options.iconOnly) node.append(h('span', { text: options.label }));
-  if (options.kbd) node.append(h('kbd', { text: options.kbd }));
+  // The space keeps label and key apart in the name; the flex layout does not render it.
+  if (options.kbd) node.append(' ', h('kbd', { text: options.kbd }));
   node.disabled = !!options.disabled;
   if (options.onClick) node.addEventListener('click', options.onClick);
   return node;

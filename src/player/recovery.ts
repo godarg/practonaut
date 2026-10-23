@@ -770,8 +770,9 @@ export function createRecovery(root: HTMLElement, context: RecoveryContext): { r
           const frame = recordingFrame(r), showBefore = removed.size > 0;
           use.replaceChildren(
             h('span', { class: 'create-evidence__figure', attrs: { 'aria-hidden': 'true' } }, miniature(snapshotGraph(showBefore ? g.before : g.after), { label: '', compact: true, slots: frame.slots, anchors: frame.anchors, ...(showBefore ? { removed } : { changed }) })),
-            h('span', { class: 'create-evidence__body' }, h('span', { class: 'create-evidence__title', text }), h('span', { class: 'create-evidence__meta', text: demo }), h('span', { class: 'create-evidence__use', text: c('confirm') })));
-          use.setAttribute('aria-label', `${c('confirm')}: ${text} · ${demo}`);
+            // Named by its content in the order shown (WCAG 2.5.3); the spaces keep the words of the grid
+            // cells apart, the grid does not render them.
+            h('span', { class: 'create-evidence__body' }, h('span', { class: 'create-evidence__title', text }), ' ', h('span', { class: 'create-evidence__meta', text: demo }), ' ', h('span', { class: 'create-evidence__use', text: c('confirm') })));
           eligible.push(use);
         }
         if (eligible.length) card.append(h('p', { class: 'create-rule__ask', text: c('chooseEvidence') }), h('div', { class: 'create-evidence-list' }, ...eligible));
