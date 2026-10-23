@@ -70,7 +70,7 @@ export interface VerificationResult { reverified: number; unjudged: number }
 export interface VerificationResultV2 extends VerificationResult { references: number; world: { id: string; version: string; contentHash: string }; library?: LibraryAnchor }
 /** bench/3: also the parsers whose values were re-derived (and those this Practonaut does not ship),
  * and whether the preset's name and command were checked (null: not a preset). */
-export interface VerificationResultV3 extends VerificationResultV2 { parsers: { rederived: number; notShipped: string[] }; preset: 'checked' | 'not-checked' | null }
+export interface VerificationResultV3 extends VerificationResultV2 { parsers: { rederived: number; notShipped: string[]; /** The runs whose client values a shipped parser re-derived from their bound stdout. */ runs: string[] }; preset: 'checked' | 'not-checked' | null }
 
 async function artifact(directory: string, runId: string, name: string, expected: string, code: BenchErrorCode): Promise<string> {
   const bytes = await readRegularFile(join(directory, runId, name), MAX_ARTIFACT_BYTES);
@@ -466,5 +466,5 @@ export async function verifyBenchV3(report: BenchReportV3, runsDirectory: string
     if (run.agentActions !== run.actions) throw new BenchReportError(cliText('verifyActions', { run: run.id, given: run.agentActions, actual: run.actions }));
     reverified++;
   }
-  return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}), parsers: { rederived, notShipped: [...notShipped].sort() }, preset };
+  return { reverified, unjudged, references, world: { id: world.id, version: world.version, contentHash: report.environment.world.contentHash }, ...(library ? { library } : {}), parsers: { rederived, notShipped: [...notShipped].sort(), runs: [...reads.keys()] }, preset };
 }

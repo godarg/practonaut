@@ -50,7 +50,7 @@ commit ids or folders that are not in the public repository; the decisions stand
 | [PADR-0039](0039-results-you-can-act-on-evidence-report-compare.md) | Results you can act on: run evidence in the bench folder, report v2, and the rules of `compare` | accepted | 2026-10-15 |
 | [PADR-0040](0040-challenge-tier-generated-families-and-gate.md) | Challenge tier: seeded families of materialised instances, task limits, minimal length and a preregistered gate | accepted | 2026-10-15 |
 | [PADR-0041](0041-headroom-where-agents-fail-and-the-checkpoint-after-the-030-launch.md) | Headroom where agents fail, and the first checkpoint after the 0.3.0 launch | accepted | 2026-10-18 |
-| [PADR-0042](0042-gate-for-families-on-toolchains.md) | The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget | proposed | 2026-10-18 |
+| [PADR-0042](0042-gate-for-families-on-toolchains.md) | The 0.3.0 gate: families on toolchains, a vendor-neutral ladder, a pre-probe and its own budget | accepted (amended on acceptance: shape B only in 0.3.0, PADR-0044 decision 8) | 2026-10-19 |
 | [PADR-0043](0043-artifact-judged-verdict-level.md) | Artifact mode: an "artifact-judged" verdict level for results made with foreign tools | proposed | 2026-10-18 |
 | [PADR-0044](0044-bench-report-v3.md) | Bench report v3: verdict level, application and toolchain, evidenced agent identity, co-actor attribution and an application-independent task identity | accepted | 2026-10-18 |
 | [PADR-0045](0045-adapter-registry-and-browser-shell.md) | Adapter registry, named refusal of unknown applications, and a shared browser shell | proposed | 2026-10-18 |

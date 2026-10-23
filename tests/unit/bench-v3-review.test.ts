@@ -1,8 +1,8 @@
 // Review findings on bench/3 (PR #66), each reproduced as the attack or the mistake it describes and
 // refused or shown correctly: an application adapter id that walks out of the run folder (H), one
 // materialisation per variant case for task identities (I), an identity-paired candidate that was only
-// unjudged (F), the refusal's hint on the terminal and the page (G), the 0.2.0 gate's budget exemption
-// for /3 runs (D), and values a parser this Practonaut does not ship read, which no surface may show as
+// unjudged (F), the refusal's hint on the terminal and the page (G), the gate's budget exemption for /3
+// runs (D), and values a parser this Practonaut does not ship read, which no surface may show as
 // confirmed (A). Expected texts are the catalogue's words, written here by hand.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,8 +21,8 @@ import { renderCompareTable } from '../../src/bench/render-compare.ts';
 import { headline, readTokensCss, renderHtml } from '../../src/bench/render.ts';
 import { renderBadge, renderCard } from '../../src/bench/card.ts';
 import { renderJunit } from '../../src/bench/junit.ts';
-import { rejectedByClient, rejectedByClientV3 } from '../../src/challenge/gate.ts';
-import { scanSpend } from '../../src/challenge/files.ts';
+import { exemptRun } from '../../src/challenge/gate.ts';
+import { rederivedFailure } from '../../src/challenge/files.ts';
 import { validateWorld } from '../../src/world/schema.ts';
 import { generateVariant, variantIndex } from '../../src/world/variant.ts';
 import type { World } from '../../src/world/types.ts';
@@ -95,21 +95,20 @@ test('G: one hint for a refusal: settings for two worlds of one application, the
 });
 
 test('D: a /3 run is budget-exempt only by a usage limit or login error before model work that a shipped parser re-derives', async () => {
-  const limited = { status: 'infra_error', note: 'the client reported a usage or rate limit (rate_limit_event not allowed)', toolCalls: { observe: 0, act: 0, undo: 0, reset: 0, check: 0, total: 0 }, client: { tokens: null } };
-  const failure = { reason: 'usage_limit', parser: 'claude-code-stream/1', code: 'rejected', beforeModelWork: true };
+  const limited = { id: 'held-s1-r1', status: 'infra_error' as const, note: 'the client reported a usage or rate limit (rate_limit_event not allowed)', toolCalls: { observe: 0, act: 0, undo: 0, reset: 0, check: 0, total: 0 }, client: { tokens: null } };
+  const failure = { reason: 'usage_limit' as const, parser: 'claude-code-stream/1', code: 'rejected', beforeModelWork: true };
   const rederived = { reason: 'usage_limit', parser: 'claude-code-stream/1', code: 'rejected', beforeModelWork: true };
-  assert.equal(rejectedByClientV3({ ...limited, failure }, rederived), true);
-  // Each bypass of the note-based rule, refused for /3.
-  assert.equal(rejectedByClientV3({ ...limited, failure: { ...failure, beforeModelWork: false } }, { ...rederived, beforeModelWork: false }), false, 'after model work');
-  assert.equal(rejectedByClientV3({ ...limited, failure }, { ...rederived, beforeModelWork: false }), false, 'the report says before, the parser says after');
-  assert.equal(rejectedByClientV3({ ...limited, failure: { reason: 'runner', parser: null, code: null, beforeModelWork: null } }, null), false, 'a runner reason with the note\'s words');
-  assert.equal(rejectedByClientV3({ ...limited, failure: { ...failure, parser: 'x/1' } }, null), false, 'a parser this Practonaut does not ship');
-  assert.equal(rejectedByClientV3({ ...limited, failure: { ...failure, reason: 'api_error' } }, { ...rederived, reason: 'api_error' }), false, 'an API error is never exempt');
-  assert.equal(rejectedByClientV3({ ...limited, failure }, null), false, 'not re-derived from the stdout');
-  // The /2 rule is unchanged for the committed 0.2.0 rounds: the note and the counters.
-  assert.equal(rejectedByClient(limited), true);
+  const exempt = (run: object, again: { reason: string; parser: string; code: string | null; beforeModelWork: boolean } | null): boolean => exemptRun(run as never, { rederived: new Set([limited.id]), failures: new Map([[limited.id, again]]) });
+  assert.equal(exempt({ ...limited, failure }, rederived), true);
+  // Each bypass of the note-based rule, refused (the 0.3.0 gate reads failure, never the note).
+  assert.equal(exempt({ ...limited, failure: { ...failure, beforeModelWork: false } }, { ...rederived, beforeModelWork: false }), false, 'after model work');
+  assert.equal(exempt({ ...limited, failure }, { ...rederived, beforeModelWork: false }), false, 'the report says before, the parser says after');
+  assert.equal(exempt({ ...limited, failure: { reason: 'runner', parser: null, code: null, beforeModelWork: null } }, null), false, 'a runner reason with the note\'s words');
+  assert.equal(exempt({ ...limited, failure: { ...failure, parser: 'x/1' } }, null), false, 'a parser this Practonaut does not ship');
+  assert.equal(exempt({ ...limited, failure: { ...failure, reason: 'api_error' } }, { ...rederived, reason: 'api_error' }), false, 'an API error is never exempt');
+  assert.equal(exempt({ ...limited, failure }, null), false, 'not re-derived from the stdout');
 
-  // Through the spend scan, from a bench folder: the run's own stdout decides.
+  // From a run folder: the run's own stdout decides.
   const dir = mkdtempSync(join(tmpdir(), 'pn-exempt-'));
   try {
     const stdout = (lines: object[]): string => lines.map(line => JSON.stringify(line)).join('\n') + '\n';
@@ -118,16 +117,16 @@ test('D: a /3 run is budget-exempt only by a usage limit or login error before m
     const cases = {
       honest: { text: stdout([init, rejection]), failure },
       afterWork: { text: stdout([init, { type: 'assistant', message: { content: [{ type: 'text', text: 'working' }] } }, rejection]), failure },
-      runner: { text: stdout([init]), failure: { reason: 'runner', parser: null, code: null, beforeModelWork: null } },
+      runner: { text: stdout([init]), failure: { reason: 'runner' as const, parser: null, code: null, beforeModelWork: null } },
     };
+    const found: Array<[string, boolean]> = [];
     for (const [name, value] of Object.entries(cases)) {
-      const bench = join(dir, name), run = join(bench, 'held-s1-r1');
+      const run = join(dir, name, 'held-s1-r1');
       await mkdir(run, { recursive: true }); await writeFile(join(run, 'agent.stdout'), value.text);
-      const bound = { sha256: createHash('sha256').update(value.text).digest('hex'), bytes: Buffer.byteLength(value.text) };
-      await writeFile(join(bench, 'report.json'), JSON.stringify({ schema: 'practonaut.bench/3', environment: { world: { contentHash: hash('a') } }, runs: [{ id: 'held-s1-r1', ...limited, stdout: bound, failure: value.failure }] }));
+      const listed = { ...limited, stdout: { sha256: createHash('sha256').update(value.text).digest('hex'), bytes: Buffer.byteLength(value.text) }, failure: value.failure };
+      found.push([name, exempt(listed, await rederivedFailure(run, listed))]);
     }
-    const scanned = await scanSpend([dir], { developmentHash: hash('b'), developmentTasks: [], heldOutTasks: ['held'] });
-    assert.deepEqual(scanned.heldOut.map(run => [run.bench, run.rejected === true]), [['afterWork', false], ['honest', true], ['runner', false]]);
+    assert.deepEqual(found, [['honest', true], ['afterWork', false], ['runner', false]]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -1,7 +1,9 @@
 name: host deadline repeat
 # Issue #64: the two real-mirror tests of tests/integration/host-deadline.test.ts, repeated on every CI
-# platform beside challenge-round.test.ts, as test:integration (two files at a time) ran them in both
-# failed Windows runs (docs/testing.md, "Host deadline tests"). By hand only; its jobs are not
+# platform beside the 0.3.0 gate's integration files (challenge-*.test.ts, one after the other), as
+# test:integration (two files at a time) runs other files beside them (docs/testing.md, "Host deadline
+# tests"). It no longer reproduces the partner of #64's failed Windows runs, 0.2.0's
+# challenge-round.test.ts, which the 0.3.0 gate replaced; #64's measurements were made with that file. By hand only; its jobs are not
 # required checks and never answer for `test (<os>)` or `secret scan`. Each job runs the opt-in
 # amplifier (tools/amplify-host-deadline.ts) for 30 attempts of each test without throttling, keeps
 # Playwright's browser-process log for every attempt and uploads the summary, so each browser close
@@ -49,12 +51,15 @@ jobs:
         run: npx playwright install chromium
       - name: Build the engine
         run: node tools/build-engine.ts
+      # The partner files run guarded benches, whose session hosts serve the Player.
+      - name: Build the Player
+        run: node tools/build-player.ts
       # A name pattern that selects no test still exits 0: --require-pass reads every attempt's TAP
       # report with tools/require-test-passed.ts and fails the step unless each test has 30 reports
       # and every one of them shows that it ran and passed.
-      - name: The two host deadline tests, 30 times each, beside challenge-round
+      - name: The two host deadline tests, 30 times each, beside the 0.3.0 gate's integration files
         shell: bash
-        run: node --import ./tests/support/test-home.ts tools/amplify-host-deadline.ts --runs 30 --cpu 1 --beside tests/integration/challenge-round.test.ts --require-pass
+        run: node --import ./tests/support/test-home.ts tools/amplify-host-deadline.ts --runs 30 --cpu 1 --beside tests/integration/challenge-round.test.ts,tests/integration/challenge-ledger-home.test.ts,tests/integration/challenge-probe.test.ts,tests/integration/challenge-declare.test.ts,tests/integration/challenge-recover.test.ts,tests/integration/challenge-killed.test.ts --require-pass
       # The summary (close durations and their split) and every attempt's TAP report with the
       # Playwright log, on success too: they are the measurement.
       - name: Upload the amplifier record
