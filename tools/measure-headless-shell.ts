@@ -8,11 +8,20 @@
 //
 // Run it after every Playwright update (the unit test in tests/unit/setup.test.ts names it when the
 // pinned Playwright and the table disagree). This tool makes network requests; the product never does.
+// It measures only an install that matches package-lock.json: the table is written as the locked
+// Playwright's, and a stale node_modules (a pull without `npm ci`) would write the previous one back.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describeDrift, installationDrift } from './lockfile-drift.ts';
+
+const stale = installationDrift(fileURLToPath(new URL('../', import.meta.url)));
+if (stale.length > 0) {
+  console.error(`measure-headless-shell: ${describeDrift(stale)} first; nothing measured, nothing written`);
+  process.exit(1);
+}
 
 const require = createRequire(import.meta.url);
 const pwRoot = dirname(require.resolve('playwright-core/package.json'));

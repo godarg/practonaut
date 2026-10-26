@@ -10,12 +10,15 @@ Requires Node.js ≥ 22.18, npm and git.
 
 ```bash
 git clone https://github.com/godarg/practonaut.git && cd practonaut
-npm run bootstrap     # locked install without lifecycle scripts, git hook, Chromium, engine + Player build
+npm run bootstrap     # locked install without lifecycle scripts, git hooks, Chromium, engine + Player build
 npm test              # fast offline unit tests
 ```
 
 `npm run doctor` checks your environment. Install [gitleaks](https://github.com/gitleaks/gitleaks)
-if you can; the pre-commit hook then scans what you commit (CI scans anyway).
+if you can; the pre-commit hook then scans what you commit (CI scans anyway). When a pull, merge or
+branch switch changes `package-lock.json`, the `post-merge` and `post-checkout` hooks run the same
+`npm ci` as `bootstrap`, so the tests run against the dependencies CI installs; `npm test` and
+`npm run doctor` name any package in `node_modules` at another version than the lockfile pins.
 Run the CLI from source with `node src/cli/main.ts …` or from the build with
 `npm run build && node dist/cli/main.js …`.
 
@@ -76,7 +79,9 @@ repetitions, plus a wrong prediction that must be detected).
 platform. After a Playwright bump (Dependabot opens one), run `node tools/measure-headless-shell.ts
 --write`: it reads Playwright's own download list for every platform and the CDN's archive sizes
 and rewrites the table in `src/cli/chromium-download.ts`. `tests/unit/setup.test.ts` fails until
-then and names the command.
+then and names the command. It reads the pin from `package-lock.json`; while `node_modules` still
+holds the previous Playwright, the test and the tool both say `npm ci` first, and the tool measures
+nothing.
 
 **An application adapter.** Read the [adapter guide](docs/adapter-guide.md), then open an
 **Adapter request** issue with the answers to its spike questions before writing code.

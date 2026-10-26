@@ -28,7 +28,10 @@ breaks a test by itself.
 | `npm run test:pack` | npm registry for dependencies | Tarball file list, `npm install` of the tarball into an empty project, installed CLI pack/validate/run/check, Chromium setup, installed Player and MCP smoke, `npx practonaut mcp --task excalidraw/connect` initialize/tools list, installed `bench --agent oracle`, `report --html` (with the report stylesheet) and `compare`, byte-identical repack. |
 | `npm run clean` | — | Removes `dist/`, `coverage/`, `.local/demo/` and `.local/native-transfer/` only; idempotent. |
 
-Supply chain: `npm ci` with `package-lock.json` is the only dependency pin. The engine build
+Supply chain: `npm ci` with `package-lock.json` is the only dependency pin.
+`tests/unit/lockfile-drift.test.ts` and `npm run doctor` fail when `node_modules` holds another
+version than the lockfile pins (a pull without `npm ci`); the git hooks that `npm run bootstrap`
+enables run `npm ci` after such a pull, merge or branch switch. The engine build
 patches the installed Excalidraw by name (each patch must match exactly once) and
 `tests/unit/engine-build.test.ts` requires that the bundle contains no CDN URL.
 

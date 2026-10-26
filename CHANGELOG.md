@@ -175,6 +175,17 @@ All notable changes are recorded here. The format follows
   order); and the frame tool **Frame name** (tooltip **Change the frame name**, DE
   **Rahmenname ändern**) ([design language](docs/design/design-language.md) §9, §10.1, §12).
 
+### Internal
+
+- The development checkout keeps `node_modules` at what `package-lock.json` pins:
+  `tests/unit/lockfile-drift.test.ts` and `npm run doctor` name every package installed at another
+  version, from another archive, missing or no longer locked (remedy `npm ci`); the `post-merge`
+  and `post-checkout` git hooks, enabled by `npm run bootstrap`, run `npm ci` when a pull, merge or
+  branch switch leaves `node_modules` behind; and `tools/measure-headless-shell.ts` measures nothing
+  on such an install. `tests/unit/setup.test.ts` reads the Playwright pin from `package-lock.json`
+  instead of `node_modules`: after a pull without `npm ci` it used to name the measuring tool as the
+  remedy, which would have written the previous Playwright back as the pin.
+
 ## [0.2.0] - 2026-10-16
 
 "Real signal" ([roadmap](docs/roadmap.md#020--real-signal-target-december-2026)): bench your own
