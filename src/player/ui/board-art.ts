@@ -166,7 +166,9 @@ export function drawBoard(scene: BoardScene, hooks: BoardHooks = {}): SVGSVGElem
     textUnits.push(fit[1]);
     const unit = fit[1], lines = stepLines(step.label, step.width, unit), cx = at.x + step.width / 2, leading = unit * 1.3;
     const label = node('text', { x: String(cx), y: String(at.y + step.height / 2 - (lines.length - 1) * leading / 2 + unit * 0.35), 'text-anchor': 'middle', class: `step-label step-label--${fit[0]}`, 'aria-hidden': 'true' });
-    lines.forEach((line, row) => label.append(node('tspan', { x: String(cx), dy: row ? String(leading) : '0' }, line)));
+    // Lines break only at spaces. A zero-width space keeps that word boundary in the text, so the
+    // visible label reads as words in the step's name (WCAG 2.5.3), without moving the centred line.
+    lines.forEach((line, row) => label.append(node('tspan', { x: String(cx), dy: row ? String(leading) : '0' }, row < lines.length - 1 ? line + '\u200B' : line)));
     group.append(label);
     hooks.decorate?.(group, step);
     svg.append(group);

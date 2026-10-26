@@ -506,7 +506,7 @@ function palette(): HTMLElement | undefined {
   const root = h('div', { class: 'practice-palette pn-floating', attrs: { role: 'group', 'aria-label': msg('board') } });
   root.append(
     group('add', tool('addShort', 'add', 'plus', 'action-add', () => dialogForm('add')),
-      ...(offers('rename_frame') && frames().length ? [tool('renameFrameShort', 'renameFrame', 'pencil', 'action-rename-frame', () => dialogForm('renameFrame'))] : [])),
+      ...(offers('rename_frame') && frames().length ? [tool('renameFrameShort', 'renameFrameTool', 'pencil', 'action-rename-frame', () => dialogForm('renameFrame'))] : [])),
     h('span', { class: 'pn-floating__divider', attrs: { 'data-palette': 'divider', 'aria-hidden': 'true', hidden: !visible.divider || undefined } }),
     group('step',
       tool('moveShort', 'move', 'move', 'action-move', () => dialogForm('move')),
@@ -777,7 +777,8 @@ function renderBar(): void {
   skip.textContent = msg('skip');
   const brand = h('span', { class: 'shell-brand', text: 'Practonaut' });
   const controls = h('div', { class: 'shell-controls' });
-  controls.append(segmented({ key: 'language', label: msg('language'), size: 'sm', value: language, items: [{ id: 'en', label: 'EN', testid: 'language-en', ariaLabel: 'English' }, { id: 'de', label: 'DE', testid: 'language-de', ariaLabel: 'Deutsch' }], onChange: id => { language = id as Language; cacheSession(); render(); say(msg('waiting')); } }));
+  // The accessible name starts with the visible code, so voice control can say what it sees (WCAG 2.5.3).
+  controls.append(segmented({ key: 'language', label: msg('language'), size: 'sm', value: language, items: [{ id: 'en', label: 'EN', testid: 'language-en', ariaLabel: 'EN, English' }, { id: 'de', label: 'DE', testid: 'language-de', ariaLabel: 'DE, Deutsch' }], onChange: id => { language = id as Language; cacheSession(); render(); say(msg('waiting')); } }));
   const { root: themeSelect } = selectField({ id: 'theme-select', label: msg('theme'), value: theme, capsule: true, bare: true, testid: 'theme-select', options: (['system', 'light', 'dark'] as const).map(value => ({ value, label: msg(value) })), onChange: value => { theme = value as typeof theme; cacheSession(); render(); } });
   themeSelect.querySelector('select')!.setAttribute('aria-label', msg('theme'));
   controls.append(themeSelect);
