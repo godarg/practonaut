@@ -8,10 +8,16 @@ import { HEADLESS_SHELL, headlessShellDownload, headlessShellMegabytes } from '.
 import { headlessShellInstalled } from '../../src/cli/doctor.ts';
 
 test('the named download size belongs to the pinned Playwright and its headless shell', async () => {
-  // The sizes were measured for one Playwright pin; a dependency update has to measure them again.
-  const pinned = JSON.parse(await readFile(new URL('../../node_modules/playwright-core/package.json', import.meta.url), 'utf8')) as { version: string };
+  // The sizes were measured for one Playwright, the one package-lock.json pins; a dependency update
+  // has to measure them again.
+  const lock = JSON.parse(await readFile(new URL('../../package-lock.json', import.meta.url), 'utf8')) as { packages: Record<string, { version?: string }> };
+  const pinned = lock.packages['node_modules/playwright-core']?.version;
+  const installed = JSON.parse(await readFile(new URL('../../node_modules/playwright-core/package.json', import.meta.url), 'utf8')) as { version: string };
+  // A stale install (a pull without npm ci) is no reason to measure: the measurement would write the
+  // previous Playwright back as the pin, and browsers.json below would be the previous one's.
+  assert.equal(installed.version, pinned, `node_modules has playwright-core ${installed.version}, package-lock.json pins ${pinned}: run npm ci (never measure on a stale install)`);
   const browsers = JSON.parse(await readFile(new URL('../../node_modules/playwright-core/browsers.json', import.meta.url), 'utf8')) as { browsers: Array<{ name: string; browserVersion?: string }> };
-  assert.equal(HEADLESS_SHELL.playwright, pinned.version, `the headless-shell sizes were measured for Playwright ${HEADLESS_SHELL.playwright}, the pin is ${pinned.version}: run node tools/measure-headless-shell.ts --write`);
+  assert.equal(HEADLESS_SHELL.playwright, pinned, `the headless-shell sizes were measured for Playwright ${HEADLESS_SHELL.playwright}, package-lock.json pins ${pinned}: run node tools/measure-headless-shell.ts --write`);
   assert.equal(HEADLESS_SHELL.browserVersion, browsers.browsers.find(entry => entry.name === 'chromium-headless-shell')?.browserVersion);
   // Hand-summed archive sizes (headless shell + ffmpeg, plus winldd on Windows), rounded to whole MB.
   assert.equal(headlessShellMegabytes('darwin', 'arm64'), 105);

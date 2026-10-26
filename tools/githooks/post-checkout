@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Practonaut post-checkout (git switch, git checkout <branch>): the same as post-merge for a branch
+# switch. $3 is 1 for a branch checkout and 0 for a file checkout (git checkout -- <path>), which
+# never installs. Enabled by `npm run bootstrap` (core.hooksPath tools/githooks).
+[ "${3:-0}" = 1 ] || exit 0
+exec bash "$(git rev-parse --show-toplevel)/tools/githooks/sync-dependencies.sh" post-checkout
