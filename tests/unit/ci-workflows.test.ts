@@ -158,6 +158,25 @@ test('the required checks keep their names and every CI platform uploads native-
   }
 });
 
+// The browser layers run in the required `test` job on Linux; a job of their own would take them out of
+// the required checks. Measured in October 2026 (GitHub job and step times of twelve runs): that job took
+// 44 to 58 minutes, and two runs on `main` were cancelled at the former 60-minute limit, both in test:a11y
+// after an 8-minute Chromium install on a cache miss. The slowest measured steps add up to about 66 minutes.
+const BROWSER_LAYERS = ['npm run demo', 'npm run test:adapter', 'npm run test:e2e', 'npm run test:a11y'];
+const MEASURED_LINUX_MINUTES = 66;
+
+test('the required Linux job runs every browser layer and has a time limit well above what it was measured to take', () => {
+  const matrixJob = map(map(workflow(CI).jobs).test), all = list(matrixJob.steps).map(map);
+  for (const layer of BROWSER_LAYERS) {
+    const step = all.find(candidate => runWords(candidate).join(' ') === layer);
+    assert.ok(step, `${layer} runs in the required test job`);
+    assert.match(String(step.if), /runner\.os == 'Linux'/, `${layer} runs on Linux`);
+  }
+  const limit = Number(matrixJob['timeout-minutes']);
+  assert.ok(limit >= MEASURED_LINUX_MINUTES * 1.3,
+    `timeout-minutes ${String(matrixJob['timeout-minutes'])}: the Linux job was measured at about ${MEASURED_LINUX_MINUTES} minutes; leave at least 30 % on top`);
+});
+
 test('the native Open repeat runs only the H1 native file test, by hand, 20 times on each CI platform, and fails unless it passed', () => {
   const doc = workflow(REPEAT);
   assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
