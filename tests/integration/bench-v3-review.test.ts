@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { fakeClaude } from '../support/fake-claude.ts';
 import { summarize, type SessionRunV3 } from '../../src/bench/report.ts';
 import { readGateReport } from '../../src/challenge/files.ts';
+import { attests, checkPinned } from '../../src/challenge/gate.ts';
+import { PACKAGE_VERSION } from '../../src/version.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/main.ts', import.meta.url));
 type Json = Record<string, any>;
@@ -66,7 +68,12 @@ test('review A, B, C, E: relabelled client values, a hidden failure, edited agen
     assert.equal(read.stdout.includes('the report’s claim, not re-derived'), false);
     assert.match(read.stdout, /not re-derived: values read by the parser claude-code-stream\/2/);
     assert.match(await readFile(join(dir, 'newer.xml'), 'utf8'), /<property name="practonaut\.verification\.clientValues" value="not re-derived: the report&apos;s claims"\/>/);
-    await assert.rejects(readGateReport(newer), /values read by claude-code-stream\/2 were not re-derived by this Practonaut/);
+    // The gate reads it, but none of its runs attests a model (never the report's claim), and a round
+    // refuses a report of another Practonaut than its plan pins.
+    const fromNewer = await readGateReport(newer);
+    assert.equal(fromNewer.rederived.size, 0);
+    assert.equal(fromNewer.report.runs.some(run => attests(fromNewer, run, 'claude-haiku-5-5')), false);
+    assert.throws(() => checkPinned('ladder', fromNewer.report, PACKAGE_VERSION), /the ladder report was made with Practonaut 9\.9\.9; the round's plan pins/);
     // r3: compare --verify --json says per side what report --json says: a preset not checked here.
     const compared = cli(['compare', newer, newer, '--verify', '--json']);
     assert.equal(compared.status, 0, compared.stderr);
@@ -89,9 +96,12 @@ test('review A, B, C, E: relabelled client values, a hidden failure, edited agen
     assert.equal(refused.status, 2); assert.match(refused.stderr, /its agent\.vendor is not what the parser reads/);
     // r3: text from a report reaches the operator's terminal escaped (an escape, a BEL and a bidi control).
     const hostile = await edited(folder, 'hostile-version', value => { value.environment.practonaut = '0.2.9\u001b]0;x\u0007\u001b[2J‮'; });
-    await assert.rejects(readGateReport(hostile), (error: Error) => /Practonaut 0\.2\.9\\u\{001b\}\]0;x\\u\{0007\}\\u\{001b\}\[2J\\u\{202e\}\)/.test(error.message) && !/[\u0000-\u001f\u007f‮]/.test(error.message));
+    const fromHostile = await readGateReport(hostile);
+    assert.throws(() => checkPinned('ladder', fromHostile.report, PACKAGE_VERSION), (error: Error) => /Practonaut 0\.2\.9\\u\{001b\}\]0;x\\u\{0007\}\\u\{001b\}\[2J\\u\{202e\}; the round/.test(error.message) && !/[\u0000-\u001f\u007f‮]/.test(error.message));
     const hostileName = await edited(folder, 'hostile-name', value => { value.environment.practonaut = '9.9.9'; value.agent.name = 'cc\u001b[2Jx'; });
-    await assert.rejects(readGateReport(hostileName), (error: Error) => /\(preset cc\\u\{001b\}\[2Jx\)/.test(error.message) && !/[\u0000-\u001f\u007f‮]/.test(error.message));
+    // A preset this Practonaut does not know: its values are not re-derived, so no run attests.
+    const fromName = await readGateReport(hostileName);
+    assert.equal(fromName.rederived.size, 0);
 
     // B. A client failure in a judged run's own output that the report leaves out (the session kept).
     const hiddenFailure = await edited(folder, 'hidden-failure', async (value, copy) => {

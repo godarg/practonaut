@@ -18,7 +18,8 @@ import { renderJunit } from '../../src/bench/junit.ts';
 import { validateBenchReport, validateBenchReportV3, type BenchReportV3 } from '../../src/bench/report.ts';
 import { clientFailure, readLogHead, wholeLog } from '../../src/bench/evidence.ts';
 import { versionOrder } from '../../src/bench/verify.ts';
-import { scanSpend } from '../../src/challenge/files.ts';
+import { rederivedFailure } from '../../src/challenge/files.ts';
+import { exemptRun } from '../../src/challenge/gate.ts';
 import { hash, sessionReport } from '../support/bench-v3.ts';
 import { v3States } from '../support/bench-v3-states.ts';
 
@@ -101,17 +102,19 @@ test('r3 Codex 1: a usage limit is before model work only when no model message 
     const long = join(dir, 'long.stdout'); await writeFile(long, lines([init, rejection, work]));
     assert.equal(wholeLog(await readLogHead(long, 64)), false);
     assert.equal(wholeLog(await readLogHead(long, 4096)), true);
-    // Through the spend scan: the limit before a model message is not exempt.
-    const limited = { status: 'infra_error', toolCalls: { observe: 0, act: 0, undo: 0, reset: 0, check: 0, total: 0 }, client: { tokens: null } };
-    const failure = { reason: 'usage_limit', parser: 'claude-code-stream/1', code: 'rejected', beforeModelWork: true };
+    // Through the 0.3.0 gate's exemption: the failure re-derived from the run's own stdout decides, and
+    // a limit before a model message that work follows is not exempt.
+    const limited = { id: 'held-s1-r1', status: 'infra_error' as const, toolCalls: { observe: 0, act: 0, undo: 0, reset: 0, check: 0, total: 0 }, client: { tokens: null } };
+    const failure = { reason: 'usage_limit' as const, parser: 'claude-code-stream/1', code: 'rejected', beforeModelWork: true };
+    const exempt: Array<[string, boolean]> = [];
     for (const [name, text] of Object.entries({ honest: lines([init, rejection]), workAfter: lines([init, rejection, work]) })) {
-      const bench = join(dir, name), run = join(bench, 'held-s1-r1');
+      const run = join(dir, name, 'held-s1-r1');
       await mkdir(run, { recursive: true }); await writeFile(join(run, 'agent.stdout'), text);
-      const bound = { sha256: createHash('sha256').update(text).digest('hex'), bytes: Buffer.byteLength(text) };
-      await writeFile(join(bench, 'report.json'), JSON.stringify({ schema: 'practonaut.bench/3', environment: { world: { contentHash: hash('a') } }, runs: [{ id: 'held-s1-r1', ...limited, stdout: bound, failure }] }));
+      const value = { ...limited, stdout: { sha256: createHash('sha256').update(text).digest('hex'), bytes: Buffer.byteLength(text) }, failure };
+      const again = await rederivedFailure(run, value);
+      exempt.push([name, exemptRun(value as never, { rederived: new Set([value.id]), failures: new Map([[value.id, again]]) })]);
     }
-    const scanned = await scanSpend([dir], { developmentHash: hash('b'), developmentTasks: [], heldOutTasks: ['held'] });
-    assert.deepEqual(scanned.heldOut.map(run => [run.bench, run.rejected === true]), [['honest', true], ['workAfter', false]]);
+    assert.deepEqual(exempt, [['honest', true], ['workAfter', false]]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

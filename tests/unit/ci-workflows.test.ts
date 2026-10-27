@@ -9,7 +9,7 @@
 // a regression needs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { REGRESSION_REPEATS } from '../../src/bench/stats.ts';
 import { parseYaml, type Yaml } from '../support/yaml.ts';
@@ -216,9 +216,11 @@ test('the native Open repeat runs only the H1 native file test, by hand, 20 time
   assert.ok(all.indexOf(uploads[0]!) > check, 'the upload comes after the test and its check');
 });
 
-// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside the file they
-// ran beside in the failed Windows runs, and keeps the close timings after a pass too.
-test('the host deadline repeat runs both deadline tests beside challenge-round, by hand, on each CI platform, and fails unless every attempt passed', () => {
+// Issue #64: the host deadline repeat measures the two real-mirror deadline tests beside other
+// integration files, as test:integration runs them, and keeps the close timings after a pass too. Its
+// partner today is the 0.3.0 gate's integration files; in #64's failed Windows runs it was 0.2.0's
+// challenge-round.test.ts, which the 0.3.0 gate replaced.
+test('the host deadline repeat runs both deadline tests beside the 0.3.0 gate\'s integration files, by hand, on each CI platform, and fails unless every attempt passed', () => {
   const doc = workflow('.github/workflows/host-deadline-repeat.yml');
   assert.deepEqual(Object.keys(map(doc.on)), ['workflow_dispatch']);
   assert.deepEqual(doc.permissions, { contents: 'read' });
@@ -230,13 +232,24 @@ test('the host deadline repeat runs both deadline tests beside challenge-round, 
   assert.deepEqual(matrix.os, PLATFORMS);
   assert.equal(strategy['fail-fast'], 'false', 'one failed run does not cancel the others');
   const all = list(job.steps).map(map);
-  const build = all.findIndex(step => runWords(step).join(' ') === 'node tools/build-engine.ts');
   const runs = all.flatMap((step, index) => runWords(step).includes('tools/amplify-host-deadline.ts') ? [index] : []);
   assert.equal(runs.length, 1, 'one amplifier command');
   const run = runs[0]!, argv = runWords(all[run]!);
   const value = (name: string): string | undefined => argv[argv.indexOf(name) + 1];
-  assert.ok(build >= 0 && build < run, 'the engine is built before the tests');
-  assert.equal(value('--beside'), 'tests/integration/challenge-round.test.ts');
+  // The partner files are integration files: everything test:integration builds before it runs them
+  // (each `npm run <script>` before its test command) is built before the amplifier, by that script or
+  // by the command the script runs (review: the partner's guarded benches need the Player).
+  const scripts = (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts;
+  const builds = scripts['test:integration']!.split('&&').map(part => part.trim()).filter(part => /^npm run [\w:-]+$/.test(part)).map(part => part.slice('npm run '.length));
+  assert.ok(builds.length >= 1, 'test:integration builds before it tests');
+  for (const name of builds) {
+    const at = all.findIndex(step => { const line = runWords(step).join(' '); return line === `npm run ${name}` || line === scripts[name]; });
+    assert.ok(at >= 0 && at < run, `${name} (${scripts[name]}) runs before the amplifier`);
+  }
+  // Existing gate integration files, among them those that carry the old file's long tests.
+  const beside = String(value('--beside')).split(',');
+  for (const file of beside) { assert.match(file, /^tests\/integration\/challenge-[a-z-]+\.test\.ts$/); assert.ok(existsSync(fileURLToPath(new URL(`../../${file}`, import.meta.url))), file); }
+  for (const name of ['probe', 'declare', 'recover', 'killed']) assert.ok(beside.includes(`tests/integration/challenge-${name}.test.ts`), name);
   assert.equal(value('--cpu'), '1', 'no throttling: the conditions of the failed runs');
   assert.ok(Number(value('--runs')) * list(matrix.repeat).length >= 100, 'at least 100 attempts of each test per platform');
   assert.ok(argv.includes('--require-pass'), 'a step that ran no test or a failing one fails');

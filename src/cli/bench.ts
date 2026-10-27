@@ -1,12 +1,12 @@
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { cliText, getCliLanguage } from './messages.ts';
 import { RuntimeError } from './runtime.ts';
 import { checksOption, fallbackNotice, resolveMirror } from './serve.ts';
 import { displayPath, safeJson, safeText } from './output.ts';
 import { loadLibrary, LIBRARY_PREFIX } from '../library/index.ts';
 import { AgentTemplateError, agentEnvironment, ENV_NAME, resolveAgent, type AgentSpec } from '../bench/agents.ts';
-import { killRunningAgents, libraryWorld, recoverBench, runBench } from '../bench/run.ts';
+import { killRunningAgents, libraryWorld, recoverBench, runBench, type StartGuard } from '../bench/run.ts';
 import { existsSync } from 'node:fs';
 import { verifyBenchArtifacts, verifyBenchV2, verifyBenchV3, type VerificationResult, type VerificationResultV2, type VerificationResultV3 } from '../bench/verify.ts';
 import { BENCH_SCHEMA_V1, BENCH_SCHEMA_V2, BenchReportError, MAX_LABEL, MAX_SEED, validateBenchReport } from '../bench/report.ts';
@@ -149,8 +149,10 @@ async function writeAtomic(path: string, text: string | Uint8Array): Promise<voi
   catch (error) { await rm(temporary, { force: true }); throw new RuntimeError('usage', cliText('writeFailed', { path: safeText(displayPath(path)), code: (error as NodeJS.ErrnoException).code ?? 'error' })); }
 }
 
-/** practonaut bench --agent <preset|builtin|command> … : runs the grid, writes a validated report. */
-export async function commandBench(args: string[]): Promise<number> {
+/** practonaut bench --agent <preset|builtin|command> … : runs the grid, writes a validated report.
+ * `extra.guard`: a start guard for every client start (the project's release ledger, reached through
+ * `node tools/challenge.ts bench`; the command itself takes none). */
+export async function commandBench(args: string[], extra: { guard?: StartGuard } = {}): Promise<number> {
   const options = parseBenchArguments(args);
   let agent;
   try { agent = resolveAgent(options.agent); } catch (error) { if (error instanceof AgentTemplateError) throw new RuntimeError('usage', error.message); throw error; }
@@ -160,7 +162,7 @@ export async function commandBench(args: string[]): Promise<number> {
   if (withheld.length) process.stderr.write(cliText('benchWithheld', { agent: agent.name, names: withheld.map(safeText).join(', ') }));
   // World, tasks and references are settled (and an own oracle checked) before anything starts.
   const prepared = await prepareBench(options, agent);
-  if (options.recover !== undefined) return recoverCommand(options, agent, prepared);
+  if (options.recover !== undefined) return recoverCommand(options, agent, prepared, extra.guard);
   const mirror = await resolveMirror(options.mirror);
   process.stderr.write(fallbackNotice(mirror));
   // Seeds that pick the same variant would inflate n without a board of their own: said, not refused.
@@ -183,7 +185,7 @@ export async function commandBench(args: string[]): Promise<number> {
   for (const name of signals) process.on(name, onSignal);
   let result: Awaited<ReturnType<typeof runBench>>;
   try {
-    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), ...(options.stopOnInfra ? { stopOnInfra: true } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal });
+    result = await runBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: mirror.mode, keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}), ...(options.stopOnInfra ? { stopOnInfra: true } : {}), progress: line => process.stderr.write(`  ${line}\n`), signal: stop.signal, ...(extra.guard ? { guard: extra.guard } : {}) });
   } finally { for (const name of signals) process.off(name, onSignal); }
   const { report, directory } = result;
   if (report === null) {
@@ -208,6 +210,8 @@ export async function commandBench(args: string[]): Promise<number> {
   else if (result.interrupted) process.stdout.write(cliText('benchInterrupted', { runs: report.runs.length, planned: result.planned, tasks: report.settings.tasks.filter(task => !judged(task)).join(',') }));
   process.stdout.write(cliText('benchWritten', { path: safeText(displayPath(out)), logs: safeText(displayPath(directory)) }));
   if (options.junit) process.stdout.write(cliText('reportJunit', { path: safeText(displayPath(options.junit)) }));
+  // A start the guard refused ends the bench after the runs that finished, whose report is written.
+  if (result.refused) throw result.refused;
   if (stopped) return EXIT_STOPPED;
   if (result.interrupted) return EXIT_INTERRUPTED;
   // An agent that failed (a missing or expired login, a crash) leaves runs that were judged on the board
@@ -223,22 +227,28 @@ export async function commandBench(args: string[]): Promise<number> {
 /**
  * `bench … --recover <bench folder>`: the report of a bench that was killed, rebuilt from its run
  * folders with the bench's own arguments, and verified like `report --verify` before it is written;
- * a folder whose artifacts do not re-judge to what they hold is refused by name.
+ * a folder whose artifacts do not re-judge to what they hold is refused by name. Through a start guard
+ * (the project's release ledger), the guard first records the run-end records the folders prove.
  */
-async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepared: Awaited<ReturnType<typeof prepareBench>>): Promise<number> {
+async function recoverCommand(options: BenchArguments, agent: AgentSpec, prepared: Awaited<ReturnType<typeof prepareBench>>, guard?: StartGuard): Promise<number> {
   const folder = options.recover!;
   // The report goes into the bench folder, where the challenge gate's spend scan reads it.
   if (options.out !== undefined) throw new RuntimeError('usage', cliText('benchRecoverOut'));
   if (existsSync(join(folder, 'report.json'))) throw new RuntimeError('usage', cliText('benchRecoverReport', { folder: safeText(displayPath(folder)) }));
   let recovered: Awaited<ReturnType<typeof recoverBench>>;
   try {
-    recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder);
+    // Through a start guard, a run whose run-end record exists keeps the outcome that record states.
+    const recorded = guard?.recorded && agent.kind !== 'builtin' ? await guard.recorded(basename(resolve(folder))) : undefined;
+    recovered = await recoverBench({ agent, tasks: prepared.tasks, world: prepared.world, references: prepared.references, seeds: options.seeds, repeats: options.repeats, timeoutSeconds: options.timeoutSeconds, maxActions: options.maxActions, mirrorRequested: options.mirror, mirror: 'off', keepEnv: options.keepEnv, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.checks !== undefined ? { checks: options.checks } : {}) }, folder, recorded);
     await verifyBenchV3(recovered.report, folder, libraryWorld);
   } catch (error) { if (error instanceof BenchReportError) throw new RuntimeError(error.code, cliText('benchRecoverRefused', { folder: safeText(displayPath(folder)), reason: error.message })); throw error; }
   const { report, remaining } = recovered;
+  // The ledger first: a recovery whose records cannot be appended writes no report and can be repeated.
+  const ledgered = guard?.recover && agent.kind !== 'builtin' ? await guard.recover(basename(resolve(folder)), report.runs) : null;
   await writeAtomic(join(folder, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   const judged = report.runs.filter(run => run.status !== 'infra_error').length;
   process.stdout.write(cliText('benchRecovered', { runs: report.runs.length, judged, unjudged: report.runs.length - judged, path: safeText(displayPath(join(folder, 'report.json'))), tasks: remaining.length ? remaining.join(',') : '—' }));
+  if (ledgered) process.stdout.write(cliText('benchRecoveredLedger', { written: ledgered.written.length, void: ledgered.void.length, runs: ledgered.void.length ? ledgered.void.map(safeText).join(', ') : '—' }));
   return 0;
 }
 /** EX_TEMPFAIL: the bench stopped at an infra_error run (`--stop-on-infra`); resume later. */

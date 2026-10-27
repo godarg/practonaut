@@ -279,8 +279,10 @@ are accepted whenever they are ready.
 
 - **Budget:** at most 800 model runs through subscriptions (Claude, GPT, Gemini together), counted
   from zero for 0.3.0: every run of a model agent made for the project through a subscription —
-  gate runs, pre-probes, red-team, examples, acceptance and development runs. Each such run takes an
-  entry in a local append-only ledger before its client starts, and a start past 800 is refused.
+  gate runs, pre-probes, red-team, examples, acceptance and development runs. Each such run is a
+  bench run through the guarded runner (`node tools/challenge.ts bench`) and takes an entry in the
+  repository's one append-only ledger before its client starts; a start past 800 is refused. A
+  client started outside it cannot be counted, so the project starts none (PADR-0042 amended).
   Runs of local models and of the built-in agents are listed, not counted; reviews and subagents are
   not counted. Per unit and round (held-out + pre-probe) × subscription agents ≤ 100, at most three
   subscription agents, at most two rounds per unit. When the budget is used up, nothing new starts
@@ -305,10 +307,11 @@ are accepted whenever they are ready.
 
 - **P1. Gate tool for 0.3.0** (M–L): `src/challenge/`, `tools/challenge.ts` and the release-run
   guard, after the bench/3 frame (P3) and before any model run; artifact-mode and co-actor support
-  in later changes. *Acceptance:* a whole 0.3.0 round without a language model (stand-ins, shapes A
-  and B of PADR-0042) runs through pre-probe, declaration, held-out set, preflight, gate and ledger;
-  the count starts at zero although the 0.2.0 rounds are committed; every refusal PADR-0042 names has
-  a test that fails without it; a start past 800 is refused before the client starts.
+  in later changes. *Acceptance:* a whole 0.3.0 round without a language model (stand-ins, shape B
+  of PADR-0042; shape A is refused by name in 0.3.0, PADR-0046) runs through pre-probe,
+  declaration, held-out set, preflight, gate and ledger; the count starts at zero although the 0.2.0
+  rounds are committed; every refusal PADR-0042 names has a test that fails without it; a start past
+  800 is refused before the client starts.
 - **P2. "H1 native file" fixed at its cause** (S–M): the integration test whose native file dialog
   did not open within 10 s on several runners in 0.2.0, fixed at the cause, not the timeout.
   *Acceptance:* a deterministic ordering test fails on the old code and passes on the new; an opt-in

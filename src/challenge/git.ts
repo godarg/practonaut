@@ -13,8 +13,10 @@ export class DeclarationGitError extends Error {
   constructor(message: string) { super(message); this.name = 'DeclarationGitError'; }
 }
 
+/** git without a shell; replace refs never change the history it reports (`git replace` is local and
+ * silent: it could hide a committed version of a round file or of the release ledger). */
 const git = (cwd: string, args: string[]): { ok: boolean; out: string } => {
-  try { return { ok: true, out: execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }) }; }
+  try { return { ok: true, out: execFileSync('git', ['--no-replace-objects', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }) }; }
   catch (error) { return { ok: false, out: String((error as { stdout?: unknown }).stdout ?? '') }; }
 };
 
@@ -49,11 +51,14 @@ export function declarationCommit(path: string): { commit: string; versions: num
   if (!remote.ok || !remote.out.trim()) throw new DeclarationGitError(`${name} is committed in ${commit.slice(0, 12)}, which no remote-tracking branch contains; push it first`);
   return { commit, versions: commits.length };
 }
-/** Every committed version of the declaration file, newest first: commit and committer date. */
+/** Every committed version of a round file or the release ledger, newest first: commit and committer
+ * date. Without history simplification (`--full-history`: a merge resolved to one side keeps the other
+ * side's versions) and over every remote-tracking branch as well as HEAD (a version pushed on a branch
+ * that is not merged, or reached main only through a squash, is still a version). */
 export function declarationVersions(path: string): Array<{ commit: string; date: string }> {
   const at = located(path);
   if (!at) return [];
-  const listed = git(at.folder, ['log', '--format=%H %cI', '--', at.spec]);
+  const listed = git(at.folder, ['log', '--full-history', '--format=%H %cI', 'HEAD', '--remotes', '--', at.spec]);
   return listed.ok ? listed.out.split('\n').filter(Boolean).map(line => { const [commit, date] = line.split(' '); return { commit: commit!, date: date ?? '' }; }) : [];
 }
 /** The declaration file's content in a commit, or null when the commit or the file is not there. */
@@ -69,6 +74,26 @@ export function commitPushed(path: string, commit: string): boolean {
   if (!at || !/^[0-9a-f]{40}$/.test(commit)) return false;
   const remote = git(at.folder, ['branch', '-r', '--contains', commit]);
   return remote.ok && remote.out.trim() !== '';
+}
+
+/** Whether the repository of `cwd` is a shallow clone: its history (and every committed version of the
+ * release ledger in it) is cut off, so the every-version-is-a-prefix check cannot be made. */
+export function isShallowRepository(cwd: string): boolean {
+  return git(cwd, ['rev-parse', '--is-shallow-repository']).out.trim() === 'true';
+}
+/** Every committed version of a file named by its path from the repository's top level (forward
+ * slashes), over HEAD and every remote-tracking branch without history simplification, newest first,
+ * with its content; whether or not the working tree holds the file. */
+export function committedVersions(cwd: string, rel: string): Array<{ commit: string; date: string; text: string }> {
+  const listed = git(cwd, ['log', '--full-history', '--format=%H %cI', 'HEAD', '--remotes', '--', `:(top,literal)${rel}`]);
+  if (!listed.ok) return [];
+  const out: Array<{ commit: string; date: string; text: string }> = [];
+  for (const line of listed.out.split('\n').filter(Boolean)) {
+    const [commit, date] = line.split(' ');
+    const shown = git(cwd, ['show', `${commit}:${rel}`]);
+    if (shown.ok) out.push({ commit: commit!, date: date ?? '', text: shown.out });
+  }
+  return out;
 }
 
 /** The committed files of a folder (names only), for counting earlier rounds. */
