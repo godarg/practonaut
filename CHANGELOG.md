@@ -177,6 +177,10 @@ All notable changes are recorded here. The format follows
 
 ### Internal
 
+- CI: the required `test (<os>)` job has 90 minutes instead of 60. On Ubuntu it runs the browser
+  layers (demo, adapter, e2e, a11y) and was measured at 44 to 58 minutes; two runs on `main` were
+  cancelled at 60 after a Chromium cache miss. The layers stay in the required check;
+  `tests/unit/ci-workflows.test.ts` holds both.
 - The development checkout keeps `node_modules` at what `package-lock.json` pins:
   `tests/unit/lockfile-drift.test.ts` and `npm run doctor` name every package installed at another
   version, from another archive, missing or no longer locked (remedy `npm ci`); the `post-merge`

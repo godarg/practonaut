@@ -17,7 +17,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # The Linux job carries the browser layers and was measured at 44 to 58 minutes (October 2026);
+    # 60 cancelled it twice after a Chromium cache miss. They stay in this required job
+    # (tests/unit/ci-workflows.test.ts).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
