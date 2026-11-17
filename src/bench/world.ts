@@ -19,7 +19,7 @@ import { runOracle, type OracleStep, type TaskOracle } from '../authoring/from-s
 import { canonicalJson, sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { displayPath, safeText } from '../cli/output.ts';
-import { checkInProcess, RuntimeError } from '../cli/runtime.ts';
+import { CHECKER_ATTEMPTS, checkInProcess, isCheckerTimeout, retryCheckerTimeout, RuntimeError } from '../cli/runtime.ts';
 import { loadLibrary, LIBRARY_WORLD_DIR } from '../library/index.ts';
 import { PackageError, packWorld, readArchiveFile, readWorldPackage } from '../package/index.ts';
 import { parseJsonEntry } from '../package/json.ts';
@@ -192,9 +192,13 @@ export async function referenceProblem(world: World, taskId: string, reference: 
   const session: SessionData = { schema: 'practonaut.session/1', world: { id: world.id, version: world.version }, seed, taskId, toolVersion: PACKAGE_VERSION, log: run.session.log, state: run.session.state, hash: run.session.hash };
   let passed: boolean;
   try {
-    const verdict = await checkInProcess(world, JSON.stringify(session), { seed, taskId });
+    const verdict = await retryCheckerTimeout(() => checkInProcess(world, JSON.stringify(session), { seed, taskId }));
     passed = verdict.passed && verdict.tasks.find(task => task.taskId === taskId)?.passed === true;
-  } catch (error) { return cliText('benchReferenceChecker', { task: safeText(taskId), seed, code: (error as { code?: string }).code ?? 'error' }); }
+  } catch (error) {
+    // A checker that ran out of wall time judged nothing: that is not a reason to call the reference invalid.
+    if (isCheckerTimeout(error)) throw new RuntimeError('checker_timeout', cliText('benchReferenceTimeout', { task: safeText(taskId), seed, attempts: CHECKER_ATTEMPTS }));
+    return cliText('benchReferenceChecker', { task: safeText(taskId), seed, code: (error as { code?: string }).code ?? 'error' });
+  }
   return passed ? null : cliText('benchReferenceFails', { task: safeText(taskId), seed });
 }
 

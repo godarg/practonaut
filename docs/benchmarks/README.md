@@ -435,6 +435,13 @@ Two levels of checking, and the output always says which one ran:
   re-verifying a stored `/1` report ends with the first change of the bundled library; its
   consistency check stays.
 
+  Every checker call of `--verify` (session, export, condition trace, stored reference) runs in its
+  own process under the checker's 10-second wall limit. The checker is deterministic, so a process
+  that ran into that limit judged nothing: on a busy machine `--verify` runs it again, up to 3
+  attempts, each under the full limit. Only when every attempt ran out of time does it stop, with
+  `checker_timeout` and the run (or the reference's task and seed) named, never with one of the codes
+  above: a timeout says nothing about the artifact. Run `--verify` again when the machine is less busy.
+
   pass, pass@1, pass^k, mean actions and efficiency then follow from these values. Not
   re-verifiable and labelled *self-reported by the runner*: acceptedActions, rejected actions,
   undo, reset, host calls, wall time, exit status, notes, the client-reported model and
