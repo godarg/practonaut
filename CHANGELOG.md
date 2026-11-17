@@ -96,6 +96,14 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 
+- `report --verify` no longer refuses a sound report because the machine is busy. A checker process
+  that ran into its 10-second wall limit was reported as the checker refusing the artifact ("the
+  checker rejects the session artifact", likewise for the export, the condition trace and a stored
+  reference), although the deterministic checker had judged nothing; on 2026-11-17 this turned the
+  committed `/2` fixture red on a loaded machine. A re-judge now runs a timed-out check again, up to
+  3 attempts under the full limit each, and when every attempt runs out of time it says so
+  (`checker_timeout`, with the run or the reference's task and seed). The limit itself and a bench
+  run's single attempt are unchanged.
 - A browser that closes slowly no longer fails work that succeeded (issue #64,
   [PADR-0050](docs/adr/0050-browser-close-is-a-bounded-request.md)). Every browser Practonaut starts
   — the mirror's, the start check's, the render check's, the report card's — closes through one

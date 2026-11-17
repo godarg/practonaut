@@ -619,6 +619,10 @@ export const CLI_CATALOG = {
     "en": "the reference of task {task} does not pass the checker: with seed {seed} its action {index} is rejected ({code})",
     "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} wird ihre Aktion {index} abgelehnt ({code})"
   },
+  "benchReferenceTimeout": {
+    "en": "the reference of task {task} was not judged: with seed {seed} the checker did not finish within its 10 s wall limit in {attempts} attempts; is the machine busy?",
+    "de": "die Referenz der Aufgabe {task} wurde nicht beurteilt: mit Seed {seed} ist der Prüfer in {attempts} Versuchen nicht innerhalb seiner Grenze von 10 Sekunden fertig geworden; ist der Rechner ausgelastet?"
+  },
   "benchReferenceChecker": {
     "en": "the reference of task {task} does not pass the checker: with seed {seed} the checker refuses it ({code})",
     "de": "die Referenz der Aufgabe {task} besteht den Prüfer nicht: mit Seed {seed} lehnt der Prüfer sie ab ({code})"
@@ -862,6 +866,10 @@ export const CLI_CATALOG = {
   "verifyCheckerSession": {
     "en": "run {run}: the checker rejects the session artifact",
     "de": "Lauf {run}: der Prüfer lehnt das Sitzungsartefakt ab"
+  },
+  "verifyCheckerTimeout": {
+    "en": "run {run}: the checker did not finish within its 10 s wall limit in {attempts} attempts, so nothing was judged; is the machine busy? Run --verify again",
+    "de": "Lauf {run}: der Prüfer ist in {attempts} Versuchen nicht innerhalb seiner Grenze von 10 Sekunden fertig geworden, es wurde also nichts beurteilt; ist der Rechner ausgelastet? --verify erneut ausführen"
   },
   "verifyCheckerNative": {
     "en": "run {run}: the checker rejects the native export",

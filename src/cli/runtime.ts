@@ -34,6 +34,21 @@ function integer(raw:string):number {if(!/^-?\d+$/.test(raw)||!Number.isSafeInte
 async function atomicFile(path:string,body:string):Promise<void>{const tmp=path+".tmp-"+process.pid;try{await writeFile(tmp,body,{flag:"wx"});await rename(tmp,path);}catch(e){await rm(tmp,{force:true});throw e;}}
 /** The checker's condition trace of a judged session (PADR-0039), in the same separate process
  * with the same limits as a verdict. */
+/** How often a re-judge of a stored artifact runs the checker before it gives up on the wall limit. */
+export const CHECKER_ATTEMPTS=3;
+/** The checker is deterministic (no clock, randomness or I/O), so an attempt that ran into its wall
+ * limit judged nothing: only the machine was too busy. A re-judge of a stored artifact (`report
+ * --verify`, a reference check) therefore runs the checker again, each attempt under the full ceiling,
+ * and only `checker_timeout` is retried: every other failure is the checker's answer. A bench run keeps
+ * its single attempt (`infra_error`). */
+export async function retryCheckerTimeout<T>(attempt:()=>Promise<T>,pause:(ms:number)=>Promise<void>=ms=>new Promise(resolve=>setTimeout(resolve,ms))):Promise<T>{
+ for(let index=1;;index++){
+  try{return await attempt();}
+  catch(error){if(!isCheckerTimeout(error)||index>=CHECKER_ATTEMPTS)throw error;await pause(1000*index);}
+ }
+}
+/** The checker process did not finish within its wall limit: nothing was judged. */
+export const isCheckerTimeout=(error:unknown):boolean=>error instanceof RuntimeError&&error.code==="checker_timeout";
 export async function traceInProcess(world:World,session:string,timeline:readonly TraceEntry[],settings:{seed?:number;taskId?:string}={}):Promise<ConditionTrace>{
  const result=await checkInProcess(world,session,{...settings,trace:timeline}) as unknown as {trace?:ConditionTrace};
  if(!result||typeof result!=="object"||!result.trace)throw new RuntimeError("checker_invalid",cliText("checkerProcess"));

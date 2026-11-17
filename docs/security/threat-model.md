@@ -102,7 +102,7 @@ change with a test and an update of this table. No environment variable disables
 | Objects in state; actions per session | 10,000; 10,000 | `limit_exceeded` | same |
 | Undo snapshots | 1,000 or 64 MiB, then replay | — | same |
 | Predicates | depth 32, 4,096 nodes, 10⁶ evaluation steps | `checker_fuel_exhausted` | same |
-| Checker process | 10 s wall, 256 MiB V8 heap | `checker_timeout` | same |
+| Checker process | 10 s wall, 256 MiB V8 heap; a re-judge of a stored artifact (`report --verify`, a reference check) runs a timed-out check again, at most 3 attempts, each under the full limit | `checker_timeout` | same; `src/cli/runtime.ts` (`retryCheckerTimeout`) |
 | HTTP request body / headers | 64 KiB / 16 KiB; header deadline 10 s, request 30 s | `body_too_large` / 431 | `src/host/limits.ts` |
 | Request rate | burst 200, refill 50/s per host | `rate_limited` | same |
 | Reply size | 4 MiB | `result_too_large` | same |

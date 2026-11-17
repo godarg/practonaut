@@ -46,7 +46,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { sha256Hex } from '../canonical/index.ts';
 import { cliText } from '../cli/messages.ts';
 import { safeText } from '../cli/output.ts';
-import { checkInProcess, traceInProcess } from '../cli/runtime.ts';
+import { CHECKER_ATTEMPTS, checkInProcess, isCheckerTimeout, retryCheckerTimeout, RuntimeError, traceInProcess } from '../cli/runtime.ts';
 import { nativeMatchesState } from '../host/export-pair.ts';
 import { PackageError } from '../package/index.ts';
 import { LIMITS } from '../package/limits.ts';
@@ -79,6 +79,12 @@ async function artifact(directory: string, runId: string, name: string, expected
   return bytes.toString('utf8');
 }
 
+/** A checker that ran out of wall time in every attempt judged nothing: it is named as such
+ * (`checker_timeout`), never as the checker refusing the artifact. */
+function unjudged(error: unknown, runId: string): RuntimeError | null {
+  return isCheckerTimeout(error) ? new RuntimeError('checker_timeout', cliText('verifyCheckerTimeout', { run: runId, attempts: CHECKER_ATTEMPTS })) : null;
+}
+
 /** Re-judges one judged run from its artifacts against `world`; returns the session's text. */
 async function rejudge(run: BenchRun | SessionRunV3, world: World, directory: string, artifactCode: BenchErrorCode, nativeName: string = RUN_ARTIFACTS.native): Promise<string> {
   if (!run.artifacts) throw new BenchReportError(`run ${run.id} binds no artifacts; the report can be consistency-checked but not re-verified`);
@@ -91,12 +97,12 @@ async function rejudge(run: BenchRun | SessionRunV3, world: World, directory: st
   if (session.log.length !== run.actions) throw new BenchReportError(cliText('verifyActions', { run: run.id, given: run.actions, actual: session.log.length }));
   const settings = { seed: run.seed, taskId: run.taskId };
   let sessionRaw: CheckerVerdict, nativeRaw: CheckerVerdict | null = null;
-  try { sessionRaw = await checkInProcess(world, sessionText, settings); }
-  catch { throw new BenchReportError(cliText('verifyCheckerSession', { run: run.id })); }
+  try { sessionRaw = await retryCheckerTimeout(() => checkInProcess(world, sessionText, settings)); }
+  catch (error) { throw unjudged(error, run.id) ?? new BenchReportError(cliText('verifyCheckerSession', { run: run.id })); }
   if (nativeText !== null) {
     if (!nativeMatchesState(world, nativeText, session.state)) throw new BenchReportError(cliText('verifyNativeState', { run: run.id }));
-    try { nativeRaw = await checkInProcess(world, nativeText, settings); }
-    catch { throw new BenchReportError(cliText('verifyCheckerNative', { run: run.id })); }
+    try { nativeRaw = await retryCheckerTimeout(() => checkInProcess(world, nativeText, settings)); }
+    catch (error) { throw unjudged(error, run.id) ?? new BenchReportError(cliText('verifyCheckerNative', { run: run.id })); }
   }
   const stored = (() => { try { return parseJsonEntry(Buffer.from(checkerText), RUN_ARTIFACTS.checker, 64); } catch { return undefined; } })();
   if (!isDeepStrictEqual(stored, JSON.parse(JSON.stringify({ session: sessionRaw, native: nativeRaw }))))
@@ -175,8 +181,8 @@ async function verifyEvidence(run: BenchRunV2 | SessionRunV3, world: World, sess
   let derived: string;
   try {
     if ('reason' in timeline) throw new Error(timeline.reason);
-    derived = JSON.stringify(await traceInProcess(world, sessionText, timeline.timeline, { seed: run.seed, taskId: run.taskId })) + '\n';
-  } catch { throw new BenchReportError(cliText('verifyTrace', { run: run.id })); }
+    derived = JSON.stringify(await retryCheckerTimeout(() => traceInProcess(world, sessionText, timeline.timeline, { seed: run.seed, taskId: run.taskId }))) + '\n';
+  } catch (error) { throw unjudged(error, run.id) ?? new BenchReportError(cliText('verifyTrace', { run: run.id })); }
   if (derived !== texts.trace) throw new BenchReportError(cliText('verifyTrace', { run: run.id }));
 }
 
